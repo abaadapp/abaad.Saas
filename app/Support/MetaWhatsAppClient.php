@@ -32,6 +32,12 @@ class MetaWhatsAppClient
         array $variables = [],
         ?array $document = null,
     ): array {
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -77,7 +83,7 @@ class MetaWhatsAppClient
             $response = Http::withToken($connection->access_token)
                 ->timeout((int) config('whatsapp.timeout', 15))
                 ->acceptJson()
-                ->post($url, $payload);
+                ->post($url, $payload + $account['field']);
         } catch (\Throwable $e) {
             // انقطاع شبكة أو مهلة — يُعاد، لا يُقيَّد فشلًا نهائيًّا
             return self::failure('network_error', $e->getMessage(), retryable: true);
@@ -176,6 +182,12 @@ class MetaWhatsAppClient
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -196,7 +208,7 @@ class MetaWhatsAppClient
                      * ميتا تفتح الرابط من خوادمها لتسحب عنوانه وصورته.
                      */
                     'text' => ['preview_url' => false, 'body' => $body],
-                ]);
+                ] + $account['field']);
         } catch (\Throwable $e) {
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
@@ -222,6 +234,12 @@ class MetaWhatsAppClient
         ?string $caption = null,
         ?string $filename = null,
     ): array {
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
         if (! in_array($kind, ['image', 'document'], true)) {
             return self::failure('unsupported_kind', __('نوعٌ لا يُرسَل.'), retryable: false);
         }
@@ -257,7 +275,7 @@ class MetaWhatsAppClient
                     'to' => $to,
                     'type' => $kind,
                     $kind => $media,
-                ]);
+                ] + $account['field']);
         } catch (\Throwable $e) {
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
@@ -302,6 +320,26 @@ class MetaWhatsAppClient
         );
     }
 
+    /**
+     * على أيّ حساب رسائل تُحتسب هذه الرسالة — يُسمّى فيها، أو لا تخرج.
+     *
+     * آخرُ بابٍ قبل النداء، في الدوالّ الثلاث التي تُخرج رسالة: وصلةُ تطبيق
+     * تاجرٍ لم يُراجَع دليلُ فوترتها، أو لا يُعرف حسابُ رسائلها بأمان، لا يخرج
+     * منها شيء. وما يُسمّى هو الحسابُ الذي رُوجع دليلُه (`WhatsAppOwnApp::sendAccount`).
+     *
+     * @return array{refusal: ?array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}, field: array<string, string>}
+     */
+    private static function account(WhatsAppConnection $connection): array
+    {
+        $bind = WhatsAppOwnApp::sendAccount($connection);
+
+        return [
+            'refusal' => $bind['problem'] === null ? null
+                : self::failure($bind['problem'], WhatsAppOwnApp::say($bind['problem']), retryable: false),
+            'field' => $bind['account'] === null ? [] : ['messaging_account_id' => $bind['account']],
+        ];
+    }
+
     private static function failure(string $code, string $message, bool $retryable): array
     {
         return ['ok' => false, 'id' => null, 'code' => $code, 'message' => $message, 'retryable' => $retryable];
@@ -317,9 +355,10 @@ class MetaWhatsAppClient
      * والمقارنة بـ`hash_equals` لا بـ`===`: المقارنة العادية تخرج عند أوّل
      * حرفٍ مختلف، وفارقُ الزمن يُقرأ فيُخمَّن التوقيع حرفًا حرفًا.
      */
-    public static function verifySignature(?string $header, string $rawBody): bool
+    public static function verifySignature(?string $header, string $rawBody, ?string $secret = null): bool
     {
-        $secret = (string) config('whatsapp.app_secret');
+        // وإشعارُ تطبيق التاجر يُقاس بسرّ تطبيقه هو — لا بسرّ أبعاد (`WhatsAppOwnApp`)
+        $secret ??= (string) config('whatsapp.app_secret');
 
         // بلا سرٍّ لا تحقّق — ولا قبول: الأمان لا يُفتح بغياب إعداد
         if ($secret === '' || blank($header)) {

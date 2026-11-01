@@ -1,18 +1,20 @@
 import { router, useForm } from '@inertiajs/react';
-import { AlertTriangle, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
+import { AlertTriangle, KeyRound, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { PageActions, SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
+import OwnAppLink, { type OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
 import { useTranslate } from '@/lib/i18n';
 import EmbeddedSignup, { type EmbeddedConfig, type OnboardingKind, type SignupAssets } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import { cn } from '@/lib/utils';
 
 /** حالُ الربط كما حسبها الخادم — انظر App\Support\WhatsAppLink */
 export interface WhatsappLink {
-    state: 'disconnected' | 'connecting' | 'connected' | 'reauthorization_required' | 'expired' | 'error';
+    state: 'disconnected' | 'connecting' | 'billing_unproven' | 'needs_registration' | 'connected' | 'reauthorization_required' | 'expired' | 'error';
     label: string;
     waba_id: string | null;
     meta_business_id: string | null;
@@ -83,6 +85,8 @@ export function pillFor(state: WhatsappLink['state']): SetupState {
         case 'connecting':
             return 'progress';
         case 'reauthorization_required':
+        case 'needs_registration':
+        case 'billing_unproven':
             return 'action';
         case 'expired':
         case 'error':
@@ -103,6 +107,8 @@ interface Props {
      * ومن أُغلق عنه لا يُقال له إنّ رسائله تخرج من رقم أبعاد: لا تخرج.
      */
     sharedAllowed?: boolean;
+    /** الربطُ بتطبيق التاجر — يحلّ محلَّ زرّ تطبيق أبعاد حين يكون الطريقَ (`WhatsAppOwnApp`) */
+    ownApp?: OwnAppView | null;
 }
 
 /**
@@ -115,7 +121,8 @@ interface Props {
  * ضغطةً: لا حساب مطوّرين، ولا رمزٌ دائمٌ يُصنع بيد التاجر ويُلصق في حقلٍ
  * يمرّ بالمتصفّح.
  */
-export default function WhatsappLinkCard({ link, health = null, config, mayManage, sharedAllowed = true }: Props) {
+export default function WhatsappLinkCard({ link, health = null, config, mayManage, sharedAllowed = true, ownApp = null }: Props) {
+    const own = ownApp?.enabled === true;
     const t = useTranslate();
     const [sending, setSending] = useState(false);
     /* رقمٌ مستقلٌّ افتراضًا — والتعايشُ يُختار صراحةً أو لا يكون */
@@ -143,6 +150,8 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
     }, [kind]);
 
     const autoReply = useForm({});
+    // رمزُ التحقّق بخطوتين — يمرّ إلى الخادم ثمّ إلى ميتا، ولا يُحفظ في أيٍّ منهما
+    const registration = useForm({ pin: '' });
 
     const state = link.state;
     const connected = state === 'connected';
@@ -167,6 +176,10 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             >
                 {state === 'connected' && t('رقمك مربوط، والرسائل تخرج منه.')}
                 {state === 'connecting' && t('تمّ التفويض — وحسابك لم يُظهر رقمًا بعد. تكتمل عادةً خلال دقائق.')}
+                {state === 'billing_unproven' &&
+                    t('رُبط رقمك بتطبيقك، ولم يثبت أنّ رسائل حسابك تُحتسب عليك عند ميتا — لا تخرج رسالة حتى يثبت. أرسل لأبعاد ما يثبت وسيلة الدفع في حسابك.')}
+                {state === 'needs_registration' &&
+                    t('رُبط رقمك ولم يُفعَّل في واتساب للأعمال بعد — اكتب رمز التحقّق بخطوتين (ستّة أرقام) ليبدأ الإرسال منه.')}
                 {state === 'disconnected' &&
                     (sharedAllowed
                         ? t('لم يُربط رقمٌ بعد — تخرج رسائلك من رقم أبعاد المشترك.')
@@ -227,7 +240,51 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             )}
 
             {/* ٢ · ما رُبط — يُقرأ بعد النجاح: الرقم واسمه وحساب الأعمال */}
-            {(connected || state === 'connecting' || state === 'reauthorization_required') && (
+            {/*
+                ١ج · تفعيلُ رقمٍ جديد — ميتا تطلبه بعد التسجيل المدمج لرقمٍ لم يُسجَّل
+                في Cloud API. ورقمٌ مسجَّلٌ أصلًا لا يصل هذه الحال (`WhatsAppOnboarding`).
+            */}
+            {state === 'needs_registration' && mayManage && (
+                <form
+                    className="mt-3 flex flex-wrap items-end gap-2"
+                    data-testid="register-number"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        registration.post(route('admin.integrations.whatsapp.register'), {
+                            preserveScroll: true,
+                            onFinish: () => registration.reset('pin'),
+                        });
+                    }}
+                >
+                    <label className="flex flex-col gap-1 text-[12px] text-[#6b7280]">
+                        {t('رمز التحقّق بخطوتين')}
+                        <Input
+                            dir="ltr"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={6}
+                            value={registration.data.pin}
+                            onChange={(e) => registration.setData('pin', e.target.value.replace(/\D/g, ''))}
+                            className="w-32 tabular-nums"
+                            data-testid="register-pin"
+                        />
+                    </label>
+                    <Button type="submit" loading={registration.processing} disabled={registration.data.pin.length !== 6} data-testid="register-submit">
+                        <KeyRound />
+                        {t('تفعيل الرقم')}
+                    </Button>
+                    <p className="basis-full text-[12px] leading-relaxed text-[#6b7280]">
+                        {t('إن كان لرقمك رمزٌ مضبوط فاكتبه هو، وإلّا صار ما تكتبه رمزَه. لا يُحفظ عندنا.')}
+                    </p>
+                    {registration.errors.pin && (
+                        <p className="basis-full text-[12px] text-[#b91c1c]" data-testid="register-error">
+                            {registration.errors.pin}
+                        </p>
+                    )}
+                </form>
+            )}
+
+            {(connected || state === 'connecting' || state === 'billing_unproven' || state === 'needs_registration' || state === 'reauthorization_required') && (
                 <dl className="mt-4 space-y-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px]" data-testid="link-facts">
                     {link.display_phone_number && (
                         <div className="flex flex-wrap justify-between gap-3">
@@ -267,7 +324,10 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
 
                 ومن يقرأ هذا ليس التاجرَ وحده: هو خبرٌ لمن يُدير الخادم.
             */}
-            {! config.configured && (
+            {/* ٢ · الربطُ بتطبيق التاجر — دليلُه ونموذجُه وعنوانُ إشعاراته */}
+            {own && ownApp && <OwnAppLink ownApp={ownApp} mayManage={mayManage} />}
+
+            {! own && ! config.configured && (
                 <p className="mt-4 rounded-[10px] bg-[#f5f3ff] px-3 py-2 text-[12px] leading-relaxed text-[#5b21b6]">
                     {t('الربط بضغطة غير مهيّأ على الخادم بعد — استعمل الطريقة اليدوية أدناه، أو راجع أبعاد.')}
                 </p>
@@ -281,7 +341,7 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                 ويبقى مطفأً بسببه ما لم يُفتح على الخادم: ربطُه بلا مزامنةٍ
                 يُضيّع تاريخَ محادثاته مرّةً واحدة.
             */}
-            {mayManage && config.configured && (
+            {! own && mayManage && config.configured && (
                 <fieldset className="mt-4 space-y-2" data-testid="link-kind">
                     <legend className="mb-1 text-[12px] font-medium text-[#374151]">{t('نوع الرقم')}</legend>
                     {(['cloud_api', 'coexistence'] as const).map((option) => {
@@ -331,7 +391,7 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             )}
 
             <PageActions className="mt-5">
-                {mayManage && config.configured && (
+                {! own && mayManage && config.configured && (
                     <EmbeddedSignup
                         config={config}
                         kind={kind}

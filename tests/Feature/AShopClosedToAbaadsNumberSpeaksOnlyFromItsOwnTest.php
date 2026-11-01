@@ -67,6 +67,8 @@ class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
         $this->app->setLocale('ar');
 
         config([

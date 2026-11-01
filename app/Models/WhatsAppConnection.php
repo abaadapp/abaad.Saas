@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOwnApp;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -21,6 +22,13 @@ class WhatsAppConnection extends Model
 
     protected $casts = [
         'access_token' => 'encrypted',
+        // وسرُّ تطبيق التاجر ورمزُ تحقّق إشعاراته — مشفَّران كالرمز (`WhatsAppOwnApp`)
+        'app_secret' => 'encrypted',
+        'webhook_verify_token' => 'encrypted',
+        'webhook_verified_at' => 'datetime',
+        'billing_checked_at' => 'datetime',
+        // ما راجعه فريقُ أبعاد دليلًا على أنّ فوترة ميتا على التاجر (`WhatsAppOwnApp::confirmBilling`)
+        'billing_evidence' => 'array',
         'token_expires_at' => 'datetime',
         'connected_at' => 'datetime',
         'disconnected_at' => 'datetime',
@@ -43,7 +51,7 @@ class WhatsAppConnection extends Model
      * `WhatsAppConnections::publicView`)، وهذا حارسٌ ثانٍ: من كتب
      * `->toArray()` سهوًا لا يُسرّب المفتاح.
      */
-    protected $hidden = ['access_token'];
+    protected $hidden = ['access_token', 'app_secret', 'webhook_verify_token'];
 
     public const ACTIVE = 'active';
 
@@ -108,6 +116,15 @@ class WhatsAppConnection extends Model
          */
         if (! in_array($this->status, [self::ACTIVE, self::REAUTH], true)
             || blank($this->phone_number_id) || blank($this->access_token)) {
+            return false;
+        }
+
+        /*
+         * ووصلةُ تطبيق التاجر لا تُرسل قبل أن يُراجَع دليلُ فوترتها، ويُعرف بأمان
+         * حسابُ الرسائل الذي تُحتسب عليه رسائلُها — أيًّا كانت حالتُها. فحالةٌ
+         * صُحّحت خطأً إلى «نشطة» لا تُخرج رسالةً تُحتسب على من لم يثبت أنّه يدفعها.
+         */
+        if (WhatsAppOwnApp::is($this) && WhatsAppOwnApp::sendAccount($this)['problem'] !== null) {
             return false;
         }
 

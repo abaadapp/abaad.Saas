@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
 use App\Support\OrderStatus;
+use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
@@ -43,6 +44,8 @@ class WhatsAppOwnNumberTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
 
         Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
         Setting::updateOrCreate(['business_id' => null, 'key' => WhatsAppQuota::DEFAULT_KEY], ['value' => '100']);
@@ -150,7 +153,12 @@ class WhatsAppOwnNumberTest extends TestCase
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
     }
 
-    public function test_the_entitlement_allows_connecting_and_switching(): void
+    /**
+     * والتحويلُ إلى رقمه ينتظر مراجعةَ دليل فوترته — ويبقى إرسالُه كما هو حتى ذلك.
+     *
+     * وصلةٌ تُرسل ليست وصلةً ثبت على من تُحتسب رسائلُها (`WhatsAppOwnApp::readyForOwnMode`).
+     */
+    public function test_the_entitlement_allows_connecting_and_switching_once_billing_is_reviewed(): void
     {
         $this->linkable();
         $this->grant();
@@ -160,6 +168,13 @@ class WhatsAppOwnNumberTest extends TestCase
             'display_phone_number' => '+96892222222',
             'access_token' => 'shop-token-value-9876543210',
         ])->assertRedirect();
+
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
+            ->assertRedirect()->assertSessionHasErrors('mode');
+        $this->assertNotSame(WhatsAppMode::BUSINESS_OWN, $this->business->fresh()->whatsapp_mode);
+
+        // دليلٌ رُوجع على وصلته — فيُحوَّل
+        WhatsAppConnection::where('business_id', $this->business->id)->update(['billing_state' => \App\Support\WhatsAppOwnApp::BILLING_CONFIRMED]);
 
         $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertRedirect()->assertSessionHasNoErrors();
@@ -348,8 +363,13 @@ class WhatsAppOwnNumberTest extends TestCase
         $this->assertSame(0, WhatsAppConnection::where('business_id', $other->id)->count());
     }
 
-    /** والفصل يُعطّل ويعيد الوضع إلى المشترك صراحةً — لا يترك وضعًا لا يُرسل منه شيء */
-    public function test_disconnecting_returns_the_shop_to_the_shared_number(): void
+    /**
+     * والفصل يُعطّل ولا يُرجعه إلى المشترك — رقمُ أبعاد يُختار ولا يُفرض.
+     *
+     * كان يعيده إلى `abaad_shared`، فتخرج رسائلُ زبائنه بعد الفصل من رقمٍ لم
+     * يختره. فصار يبقى على رقمه غيرَ مربوط حتى يربطه أو يختار المشترك بنفسه.
+     */
+    public function test_disconnecting_keeps_the_shop_on_its_own_number_until_it_chooses(): void
     {
         $this->grant();
         $this->connectOwn();
@@ -357,6 +377,11 @@ class WhatsAppOwnNumberTest extends TestCase
 
         $this->delete(route('admin.integrations.whatsapp.disconnect'))->assertRedirect();
 
+        $this->assertSame(WhatsAppMode::BUSINESS_OWN, $this->business->fresh()->whatsapp_mode);
+        $this->assertNull(WhatsAppConnections::resolve($this->business->fresh()), 'لا وصلةَ يُرسل منها — ولا المشتركة');
+
+        // والمشتركُ بابٌ يُضغط صراحةً
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::ABAAD_SHARED])->assertSessionHasNoErrors();
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
         $this->assertSame(
             WhatsAppConnection::INACTIVE,

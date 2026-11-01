@@ -12,6 +12,7 @@ use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppAutoReply;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOwnApp;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -82,7 +83,71 @@ class WebhookController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    private function applyChange(array $value): void
+    /*
+     * ═══ وإشعاراتُ تطبيق التاجر — على عنوان وصلته وحدها ═══
+     *
+     * ميتا توقّع إشعاراتِ كلِّ تطبيقٍ بسرّه. فلكلّ وصلةٍ بتطبيق التاجر عنوانُها
+     * (`/webhooks/whatsapp/m/{key}`) ورمزُ تحقّقها وسرُّ تطبيقها، ولا يُقبل على
+     * عنوانها إلّا ما وقّعه تطبيقُها ولرقمها هي (`WhatsAppOwnApp`).
+     *
+     * ومفتاحٌ لا نعرفه 404 — لا يُقال أيُّ المفاتيح موجود.
+     */
+    public function verifyOwn(Request $request, string $key)
+    {
+        $connection = $this->ownConnection($key);
+        $token = (string) ($connection?->webhook_verify_token ?? '');
+
+        if ($connection === null || $token === ''
+            || $request->query('hub_mode') !== 'subscribe'
+            || ! hash_equals($token, (string) $request->query('hub_verify_token'))) {
+            return response('', $connection === null ? 404 : 403);
+        }
+
+        // وطابقت ميتا الرمزَ على عنواننا — أوّلُ دليلٍ أنّ التاجر ضبط تطبيقه
+        $connection->forceFill(['webhook_verified_at' => now()])->save();
+
+        return response((string) $request->query('hub_challenge'), 200)
+            ->header('Content-Type', 'text/plain');
+    }
+
+    public function handleOwn(Request $request, string $key)
+    {
+        $connection = $this->ownConnection($key);
+
+        if ($connection === null) {
+            return response()->json(['ok' => false], 404);
+        }
+
+        if (blank($connection->app_secret) || ! MetaWhatsAppClient::verifySignature(
+            $request->header('X-Hub-Signature-256'),
+            $request->getContent(),
+            (string) $connection->app_secret,
+        )) {
+            return response()->json(['ok' => false], 403);
+        }
+
+        foreach ((array) $request->input('entry', []) as $entry) {
+            foreach ((array) ($entry['changes'] ?? []) as $change) {
+                $this->applyChange((array) ($change['value'] ?? []), $connection);
+            }
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function ownConnection(string $key): ?WhatsAppConnection
+    {
+        if (strlen($key) < 32 || strlen($key) > 64) {
+            return null;
+        }
+
+        return WhatsAppConnection::where('webhook_key', $key)->where('link_type', WhatsAppOwnApp::TYPE)->first();
+    }
+
+    /**
+     * @param  WhatsAppConnection|null  $pinned  وصلةُ عنوانٍ خاصّ — لا يُكتب منها إلّا لرقمها
+     */
+    private function applyChange(array $value, ?WhatsAppConnection $pinned = null): void
     {
         // الرقم الذي وصله الإشعار — به وحده تُعرف الوصلة
         $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
@@ -91,7 +156,27 @@ class WebhookController extends Controller
             return;
         }
 
-        $connection = WhatsAppConnection::where('phone_number_id', $phoneNumberId)->first();
+        /*
+         * وعلى عنوان وصلةٍ بعينها: رقمٌ غيرُ رقمها لا يُكتب منه شيء — ولو وقّعه
+         * تطبيقُها، فالتطبيقُ قد يخدم أرقامًا لا شأن لهذا المتجر بها.
+         *
+         * وعلى العنوان العامّ: وصلةُ تطبيق التاجر لا تُعالَج هنا — بابُها عنوانُها.
+         */
+        if ($pinned !== null) {
+            if ((string) $pinned->phone_number_id !== (string) $phoneNumberId) {
+                Log::warning('whatsapp.own_webhook_foreign_number', ['connection' => $pinned->id]);
+
+                return;
+            }
+
+            $connection = $pinned;
+        } else {
+            $connection = WhatsAppConnection::where('phone_number_id', $phoneNumberId)->first();
+
+            if (WhatsAppOwnApp::is($connection)) {
+                return;
+            }
+        }
 
         /*
          * رقمٌ لا نعرفه: إشعارٌ ليس لنا، أو وصلةٌ حُذفت — لا يُكتب منه شيء.

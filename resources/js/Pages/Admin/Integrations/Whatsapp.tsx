@@ -14,6 +14,7 @@ import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Ad
 import WhatsappAutoReply, { type AutoReplySettings } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
 import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
+import type { OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
 import type { PageProps } from '@/types';
 
 /** ما يُعرض من حال الأتمتة — بلا رمزٍ ولا سرّ (انظر Admin\WhatsAppController::view) */
@@ -36,6 +37,8 @@ export interface Automation {
     shared_allowed: boolean;
     /** ما تحتاجه الشاشةُ لتفتح نافذة ميتا — ولا سرَّ فيه */
     embedded: EmbeddedConfig;
+    /** الربطُ بتطبيق التاجر — عنوانُ إشعارات وصلته وفوترتُها (`WhatsAppOwnApp::view`) */
+    own_app?: OwnAppView | null;
     /** حالُ الربط بحالاتها الستّ — من الخادم لا تُستنتج هنا */
     link: WhatsappLink;
     /** أيستقبل فعلًا؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
@@ -171,7 +174,9 @@ export default function IntegrationsWhatsapp() {
                         health={automation.health}
                         config={automation.embedded}
                         mayManage={automation.may_manage}
-                        sharedAllowed={automation.shared_allowed}
+                        // «تخرج رسائلك من رقم أبعاد» تُقال لمن يُرسل منه فعلًا — لا لمن يبدأ على رقمه
+                        sharedAllowed={automation.shared_allowed && automation.effective_mode === 'abaad_shared'}
+                        ownApp={automation.own_app ?? null}
                     />
                 )}
 
@@ -253,8 +258,8 @@ export default function IntegrationsWhatsapp() {
                     </SettingsSection>
                 )}
 
-                {/* ربط رقم المتجر — لمن مُنح الميزة وحده */}
-                {automation.own_allowed && (
+                {/* ربط رقم المتجر — لمن مُنح الميزة وحده؛ والربطُ بتطبيق التاجر نموذجُه في البطاقة أعلاه */}
+                {automation.own_allowed && ! automation.own_app?.enabled && (
                     <SettingsSection
                         title="طريقة يدوية (للحالات الخاصة)"
                         description="لمن ربط رقمه قبل اليوم أو لمن لا تُتيح له ميتا الربط بضغطة — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ."

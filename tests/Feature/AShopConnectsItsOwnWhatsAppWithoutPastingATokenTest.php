@@ -384,8 +384,8 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
         Http::assertNothingSent();
     }
 
-    /** وكذلك الردُّ التلقائيّ: المديرُ يقرؤه ولا يُشغّله */
-    public function test_a_manager_cannot_turn_on_the_auto_reply(): void
+    /** وكذلك الردُّ التلقائيّ: المديرُ يقرؤه ولا يغيّره — لا يُكتب له رأيٌ عن صاحبه */
+    public function test_a_manager_cannot_change_the_auto_reply(): void
     {
         $manager = User::create([
             'business_id' => $this->shop->id, 'name' => 'مدير', 'email' => 'm2@abaadapp.om',
@@ -393,10 +393,12 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
         ]);
 
         $this->actingAs($manager)->post(route('admin.integrations.whatsapp.autoReply'), [
-            'enabled' => true, 'ar' => 'أهلًا', 'cooldown_hours' => 12,
+            'enabled' => false, 'ar' => 'أهلًا', 'cooldown_hours' => 12,
         ])->assertSessionHasErrors();
 
-        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['enabled']);
+        $this->assertSame([true, false, ''], array_values(array_intersect_key(
+            WhatsAppAutoReply::settings($this->shop->id), array_flip(['enabled', 'explicit', 'ar']),
+        )), 'لم يُكتب شيء — والافتراضُ كما هو');
     }
 
     /** ومن لم تُمنح له الميزةُ لا يربط */
@@ -659,17 +661,38 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
 
     /* ═════════════ ١٠ · الردّ التلقائيّ ═════════════ */
 
-    public function test_auto_reply_is_off_until_the_owner_turns_it_on(): void
+    /**
+     * ومن لم يقل رأيه يُردّ عنه — بالنصّ العامّ وباسم متجره هو (قرار 2026-11-01).
+     *
+     * كان مُطفأً حتى يُشعله صاحبُه، فلم يردّ رقمٌ قطّ إلّا بيدٍ تذكّرت.
+     */
+    public function test_an_unset_auto_reply_answers_with_the_default_text_in_the_shops_own_name(): void
     {
         $this->connected();
 
         $this->webhook($this->inbound())->assertOk();
 
-        $row = WhatsAppInboundMessage::first();
+        $this->assertSame('sent', WhatsAppInboundMessage::first()->reply_status);
+        $sent = collect(Http::recorded())->map(fn ($pair) => $pair[0])->filter(fn ($r) => str_contains($r->url(), '/messages'))->values();
+        $this->assertCount(1, $sent);
+        $this->assertSame(WhatsAppAutoReply::defaultText($this->shop->id, 'ar'), $sent[0]['text']['body']);
+        $this->assertStringContainsString((string) $this->shop->name, $sent[0]['text']['body']);
+    }
 
-        $this->assertSame('skipped', $row->reply_status);
-        $this->assertSame('disabled', $row->reply_reason);
+    /** ومن أطفأه صراحةً يبقى صامتًا — لا يُعاد إشعالُه بترقيةٍ ولا بنشر */
+    public function test_a_shop_that_turned_the_auto_reply_off_stays_silent(): void
+    {
+        $this->connected();
+        WhatsAppAutoReply::save($this->shop->id, ['enabled' => false, 'ar' => 'نصّي', 'cooldown_hours' => 12]);
+
+        $this->webhook($this->inbound())->assertOk();
+
+        $row = WhatsAppInboundMessage::first();
+        $this->assertSame(['skipped', 'disabled'], [$row->reply_status, $row->reply_reason]);
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/messages'));
+        $this->assertSame([false, true, 'نصّي'], array_values(array_intersect_key(
+            WhatsAppAutoReply::settings($this->shop->id), array_flip(['enabled', 'explicit', 'ar']),
+        )));
     }
 
     public function test_a_turned_on_auto_reply_answers_once_and_then_holds_its_tongue(): void
@@ -744,24 +767,30 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
         $this->assertSame('أهلًا', WhatsAppAutoReply::text($connection, $settings, '96899999999'));
     }
 
-    /** ولا يُشعَل بلا نصّ: مفتاحٌ فوق حقلٍ فارغ رسالةٌ بيضاء */
-    public function test_auto_reply_cannot_be_turned_on_without_text(): void
+    /** وبلا نصٍّ يُشعَل — ويُردّ بالنصّ العامّ باسم المتجر، لا برسالةٍ بيضاء */
+    public function test_auto_reply_without_text_answers_with_the_default_text(): void
     {
         $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.autoReply'), [
             'enabled' => true, 'ar' => '', 'en' => '', 'cooldown_hours' => 12,
-        ])->assertSessionHasErrors('ar');
+        ])->assertSessionHasNoErrors();
 
-        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['enabled']);
+        $this->assertSame([true, true], array_values(array_intersect_key(
+            WhatsAppAutoReply::settings($this->shop->id), array_flip(['enabled', 'explicit']),
+        )));
+
+        $connection = $this->connected();
+        $settings = WhatsAppAutoReply::settings($this->shop->id);
+        $this->assertSame(WhatsAppAutoReply::defaultText($this->shop->id, 'ar'), WhatsAppAutoReply::text($connection, $settings, '96899999999'));
     }
 
     /** وموظّفٌ ليس مديرًا لا يُشغّله */
     public function test_a_non_admin_cannot_change_the_auto_reply(): void
     {
         $this->actingAs($this->cashier)->post(route('admin.integrations.whatsapp.autoReply'), [
-            'enabled' => true, 'ar' => 'أهلًا', 'cooldown_hours' => 12,
+            'enabled' => false, 'ar' => 'أهلًا', 'cooldown_hours' => 12,
         ])->assertForbidden();
 
-        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['enabled']);
+        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['explicit'], 'لم يُكتب شيء');
     }
 
     /** وفرعُ متجرٍ آخر لا يُحفظ ولو أُرسل معرّفُه */

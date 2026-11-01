@@ -10302,5 +10302,13 @@
     "غير مثبتة بعد — تنتظر مراجعة دليل": "Not proven yet — awaiting evidence review",
     "على أبعاد — يُردّ الربط": "On Abaad — the link is refused",
     "معرّف الحساب كما في صفحة ميتا (WABA ID)": "Account ID as shown on Meta's page (WABA ID)",
-    "رأيت في الدليل معرّفَ هذا الحساب نفسه — لا اسمَ النشاط وحده — ووسيلةَ دفعٍ ليست لأبعاد.": "I saw this exact account ID in the evidence — not just the business name — and a payment method that is not Abaad's."
+    "رأيت في الدليل معرّفَ هذا الحساب نفسه — لا اسمَ النشاط وحده — ووسيلةَ دفعٍ ليست لأبعاد.": "I saw this exact account ID in the evidence — not just the business name — and a payment method that is not Abaad's.",
+    "واتساب غير متاح لحسابك الآن — يعمل الرد حين يُفتح.": "WhatsApp is not available on your account right now — the reply works once it is open.",
+    "يعمل الرد من رقم متجرك الخاص وحده — باقتك لا تتيح الرقم الخاص بعد.": "The reply works only from your shop's own number — your plan does not include an own number yet.",
+    "بانتظار ربط رقم متجرك — يعمل الرد فور اكتماله.": "Waiting for your shop's number to be linked — the reply works as soon as it is.",
+    "بانتظار إثبات فوترة ميتا — يعمل الرد فور مراجعة الدليل.": "Waiting for Meta billing proof — the reply works as soon as the evidence is reviewed.",
+    "بانتظار اكتمال ربط رقمك — يعمل الرد فور عودته.": "Waiting for your number's link to be complete — the reply works as soon as it is back.",
+    "بانتظار اكتمال الربط/الفوترة": "Waiting for link/billing",
+    "مُشغَّل افتراضيًا — يعمل حين يجهز رقمك، ويمكنك إيقافه أو تعديل نصّه.": "On by default — it works once your number is ready, and you can turn it off or edit its text.",
+    "إن تركت النص فارغًا يُرسل النص الافتراضي باسم متجرك.": "If you leave the text empty, the default text with your shop's name is sent."
 }

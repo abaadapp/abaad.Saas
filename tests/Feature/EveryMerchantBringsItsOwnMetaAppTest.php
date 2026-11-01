@@ -704,8 +704,9 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $chat = WhatsAppChat::where('business_id', $this->shop->id)->firstOrFail();
         $this->actingAs($this->owner)->post(route('admin.whatsappInbox.reply', $chat->id), ['body' => 'جاهز'])->assertSessionHasNoErrors();
 
+        // والردُّ التلقائيُّ على رسالة الزبون طريقٌ خامس — مُشعَلٌ افتراضًا، وعلى الحساب نفسِه
         $sent = $this->sends();
-        $this->assertCount(4, $sent);
+        $this->assertCount(5, $sent);
         $sent->each(fn (HttpRequest $r) => $this->assertSame(self::WABA, $r['messaging_account_id'], 'كلُّ رسالةٍ على الحساب الذي رُوجع'));
     }
 

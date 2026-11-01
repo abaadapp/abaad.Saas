@@ -122,6 +122,13 @@ class WhatsAppController extends Controller
 
             /* والردُّ التلقائيّ: ما حُفظ، وفروعُ المتجر التي يُختار منها */
             'auto_reply' => $ownAllowed ? WhatsAppAutoReply::settings($business->id) : null,
+            // وحالُه كما يقع: يعمل، أو بانتظار ربطٍ أو فوترة، أو متوقف — لا المقبضُ وحده
+            'auto_reply_state' => $ownAllowed ? WhatsAppAutoReply::state($business) : null,
+            // والنصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ
+            'auto_reply_defaults' => $ownAllowed ? [
+                'ar' => WhatsAppAutoReply::defaultText($business->id, 'ar'),
+                'en' => WhatsAppAutoReply::defaultText($business->id, 'en'),
+            ] : null,
             'branches' => $ownAllowed
                 ? Branch::where('business_id', $business->id)->orderBy('name')->get(['id', 'name'])->all()
                 : [],

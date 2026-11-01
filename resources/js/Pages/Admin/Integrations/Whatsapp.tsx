@@ -11,7 +11,7 @@ import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
 import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
-import WhatsappAutoReply, { type AutoReplySettings } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
+import WhatsappAutoReply, { type AutoReplySettings, type AutoReplyState } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
 import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import type { OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
@@ -44,6 +44,10 @@ export interface Automation {
     /** أيستقبل فعلًا؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
     health: LinkHealth | null;
     auto_reply: AutoReplySettings | null;
+    /** حالُ الردّ كما يقع — بحرّاس الإرسال نفسِها (`WhatsAppAutoReply::state`) */
+    auto_reply_state?: AutoReplyState | null;
+    /** النصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ */
+    auto_reply_defaults?: { ar: string; en: string } | null;
     branches: { id: number; name: string }[];
     may_manage: boolean;
     usage: {
@@ -380,6 +384,8 @@ export default function IntegrationsWhatsapp() {
                         settings={automation.auto_reply}
                         branches={automation.branches}
                         linked={automation.link.state === 'connected'}
+                        state={automation.auto_reply_state ?? null}
+                        defaults={automation.auto_reply_defaults ?? null}
                         mayManage={automation.may_manage}
                     />
                 )}

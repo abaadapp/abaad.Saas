@@ -269,15 +269,11 @@ class WhatsAppOnboardingController extends Controller
         ]);
 
         /*
-         * ولا يُشعَل بلا نصّ.
+         * والحقلان الفارغان لا يمنعان الإشعال.
          *
-         * مفتاحٌ مُشعَلٌ فوق حقلٍ فارغ يعني رسالةً بيضاءَ تصل الزبون — أو
-         * ردًّا تردّه ميتا فيُقيَّد فشلٌ كلَّ مرّة. والمنعُ هنا قبل الحفظ.
+         * كان يُمنع: مفتاحٌ فوق حقلٍ فارغ رسالةٌ بيضاء. وصار للفارغ نصٌّ عامٌّ
+         * باسم المتجر (`WhatsAppAutoReply::defaultText`) — فلا رسالةَ بيضاءَ تخرج.
          */
-        if ($data['enabled'] && trim((string) ($data['ar'] ?? '')) === '' && trim((string) ($data['en'] ?? '')) === '') {
-            return back()->withErrors(['ar' => __('اكتب نصّ الردّ قبل تشغيله.')]);
-        }
-
         WhatsAppAutoReply::save($business->id, $data);
 
         Activity::log('settings', 'واتساب — الردّ التلقائيّ: '.($data['enabled'] ? 'شُغّل' : 'أُوقف'));

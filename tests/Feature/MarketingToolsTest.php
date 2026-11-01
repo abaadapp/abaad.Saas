@@ -93,6 +93,8 @@ class MarketingToolsTest extends TestCase
             'store_closed_message_on', 'store_closed_message', 'store_closed_message_en',
             // واشتراطُ الموافقة على الشروط — يقرؤه `Store\StoreTerms` في الإتمام
             'store_terms_on',
+            // والاسمُ القانونيّ وبريدُ التواصل وعلَمُ نشر الشروط صفحةً — يقرؤها `Store\StoreLegal`
+            'store_legal_name', 'store_legal_email', 'store_terms_public',
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
             // وفرعُ طلبات الموقع واختيارُ الزبون فرعَ استلامه — يقرؤهما إتمامُ الطلب (`Store\StoreBranches`)
             'store_branch_id', 'store_pickup_branch_choice',

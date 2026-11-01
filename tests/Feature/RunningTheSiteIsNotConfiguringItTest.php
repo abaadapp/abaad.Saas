@@ -112,6 +112,7 @@ class RunningTheSiteIsNotConfiguringItTest extends TestCase
             ['admin.website.seo'],
             ['admin.website.domain'],
             ['admin.website.editor'],
+            ['admin.website.legal'],
         ];
     }
 

@@ -315,6 +315,7 @@
         .rb-social a { height: 44px; min-width: 44px; padding: 0 14px; border: 1px solid #8b8968; border-radius: var(--rb-r-sm); display: inline-flex; align-items: center; justify-content: center; color: var(--rb-cream); font-size: 13px; }
         .rb-social a:hover { background: #6b694c; }
         .rb-foot-bottom { border-top: 1px solid #77754f; margin-top: 40px; padding-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #c4bfa6; }
+        .rb-foot-legal { display: flex; flex-wrap: wrap; gap: 0 18px; } .rb-foot-legal a { font-size: 12px; color: #c4bfa6; }
         .rb-toast { position: fixed; bottom: 24px; inset-inline-start: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; }
         .rb-toast.show { opacity: 1; }
         @if (! empty($visualBar ?? []))
@@ -567,8 +568,20 @@
                 @endif
             @endforeach
         </div>
-        @if ($footer['copyright'] !== null || ($footer['line'] && filled($tagline)))
+        @php $rbLegal = $legalLinks ?? []; @endphp
+        @if ($footer['copyright'] !== null || ($footer['line'] && filled($tagline)) || $rbLegal !== [])
         <div class="rb-foot-bottom">
+            {{--
+                وروابطُ الصفحات القانونيّة — ما نشره صاحبُ المتجر وحده (`Store\StoreLegal::links`).
+                ولا شيء لمن لم ينشر: يبقى تذييلُه كما كان.
+            --}}
+            @if ($rbLegal !== [])
+                <nav class="rb-foot-legal" aria-label="{{ $lang === 'en' ? 'Legal' : 'الصفحات القانونية' }}" data-testid="rb-foot-legal">
+                    @foreach ($rbLegal as $rbLink)
+                        <a href="{{ $rbLink['href'] }}" data-testid="rb-foot-legal-{{ $rbLink['key'] }}">{{ $rbLink['label'] }}</a>
+                    @endforeach
+                </nav>
+            @endif
             {{-- وسطرُ الحقوق كما كتبه صاحبُه، أو السنةُ واسمُ المتجر — أو لا سطر --}}
             @if ($footer['copyright'] !== null)
                 <span data-testid="rb-copyright">{{ $footer['copyright'] }}</span>

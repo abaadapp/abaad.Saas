@@ -145,6 +145,14 @@ class MarketingSettings
              * والنصُّ نفسُه في نسخه (`store_terms_versions`) لا هنا. انظر `Store\StoreTerms`.
              */
             'store_terms_on' => '0',
+            /*
+             * والصفحاتُ القانونيّة — الاسمُ القانونيّ وبريدُ التواصل يُملأ بهما
+             * قالبُها، و«الشروطُ صفحةٌ عامّة» حين نُشرت من شاشتها. والنصُّ في
+             * نسخه (`store_legal_versions`) لا هنا. انظر `Store\StoreLegal`.
+             */
+            'store_legal_name' => '',
+            'store_legal_email' => '',
+            'store_terms_public' => '0',
             'store_pay_cod' => '1',
             'store_pay_transfer' => '0',
             'store_bank' => '',

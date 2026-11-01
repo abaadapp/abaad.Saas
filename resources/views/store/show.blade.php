@@ -257,6 +257,10 @@
         @if ($whatsapp)
             · <a href="https://wa.me/{{ $whatsapp }}" target="_blank" rel="noopener">تواصل معنا</a>
         @endif
+        {{-- وروابطُ الصفحات القانونيّة التي نشرها صاحبُ المتجر — ولا شيء لمن لم ينشر --}}
+        @foreach ($legalLinks ?? [] as $legal)
+            · <a href="{{ $legal['href'] }}" data-testid="store-legal-{{ $legal['key'] }}">{{ $legal['label'] }}</a>
+        @endforeach
     </div>
 </footer>
 

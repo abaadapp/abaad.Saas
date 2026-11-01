@@ -236,10 +236,11 @@ export const WEBSITE_TABS: SectionTab[] = [
     { label: 'المتجر والطلبات', routeName: 'admin.website.shop', section: 'website' },
     { label: 'الدومين', routeName: 'admin.website.domain', section: 'website' },
     { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'الصفحات القانونية', routeName: 'admin.website.legal', section: 'website' },
 ];
 
 /*
- * ═══ ومن لبس واجهةً خاصّة — الشريطُ نفسُه، ستّةً ═══
+ * ═══ ومن لبس واجهةً خاصّة — الشريطُ نفسُه، سبعةً ═══
  *
  * والمساراتُ هي مساراتُ جاره حرفًا: `site` و`design` و`pages` و`shop`
  * و`domain` و`seo`. وإنّما تُكتب قائمةً على حدة لا `WEBSITE_TABS` نفسِها،
@@ -268,6 +269,7 @@ export const THEME_TABS: SectionTab[] = [
     { label: 'المتجر والطلبات', routeName: 'admin.website.shop', section: 'website' },
     { label: 'الدومين', routeName: 'admin.website.domain', section: 'website' },
     { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'الصفحات القانونية', routeName: 'admin.website.legal', section: 'website' },
 ];
 
 /*

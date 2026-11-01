@@ -9,6 +9,7 @@ use App\Support\Seo;
 use App\Support\Store\StoreContent;
 use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreCustomPages;
+use App\Support\Store\StoreLegal;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\Website\Published;
@@ -52,6 +53,11 @@ class StorefrontController extends Controller
 
         abort_if($business === null, 404);
 
+        // والصفحاتُ القانونيّة لكلّ متجر — قبل الواجهات الثلاث (`legal`)
+        if (($legal = $this->legal($business, $path, $this->base($slug))) !== null) {
+            return $legal;
+        }
+
         // والواجهةُ الخاصّة — RIBBON — تتقدّم على البانِي والبسيطة معًا
         if (Storefront::serves($business) === Storefront::SERVES_THEME) {
             return app(RibbonController::class)->page($business, $path, $this->base($slug));
@@ -92,6 +98,8 @@ class StorefrontController extends Controller
             ->view('store.show', Storefront::page($business) + [
                 // والوسمُ نفسُه في صفحة المتجر البسيطة — الطريقان عنوانٌ واحد
                 'analytics' => Seo::tagFor((int) $business->id),
+                // وروابطُ الصفحات القانونيّة المنشورة في تذييلها (`StoreLegal::links`)
+                'legalLinks' => StoreLegal::links((int) $business->id, $this->base($slug), 'ar'),
             ])
             /*
              * ═══ ولا تُخزَّن أصلًا — لا هنا ولا في وسيط ═══
@@ -143,6 +151,11 @@ class StorefrontController extends Controller
 
         abort_if($business === null || ! Storefront::serving($business), 404);
 
+        // والصفحاتُ القانونيّة على نطاقه نفسِه — جذرُه جذرُ متجره
+        if (($legal = $this->legal($business, $path, '')) !== null) {
+            return $legal;
+        }
+
         if (Storefront::serves($business) === Storefront::SERVES_THEME) {
             return app(RibbonController::class)->page($business, $path, '');
         }
@@ -153,6 +166,72 @@ class StorefrontController extends Controller
 
         // ونطاقُ التاجر جذرُه جذرُ متجره — فلا قاعدةَ تُضاف
         return $this->built($site, $business, $path, '');
+    }
+
+    /* ═══════════ الصفحاتُ القانونيّة — لكلّ متجر ═══════════ */
+
+    /**
+     * سياسةُ الخصوصيّة وتعليماتُ حذف البيانات والشروط — أو null لما ليس منها.
+     *
+     * روابطُها ثابتةٌ لكلّ متجر (`StoreLegal::PATHS`) على الطرق الثلاث إلى
+     * العنوان، بلا تسجيل دخول — يلصقها التاجرُ في إعدادات تطبيق Meta.
+     *
+     * ═══ وصفحةُ التاجر نفسِه تتقدّم ═══
+     *
+     * من بنى في البانِي صفحةً على العنوان نفسِه (`/terms` مثلًا) تُخدم صفحتُه
+     * كما كانت، ولا يُكتب فوقها شيء. وما لم يُنشر «غير موجود» — لا قالبٌ لم
+     * يراجعه صاحبُه.
+     */
+    private function legal(Business $business, ?string $path, string $base): ?Response
+    {
+        $kind = StoreLegal::kindAt($path);
+
+        if ($kind === null) {
+            return null;
+        }
+
+        if (Storefront::serves($business) === Storefront::SERVES_THEME) {
+            return app(RibbonController::class)->legal($business, $kind, $base);
+        }
+
+        if (Storefront::serves($business) === Storefront::SERVES_BUILT) {
+            $site = Published::forBusiness((int) $business->id);
+
+            if ($site['state'] === Published::OK && Published::pageAt($site['site'], $path) !== null) {
+                return null;
+            }
+        }
+
+        $published = StoreLegal::published((int) $business->id, $kind);
+
+        abort_if($published === null, 404);
+
+        $lang = request()->query('lang') === 'en' ? 'en' : 'ar';
+
+        return self::legalView($business, $kind, $lang, $published, $base);
+    }
+
+    /** الصفحةُ المستقلّة — للزبون، ولمعاينة صاحب المتجر (`Admin\Website\LegalPagesController`) */
+    public static function legalView(Business $business, string $kind, string $lang, array $published, string $base, bool $preview = false): Response
+    {
+        $bid = (int) $business->id;
+        $site = rtrim((string) (Domains::canonical($bid) ?? ''), '/');
+
+        $res = response()->view('store.legal', [
+            'business' => $business,
+            'lang' => $lang,
+            'title' => StoreLegal::title($kind, $lang),
+            'blocks' => StoreLegal::blocks(StoreLegal::bodyFor($published, $lang)),
+            'updated' => $published['at']?->timezone(config('app.timezone'))->format('Y/m/d'),
+            'home' => $base !== '' ? $base : '/',
+            'canonical' => $preview || $site === '' ? null : $site.'/'.StoreLegal::PATHS[$kind],
+            'links' => array_values(array_filter(
+                StoreLegal::links($bid, $base, $lang),
+                fn ($l) => $l['key'] !== $kind,
+            )),
+        ])->header('Cache-Control', 'no-store, private');
+
+        return $preview ? $res->header('X-Robots-Tag', 'noindex, nofollow') : $res;
     }
 
     /* ═══════════ السلّةُ وإتمامُ الطلب — للواجهة الخاصّة وحدها ═══════════ */
@@ -283,6 +362,8 @@ class StorefrontController extends Controller
                  * وينتظر أرقامًا لا تأتي. انظر `Seo::hostedUrl`.
                  */
                 'analytics' => Seo::tagFor((int) $business->id),
+                // وروابطُ الصفحات القانونيّة المنشورة — شريطٌ تحت الموقع خارج طبقة الرسم
+                'legalLinks' => StoreLegal::links((int) $business->id, $base, 'ar'),
             ])
             // ولا تُخزَّن — كما في الطريق الآخر أعلاه، وللسبب نفسِه
             ->header('Cache-Control', 'no-store, private');

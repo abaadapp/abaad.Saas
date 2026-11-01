@@ -76,6 +76,7 @@ use App\Http\Controllers\Admin\Website\DesignController;
 use App\Http\Controllers\Admin\Website\DomainController;
 use App\Http\Controllers\Admin\Website\EditorController;
 use App\Http\Controllers\Admin\Website\MediaController;
+use App\Http\Controllers\Admin\Website\LegalPagesController;
 use App\Http\Controllers\Admin\Website\SettingsController;
 use App\Http\Controllers\Admin\Website\StorePublishController;
 use App\Http\Controllers\Auth\AccountRecoveryController;
@@ -1353,6 +1354,21 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
             Route::get('/seo/store', [SettingsController::class, 'storeSeo'])->name('seo.store');
             Route::put('/seo/store', [SettingsController::class, 'saveStoreSeo'])->name('seo.store.save');
             Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
+
+            /*
+             * والصفحاتُ القانونيّة — لكلّ متجرٍ بلا أن يُنشئها له أحد.
+             *
+             * سياسةُ الخصوصيّة وتعليماتُ حذف البيانات والشروط: قالبٌ من بياناته
+             * يراجعه ويحفظه مسوّدةً ثمّ ينشره، ويعود إلى ما قبله. وكلُّها بمتجر
+             * الجلسة لا برقمٍ في الرابط — انظر `Store\StoreLegal`.
+             */
+            Route::get('/legal', [LegalPagesController::class, 'index'])->name('legal');
+            Route::put('/legal/facts', [LegalPagesController::class, 'saveFacts'])->name('legal.facts');
+            // و`{kind}` يُفحص في المتحكّم لا في النمط: فيجيب حارسُ الباقة والصلاحيّة أوّلًا
+            Route::put('/legal/{kind}', [LegalPagesController::class, 'saveDraft'])->name('legal.draft');
+            Route::post('/legal/{kind}/publish', [LegalPagesController::class, 'publish'])->name('legal.publish');
+            Route::post('/legal/{kind}/restore', [LegalPagesController::class, 'restore'])->name('legal.restore');
+            Route::post('/legal/{kind}/preview', [LegalPagesController::class, 'preview'])->name('legal.preview');
 
             /*
              * الدومين — بابٌ قائمٌ بذاته لا حقلٌ في شاشة السيو.

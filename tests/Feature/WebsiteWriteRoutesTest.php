@@ -158,6 +158,21 @@ class WebsiteWriteRoutesTest extends TestCase
         $this->assertNotEmpty($files, 'لم تُحفظ الصورة تحت مجلّد المتجر');
     }
 
+    /** وصورةُ هاتفٍ عريضة تُصغَّر كصور المحرّر — لا تُحفظ كما رُفعت (`StoreImageUpload`) */
+    public function test_a_wide_photo_is_shrunk_before_it_is_stored(): void
+    {
+        Storage::fake('public');
+
+        $this->post(route('admin.website.media'), [
+            'image' => UploadedFile::fake()->image('wide.jpg', 3200, 1600),
+        ])->assertSessionHasNoErrors();
+
+        $files = Storage::disk('public')->allFiles('website/'.$this->shop->id);
+        $this->assertCount(1, $files);
+        $size = getimagesize(Storage::disk('public')->path($files[0]));
+        $this->assertSame([2560, 1280], [$size[0], $size[1]], 'حُفظت الصورةُ بأبعادها كما رُفعت');
+    }
+
     /** وما ليس صورةً يُردّ — لا يُحفظ ثمّ يُكتشف عند العرض */
     public function test_a_file_that_is_not_an_image_is_refused(): void
     {

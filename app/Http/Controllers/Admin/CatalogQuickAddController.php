@@ -186,8 +186,8 @@ class CatalogQuickAddController extends Controller
             'image.max' => __('أقصى حجمٍ للصورة ٤ ميغابايت'),
         ]);
 
-        $path = $request->file('image')->store('website/'.$bid, 'public');
-        $model->update(['card_image' => \Illuminate\Support\Facades\Storage::url($path)]);
+        // ‏تُقرأ من محتواها وتُدار وتُصغَّر كصور المحرّر — لا تُحفظ كما رُفعت
+        $model->update(['card_image' => \App\Support\Store\StoreImageUpload::store($bid, $request->file('image'))['url']]);
 
         \App\Support\Activity::log('updated', 'وضع صورةً لبطاقة قسم «'.$model->name.'»', ['subject_id' => $model->id]);
 

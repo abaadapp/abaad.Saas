@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Support\ImageVariants;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
 {
@@ -255,10 +255,7 @@ class Product extends Model
             return '';
         }
 
-        if (str_starts_with($value, 'http')) {
-            return $value;
-        }
-
-        return Storage::url($value);
+        // ‏ونسخةُ العرض إن صُنعت لصورةٍ قديمة — والعمودُ يبقى على الأصل
+        return ImageVariants::url($value, ImageVariants::DISPLAY);
     }
 }

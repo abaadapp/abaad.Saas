@@ -45,7 +45,7 @@ class ProfileController extends Controller
 
             $user->phone = $data['phone'] ?? $user->phone;
             if ($request->hasFile('avatar')) {
-                $user->avatar = $request->file('avatar')->store('avatars', 'public');
+                $user->avatar = \App\Support\Store\StoreImageUpload::storeShrunk($request->file('avatar'), 'avatars', 512);
             }
             $user->save();
 
@@ -113,7 +113,7 @@ class ProfileController extends Controller
         $user->phone = $data['phone'] ?? $user->phone;
 
         if ($request->hasFile('avatar')) {
-            $user->avatar = $request->file('avatar')->store('avatars', 'public');
+            $user->avatar = \App\Support\Store\StoreImageUpload::storeShrunk($request->file('avatar'), 'avatars', 512);
         }
         if (! empty($data['password'])) {
             $user->password = $data['password']; // cast hashed

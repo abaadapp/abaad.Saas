@@ -157,3 +157,10 @@ Schedule::command('finance:post-missing-sales')->dailyAt('01:30')->withoutOverla
  * وتحذيرٌ يوميٌّ عن حالٍ مقصودةٍ يُعلّم من يقرأ السجلَّ أن يتجاهله.
  */
 Schedule::command('purge:check')->dailyAt('06:10')->withoutOverlapping();
+
+/*
+ * نسخُ الصور القديمة دفعةً كلَّ ساعة — مطفأةٌ حتى يُفتح `images.backfill`.
+ * والأصولُ لا تُمسّ، وما صُنع لا يُعاد (`ImagesOptimize`).
+ */
+Schedule::command('images:optimize', ['--apply', '--limit='.(int) config('images.backfill_batch', 50)])
+    ->hourlyAt(40)->withoutOverlapping()->when(fn () => (bool) config('images.backfill'));

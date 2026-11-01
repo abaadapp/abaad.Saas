@@ -99,7 +99,7 @@ class BusinessController extends Controller
             return back()->withInput()->withErrors(['sector_id' => __('اختر القطاع.')]);
         }
 
-        $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
+        $data['logo'] = $request->hasFile('logo') ? \App\Support\Store\StoreImageUpload::storeShrunk($request->file('logo'), 'logos', 1024) : null;
 
         /*
          * مدّة التجربة — من إعدادات المنصة.

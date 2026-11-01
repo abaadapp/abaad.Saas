@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\ImageVariants;
 use App\Support\ProductImages;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,9 +109,21 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
         return [$info[0], $info[1]];
     }
 
+    /**
+     * أصولُ الصور وحدها — ونسخُها الأخفّ (`ImageVariants`) تتبعها فلا تُعدّ.
+     *
+     * ونسخةٌ لا أصلَ إلى جوارها يتيمةٌ كملفٍّ لا صفَّ له — فتُردّ هنا.
+     */
     private function filesOnDisk(): array
     {
-        return Storage::disk('public')->allFiles('products');
+        $files = Storage::disk('public')->allFiles('products');
+        $copies = array_filter($files, fn ($f) => ImageVariants::isVariant($f));
+
+        foreach ($copies as $copy) {
+            $this->assertContains(ImageVariants::base($copy), $files, "نسخةٌ بقيت بلا أصل: $copy");
+        }
+
+        return array_values(array_diff($files, $copies));
     }
 
     /* ═══════════ صورةٌ واحدة، وخمسٌ في حفظةٍ واحدة ═══════════ */

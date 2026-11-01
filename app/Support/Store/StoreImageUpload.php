@@ -119,7 +119,7 @@ final class StoreImageUpload
         }
 
         $original = (string) file_get_contents($path);
-        $done = self::normalized($path, $type, $w, $h);
+        $done = self::kept($path, $type, $w, $h, self::MAX_SIDE);
 
         if ($done !== null) {
             [$bytes, $w, $h] = $done;
@@ -130,6 +130,51 @@ final class StoreImageUpload
         return self::put($businessId, $original, self::TYPES[$type], $w, $h);
     }
 
+    /**
+     * يحفظ صورةً في مجلّدٍ عامّ بنوعها — مُصغَّرةً مُدارة، أو كما رُفعت.
+     *
+     * للشعار وغلاف المستند والصورة الرمزيّة: تدخل الفاتورةَ والمستندَ وإيصالَ
+     * الطابعة، فتبقى بنوعها — PNG بشفافيّتها، وJPEG — ولا تصير WebP. وتُصغَّر
+     * إلى ما تُطبع به لا إلى ما صوّرها به الهاتف.
+     *
+     * ولا يُردّ رفعٌ هنا: ما لا يُفكّ (SVG أو نوعٌ آخر) يُحفظ كما رُفع، كما
+     * كان قبلُ — فالتحقّقُ من نوعه بابُ من يناديه.
+     */
+    public static function storeShrunk(UploadedFile $file, string $folder, int $side): string|false
+    {
+        $path = (string) $file->getRealPath();
+        $info = $path === '' ? false : @getimagesize($path);
+
+        if (is_array($info) && in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)
+            && $info[0] * $info[1] <= self::MAX_PIXELS) {
+            $done = self::kept($path, $info[2], $info[0], $info[1], $side);
+
+            if ($done !== null) {
+                $target = $folder.'/'.Str::random(40).'.'.self::TYPES[$info[2]];
+
+                if (Storage::disk('public')->put($target, $done[0])) {
+                    return $target;
+                }
+            }
+        }
+
+        return $file->store($folder, 'public');
+    }
+
+    /**
+     * المعالجةُ تحت قفل الفكّ — أو `null` فيُحفظ الأصل.
+     *
+     * وتُعاد الكتابةُ ولو لم تُصغَّر الصورة: هي التي تمحو من رأسها موقعَ
+     * التصوير والجهاز (EXIF). وPNG قد يخرج أثقلَ قليلًا — ثمنٌ لا تُدفع به
+     * خصوصيّةُ صاحب الصورة.
+     *
+     * @return array{0: string, 1: int, 2: int}|null
+     */
+    private static function kept(string $path, int $type, int $w, int $h, int $side): ?array
+    {
+        return \App\Support\ImageVariants::exclusive(fn () => self::normalized($path, $type, $w, $h, $side));
+    }
+
     /* ═══════════ المعالجة ═══════════ */
 
     /**
@@ -137,7 +182,7 @@ final class StoreImageUpload
      *
      * @return array{0: string, 1: int, 2: int}|null
      */
-    private static function normalized(string $path, int $type, int $w, int $h): ?array
+    private static function normalized(string $path, int $type, int $w, int $h, int $side = self::MAX_SIDE): ?array
     {
         // وGIF وAVIF كما رُفعتا: الأولى قد تتحرّك، والثانيةُ خفيفةٌ أصلًا
         if (! in_array($type, [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true) || ! self::decodes($type)) {
@@ -162,7 +207,7 @@ final class StoreImageUpload
             $image = self::oriented($image, self::orientation($path));
         }
 
-        $image = self::fitted($image);
+        $image = self::fitted($image, $side);
         $w = imagesx($image);
         $h = imagesy($image);
 

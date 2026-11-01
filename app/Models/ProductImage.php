@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\ImageVariants;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * صورةٌ إضافية لمنتج — والرئيسية في `products.image`.
@@ -32,8 +32,6 @@ class ProductImage extends Model
      */
     public function getUrlAttribute(): string
     {
-        return str_starts_with($this->path, 'http')
-            ? $this->path
-            : Storage::url($this->path);
+        return ImageVariants::url($this->path, ImageVariants::DISPLAY);
     }
 }

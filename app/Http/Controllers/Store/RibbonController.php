@@ -18,6 +18,7 @@ use App\Support\ProductDescription;
 use App\Support\ProductName;
 use App\Support\SaleLines;
 use App\Support\FlowerOrder;
+use App\Support\ImageVariants;
 use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\PaymentMethods;
@@ -62,6 +63,7 @@ use App\Support\Website\Shelf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -666,7 +668,8 @@ class RibbonController extends Controller
              * يريده يرى الباقةَ لا واجهةَ المحلّ. وتُطلَق مطلقةً لأنّ واتساب
              * يقرؤها من خادمه لا من متصفّح القارئ.
              */
-            'ogImage' => $p->image ? (str_starts_with((string) $p->image, 'http') ? $p->image : url($p->image)) : null,
+            // ‏والمعاينةُ على الأصل كما كانت: يقرؤها واتساب وفيسبوك لا صفحاتُنا
+            'ogImage' => ($raw = (string) $p->getRawOriginal('image')) !== '' ? (str_starts_with($raw, 'http') ? $raw : url(Storage::url($raw))) : null,
             'product' => $this->card($p, $lang, $business, $currency) + [
                 /*
                  * بلغة الصفحة، وحيث اختار صاحبُه — والمطفأُ فراغٌ فلا يُرسم سطرُه
@@ -1228,7 +1231,8 @@ class RibbonController extends Controller
             // والقاعدةُ نفسُها التي يُسمّى بها القسمُ في المرشّح — فلا يفترق اسماه
             'category' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, $lang) : null,
             'category_id' => $p->category_id,
-            'image' => $p->image,
+            // ‏المصغّرةُ للبطاقة — والصورةُ بحجمها في صفحة الصنف
+            'image' => ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB),
             'price' => $price,
             'price_text' => Money::format($price, $currency),
             'from' => $prices->count() > 1 && $prices->min() !== $prices->max(),

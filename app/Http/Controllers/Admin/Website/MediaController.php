@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Admin\Website;
 
+use App\Support\Store\StoreImageUpload;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * صور الموقع — رفعٌ واحد يخدم كلّ حقل صورة.
@@ -31,8 +31,7 @@ class MediaController extends Controller
             'image.max' => __('أقصى حجمٍ للصورة ٤ ميغابايت'),
         ]);
 
-        $path = $request->file('image')->store('website/'.$this->bid(), 'public');
-
-        return back()->with('uploaded', Storage::url($path));
+        // ‏تُقرأ من محتواها وتُدار وتُصغَّر كصور المحرّر — لا تُحفظ كما رُفعت
+        return back()->with('uploaded', StoreImageUpload::store($this->bid(), $request->file('image'))['url']);
     }
 }

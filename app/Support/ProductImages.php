@@ -276,30 +276,41 @@ class ProductImages
             $paths[] = $path;
         }
 
+        /*
+         * ومصغّراتُها للقوائم بعد أن حُفظت كلُّها — لا ينتظر التاجرُ جولةً على
+         * الصور القديمة. وبعدُ لا قبلُ: نسخةٌ تتعذّر لا تُسقط دفعةً حُفظت،
+         * ودفعةٌ سقطت لا تترك نسخًا (`forgetFile` يمحوها مع أصلها).
+         */
+        foreach ($paths as $path) {
+            ImageVariants::makeQuietly($path);
+        }
+
         return $paths;
     }
 
     /**
      * يحفظ صورةً مرفوعةً ويردّ مسارها — WebP مُصغَّرةً إن أمكن، وكما رُفعت إن لم يمكن.
      *
-     * والرفعُ وحده يمرّ من هنا: لا يُعاد ضغطُ صورةٍ قائمة، ولا تُحوَّل صورُ
-     * المنتجات القديمة دفعةً — ملفٌّ يُكتب فوقه خطأً لا يُستعاد.
+     * والرفعُ وحده يمرّ من هنا: لا يُعاد ضغطُ صورةٍ قائمة ولا يُكتب فوقها —
+     * ملفٌّ يُكتب فوقه خطأً لا يُستعاد. والقديمةُ تُصنع لها نسخٌ إلى جوارها
+     * دفعاتٍ صغيرة (`images:optimize`)، والأصلُ باقٍ.
      *
      * و`null` حين لا يُكتب الملفّ أصلًا — والقرصُ يردّ `false` لا استثناءً.
      */
     public static function put(UploadedFile $file): ?string
     {
         $webp = self::webp($file);
+        $path = null;
 
         if ($webp !== null) {
             $path = self::FOLDER.'/'.Str::random(40).'.webp';
 
-            if (Storage::disk(self::DISK)->put($path, $webp)) {
-                return $path;
+            if (! Storage::disk(self::DISK)->put($path, $webp)) {
+                $path = null;
             }
         }
 
-        $path = $file->store(self::FOLDER, self::DISK);
+        $path ??= $file->store(self::FOLDER, self::DISK);
 
         return is_string($path) && $path !== '' ? $path : null;
     }
@@ -509,7 +520,13 @@ class ProductImages
         $extension = pathinfo((string) $path, PATHINFO_EXTENSION);
         $copy = self::FOLDER.'/'.Str::random(40).($extension ? '.'.$extension : '');
 
-        return Storage::disk(self::DISK)->copy($path, $copy) ? $copy : null;
+        if (! Storage::disk(self::DISK)->copy($path, $copy)) {
+            return null;
+        }
+
+        ImageVariants::makeQuietly($copy);
+
+        return $copy;
     }
 
     /**
@@ -576,6 +593,7 @@ class ProductImages
         }
 
         Storage::disk(self::DISK)->delete($path);
+        ImageVariants::forget($path);
     }
 
     /**

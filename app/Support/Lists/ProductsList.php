@@ -2,6 +2,7 @@
 
 namespace App\Support\Lists;
 
+use App\Support\ImageVariants;
 use App\Models\Business;
 use App\Models\Product;
 use App\Support\Boutiques;
@@ -79,7 +80,7 @@ final class ProductsList
             'label' => \App\Support\Demo::ln($p->name, $p->name_en),
             'cat_label' => $p->category ? \App\Support\CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—',
             'price' => (float) $p->price, 'cost' => (float) $p->cost, 'qty' => $p->quantity,
-            'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => $p->image,
+            'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB),
             'stock_status' => $p->stock_status, 'active' => (bool) $p->active,
             // وقناتاه — وسمٌ تحت الحالة لمن يُباع في قناةٍ واحدة (`partials/channels.ts`)
             'pos_enabled' => (bool) ($p->pos_enabled ?? true), 'published' => (bool) ($p->published ?? true),

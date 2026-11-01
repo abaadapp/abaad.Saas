@@ -669,7 +669,8 @@ class Storefront
                     'category_id' => $p->category_id,
                     // الخام لا المقروء: `getImageAttribute` يردّ صورةً بديلة من
                     // الإنترنت لمنتجٍ بلا صورة — ولا تُعرض صورةُ غريبٍ بضاعةً للتاجر
-                    'image' => ProductImages::hasRealMain($p) ? $p->image : null,
+                    // ‏المصغّرةُ للرفّ — والصورةُ بحجمها في صفحة الصنف
+                    'image' => ProductImages::hasRealMain($p) ? ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB) : null,
                     'price' => $price,
                     // «من ١٨٫٠٠٠» حين تختلف أسعار المقاسات — انظر price()
                     'from' => $from,

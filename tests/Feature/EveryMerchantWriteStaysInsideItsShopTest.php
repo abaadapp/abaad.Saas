@@ -248,6 +248,10 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['Google Business', 'post', 'admin.integrations.googleBusiness.branch.sync', ['branch' => 'branch']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.reply', ['chat' => 'whatsapp_chat']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.followUp', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.takeOver', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.close', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendLink', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendPaid', ['chat' => 'whatsapp_chat']],
             ],
             'website' => [
                 ['صفحات الموقع', 'put', 'admin.website.pages.update', ['id' => 'page']],

@@ -535,8 +535,9 @@ final class CustomerInvoices
                 }
             }
 
+            // ومتجرُ الورقة لا متجرُ الجلسة — فاتورةٌ يكتبها الطلبُ الآليّ لا جلسةَ له (`WhatsAppOrderCheckout`)
             Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
-                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
+                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice', 'business_id' => $businessId,
             ]);
 
             return $invoice->fresh('items');
@@ -597,7 +598,7 @@ final class CustomerInvoices
             self::post($locked, $userId);
 
             Activity::log('updated', 'أصدر فاتورة عميل '.$locked->number.' بمبلغ '.$locked->total, [
-                'subject_id' => $locked->id, 'subject_type' => 'customer_invoice',
+                'subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => (int) $locked->business_id,
             ]);
 
             return $locked->fresh();

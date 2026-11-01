@@ -120,7 +120,7 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
         $copies = array_filter($files, fn ($f) => ImageVariants::isVariant($f));
 
         foreach ($copies as $copy) {
-            $this->assertContains(preg_replace('/\.w\d+\.(webp|none)$/', '', $copy), $files, "نسخةٌ بقيت بلا أصل: $copy");
+            $this->assertContains(ImageVariants::base($copy), $files, "نسخةٌ بقيت بلا أصل: $copy");
         }
 
         return array_values(array_diff($files, $copies));

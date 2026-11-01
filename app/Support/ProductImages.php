@@ -299,7 +299,7 @@ class ProductImages
      */
     public static function put(UploadedFile $file): ?string
     {
-        $webp = self::webp($file);
+        $webp = ImageVariants::exclusive(fn () => self::webp($file));
         $path = null;
 
         if ($webp !== null) {

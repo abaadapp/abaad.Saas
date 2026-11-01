@@ -36,4 +36,7 @@ return [
 
     'backfill_batch' => (int) env('IMAGES_BACKFILL_BATCH', 50),
 
+    /** استراحةٌ بين صورةٍ وأخرى في الجولة — يُترك فيها المعالجُ للبيع والدفع */
+    'pause_ms' => (int) env('IMAGES_BACKFILL_PAUSE_MS', 150),
+
 ];

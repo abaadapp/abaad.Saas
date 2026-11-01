@@ -12,6 +12,7 @@ import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
 import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 import WhatsappAutoReply, { type AutoReplySettings, type AutoReplyState } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
+import WhatsappGuidedOrders, { type GuidedOrdersView } from '@/Pages/Admin/Integrations/partials/WhatsappGuidedOrders';
 import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import type { OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
@@ -49,6 +50,8 @@ export interface Automation {
     /** النصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ */
     auto_reply_defaults?: { ar: string; en: string } | null;
     branches: { id: number; name: string }[];
+    /** الطلباتُ الآليّة — `null` لمتجرٍ لم تأذن له المنصّة (`WhatsAppOrders::view`) */
+    guided_orders?: GuidedOrdersView | null;
     may_manage: boolean;
     usage: {
         used: number;
@@ -388,6 +391,11 @@ export default function IntegrationsWhatsapp() {
                         defaults={automation.auto_reply_defaults ?? null}
                         mayManage={automation.may_manage}
                     />
+                )}
+
+                {/* والطلباتُ الآليّة لمن أذنت له المنصّة — بشروطها كلٍّ بحاله */}
+                {automation.guided_orders && (
+                    <WhatsappGuidedOrders view={automation.guided_orders} mayManage={automation.may_manage} />
                 )}
 
                 {/*

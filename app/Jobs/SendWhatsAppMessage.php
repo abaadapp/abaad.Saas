@@ -182,6 +182,8 @@ class SendWhatsAppMessage implements ShouldQueue
         $paid = $message->event_type === WhatsAppEvent::INVOICE_PAID;
 
         $variables = match (true) {
+            // وقالبا الطلب الآليّ بمتغيّراتهما مكتوبةً مع الصفّ (`WhatsAppOrders::template`) — لا فراغَ فيها
+            in_array($message->event_type, WhatsAppEvent::GUIDED_ORDER, true) => self::written($message),
             $order !== null => WhatsAppTemplates::variables($business, $order, $message->source_mode),
             // وما دُفع يُقرأ من الصفّ — كتبه الرابطُ يومَ دُفع (`handlePaidLink`)
             $invoice !== null && $paid => isset(($message->metadata ?? [])['amount'])
@@ -347,5 +349,23 @@ class SendWhatsAppMessage implements ShouldQueue
             'error_code' => $code,
             'error_message' => $reason,
         ])->save();
+    }
+
+    /**
+     * متغيّراتٌ كُتبت مع الصفّ — كاملةً، أو `null` إن نقص منها شيء.
+     *
+     * @return list<string>|null
+     */
+    private static function written(WhatsAppMessage $message): ?array
+    {
+        $variables = array_values((array) (($message->metadata ?? [])['variables'] ?? []));
+
+        foreach ($variables as $value) {
+            if (trim((string) $value) === '') {
+                return null;
+            }
+        }
+
+        return $variables === [] ? null : array_map('strval', $variables);
     }
 }

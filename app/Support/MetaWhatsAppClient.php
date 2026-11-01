@@ -217,6 +217,46 @@ class MetaWhatsAppClient
     }
 
     /**
+     * رسالةٌ تفاعليّة — أزرارُ ردٍّ أو قائمةٌ أو زرُّ رابط — داخل نافذة الخدمة.
+     *
+     * والجسمُ يُبنى عند من يسأل (`WhatsAppOrderReplies::interactive`): هنا
+     * البابُ وحده، بحارسه نفسِه — وصلةُ تاجرٍ لم تُراجَع فوترتُها لا يخرج منها
+     * شيء، وحسابُ الرسائل يُسمّى فيها كما يُسمّى في النصّ والقالب.
+     *
+     * @param  array<string, mixed>  $interactive  كائنُ `interactive` كما تطلبه ميتا
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    public static function sendInteractive(WhatsAppConnection $connection, string $to, array $interactive): array
+    {
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
+        $url = rtrim((string) config('whatsapp.graph_url'), '/')
+            .'/'.config('whatsapp.api_version')
+            .'/'.$connection->phone_number_id.'/messages';
+
+        try {
+            $response = Http::withToken($connection->access_token)
+                ->timeout((int) config('whatsapp.timeout', 15))
+                ->acceptJson()
+                ->post($url, [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type' => 'individual',
+                    'to' => $to,
+                    'type' => 'interactive',
+                    'interactive' => $interactive,
+                ] + $account['field']);
+        } catch (\Throwable $e) {
+            return self::failure('network_error', $e->getMessage(), retryable: true);
+        }
+
+        return self::interpret($response);
+    }
+
+    /**
      * إرسالُ ملفٍّ رُفع سلفًا — صورةً أو مستندًا بمعرّفه عند ميتا.
      *
      * والمعرّفُ يُرفع أوّلًا بـ`WhatsAppMedia::upload`؛ ولا يُرسَل رابطٌ

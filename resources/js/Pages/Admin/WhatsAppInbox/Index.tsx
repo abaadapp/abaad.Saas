@@ -10,6 +10,7 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { ConnectSteps, type Readiness } from '@/Components/Connect';
 import { useConfirm } from '@/Components/ConfirmDialog';
+import GuidedOrderBar, { type GuidedOrder } from '@/Pages/Admin/WhatsAppInbox/partials/GuidedOrderBar';
 import type { PageProps } from '@/types';
 
 /** محادثةٌ في القائمة — انظر `WhatsAppInbox::page` */
@@ -67,6 +68,8 @@ export interface Thread {
     template: string | null;
     /** كلُّ ما خرج إليه في سجلّ الرسائل — لمن يملك قسمه */
     log_url: string | null;
+    /** طلبُه الآليّ إن كان — حالُه وفاتورتُه ورابطُه (`WhatsAppOrders::forChat`) */
+    order?: GuidedOrder | null;
     messages: Item[];
     has_more: boolean;
     before: number | null;
@@ -378,6 +381,8 @@ export function ThreadView({ thread, q, canReply, files }: { thread: Thread; q: 
                     </div>
                 </div>
             </div>
+
+            {thread.order && <GuidedOrderBar chatId={thread.id} order={thread.order} canReply={canReply} />}
 
             <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-[#f7f7f5] p-4" data-testid="thread">
                 {more && (

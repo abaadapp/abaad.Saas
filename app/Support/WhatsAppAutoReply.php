@@ -181,6 +181,20 @@ class WhatsAppAutoReply
             return;
         }
 
+        /*
+         * ═══ والطلبُ الآليُّ أوّلًا — ولا ردّان ═══
+         *
+         * رسالةٌ تبدأ طلبًا أو تجيب سؤالَ طلبٍ مفتوح يردّ عليها الطلبُ وحده
+         * (`WhatsAppOrders::receive`)، ويصمت الترحيبُ عنها بسببٍ مكتوب. وبعد صفّ
+         * الوارد لا قبله: مفتاحُه الفريد هو الذي يمنع أن تُعالَج نسخةٌ مكرّرةٌ
+         * من الإشعار مرّتين — هنا وهناك.
+         */
+        if (WhatsAppOrders::receive($connection, $message, $row)) {
+            $row->forceFill(['reply_status' => WhatsAppInboundMessage::SKIPPED, 'reply_reason' => WhatsAppOrders::SKIP_REASON])->save();
+
+            return;
+        }
+
         $decision = self::decide($connection, $from, $row, (string) ($message['type'] ?? ''));
 
         if ($decision === null && ! self::claim($connection, $row)) {
@@ -459,11 +473,19 @@ class WhatsAppAutoReply
     private static function send(WhatsAppConnection $connection, WhatsAppInboundMessage $row): void
     {
         $settings = self::settings((int) $connection->business_id);
-        $result = MetaWhatsAppClient::sendText(
-            $connection,
-            $row->from_phone,
-            self::text($connection, $settings, $row->from_phone),
-        );
+        $text = self::text($connection, $settings, $row->from_phone);
+
+        /*
+         * وحين يعمل الطلبُ الآليّ يحمل الترحيبُ زرَّيه: «اطلب الآن» و«موظّف».
+         *
+         * النصُّ هو نفسُه؛ والزرّان يبدآن طلبًا أو يحوّلان لموظّف دون أن يُطلب
+         * من الزبون أن يعرف كلمةً بعينها.
+         */
+        $welcome = WhatsAppOrders::welcome(Business::find($connection->business_id), $text, self::languageOf((int) $connection->business_id, $row->from_phone) ?? 'ar');
+
+        $result = $welcome !== null
+            ? MetaWhatsAppClient::sendInteractive($connection, $row->from_phone, $welcome)
+            : MetaWhatsAppClient::sendText($connection, $row->from_phone, $text);
 
         if ($result['ok']) {
             $row->forceFill([

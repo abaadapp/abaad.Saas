@@ -418,6 +418,10 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
         'admin.preparation.invoiceDetails' => 'مثلُه — مهمّةٌ ظهرت في لوحة متجر الجلسة وفرعه، وحارسُها `DeliveryDetailsAreCorrectedOnTheBoardTest::test_another_shops_task_is_not_found`',
         'pos.printJobs.ack' => '{id} ورقةُ طابورٍ يحجزها صندوقٌ — لا يكتب عليها إلّا صندوقُها ومتجرُها (`PrintJobs::acknowledge`)، وحارسُها `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_two_tills_never_share_one_paper`',
         'admin.subscription.addons.renews' => '{id} استحقاقُ إضافةٍ يُقرأ بمتجر الجلسة (`SubscriptionAddonController::renews`) — وحارسُها `TheOwnerAloneBuysAddonsForHisOwnShopTest::test_a_shop_never_reaches_another_shops_addons_requests_or_invoices`',
+        'admin.website.legal.draft' => '{kind} نوعُ صفحةٍ قانونيّة من قائمةٍ ثابتة (`StoreLegal::KINDS`) لا صفّ — والكتابةُ بمتجر الجلسة، وحارسُها `EveryStoreGetsItsLegalPagesWithoutCodeTest::test_one_store_never_shows_another_stores_pages_or_data`',
+        'admin.website.legal.publish' => 'مثلُه',
+        'admin.website.legal.restore' => 'مثلُه',
+        'admin.website.legal.preview' => 'مثلُه — ولا يكتب شيئًا',
         'pos.printJobs.confirm' => '{id} ورقةٌ فتح صندوقٌ حوارَها — لا يجيب عنها إلّا صندوقُها ومتجرُها (`PrintJobs::confirmPrinted`·`notPrinted`)، وحارسُها `AnOpenedPrintDialogIsNotAPrintedPaperTest::test_only_the_till_that_opened_the_dialog_answers_for_it`',
     ];
 

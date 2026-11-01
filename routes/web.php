@@ -1364,14 +1364,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
              */
             Route::get('/legal', [LegalPagesController::class, 'index'])->name('legal');
             Route::put('/legal/facts', [LegalPagesController::class, 'saveFacts'])->name('legal.facts');
-            Route::put('/legal/{kind}', [LegalPagesController::class, 'saveDraft'])
-                ->whereIn('kind', \App\Support\Store\StoreLegal::KINDS)->name('legal.draft');
-            Route::post('/legal/{kind}/publish', [LegalPagesController::class, 'publish'])
-                ->whereIn('kind', \App\Support\Store\StoreLegal::KINDS)->name('legal.publish');
-            Route::post('/legal/{kind}/restore', [LegalPagesController::class, 'restore'])
-                ->whereIn('kind', \App\Support\Store\StoreLegal::KINDS)->name('legal.restore');
-            Route::post('/legal/{kind}/preview', [LegalPagesController::class, 'preview'])
-                ->whereIn('kind', \App\Support\Store\StoreLegal::KINDS)->name('legal.preview');
+            // و`{kind}` يُفحص في المتحكّم لا في النمط: فيجيب حارسُ الباقة والصلاحيّة أوّلًا
+            Route::put('/legal/{kind}', [LegalPagesController::class, 'saveDraft'])->name('legal.draft');
+            Route::post('/legal/{kind}/publish', [LegalPagesController::class, 'publish'])->name('legal.publish');
+            Route::post('/legal/{kind}/restore', [LegalPagesController::class, 'restore'])->name('legal.restore');
+            Route::post('/legal/{kind}/preview', [LegalPagesController::class, 'preview'])->name('legal.preview');
 
             /*
              * الدومين — بابٌ قائمٌ بذاته لا حقلٌ في شاشة السيو.

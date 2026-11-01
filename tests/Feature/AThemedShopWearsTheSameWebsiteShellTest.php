@@ -345,13 +345,16 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     }
 
     /**
-     * وشريطُ الواجهة الخاصّة ستّةٌ — هو شريطُ جاره بمساراته نفسِها.
+     * وشريطُ الواجهة الخاصّة سبعةٌ — هو شريطُ جاره بمساراته نفسِها.
+     *
+     * والسابعُ «الصفحات القانونيّة» بطلب صاحب المنتج (#211): لكلّ متجرٍ سياستُه
+     * وتعليماتُ حذف بياناته وشروطُه، فهي في شريط الواجهة الخاصّة كما في شريط جاره.
      *
      * والترتيبُ يُحرَس لا العددُ وحدَه: «عام» أوّلًا لأنّها الحال، ثمّ
      * «التصميم» لأنّه أكثرُ ما يُفتح، ثمّ الباقي. وشريطٌ يُعاد ترتيبُه
      * بلا قصدٍ يُضيّع من تعوّد موضعَ تبويبه.
      */
-    public function test_the_strip_is_six_tabs_and_all_open(): void
+    public function test_the_strip_is_seven_tabs_and_all_open(): void
     {
         $strip = (string) file_get_contents(resource_path('js/Components/SectionTabs.tsx'));
 
@@ -368,9 +371,10 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             [
                 'admin.website.site', 'admin.website.design', 'admin.website.pages',
                 'admin.website.shop', 'admin.website.domain', 'admin.website.seo',
+                'admin.website.legal',
             ],
             $matches[1],
-            'شريطُ الواجهة الخاصّة ستّةٌ بترتيب شريط جاره',
+            'شريطُ الواجهة الخاصّة سبعةٌ بترتيب شريط جاره',
         );
 
         foreach ($matches[1] as $name) {

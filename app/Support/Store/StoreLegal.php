@@ -70,14 +70,6 @@ final class StoreLegal
 
     public const MAX = 30000;
 
-    /** ما يُحفظ لكلّ طلبٍ عامّ — الصفحاتُ المنشورة لمتجرٍ واحد */
-    private static array $memo = [];
-
-    public static function forget(): void
-    {
-        self::$memo = [];
-    }
-
     /** نوعُ الصفحة من رابطها — أو null لما ليس منها */
     public static function kindAt(?string $path): ?string
     {
@@ -278,13 +270,7 @@ final class StoreLegal
      */
     public static function published(int $bid, string $kind): ?array
     {
-        $key = $bid.':'.$kind;
-
-        if (array_key_exists($key, self::$memo)) {
-            return self::$memo[$key];
-        }
-
-        return self::$memo[$key] = $kind === self::TERMS ? self::publishedTerms($bid) : self::publishedLegal($bid, $kind);
+        return $kind === self::TERMS ? self::publishedTerms($bid) : self::publishedLegal($bid, $kind);
     }
 
     private static function publishedLegal(int $bid, string $kind): ?array
@@ -305,15 +291,16 @@ final class StoreLegal
      */
     private static function publishedTerms(int $bid): ?array
     {
-        $v = StoreTerms::current($bid);
-
-        if ($v === null || (trim((string) $v->body_ar) === '' && trim((string) $v->body_en) === '')) {
-            return null;
-        }
-
+        // والإعداداتُ أوّلًا — محفوظةٌ في ذاكرة الطلب، فمن لم يفتح شروطَه لا يُسأل عنه سؤالٌ آخر
         $site = MarketingSettings::group($bid, 'website');
 
         if (($site[StoreTerms::ON] ?? '0') !== '1' && ($site[self::TERMS_PUBLIC] ?? '0') !== '1') {
+            return null;
+        }
+
+        $v = StoreTerms::current($bid);
+
+        if ($v === null || (trim((string) $v->body_ar) === '' && trim((string) $v->body_en) === '')) {
             return null;
         }
 
@@ -332,14 +319,24 @@ final class StoreLegal
     /**
      * روابطُ التذييل — للمنشور وحده، بلغة الصفحة.
      *
+     * وتُرسم في كلّ صفحةٍ من صفحات المتجر، فثمنُها ثابت: سؤالٌ واحدٌ عن الأنواع
+     * المنشورة، والشروطُ من الإعدادات المحفوظة — لا يكبر بكِبَر المحلّ ولا بعدد الأنواع.
+     *
      * @return list<array{key: string, href: string, label: string}>
      */
     public static function links(int $bid, string $base, string $lang): array
     {
+        $kinds = StoreLegalVersion::where('business_id', $bid)
+            ->where('version', '>', StoreLegalVersion::DRAFT)->distinct()->pluck('kind')->all();
+
+        if (self::publishedTerms($bid) !== null) {
+            $kinds[] = self::TERMS;
+        }
+
         $out = [];
 
         foreach (self::KINDS as $kind) {
-            if (self::published($bid, $kind) !== null) {
+            if (in_array($kind, $kinds, true)) {
                 $out[] = ['key' => $kind, 'href' => rtrim($base, '/').'/'.self::PATHS[$kind], 'label' => self::title($kind, $lang)];
             }
         }
@@ -409,7 +406,6 @@ final class StoreLegal
             ['body_ar' => self::clean($ar), 'body_en' => self::clean($en), 'created_by' => auth()->id()],
         );
 
-        self::forget();
     }
 
     /**
@@ -472,7 +468,6 @@ final class StoreLegal
         });
 
         MarketingSettings::forget($bid);
-        self::forget();
 
         return $version;
     }
@@ -500,7 +495,6 @@ final class StoreLegal
             }
 
             self::draftRow($bid, $kind)?->delete();
-            self::forget();
 
             return $number;
         });

@@ -78,6 +78,7 @@ class LegalPagesController extends Controller
 
     public function saveDraft(Request $request, string $kind): RedirectResponse
     {
+        $this->known($kind);
         $data = $this->body($request);
         StoreLegal::saveDraft($this->bid(), $kind, $data['body_ar'], $data['body_en']);
 
@@ -86,6 +87,7 @@ class LegalPagesController extends Controller
 
     public function publish(Request $request, string $kind): RedirectResponse
     {
+        $this->known($kind);
         $data = $this->body($request);
         $version = StoreLegal::publish($this->bid(), $kind, $data['body_ar'], $data['body_en'], auth()->id());
 

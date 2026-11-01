@@ -89,7 +89,6 @@ class EveryStoreGetsItsLegalPagesWithoutCodeTest extends TestCase
     private function fresh(): void
     {
         MarketingSettings::forget();
-        StoreLegal::forget();
     }
 
     public function test_a_new_store_finds_its_three_templates_and_nothing_is_public_yet(): void

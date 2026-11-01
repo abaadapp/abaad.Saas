@@ -129,9 +129,11 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // ونصوصُ «الظهور في البحث» الأربعة خرجت من النشر ومعها وقتُ حفظها (خمسة) — تسري
         // بالحفظ كإذن الفهرسة: من كتب عنوانَه في غوغل لا ينتظر نشرةَ تصميم، ونشرُ مسوّدةٍ
         // قديمة لا يُعيده (`Store\StoreSeo::save`، `StoreContent::RETIRED`)
-        $this->assertCount(107, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        // والاسمُ القانونيّ وبريدُ التواصل وعلَمُ «الشروطُ صفحةٌ عامّة» (ثلاثة) — تسري فورًا:
+        // الصفحاتُ القانونيّة لها نشرُها ونسخُها في شاشتها، لا في نشرة التصميم (`Store\StoreLegal`، #211)
+        $this->assertCount(110, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
         $this->assertCount(45, $versioned, 'تبدّل عددُ ما يُنشر');
-        $this->assertCount(62, $live, 'تبدّل عددُ ما يسري فورًا');
+        $this->assertCount(65, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
             'مفتاحٌ في العقد وليس في المجموعة: '.implode(', ', array_diff($versioned, $all)));

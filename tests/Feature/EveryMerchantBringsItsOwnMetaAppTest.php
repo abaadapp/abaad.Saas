@@ -191,11 +191,15 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         ]);
     }
 
-    /** يراجع فريقُ أبعاد دليلًا من ميتا — مسمًّى، بمرجعه، وبإقرار المراجع */
+    /** يراجع فريقُ أبعاد دليلًا من ميتا — مسمًّى، بمرجعه، وبمعرّف الحساب الذي فيه، وبإقرار المراجع */
     private function review(?Business $b = null, array $over = [])
     {
-        return $this->actingAs($this->admin())->post(route('super-admin.businesses.whatsapp.billing', ($b ?? $this->shop)->id), $over + [
+        $b ??= $this->shop;
+
+        return $this->actingAs($this->admin())->post(route('super-admin.businesses.whatsapp.billing', $b->id), $over + [
             'evidence_kind' => 'meta_invoice', 'evidence_reference' => 'FBADS-2026-10-0042', 'evidence_checked' => '1',
+            // والمعرّفُ كما في صفحة ميتا — حسابُ الوصلة نفسُها ما لم يُمرَّر غيرُه
+            'evidence_waba_id' => (string) ($this->connection($b)?->waba_id ?? self::WABA),
         ]);
     }
 
@@ -408,6 +412,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         // والتاجرُ لا يؤكّد فوترتَه بنفسه
         $this->actingAs($this->owner)->post(route('super-admin.businesses.whatsapp.billing', $this->shop->id), [
             'evidence_kind' => 'meta_invoice', 'evidence_reference' => 'FBADS-2026-10-0042', 'evidence_checked' => '1',
+            'evidence_waba_id' => self::WABA,
         ]);
         $this->assertSame(WhatsAppConnection::PENDING, $c->fresh()->status);
 
@@ -416,6 +421,8 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->review(over: ['evidence_kind' => 'merchant_said_so'])->assertSessionHasErrors('evidence_kind');
         $this->review(over: ['evidence_reference' => ''])->assertSessionHasErrors('evidence_reference');
         $this->review(over: ['evidence_checked' => null])->assertSessionHasErrors('evidence_checked');
+        // ولا بلا معرّف الحساب الذي في الدليل
+        $this->review(over: ['evidence_waba_id' => ''])->assertSessionHasErrors('evidence_waba_id');
         $this->assertSame(WhatsAppConnection::PENDING, $c->fresh()->status);
 
         $this->review()->assertSessionHasNoErrors();
@@ -831,5 +838,102 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasNoErrors();
         $this->assertSame($this->connection()->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
+    }
+
+    /* ═════════════ ١٢ · حسابان باسمٍ واحد — يُفرَّق بينهما بالمعرّف لا بالاسم ═════════════ */
+
+    /** حسابُ التاجر الذي عليه وسيلةُ الدفع — والآخرُ بالاسم نفسِه بلا وسيلة */
+    private const PAID = '7770000000021';
+
+    private const EMPTY = '7770000000022';
+
+    /** ميتا لحسابين باسمٍ واحد: وسيلةُ الدفع تُقرأ لكلٍّ بمعرّفه، والتطبيقُ مربوطٌ بـ`$waba` */
+    private function sameName(string $waba): void
+    {
+        $this->meta([
+            '*/'.self::PAID.'?fields=primary_funding_id*' => Http::response(['id' => self::PAID, 'primary_funding_id' => 'FUNDING-VISA-9422'], 200),
+            '*/'.self::EMPTY.'?fields=primary_funding_id*' => Http::response(['id' => self::EMPTY], 200),
+        ], [['app' => self::APP, 'secret' => self::SECRET, 'waba' => $waba, 'phone' => self::PHONE, 'token' => self::TOKEN]], [
+            'owner_business_info' => ['id' => 'BIZ-SALAM', 'name' => 'SALAM SITY Trading LLC'],
+            'on_behalf_of_business_info' => ['id' => 'BIZ-SALAM', 'name' => 'SALAM SITY Trading LLC', 'type' => 'SELF'],
+        ]);
+    }
+
+    /** @return list<string> ما سُئلت عنه ميتا من حسابات */
+    private function fundingReads(): array
+    {
+        return Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), 'primary_funding_id'))
+            ->map(fn (array $pair) => $pair[0]->url())->values()->all();
+    }
+
+    public function test_two_accounts_with_one_name_are_told_apart_by_their_id(): void
+    {
+        $this->sameName(self::PAID);
+        $this->link($this->owner, ['waba_id' => self::PAID])->assertSessionHasNoErrors();
+        $c = $this->connection();
+
+        // وسيلةُ الدفع موجودة — ولا يُقال «بلا وسيلة دفع»، ولا يُرسل قبل مراجعة الدليل
+        $stages = WhatsAppOwnApp::stages($c);
+        $this->assertSame(['present', 'unproven', 'blocked'], [$stages['payment_method'], $stages['responsibility'], $stages['sending']]);
+        $this->assertStringContainsString(self::PAID, (string) $stages['sending_reason']);
+        $this->assertStringContainsString('وسيلة دفع', (string) $stages['sending_reason']);
+        $this->assertStringNotContainsString('بلا وسيلة دفع', (string) $stages['sending_reason']);
+        $this->assertSame(self::PAID, WhatsAppOwnApp::reviewView($c)['waba_id']);
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+
+        // ودليلُ الحساب الآخر — الاسمُ نفسُه والمعرّفُ غيرُه — يُردّ قبل أن يُقرأ شيءٌ أو يُكتب
+        $before = count($this->fundingReads());
+        $this->review(over: ['evidence_waba_id' => self::EMPTY])
+            ->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::sayFor(WhatsAppOwnApp::EVIDENCE_OTHER_ACCOUNT, self::PAID, self::EMPTY)]);
+        $this->assertSame($before, count($this->fundingReads()), 'لا يُسأل عن حسابٍ لم يُربط');
+        $this->assertSame([WhatsAppOwnApp::BILLING_UNPROVEN, null], [$c->fresh()->billing_state, $c->fresh()->billing_evidence]);
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()), 'وما زال لا يُرسل');
+
+        // ودليلُ الحساب المربوط نفسِه — بمعرّفه — يُؤكَّد، والإرسالُ بعده مسموح
+        $this->review(over: ['evidence_waba_id' => ' '.self::PAID.' '])->assertSessionHasNoErrors();
+        $c = $c->fresh();
+        $this->assertSame([WhatsAppOwnApp::BILLING_CONFIRMED, self::PAID], [$c->billing_state, $c->billing_evidence['waba_id']]);
+        $this->assertSame(['present', 'confirmed', 'allowed', null], array_values(WhatsAppOwnApp::stages($c)));
+        $this->assertSame($c->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
+
+        // وكلُّ قراءةٍ لوسيلة الدفع كانت للحساب المربوط — لا للحساب الآخر بالاسم نفسِه
+        $reads = $this->fundingReads();
+        $this->assertNotEmpty($reads);
+        foreach ($reads as $url) {
+            $this->assertStringContainsString('/'.self::PAID.'?', $url);
+            $this->assertStringNotContainsString(self::EMPTY, $url);
+        }
+    }
+
+    public function test_an_account_meta_says_has_no_payment_method_is_named_by_its_id(): void
+    {
+        $this->sameName(self::EMPTY);
+        $this->link($this->owner, ['waba_id' => self::EMPTY])->assertSessionHasNoErrors();
+        $c = $this->connection();
+
+        $view = WhatsAppOwnApp::reviewView($c);
+        $this->assertSame(['absent', 'unproven', 'blocked'], [$view['stages']['payment_method'], $view['stages']['responsibility'], $view['stages']['sending']]);
+        // و«بلا وسيلة دفع» تُقال عن هذا الحساب بمعرّفه — فلا تُحمل على الحساب الذي عليه البطاقة
+        $this->assertStringContainsString(self::EMPTY, (string) $view['blocker']);
+        $this->assertStringContainsString('بلا وسيلة دفع', (string) $view['blocker']);
+        $this->assertStringNotContainsString(self::PAID, (string) $view['blocker']);
+
+        // ولا يُؤكَّد ولو رُئي دليلٌ بمعرّفه
+        $this->review(over: ['evidence_waba_id' => self::EMPTY])
+            ->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::say(WhatsAppOwnApp::NO_PAYMENT_METHOD)]);
+        $this->assertSame(WhatsAppOwnApp::BILLING_UNPROVEN, $c->fresh()->billing_state);
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+    }
+
+    public function test_an_unreadable_payment_method_is_unknown_not_absent_and_still_needs_a_reviewer(): void
+    {
+        // ميتا تردّ `#10` على وسيلة الدفع لتطبيقٍ ليس «مزوّد حلول أعمال» — كتطبيق التاجر
+        $this->meta();
+        $this->link($this->owner)->assertSessionHasNoErrors();
+        $stages = WhatsAppOwnApp::stages($this->connection());
+
+        $this->assertSame(['unknown', 'unproven', 'blocked'], [$stages['payment_method'], $stages['responsibility'], $stages['sending']]);
+        $this->assertStringNotContainsString('بلا وسيلة دفع', (string) $stages['sending_reason']);
+        $this->assertStringContainsString(self::WABA, (string) $stages['sending_reason']);
     }
 }

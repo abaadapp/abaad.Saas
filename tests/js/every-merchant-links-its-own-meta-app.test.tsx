@@ -108,9 +108,18 @@ describe('ربط التاجر بتطبيقه على Meta', () => {
             },
             blocker: null, stopped: null, evidence: null, names_account: true,
             kinds: [{ key: 'meta_invoice', label: 'فاتورة من ميتا' }, { key: 'payment_settings', label: 'صفحة الفوترة' }],
+            waba_id: '7770000000021',
+            stages: { payment_method: 'present', responsibility: 'unproven', sending: 'blocked', sending_reason: 'على الحساب 7770000000021 وسيلة دفع، ولم يُراجَع بعدُ دليلٌ' },
         };
         const user = userEvent.setup();
         render(<BillingReviewBlock businessId={7} review={review} />);
+
+        // والحسابُ المربوط بمعرّفه، والأسئلةُ الثلاثة كلٌّ على حدة — وسيلةُ دفعٍ موجودة لا تُقال «بلا وسيلة»
+        expect(screen.getByTestId('whatsapp-billing-account')).toHaveTextContent('7770000000021');
+        expect(screen.getByTestId('whatsapp-billing-stage-payment')).toHaveTextContent('موجودة');
+        expect(screen.getByTestId('whatsapp-billing-stage-responsibility')).toHaveTextContent('غير مثبتة بعد');
+        expect(screen.getByTestId('whatsapp-billing-stage-sending')).toHaveTextContent('محظور');
+        expect(screen.getByTestId('whatsapp-billing-stages')).not.toHaveTextContent('بلا وسيلة دفع');
 
         expect(screen.getByTestId('whatsapp-billing-facts')).toHaveTextContent('لا تُطلعنا ميتا عليها');
         // حسابا رسائل على الرقم — ويُسمّى حسابُ التاجر في كلّ رسالة
@@ -123,6 +132,10 @@ describe('ربط التاجر بتطبيقه على Meta', () => {
         expect(screen.getByTestId('whatsapp-billing-confirm')).toBeDisabled();
 
         await user.click(screen.getByTestId('whatsapp-billing-checked'));
+        // ولا يُؤكَّد بلا معرّف الحساب الذي في الدليل — الاسمُ وحده لا يكفي
+        expect(screen.getByTestId('whatsapp-billing-confirm')).toBeDisabled();
+
+        await user.type(screen.getByTestId('whatsapp-billing-waba'), '7770000000021');
         expect(screen.getByTestId('whatsapp-billing-confirm')).toBeEnabled();
     });
 

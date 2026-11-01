@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Setting;
 use App\Support\ImageReferences;
+use App\Support\ImageSwap;
 use App\Support\ImageVariants;
 use App\Support\ProductImages;
 use App\Support\Store\StoreImageUpload;
@@ -281,6 +282,190 @@ class EveryProductPhotoGetsALighterCopyTest extends TestCase
             ->expectsOutputToContain('أصولٌ نُقلت ويبقيها طلبٌ أو سجلٌّ قديم')->assertSuccessful();
         Storage::disk('public')->assertExists($file);
         $this->assertSame(json_encode([['image' => '/storage/'.$file]]), DB::table('old_order_snapshots')->value('lines'), 'النقلُ كتب في طلبٍ قديم');
+    }
+
+    /**
+     * متجرٌ بصورة منتجٍ وصورةِ موقعٍ وبطاقةِ قسم، ونسخُها مصنوعة — جاهزٌ للنقل.
+     *
+     * @return array{0: list<string>, 1: array<string, array{0: string, 1: int, 2: string}>}
+     */
+    private function readyToSwap(): array
+    {
+        $id = $this->shop->id;
+        $hero = 'website/'.$id.'/'.$this->fileName();
+        $card = 'website/'.$id.'/'.$this->fileName();
+        Storage::disk('public')->put($hero, $this->jpeg(1600, 800));
+        Storage::disk('public')->put($card, $this->jpeg(1200, 900));
+        $bar = Setting::create(['business_id' => $id, 'key' => 'store_visual_bar', 'value' => json_encode([['image' => '/storage/'.$hero], ['image' => '/storage/'.$card]])]);
+        $cat = Category::create(['business_id' => $id, 'name' => 'ورد', 'card_image' => '/storage/'.$card]);
+        $product = $this->oldProduct(null, 1400, 1000);
+        $this->artisan('images:optimize', ['--apply' => true])->assertSuccessful();
+
+        return [[$hero, $card, $this->raw($product)], [
+            'bar' => ['settings', $bar->id, (string) $bar->fresh()->value],
+            'cat' => ['categories', $cat->id, (string) $cat->fresh()->card_image],
+            'product' => ['products', $product->id, $this->raw($product)],
+        ]];
+    }
+
+    /** @param  array<string, array{0: string, 1: int, 2: string}>  $rows */
+    private function assertRowsAre(array $rows, string $why): void
+    {
+        $col = ['settings' => 'value', 'categories' => 'card_image', 'products' => 'image'];
+
+        foreach ($rows as $name => [$table, $id, $value]) {
+            $this->assertSame($value, (string) DB::table($table)->where('id', $id)->value($col[$table]), $why.' — '.$name);
+        }
+    }
+
+    public function test_a_journal_that_cannot_be_written_stops_the_swap_before_any_row_changes(): void
+    {
+        [, $rows] = $this->readyToSwap();
+
+        // ‏قرصٌ لا يُنشأ عليه مجلّدُ السجلّات — كقرصٍ ممتلئ أو بلا إذن
+        Storage::disk('local')->put('image-swaps', 'not a folder');
+
+        $this->artisan('images:optimize', ['--swap' => true, '--business' => $this->shop->id])
+            ->expectsOutputToContain('تعذّرت كتابة سجلّ النقل — لم يُمسّ صفّ')->assertFailed();
+
+        $this->assertRowsAre($rows, 'تغيّر صفٌّ وسجلُّه لم يُكتب');
+    }
+
+    public function test_a_server_that_stops_after_the_journal_and_before_the_rows_changes_nothing(): void
+    {
+        [$images, $rows] = $this->readyToSwap();
+        $plan = ImageSwap::plan($this->shop->id, $images);
+        ImageSwap::journal('crash-before', $this->shop->id, $plan['entries']);
+
+        // ‏انقطع الخادمُ هنا: السجلُّ معلّق، والصفوفُ كما كانت
+        $this->assertRowsAre($rows, 'تغيّر صفٌّ قبل التطبيق');
+        $this->assertSame('crash-before', ImageSwap::pendingFor($this->shop->id));
+
+        $this->artisan('images:optimize', ['--recover' => true])->expectsOutputToContain('crash-before: aborted')->assertSuccessful();
+        $this->assertSame(ImageSwap::ABORTED, ImageSwap::read('crash-before')['state']);
+        $this->assertSame(['restored' => 0, 'conflicts' => []], ImageSwap::rollback('crash-before'));
+        $this->assertRowsAre($rows, 'الرجوعُ عن نقلٍ لم يقع غيّر صفًّا');
+    }
+
+    public function test_a_server_that_stops_after_the_rows_and_before_the_seal_is_recovered_and_rolled_back(): void
+    {
+        [$images, $rows] = $this->readyToSwap();
+        $plan = ImageSwap::plan($this->shop->id, $images);
+        ImageSwap::journal('crash-after', $this->shop->id, $plan['entries']);
+        ImageSwap::apply($this->shop->id, $plan['entries']);
+
+        // ‏انقطع الخادمُ هنا: الصفوفُ تغيّرت، والسجلُّ معلّقٌ لم يُختم
+        $this->assertNotSame($rows['product'][2], $this->raw(Product::find($rows['product'][1])));
+        $this->artisan('images:optimize', ['--swap' => true, '--business' => $this->shop->id])->assertSuccessful();
+        $this->assertSame(ImageSwap::DONE, ImageSwap::read('crash-after')['state'], 'النقلُ التالي لم يقرأ ما انقطع قبله');
+
+        $this->assertSame(3, ImageSwap::rollback('crash-after')['restored']);
+        $this->assertRowsAre($rows, 'الرجوعُ لم يُعد الصفوف');
+    }
+
+    public function test_a_seal_that_fails_leaves_a_journal_that_recovers(): void
+    {
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            $this->markTestSkipped('مديرُ النظام يكتب في مجلّدٍ للقراءة فقط');
+        }
+
+        [$images, $rows] = $this->readyToSwap();
+        $plan = ImageSwap::plan($this->shop->id, $images);
+        ImageSwap::journal('seal-fails', $this->shop->id, $plan['entries']);
+        $dir = Storage::disk('local')->path('image-swaps');
+        chmod($dir, 0555);
+
+        try {
+            ImageSwap::apply($this->shop->id, $plan['entries']);
+
+            try {
+                ImageSwap::seal('seal-fails', ImageSwap::DONE);
+                $this->fail('خُتم السجلّ في مجلّدٍ لا يُكتب فيه');
+            } catch (\RuntimeException) {
+                // ‏هذا المقصود: الختمُ تعذّر بعد أن تغيّرت الصفوف
+            }
+
+            $this->assertSame(ImageSwap::PENDING, ImageSwap::read('seal-fails')['state'], 'السجلُّ ضاع أو انقطع نصفُه');
+        } finally {
+            chmod($dir, 0755);
+        }
+
+        $this->artisan('images:optimize', ['--recover' => true])->expectsOutputToContain('seal-fails: committed')->assertSuccessful();
+        ImageSwap::rollback('seal-fails');
+        $this->assertRowsAre($rows, 'الرجوعُ بعد ختمٍ فاشل لم يُعد الصفوف');
+    }
+
+    public function test_a_row_changed_after_the_plan_aborts_the_whole_swap(): void
+    {
+        [$images, $rows] = $this->readyToSwap();
+        $plan = ImageSwap::plan($this->shop->id, $images);
+        ImageSwap::journal('stale', $this->shop->id, $plan['entries']);
+
+        // ‏غيّر التاجرُ صورةَ منتجه بين الخطّة والتطبيق — وهي آخرُ ما يُطبَّق
+        $last = end($plan['entries']);
+        DB::table($last['table'])->where('id', $last['id'])->update([$last['column'] => $last['before'].' ']);
+        $changed = (string) DB::table($last['table'])->where('id', $last['id'])->value($last['column']);
+
+        try {
+            ImageSwap::apply($this->shop->id, $plan['entries']);
+            $this->fail('طُبّق نقلٌ على صفٍّ تغيّر بعد خطّته');
+        } catch (\RuntimeException) {
+            // ‏المقصود: لا نصفَ نقل
+        }
+
+        $name = collect($rows)->search(fn ($r) => $r[0] === $last['table'] && $r[1] === $last['id']);
+        $rows[$name][2] = $changed;
+        $this->assertRowsAre($rows, 'بقي نصفُ نقلٍ بعد أن رُجع عنه');
+    }
+
+    public function test_two_pictures_in_one_row_are_one_entry_and_come_back_together(): void
+    {
+        [$images, $rows] = $this->readyToSwap();
+
+        $this->artisan('images:optimize', ['--swap' => true, '--business' => $this->shop->id])->assertSuccessful();
+
+        $run = basename(Storage::disk('local')->files('image-swaps')[0], '.json');
+        $entries = collect(ImageSwap::read($run)['entries']);
+        $this->assertCount(1, $entries->where('table', 'settings'), 'صفُّ الشريط سُجّل مرّتين');
+        $bar = (string) DB::table('settings')->where('id', $rows['bar'][1])->value('value');
+        $this->assertStringContainsString(basename((string) ImageVariants::display($images[0])), $bar);
+        $this->assertStringContainsString(basename((string) ImageVariants::display($images[1])), $bar);
+
+        ImageSwap::rollback($run);
+        $this->assertRowsAre($rows, 'الرجوعُ لم يُعد الصفَّ ذا الصورتين');
+    }
+
+    public function test_the_reference_scan_reads_a_big_table_in_bounded_batches(): void
+    {
+        config(['images.scan_batch' => 100, 'images.scan_pause_ms' => 0]);
+        Schema::create('big_log', function (Blueprint $t) {
+            $t->id();
+            $t->text('body')->nullable();
+            $t->json('meta')->nullable();
+        });
+        $file = 'products/'.$this->fileName();
+        $rows = [];
+
+        for ($i = 1; $i <= 1000; $i++) {
+            $rows[] = ['body' => $i % 250 === 0 ? 'صورة /storage/'.$file : 'سطرٌ عاديّ رقم '.$i, 'meta' => $i === 7 ? json_encode(['img' => '/storage/'.$file]) : null];
+        }
+
+        foreach (array_chunk($rows, 200) as $chunk) {
+            DB::table('big_log')->insert($chunk);
+        }
+
+        $found = ImageReferences::scan();
+
+        $where = $found[$file];
+        ksort($where);
+        $this->assertSame(['big_log.body' => 4, 'big_log.meta' => 1], $where);
+        $s = ImageReferences::$stats;
+        $this->assertGreaterThanOrEqual(10, $s['queries'], 'جدولُ الألف قُرئ في سؤالٍ واحد');
+        $this->assertArrayHasKey('cpu_ms', $s);
+
+        if (DB::getDriverName() === 'pgsql') {
+            $this->assertSame('0', (string) DB::selectOne('SHOW statement_timeout')->statement_timeout, 'بقي سقفُ زمن السؤال بعد المسح');
+        }
     }
 
     public function test_one_shop_is_processed_and_swapped_without_touching_another(): void

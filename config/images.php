@@ -39,4 +39,15 @@ return [
     /** استراحةٌ بين صورةٍ وأخرى في الجولة — يُترك فيها المعالجُ للبيع والدفع */
     'pause_ms' => (int) env('IMAGES_BACKFILL_PAUSE_MS', 150),
 
+    /*
+    | مسحُ المراجع في الجرد (`ImageReferences::scan`): كم صفًّا يقرأ السؤالُ
+    | الواحد، واستراحةٌ بين سؤالٍ وآخر، وأطولُ ما يُسمح به لسؤالٍ على
+    | PostgreSQL قبل أن يُوقَف المسح.
+    */
+    'scan_batch' => (int) env('IMAGES_SCAN_BATCH', 5000),
+
+    'scan_pause_ms' => (int) env('IMAGES_SCAN_PAUSE_MS', 20),
+
+    'scan_timeout_ms' => (int) env('IMAGES_SCAN_TIMEOUT_MS', 15000),
+
 ];

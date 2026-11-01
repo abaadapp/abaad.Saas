@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Storage;
  *   images:optimize --apply                  يصنع نسخ دفعةٍ (٥٠) ثمّ يقف
  *   images:optimize --swap --business=ID     ينقل مراجعَ متجرٍ إلى نسخها، بسجلّ
  *   images:optimize --rollback=RUN           يُعيد ما نقلته جولة
+ *   images:optimize --recover                يقرأ كلَّ نقلٍ انقطع ويقول أين وقف
  *   images:optimize --retire-plan            ما يمكن الاستغناءُ عنه من الأصول — لا يمحو
  *
  * ═══ ولا يُمحى أصلٌ هنا أبدًا ═══
@@ -41,6 +42,7 @@ class ImagesOptimize extends Command
         {--retry-failed : يُعيد ما فشل ثلاثَ مرّات}
         {--swap : ينقل المراجعَ الحيّة إلى النسخ — يحتاج --business}
         {--rollback= : معرّفُ جولة نقلٍ يُعاد ما فيها}
+        {--recover : يقرأ كلَّ نقلٍ انقطع ويختمه بما وجد}
         {--retire-plan : ما يمكن الاستغناءُ عنه من الأصول، بلا محو}';
 
     protected $description = 'جرد صور النظام وصنع نسخها الأخفّ ونقل مراجعها تدريجيًّا دون محو أيّ أصل';
@@ -69,6 +71,7 @@ class ImagesOptimize extends Command
 
             return match (true) {
                 filled($this->option('rollback')) => $this->rollback((string) $this->option('rollback')),
+                (bool) $this->option('recover') => $this->recover(),
                 (bool) $this->option('swap') => $this->swap(),
                 (bool) $this->option('retire-plan') => $this->retirePlan(),
                 (bool) $this->option('apply') => $this->apply(),
@@ -123,7 +126,8 @@ class ImagesOptimize extends Command
             $this->line('كلُّ ما ينتظر ('.$all.'): نحو '.round($estimate['ms'] / $estimate['n'] * $all / 1000 / 60, 1).' دقيقة معالجة — '.(int) ceil($all / max(1, (int) $this->option('limit'))).' دفعة.');
         }
 
-        $this->line('مسحُ المراجع والجرد: '.round(microtime(true) - $started, 1).' ثانية. لم يُكتب شيء.');
+        $this->scanCost();
+        $this->line('الجردُ كلُّه: '.round(microtime(true) - $started, 1).' ثانية. لم يُكتب شيء.');
 
         return self::SUCCESS;
     }
@@ -254,7 +258,8 @@ class ImagesOptimize extends Command
         $owners = $business === null ? null : $this->owned($business);
         $out = [];
 
-        foreach (ImageReferences::scan() as $path => $where) {
+        // ‏الأعمدةُ الحيّة وحدها — الجولةُ المجدولة لا تمسح القاعدةَ كلَّها كلَّ ساعة
+        foreach (ImageReferences::live($business) as $path => $where) {
             if (ImageVariants::side($path) === null || ImageVariants::isVariant($path) || array_intersect(array_keys($where), ImageReferences::LIVE) === []) {
                 continue;
             }
@@ -302,20 +307,52 @@ class ImagesOptimize extends Command
         }
 
         $business = (int) $this->option('business');
+
+        // ‏نقلٌ انقطع قبلُ يُقرأ أوّلًا — ولا يبدأ آخرُ قبل أن يُعرف أين وقف
+        ImageSwap::recover();
+
+        if (($pending = ImageSwap::pendingFor($business)) !== null) {
+            $this->error('نقلٌ سابقٌ لهذا المتجر لم يُعرف أين وقف ('.$pending.') — راجعه بـ --rollback قبل نقلٍ جديد.');
+
+            return self::FAILURE;
+        }
+
         $ready = array_slice(array_values(array_filter($this->candidates(), fn ($p) => ! ImageVariants::isVariant($p)
             && ($copy = ImageVariants::display($p)) !== null && is_file(Storage::disk('public')->path($copy)))), 0, max(1, (int) $this->option('limit')));
 
         $r = ImageSwap::swap($business, $ready);
 
-        $this->info('نُقلت مراجعُ '.count($r['swapped']).' صورة ('.$r['rows'].' صفًّا). معرّفُ الجولة: '.$r['run']);
-
         foreach (collect($r['refused'])->countBy() as $reason => $n) {
             $this->line('لم تُنقل '.$n.': '.$reason);
         }
 
-        $this->line('للرجوع: php artisan images:optimize --rollback='.$r['run']);
+        return match ($r['state']) {
+            'nothing' => tap(self::SUCCESS, fn () => $this->info('لا شيءَ يُنقل.')),
+            'journal_failed' => tap(self::FAILURE, fn () => $this->error('تعذّرت كتابة سجلّ النقل — لم يُمسّ صفّ. '.$r['error'])),
+            ImageSwap::ABORTED => tap(self::FAILURE, fn () => $this->error('رُجع عن النقل كلِّه — لم يُمسّ صفّ ('.$r['run'].'). '.$r['error'])),
+            ImageSwap::PENDING => tap(self::FAILURE, fn () => $this->warn('نُقلت المراجع ولم يُختم السجلّ ('.$r['run'].') — شغّل --recover.')),
+            default => tap(self::SUCCESS, function () use ($r) {
+                $this->info('نُقلت مراجعُ '.count($r['swapped']).' صورة ('.$r['rows'].' صفًّا). معرّفُ الجولة: '.$r['run']);
+                $this->line('للرجوع: php artisan images:optimize --rollback='.$r['run']);
+            }),
+        };
+    }
 
-        return self::SUCCESS;
+    private function recover(): int
+    {
+        $runs = ImageSwap::recover();
+
+        if ($runs === []) {
+            $this->info('لا نقلَ معلّق.');
+
+            return self::SUCCESS;
+        }
+
+        foreach ($runs as $r) {
+            $this->line($r['run'].': '.$r['state'].' (بعد='.$r['after'].'، قبل='.$r['before'].'، غيرهما='.$r['other'].')');
+        }
+
+        return collect($runs)->contains(fn ($r) => $r['state'] === ImageSwap::PENDING) ? self::FAILURE : self::SUCCESS;
     }
 
     private function rollback(string $run): int
@@ -373,6 +410,7 @@ class ImagesOptimize extends Command
             ['أصولٌ لا يشير إليها شيءٌ قطّ', $orphans['n'], $this->mb($orphans['bytes'])],
             ['أصولٌ نُقلت ويبقيها طلبٌ أو سجلٌّ قديم', $kept, '—'],
         ]);
+        $this->scanCost();
         $this->line('لم يُمحَ شيء. الاستغناءُ عن أيّ أصلٍ بعد نسخةٍ احتياطيّةٍ وقرارٍ منفصل.');
 
         return self::SUCCESS;
@@ -432,6 +470,17 @@ class ImagesOptimize extends Command
     private function saveState(array $state): void
     {
         Storage::disk('local')->put(self::STATE, json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    /** ما كلّفه مسحُ المراجع — يُقال ليُعرف ثمنُه على القاعدة */
+    private function scanCost(): void
+    {
+        $s = ImageReferences::$stats;
+
+        if ($s !== []) {
+            $this->line('مسحُ المراجع: '.$s['tables'].' جدولًا في '.$s['queries'].' سؤالًا، أطولُها '.$s['max_ms'].' ملّي‌ثانية، و'
+                .round($s['ms'] / 1000, 1).' ثانية كلُّه ('.round($s['cpu_ms']).' ملّي‌ثانية معالج، ذروةُ الذاكرة '.$this->mb($s['peak']).').');
+        }
     }
 
     private function mb(int $bytes): string

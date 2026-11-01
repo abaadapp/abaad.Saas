@@ -749,6 +749,9 @@ final class BusinessPurge
                     $public->delete($path);
                     $deleted++;
                 }
+
+                // ‏ونسخُه الأخفّ معه — لا تبقى بعد المتجر نسخةٌ بلا أصل
+                ImageVariants::forget($path);
             } catch (Throwable $e) {
                 $failures[] = $path.' — '.$e->getMessage();
             }

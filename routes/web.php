@@ -1579,6 +1579,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
                 ->whereNumber('chat')->middleware('may:'.Permissions::INBOX_REPLY)->name('order.takeOver');
             Route::post('/{chat}/order/close', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'closeOrder'])
                 ->whereNumber('chat')->middleware('may:'.Permissions::INBOX_REPLY)->name('order.close');
+            // وما لم يصل الزبونَ من رسالتَيه يُعاد: رابطُ الدفع نفسُه، أو تأكيدُ الدفع — بلا فاتورةٍ ولا رابطٍ ثانٍ
+            Route::post('/{chat}/order/resend-link', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'resendOrderLink'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-order-resend'])->name('order.resendLink');
+            Route::post('/{chat}/order/resend-paid', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'resendOrderPaid'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-order-resend'])->name('order.resendPaid');
             // محادثةُ زبونٍ لم يكتب بعد — تُفتح من رسالةٍ خرجت إليه
             Route::get('/from/{message}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'open'])
                 ->whereNumber('message')->name('open');

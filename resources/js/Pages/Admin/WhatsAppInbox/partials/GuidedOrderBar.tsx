@@ -17,6 +17,13 @@ export interface GuidedOrder {
     items: number;
     invoice: { id: number; number: string } | null;
     link: { status: string; open: boolean; url: string } | null;
+    /** أين وصلت رسالتا الرابط والتأكيد — `sending` أو حالٌ من `WhatsAppStatus`، و`null` لما لم يُرسل */
+    link_message: string | null;
+    paid_message: string | null;
+    can_resend_link: boolean;
+    /** محاولةُ رابطٍ لم تُعرف نتيجتُها عند Paymob — الإعادةُ تطلب جديدًا بقرارٍ صريح */
+    link_uncertain: boolean;
+    can_resend_paid: boolean;
     updated_at: string | null;
 }
 
@@ -44,19 +51,52 @@ const REASONS: Record<string, string> = {
     link_failed: 'تعذّر إنشاء رابط الدفع',
 };
 
+/** حالُ رسالةٍ للعميل — وما لم يصله بالأحمر */
+const MESSAGE: Record<string, { label: string; bad: boolean }> = {
+    sending: { label: 'تُرسل الآن', bad: false },
+    queued: { label: 'في الطابور', bad: false },
+    sent: { label: 'أُرسلت', bad: false },
+    delivered: { label: 'وصلت', bad: false },
+    read: { label: 'قُرئت', bad: false },
+    failed: { label: 'لم تصل', bad: true },
+    skipped: { label: 'لم تُرسل', bad: true },
+    quota_exceeded: { label: 'لم تُرسل', bad: true },
+};
+
+function MessageState({ label, status, testId }: { label: string; status: string | null; testId: string }) {
+    const t = useTranslate();
+    const known = status ? MESSAGE[status] : undefined;
+    if (!known) return null;
+
+    return (
+        <span className={known.bad ? 'font-semibold text-[#b91c1c]' : 'text-[#6b7280]'} data-testid={testId} data-status={status}>
+            {t(label)}: {t(known.label)}
+        </span>
+    );
+}
+
 /**
  * حالُ الطلب الآليّ فوق المحادثة — وما يفعله الموظّف به.
  *
  * «تسلّم المحادثة» يُسكت الآليَّ فيها، و«إنهاء الطلب الآلي» يعيده يستقبل من
  * يكتب «طلب». ولا يمسّ أيٌّ منهما فاتورةً أو رابطًا صدرا: يُداران من صفحتهما.
+ *
+ * وما لم يصل العميلَ من رسالتَي الرابط والتأكيد يُعاد من هنا — الرابطُ نفسُه،
+ * والتأكيدُ رسالةً وحدها (`WhatsAppOrders::resendLink` و`resendPaid`).
  */
 export default function GuidedOrderBar({ chatId, order, canReply }: { chatId: number; order: GuidedOrder; canReply: boolean }) {
     const t = useTranslate();
     const [ask, dialog] = useConfirm();
     const state = STATES[order.state];
 
-    const post = (name: 'admin.whatsappInbox.order.takeOver' | 'admin.whatsappInbox.order.close') =>
-        router.post(route(name, chatId), {}, { preserveScroll: true });
+    const post = (
+        name:
+            | 'admin.whatsappInbox.order.takeOver'
+            | 'admin.whatsappInbox.order.close'
+            | 'admin.whatsappInbox.order.resendLink'
+            | 'admin.whatsappInbox.order.resendPaid',
+        data: Record<string, boolean> = {},
+    ) => router.post(route(name, chatId), data, { preserveScroll: true });
 
     return (
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] bg-white px-4 py-2 text-[12px]" data-testid="guided-order">
@@ -80,9 +120,63 @@ export default function GuidedOrderBar({ chatId, order, canReply }: { chatId: nu
             {order.state === 'needs_human' && order.reason && REASONS[order.reason] && (
                 <span className="text-[#b91c1c]" data-testid="guided-order-reason">{t(REASONS[order.reason])}</span>
             )}
+            {order.link_uncertain && (
+                <span className="font-semibold text-[#a16207]" data-testid="guided-order-link-uncertain">
+                    {t('لم تُعرف نتيجة إنشاء الرابط عند Paymob')}
+                </span>
+            )}
+            <MessageState label="رسالة الرابط" status={order.link_message} testId="guided-order-link-message" />
+            <MessageState label="رسالة التأكيد" status={order.paid_message} testId="guided-order-paid-message" />
+
+            {canReply && order.can_resend_paid && (
+                <span className="ms-auto flex gap-2">
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        data-testid="guided-order-resend-paid"
+                        onClick={async () => {
+                            const yes = await ask({
+                                title: 'إعادة إرسال تأكيد الدفع',
+                                message: 'تُرسل رسالة تأكيد الدفع إلى العميل مرة أخرى. لا يتغير شيء في التحصيل ولا في لوحة التجهيز.',
+                                action: 'إرسال',
+                            });
+                            if (yes) post('admin.whatsappInbox.order.resendPaid');
+                        }}
+                    >
+                        {t('إعادة إرسال التأكيد')}
+                    </Button>
+                </span>
+            )}
 
             {canReply && order.open && (
                 <span className="ms-auto flex gap-2">
+                    {order.can_resend_link && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            data-testid="guided-order-resend-link"
+                            onClick={async () => {
+                                const yes = await ask(
+                                    order.link_uncertain
+                                        ? {
+                                              title: 'طلب رابط جديد',
+                                              message: 'لم تُعرف نتيجة المحاولة السابقة عند Paymob، وقد يكون رابطها أُنشئ هناك دون أن يصلنا أو يصل العميل. يُطلب رابط جديد على الفاتورة نفسها ويُرسل وحده للعميل.',
+                                              action: 'طلب وإرسال',
+                                          }
+                                        : {
+                                              title: 'إعادة إرسال رابط الدفع',
+                                              message: 'يُرسل رابط الدفع نفسه إلى العميل، وتُصدر الفاتورة أو الرابط إن تعذّرا من قبل. لا فاتورة ثانية ولا رابط ثانٍ.',
+                                              action: 'إرسال',
+                                          },
+                                );
+                                if (yes) post('admin.whatsappInbox.order.resendLink', order.link_uncertain ? { replace_uncertain: true } : {});
+                            }}
+                        >
+                            {t('إعادة إرسال الرابط')}
+                        </Button>
+                    )}
                     {order.state !== 'needs_human' && (
                         <Button
                             type="button"

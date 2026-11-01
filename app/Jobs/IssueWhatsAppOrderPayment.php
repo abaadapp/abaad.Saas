@@ -12,7 +12,8 @@ use Illuminate\Foundation\Queue\Queueable;
  * محاولةٌ واحدة: ما تعذّر يُحوَّل لموظّفٍ بسببه ويُقال للزبون (`WhatsAppOrders::fail`)،
  * ولا يُعاد آليًّا. والإعادةُ لا تكتب ورقةً ثانيةً ولا رابطًا ثانيًا أصلًا
  * (`WhatsAppOrderCheckout::invoice` و`PaymentLinks::forInvoice`) — لكنّ رسالةَ
- * «تعذّر» التي وصلت الزبونَ لا تُتبَع بفاتورةٍ تظهر بعدها بلا علمه.
+ * «تعذّر» التي وصلت الزبونَ لا تُتبَع بفاتورةٍ تظهر بعدها بلا علمه. ويُعاد بيد
+ * موظّفٍ من صندوق المحادثات (`WhatsAppOrders::resendLink`) بالمسار نفسه.
  */
 class IssueWhatsAppOrderPayment implements ShouldQueue
 {

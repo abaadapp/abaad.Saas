@@ -31,6 +31,7 @@ use App\Support\Store\DeliverySchedule;
 use App\Support\Store\Paymob;
 use App\Support\Store\StoreBranches;
 use App\Support\WhatsAppEvent;
+use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOrderReplies;
 use App\Support\WhatsAppOrders;
@@ -41,6 +42,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 /**
@@ -84,6 +86,15 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
 
     private ?\Closure $whileSending = null;
 
+    /** رسالةٌ تردّها ميتا — يُسأل بما خرج إليها، و`true` تُردّ */
+    private ?\Closure $refuse = null;
+
+    /** Paymob معطّلٌ عن فتح الروابط */
+    private bool $paymobDown = false;
+
+    /** نداءٌ خرج إلى عنوانٍ لا يعرفه الاختبار — يُسقطه (`assertPostConditions`) */
+    private array $stray = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -104,6 +115,8 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
         ]);
         Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
 
+        // ولا نداءَ حقيقيًّا: ميتا وPaymob محاكيان هنا، وما سواهما يُسقط الاختبار
+        Http::preventStrayRequests();
         Http::fake(function (HttpRequest $r) {
             $url = $r->url();
 
@@ -114,6 +127,10 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
                     $during();
                 }
 
+                if ($this->refuse !== null && ($this->refuse)($r->data())) {
+                    return Http::response(['error' => ['code' => 131026, 'message' => 'Message undeliverable', 'type' => 'OAuthException']], 400);
+                }
+
                 return Http::response(['messages' => [['id' => 'wamid.OUT-'.(++$this->out)]]], 200);
             }
 
@@ -122,10 +139,16 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
             }
 
             if (str_contains($url, 'oman.paymob.com/api/ecommerce/payment-links')) {
+                if ($this->paymobDown) {
+                    return Http::response(['detail' => 'Service unavailable'], 503);
+                }
+
                 $n = ++$this->links;
 
                 return Http::response(['id' => 580000 + $n, 'shorten_url' => 'https://paymob.link/pay'.$n, 'expires_at' => '2027-02-17T23:59:00', 'state' => 'created', 'order' => 616000000 + $n]);
             }
+
+            $this->stray[] = $url;
 
             return Http::response(['error' => ['message' => 'unexpected '.$url]], 404);
         });
@@ -133,6 +156,11 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
         [$this->shop, $this->line] = $this->openShop('RIBBON');
         config(['whatsapp.guided_orders_businesses' => [$this->shop->id]]);
         WhatsAppOrders::save($this->shop->id, true);
+    }
+
+    protected function assertPostConditions(): void
+    {
+        $this->assertSame([], $this->stray, 'نداءٌ خرج إلى غير ميتا وPaymob المحاكيَين');
     }
 
     protected function tearDown(): void
@@ -587,6 +615,14 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
         $this->say('وين الرابط؟');
         $this->assertSame('https://paymob.link/pay1', $this->lastInteractive()['action']['parameters']['url']);
         $this->assertSame(1, $this->links);
+
+        // ومهمّةُ الرابط ثانيةً — أُعيدت، أو جرت مرّتين معًا: الرابطُ وصل، فلا رسالةَ أخرى
+        $session = $this->order();
+        $before = count($this->ctaUrls());
+        $this->whileSending = fn () => WhatsAppOrders::issue((int) $session->id);
+        WhatsAppOrders::issue((int) $session->id);
+        $this->assertCount($before, $this->ctaUrls());
+        $this->assertSame(1, $this->links);
     }
 
     /* ═════════════ ٥ · دفعٌ لا يكفي ═════════════ */
@@ -854,6 +890,242 @@ class ACustomerOrdersThroughWhatsAppTest extends TestCase
         $chat = $this->order()->chat;
         $this->actingAs($neighbour)->post(route('admin.whatsappInbox.order.close', $chat->id))->assertNotFound();
         $this->assertSame(WhatsAppOrderSession::COLLECTING, $this->order()->state);
+    }
+
+    /* ═════════════ ٩ب · رسالةٌ لم تصل — تُعاد بلا ورقةٍ ولا رابطٍ ولا مهمّةٍ ثانية ═════════════ */
+
+    /** @return list<string> عناوينُ أزرار الدفع التي خرجت إلى ميتا — ما قُبل وما رُدّ */
+    private function ctaUrls(): array
+    {
+        return collect($this->sent())->filter(fn ($m) => ($m['interactive']['type'] ?? null) === 'cta_url')
+            ->map(fn ($m) => $m['interactive']['action']['parameters']['url'])->values()->all();
+    }
+
+    public function test_a_link_meta_refused_is_shown_to_staff_and_the_same_link_is_resent_once(): void
+    {
+        $owner = $this->staff();
+        $this->orderToSummary();
+
+        $this->refuse = fn (array $m) => ($m['interactive']['type'] ?? null) === 'cta_url';
+        $this->press('تأكيد');
+        $this->refuse = null;
+
+        $session = $this->order();
+        $chat = $session->chat;
+        $this->assertSame(WhatsAppOrderSession::AWAITING_PAYMENT, $session->state);
+        $this->assertSame(WhatsAppStatus::FAILED, WhatsAppOrders::sendStatus($session, WhatsAppOrders::SEND_LINK), 'ردّته ميتا — لا يُعدّ «أُرسل»');
+        $this->assertSame('link_not_sent', $session->error);
+
+        $this->actingAs($owner)->get(route('admin.whatsappInbox.index', ['c' => $chat->id]))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('thread.order.state', WhatsAppOrderSession::AWAITING_PAYMENT)
+                ->where('thread.order.link_message', WhatsAppStatus::FAILED)->where('thread.order.can_resend_link', true));
+
+        // نقرتان معًا: الثانيةُ تجد الإرسالَ محجوزًا فلا تُرسل
+        $second = null;
+        $this->whileSending = function () use ($chat, &$second) {
+            try {
+                WhatsAppOrders::resendLink($chat->fresh());
+                $second = 'sent';
+            } catch (ValidationException) {
+                $second = 'refused';
+            }
+        };
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendLink', $chat->id))
+            ->assertRedirect()->assertSessionHas('toast.type', 'success');
+        $this->assertSame('refused', $second);
+
+        $session->refresh();
+        $this->assertSame(WhatsAppStatus::SENT, WhatsAppOrders::sendStatus($session, WhatsAppOrders::SEND_LINK));
+        $this->assertNull($session->error);
+        $this->assertSame(1, CustomerInvoice::where('business_id', $this->shop->id)->count());
+        $this->assertSame(1, CustomerPaymentLink::where('business_id', $this->shop->id)->count());
+        $this->assertSame(1, $this->links, 'رابطٌ واحدٌ من Paymob');
+        $this->assertSame(['https://paymob.link/pay1', 'https://paymob.link/pay1'], $this->ctaUrls(), 'المردودُ ثمّ الرابطُ نفسُه مرّةً');
+
+        // وما وصل لا يُعاد من الصندوق
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendLink', $chat->id))->assertSessionHasErrors('order');
+        $this->assertCount(2, $this->ctaUrls());
+
+        // ثمّ ردّته ميتا بإشعارٍ بعد قبوله — فيعود «لم يصل»
+        $accepted = WhatsAppChatMessage::where('business_id', $this->shop->id)->where('status', WhatsAppStatus::SENT)
+            ->where('body', 'like', '%https://paymob.link/pay1%')->latest('id')->firstOrFail();
+        WhatsAppInbox::applyStatus($this->line, (string) $accepted->wamid, ['status' => 'failed', 'errors' => [['code' => 131026, 'title' => 'Message undeliverable']]]);
+        $this->assertSame(WhatsAppStatus::FAILED, WhatsAppOrders::sendStatus($session->fresh(), WhatsAppOrders::SEND_LINK));
+
+        // والزبونُ يكتب فيصله الرابطُ نفسُه — ويراه الموظّفُ «أُرسل»
+        $this->say('ما وصلني الرابط');
+        $this->assertSame('https://paymob.link/pay1', $this->lastInteractive()['action']['parameters']['url']);
+        $this->assertSame(WhatsAppStatus::SENT, WhatsAppOrders::sendStatus($session->fresh(), WhatsAppOrders::SEND_LINK));
+        $this->assertSame(1, $this->links);
+
+        // ويدفع — مهمّةٌ واحدةٌ في اللوحة
+        $this->paymob($this->obj(CustomerPaymentLink::sole()));
+        $this->assertSame(WhatsAppOrderSession::PAID, $this->order()->state);
+        $this->assertNotNull(CustomerInvoicePreparation::sole()->activated_at);
+    }
+
+    public function test_a_link_paymob_could_not_open_is_issued_from_the_inbox_on_the_same_invoice(): void
+    {
+        $owner = $this->staff();
+        $this->orderToSummary();
+
+        $this->paymobDown = true;
+        $this->press('تأكيد');
+
+        $session = $this->order();
+        $chat = $session->chat;
+        $this->assertSame(WhatsAppOrderSession::NEEDS_HUMAN, $session->state);
+        $this->assertSame(WhatsAppOrders::REASON_LINK_FAILED, $session->handoff_reason);
+        $this->assertNull($session->payment_link_id);
+        $this->assertStringContainsString(WhatsAppOrderTexts::say('ar', 'failed_link'), $this->lastText(), 'قيل للزبون بصدق — لا «ادفع»');
+        $this->assertSame([], $this->ctaUrls());
+        $invoice = CustomerInvoice::where('business_id', $this->shop->id)->sole();
+
+        // وPaymob لم يردّ: لا يُعرف أأُنشئ الرابطُ هناك — فالموظّفُ يُقال له ذلك
+        $this->actingAs($owner)->get(route('admin.whatsappInbox.index', ['c' => $chat->id]))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('thread.order.reason', WhatsAppOrders::REASON_LINK_FAILED)
+                ->where('thread.order.can_resend_link', true)->where('thread.order.link_uncertain', true));
+
+        // ولا يُطلب رابطٌ جديدٌ بلا قراره الصريح — كصفحة الفاتورة
+        $this->paymobDown = false;
+        $told = count($this->sent());
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendLink', $chat->id))->assertSessionHas('toast.type', 'danger');
+        $this->assertSame(0, $this->links);
+        $this->assertSame($told, count($this->sent()), 'تعذّر ثانيةً بصمت — الزبونُ قيل له مرّة');
+        $this->assertSame(WhatsAppOrderSession::NEEDS_HUMAN, $this->order()->state);
+
+        // وبقراره: رابطٌ جديدٌ على الفاتورة نفسها، يصل الزبونَ وحده
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendLink', $chat->id), ['replace_uncertain' => true])
+            ->assertSessionHas('toast.type', 'success');
+
+        $session->refresh();
+        $this->assertSame(WhatsAppOrderSession::AWAITING_PAYMENT, $session->state);
+        $this->assertSame((int) $invoice->id, (int) $session->customer_invoice_id);
+        $this->assertSame(1, CustomerInvoice::where('business_id', $this->shop->id)->count(), 'الفاتورةُ نفسُها');
+        $this->assertSame(1, CustomerPaymentLink::where('business_id', $this->shop->id)->where('status', CustomerPaymentLink::PENDING)->count());
+        $this->assertSame(['https://paymob.link/pay1'], $this->ctaUrls());
+        $this->assertSame(WhatsAppStatus::SENT, WhatsAppOrders::sendStatus($session, WhatsAppOrders::SEND_LINK));
+    }
+
+    public function test_a_paid_order_whose_confirmation_did_not_arrive_is_told_again_without_a_second_task(): void
+    {
+        $owner = $this->staff();
+        $this->orderToSummary();
+        $this->press('تأكيد');
+        $invoice = CustomerInvoice::sole();
+        $obj = $this->obj(CustomerPaymentLink::sole());
+
+        $this->refuse = fn (array $m) => ($m['type'] ?? null) === 'text';
+        $this->paymob($obj);
+        $this->refuse = null;
+
+        // التحصيلُ والمهمّةُ قائمان — الرسالةُ وحدها لم تصل
+        $session = $this->order();
+        $chat = $session->chat;
+        $prep = CustomerInvoicePreparation::where('customer_invoice_id', $invoice->id)->sole();
+        $this->assertSame(WhatsAppOrderSession::PAID, $session->state);
+        $this->assertNotNull($prep->activated_at);
+        $this->assertSame(1, CustomerPayment::where('business_id', $this->shop->id)->count());
+        $this->assertSame(WhatsAppStatus::FAILED, WhatsAppOrders::sendStatus($session, WhatsAppOrders::SEND_PAID));
+        $this->assertSame('paid_not_sent', $session->error);
+
+        $this->actingAs($owner)->get(route('admin.whatsappInbox.index', ['c' => $chat->id]))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('thread.order.state', WhatsAppOrderSession::PAID)
+                ->where('thread.order.paid_message', WhatsAppStatus::FAILED)->where('thread.order.can_resend_paid', true));
+
+        // والإشعارُ نفسُه من Paymob ثانيةً لا يرسلها
+        $before = count($this->sent());
+        $this->paymob($obj);
+        $this->assertSame($before, count($this->sent()));
+
+        $activated = $prep->fresh()->activated_at;
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendPaid', $chat->id))
+            ->assertRedirect()->assertSessionHas('toast.type', 'success');
+
+        $this->assertStringContainsString('وصلت دفعتك', $this->lastText());
+        $this->assertStringContainsString($invoice->number, $this->lastText());
+        $this->assertSame(WhatsAppStatus::SENT, WhatsAppOrders::sendStatus($session->fresh(), WhatsAppOrders::SEND_PAID));
+        $this->assertNull($session->fresh()->error);
+
+        // ولا تحصيلَ ولا مهمّةَ ولا طباعةَ ثانية
+        $this->assertSame(1, CustomerPayment::where('business_id', $this->shop->id)->count());
+        $this->assertSame(1, CustomerInvoicePreparation::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertEquals($activated, $prep->fresh()->activated_at);
+        $this->assertSame(1, PrintJob::where('business_id', $this->shop->id)->count());
+
+        // وما وصل لا يُعاد
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendPaid', $chat->id))->assertSessionHasErrors('order');
+        $this->assertSame($before + 1, count($this->sent()));
+    }
+
+    public function test_a_template_meta_has_not_approved_is_never_sent_and_the_approved_one_is(): void
+    {
+        $owner = $this->staff();
+        $this->orderToSummary();
+        $this->refuse = fn (array $m) => ($m['interactive']['type'] ?? null) === 'cta_url';
+        $this->press('تأكيد');
+        $this->refuse = null;
+        $chat = $this->order()->chat;
+
+        // قالبٌ لم تُسأل عنه ميتا بعد، وآخرُ ينتظر مراجعتها
+        $link = WhatsAppTemplateMapping::create([
+            'scope_type' => WhatsAppMode::OWNER_BUSINESS, 'business_id' => $this->shop->id, 'event_type' => WhatsAppEvent::ORDER_PAYMENT_LINK,
+            'template_name' => 'abaad_order_payment_link', 'language_code' => 'ar', 'enabled' => true, 'meta_status' => null,
+        ]);
+        WhatsAppTemplateMapping::create([
+            'scope_type' => WhatsAppMode::OWNER_BUSINESS, 'business_id' => $this->shop->id, 'event_type' => WhatsAppEvent::ORDER_PAID,
+            'template_name' => 'abaad_order_paid', 'language_code' => 'ar', 'enabled' => true, 'meta_status' => 'PENDING',
+        ]);
+
+        // بعد النافذة: لا نصَّ حرًّا، ولا قالبَ غيرَ معتمَد
+        Carbon::setTestNow(now()->addHours(25));
+        $before = count($this->sent());
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendLink', $chat->id))->assertSessionHas('toast.type', 'danger');
+        $this->assertSame($before, count($this->sent()));
+        $row = WhatsAppMessage::where('business_id', $this->shop->id)->where('event_type', WhatsAppEvent::ORDER_PAYMENT_LINK)->sole();
+        $this->assertSame(WhatsAppStatus::SKIP_NO_TEMPLATE, $row->error_code);
+
+        $this->paymob($this->obj(CustomerPaymentLink::sole()));
+        $this->assertSame($before, count($this->sent()));
+        $paid = WhatsAppMessage::where('business_id', $this->shop->id)->where('event_type', WhatsAppEvent::ORDER_PAID)->sole();
+        $this->assertSame(WhatsAppStatus::SKIP_NO_TEMPLATE, $paid->error_code);
+        $this->assertSame(WhatsAppStatus::SKIPPED, WhatsAppOrders::sendStatus($this->order(), WhatsAppOrders::SEND_PAID));
+
+        // ثمّ اعتمدته ميتا — فيخرج من الصندوق بالقالب
+        WhatsAppTemplateMapping::where('business_id', $this->shop->id)->where('event_type', WhatsAppEvent::ORDER_PAID)->update(['meta_status' => 'APPROVED', 'approved_languages' => ['ar']]);
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.order.resendPaid', $chat->id))->assertSessionHas('toast.type', 'success');
+        $last = $this->lastSent();
+        $this->assertSame('template', $last['type']);
+        $this->assertSame('abaad_order_paid', $last['template']['name']);
+        $this->assertSame(1, CustomerPayment::where('business_id', $this->shop->id)->count());
+        $this->assertSame(0, WhatsAppMessage::where('business_id', $this->shop->id)->where('template_name', $link->template_name)->where('status', '!=', WhatsAppStatus::SKIPPED)->count());
+    }
+
+    public function test_only_ribbon_is_allowed_by_default_and_nothing_runs_before_the_owner_and_every_condition(): void
+    {
+        // بلا متغيّر بيئة: متجرُ سعود (RIBBON) وحده — رقمٌ مقصود: معرّفُه على الإنتاج
+        $this->assertNull(env('WHATSAPP_GUIDED_ORDERS_BUSINESSES'));
+        $this->assertSame([5], (require config_path('whatsapp.php'))['guided_orders_businesses']);
+
+        // ومتجرٌ أُذن له مطفأٌ حتى يُشعله صاحبُه
+        [$fresh] = $this->openShop('FRESH', 'PN-FRESH', 'WABA-FRESH');
+        config(['whatsapp.guided_orders_businesses' => [$this->shop->id, $fresh->id]]);
+        $this->assertFalse(WhatsAppOrders::enabled($fresh->id));
+        $this->assertFalse(WhatsAppOrders::active($fresh));
+
+        // ومُشعَلٌ لا يعمل وشرطٌ ناقص — التجهيزُ بعد السداد، ثمّ روابطُ Paymob
+        $this->assertTrue(WhatsAppOrders::active($this->shop->fresh()));
+        $this->shop->forceFill(['customer_invoice_preparation_enabled' => false])->save();
+        $this->assertFalse(WhatsAppOrders::readiness($this->shop->fresh())['preparation']);
+        $this->say('طلب');
+        $this->assertSame(0, WhatsAppOrderSession::count());
+
+        $this->shop->forceFill(['customer_invoice_preparation_enabled' => true])->save();
+        PaymentGateway::where('business_id', $this->shop->id)->update(['api_key' => null]);
+        $this->assertFalse(WhatsAppOrders::readiness($this->shop->fresh())['payment_links']);
+        Carbon::setTestNow(now()->addDay());
+        $this->say('طلب');
+        $this->assertSame(0, WhatsAppOrderSession::count());
     }
 
     /* ═════════════ ١٠ · النصوص ═════════════ */

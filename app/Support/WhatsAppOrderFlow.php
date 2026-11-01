@@ -1037,6 +1037,8 @@ final class WhatsAppOrderFlow
             'body' => WhatsAppOrderTexts::say($this->lang, 'awaiting', ['number' => (string) $invoice?->number]),
             'label' => WhatsAppOrderTexts::say($this->lang, 'pay_now'),
             'url' => (string) $link->short_url,
+            // فرابطٌ لم يصل أوّلَ مرّة ووصل الآن يراه الموظّفُ «وصل» (`WhatsAppOrders::deliver`)
+            'track' => WhatsAppOrders::SEND_LINK,
         ];
     }
 

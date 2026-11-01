@@ -250,6 +250,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.followUp', ['chat' => 'whatsapp_chat']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.takeOver', ['chat' => 'whatsapp_chat']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.close', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendLink', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendPaid', ['chat' => 'whatsapp_chat']],
             ],
             'website' => [
                 ['صفحات الموقع', 'put', 'admin.website.pages.update', ['id' => 'page']],

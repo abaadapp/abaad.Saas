@@ -11,11 +11,13 @@ use App\Models\CustomerPaymentLink;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppChat;
+use App\Models\WhatsAppChatMessage;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppInboundMessage;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppOrderSession;
 use App\Support\Store\ShopClock;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -83,6 +85,21 @@ class WhatsAppOrders
     public const REASON_INVOICE_FAILED = 'invoice_failed';
 
     public const REASON_LINK_FAILED = 'link_failed';
+
+    /** ما يُعاد إصدارُه من الصندوق — فاتورةٌ أو رابطٌ تعذّر بعد الموافقة */
+    public const RETRYABLE = [self::REASON_INVOICE_FAILED, self::REASON_LINK_FAILED];
+
+    /* ═══ الرسالتان اللتان يتتبّعهما الطلب — في `context.sends` بمفتاحَيهما ═══ */
+
+    public const SEND_LINK = 'link';
+
+    public const SEND_PAID = 'paid';
+
+    /** إرسالٌ حُجز ولم يُكتب ما ردّت به ميتا بعد هذه المدّة — انقطع، فيُعاد */
+    public const SENDING_STALE_MINUTES = 5;
+
+    /** حالُ رسالةٍ حُجزت ولم يُعرف مصيرُها بعد */
+    public const SENDING = 'sending';
 
     /** ما يبدأ طلبًا — بعد التطبيع (`normalize`)، كلمةً كاملةً لا جزءًا من جملة */
     public const START_WORDS = [
@@ -206,7 +223,8 @@ class WhatsAppOrders
         [$session, $result] = DB::transaction(function () use ($business, $chat, $input) {
             WhatsAppChat::whereKey($chat->id)->lockForUpdate()->first();
 
-            $session = WhatsAppOrderSession::where('open_key', $chat->id)->first();
+            // والطلبُ مقفولٌ أيضًا: مهمّةُ الرابط تكتب حالَ رسالتها فيه (`recordSend`) ولا يمحوها حفظٌ هنا
+            $session = WhatsAppOrderSession::where('open_key', $chat->id)->lockForUpdate()->first();
 
             if ($session !== null && self::expired($session)) {
                 $session->forceFill([
@@ -263,7 +281,7 @@ class WhatsAppOrders
             return false;
         }
 
-        self::deliver($chat, $line, $result['messages'], (string) $session->language);
+        self::deliver($chat, $line, $result['messages'], (string) $session->language, (int) $session->id);
 
         if ($result['issue']) {
             IssueWhatsAppOrderPayment::dispatch((int) $session->id)->onQueue((string) config('whatsapp.queue', 'whatsapp'));
@@ -359,12 +377,19 @@ class WhatsAppOrders
     }
 
     /**
+     * ورسالةٌ تحمل `track` (الرابطُ يُعاد لزبونٍ كتب وهو ينتظر الدفع) يُكتب ما ردّت به ميتا
+     * في حالها — فيرى الموظّفُ أنّ الرابط وصل بعد أن تعذّر أوّلَ مرّة.
+     *
      * @param  list<array<string, mixed>>  $messages
      */
-    private static function deliver(WhatsAppChat $chat, WhatsAppConnection $line, array $messages, string $lang): void
+    private static function deliver(WhatsAppChat $chat, WhatsAppConnection $line, array $messages, string $lang, ?int $sessionId = null): void
     {
         foreach ($messages as $message) {
-            WhatsAppOrderReplies::send($chat, $line, $message, $lang);
+            $record = WhatsAppOrderReplies::send($chat, $line, $message, $lang);
+
+            if ($sessionId !== null && isset($message['track'])) {
+                self::recordSend($sessionId, (string) $message['track'], 'chat', (int) $record->id, $record->status === WhatsAppStatus::FAILED);
+            }
         }
     }
 
@@ -374,9 +399,16 @@ class WhatsAppOrders
      * يكتب الفاتورةَ ويطلب الرابطَ ويرسله — مرّةً واحدةً مهما أُعيد.
      *
      * ويُنادى من المهمّة (`IssueWhatsAppOrderPayment`) لا من باب الإشعارات:
-     * طلبُ Paymob يدوم ثوانيَ، وميتا لا تنتظرها.
+     * طلبُ Paymob يدوم ثوانيَ، وميتا لا تنتظرها. ومن الصندوق (`resendLink`) حين
+     * يعيد الموظّفُ ما تعذّر — فلا يُقال للزبون «تعذّر» ثانيةً (`$byStaff`). ومحاولةُ رابطٍ
+     * لم تُعرف نتيجتُها عند Paymob لا تُعاد إلّا بقراره الصريح (`$replaceUncertain`)،
+     * كما في صفحة الفاتورة: الجديدُ وحده يصل الزبون.
+     *
+     * والإرسالُ يُحجز تحت قفل الطلب (`claimSend`)، ولا يُعدّ «وصل» حتى تقبله ميتا:
+     * ما ردّته يبقى «لم يصل»، فيُعاد الرابطُ نفسُه — والفاتورةُ برمزها والرابطُ
+     * المفتوحُ لا يُكتبان ثانيةً.
      */
-    public static function issue(int $sessionId): void
+    public static function issue(int $sessionId, bool $byStaff = false, ?int $userId = null, bool $replaceUncertain = false): void
     {
         $session = WhatsAppOrderSession::find($sessionId);
 
@@ -398,7 +430,7 @@ class WhatsAppOrders
             return;
         } catch (Throwable $e) {
             report($e);
-            self::fail($session, self::REASON_INVOICE_FAILED, 'failed_issue', $e);
+            self::fail($session, self::REASON_INVOICE_FAILED, 'failed_issue', $e, quiet: $byStaff);
 
             return;
         }
@@ -406,67 +438,74 @@ class WhatsAppOrders
         try {
             $link = $session->payment_link_id !== null
                 ? CustomerPaymentLink::where('business_id', $business->id)->findOrFail($session->payment_link_id)
-                : PaymentLinks::forInvoice($invoice)[0];
+                : PaymentLinks::forInvoice($invoice, $userId, replaceUncertain: $replaceUncertain)[0];
         } catch (Throwable $e) {
             report($e);
-            // والفاتورةُ تبقى صادرةً آجلة — ورابطُها يُعاد من صفحتها، لا فاتورةٌ ثانية
-            self::fail($session, self::REASON_LINK_FAILED, 'failed_link', $e);
+            // والفاتورةُ تبقى صادرةً آجلة — ورابطُها يُعاد من الصندوق أو صفحتها، لا فاتورةٌ ثانية
+            self::fail($session, self::REASON_LINK_FAILED, 'failed_link', $e, quiet: $byStaff);
 
             return;
         }
 
-        $claimed = DB::transaction(function () use ($session, $link) {
+        $attempt = DB::transaction(function () use ($session, $link) {
             $locked = WhatsAppOrderSession::whereKey($session->id)->lockForUpdate()->first();
-            $context = (array) ($locked->context ?? []);
 
             if ($locked->payment_link_id === null) {
                 $locked->payment_link_id = $link->id;
             }
 
-            if ($context['link_sent'] ?? false) {
-                $locked->save();
+            // دُفع أو أُغلق في الأثناء، أو انتهى الرابط: لا رسالةَ تطلب مالًا لا يُطلب
+            $attempt = $locked->state === WhatsAppOrderSession::AWAITING_PAYMENT && $link->open()
+                ? self::claimSend($locked, self::SEND_LINK)
+                : null;
 
-                return false;
-            }
-
-            $locked->context = $context + ['link_sent' => true];
             $locked->save();
 
-            return true;
+            return $attempt;
         });
 
-        if ($claimed) {
-            self::sendLink($session->fresh(), $invoice, $link);
+        if ($attempt !== null) {
+            self::sendLink($session->fresh(), $invoice, $link, $attempt);
         }
     }
 
-    /** الرابطُ إلى الزبون — رسالةٌ بزرّه داخل النافذة، وقالبٌ معتمَدٌ خارجها */
-    private static function sendLink(WhatsAppOrderSession $session, CustomerInvoice $invoice, CustomerPaymentLink $link): void
+    /**
+     * الرابطُ إلى الزبون — رسالةٌ بزرّه داخل النافذة، وقالبٌ معتمَدٌ خارجها.
+     *
+     * وما ردّت به ميتا يُكتب في حال الرسالة (`recordSend`) — ولو رمى شيءٌ هنا
+     * يُكتب «لم يصل»، فلا يبقى حجزٌ معلّقٌ يمنع إعادتها.
+     */
+    private static function sendLink(WhatsAppOrderSession $session, CustomerInvoice $invoice, CustomerPaymentLink $link, int $attempt): void
     {
-        $lang = (string) $session->language;
-        $chat = $session->chat;
-        $business = Business::find($session->business_id);
-        $amount = Money::format((float) $link->amount, Storefront::currency($business));
-        $expires = $link->expires_at ? ShopClock::day($link->expires_at->toImmutable()->setTimezone(ShopClock::zone()), $lang) : '';
+        try {
+            $lang = (string) $session->language;
+            $chat = $session->chat;
+            $business = Business::find($session->business_id);
+            $amount = Money::format((float) $link->amount, Storefront::currency($business));
+            $expires = $link->expires_at ? ShopClock::day($link->expires_at->toImmutable()->setTimezone(ShopClock::zone()), $lang) : '';
 
-        ['line' => $line, 'reason' => $reason] = WhatsAppInbox::check($chat);
+            ['line' => $line, 'reason' => $reason] = WhatsAppInbox::check($chat);
 
-        if ($reason === null && $line !== null) {
-            WhatsAppOrderReplies::send($chat, $line, [
-                'kind' => 'cta',
-                'body' => WhatsAppOrderTexts::say($lang, 'link', ['number' => (string) $invoice->number, 'total' => $amount, 'expires' => $expires]),
-                'label' => WhatsAppOrderTexts::say($lang, 'pay_now'),
-                'url' => (string) $link->short_url,
-            ], $lang);
+            if ($reason === null && $line !== null) {
+                $record = WhatsAppOrderReplies::send($chat, $line, [
+                    'kind' => 'cta',
+                    'body' => WhatsAppOrderTexts::say($lang, 'link', ['number' => (string) $invoice->number, 'total' => $amount, 'expires' => $expires]),
+                    'label' => WhatsAppOrderTexts::say($lang, 'pay_now'),
+                    'url' => (string) $link->short_url,
+                ], $lang);
 
-            return;
-        }
+                self::recordSend((int) $session->id, self::SEND_LINK, 'chat', (int) $record->id, $record->status === WhatsAppStatus::FAILED);
 
-        $name = (string) (((array) $session->details)['name'] ?? '');
-        $sent = self::template($business, $session, WhatsAppEvent::ORDER_PAYMENT_LINK, [$name, (string) $invoice->number, $amount, (string) $link->short_url], 'link:'.$link->id);
+                return;
+            }
 
-        if (! $sent) {
-            WhatsAppOrderSession::whereKey($session->id)->update(['error' => 'link_not_sent']);
+            $name = (string) (((array) $session->details)['name'] ?? '');
+            $row = self::template($business, $session, WhatsAppEvent::ORDER_PAYMENT_LINK, [$name, (string) $invoice->number, $amount, (string) $link->short_url], 'link:'.$link->id.':'.$attempt);
+
+            self::recordSend((int) $session->id, self::SEND_LINK, 'log', $row?->id, $row === null || $row->status !== WhatsAppStatus::QUEUED);
+        } catch (Throwable $e) {
+            report($e);
+            self::recordSend((int) $session->id, self::SEND_LINK, null, null, true);
         }
     }
 
@@ -476,13 +515,21 @@ class WhatsAppOrders
      * وبلا قالبٍ معتمَد يُقيَّد الصفُّ «لم يُرسَل» بسببه ولا يخرج نصٌّ حرٌّ خارج
      * النافذة: ميتا تردّه، والزبونُ لا يصله شيء.
      *
+     * والمعتمَدُ ما كتبت المزامنةُ أنّ ميتا اعتمدته — لكلّ متجر، لا لـRIBBON وحده:
+     * `resolve` يقبل الحالَ الفارغة («لم نسأل بعد») لإشعارات الطلبات القديمة، وهنا لا.
+     *
      * @param  list<string>  $variables
+     * @return WhatsAppMessage|null صفُّ الإرسال (في الطابور، أو «لم يُرسَل» بسببه)، أو `null` إن سبقه مثلُه
      */
-    private static function template(Business $business, WhatsAppOrderSession $session, string $event, array $variables, string $key): bool
+    private static function template(Business $business, WhatsAppOrderSession $session, string $event, array $variables, string $key): ?WhatsAppMessage
     {
         $mode = WhatsAppFeature::effectiveMode($business);
         $connection = WhatsAppConnections::resolve($business);
         $template = WhatsAppTemplates::resolve($business, $event, $mode, $session->language);
+
+        if ($template !== null && $template->meta_status !== WhatsAppTemplates::APPROVED) {
+            $template = null;
+        }
 
         $base = [
             'business_id' => $business->id,
@@ -511,13 +558,11 @@ class WhatsAppOrders
             ? ['status' => WhatsAppStatus::QUEUED, 'quota_consumed' => false, 'queued_at' => now()]
             : ['status' => WhatsAppStatus::SKIPPED, 'error_code' => $skip, 'quota_consumed' => false])));
 
-        if ($row === null || $skip !== null) {
-            return false;
+        if ($row !== null && $skip === null) {
+            SendWhatsAppMessage::dispatch($row->id)->onQueue((string) config('whatsapp.queue', 'whatsapp'));
         }
 
-        SendWhatsAppMessage::dispatch($row->id)->onQueue((string) config('whatsapp.queue', 'whatsapp'));
-
-        return true;
+        return $row;
     }
 
     /** المبلغُ تغيّر قبل الفاتورة — ملخّصٌ جديدٌ وسؤالٌ جديد */
@@ -550,14 +595,23 @@ class WhatsAppOrders
         }
     }
 
-    /** تعذّر ما بعد الموافقة — يُقال للزبون بصدق، ويُحوَّل الطلبُ لموظّف بسببه */
-    private static function fail(WhatsAppOrderSession $session, string $reason, string $say, Throwable $e): void
+    /**
+     * تعذّر ما بعد الموافقة — يُقال للزبون بصدق، ويُحوَّل الطلبُ لموظّف بسببه.
+     *
+     * وإن أعاده الموظّفُ فتعذّر ثانيةً (`$quiet`) لا يُقال للزبون مرّةً أخرى: الموظّفُ
+     * يرى السببَ في الصندوق، والزبونُ قيل له أوّلَ مرّة.
+     */
+    private static function fail(WhatsAppOrderSession $session, string $reason, string $say, Throwable $e, bool $quiet = false): void
     {
         WhatsAppOrderSession::whereKey($session->id)->update([
             'state' => WhatsAppOrderSession::NEEDS_HUMAN,
             'handoff_reason' => $reason,
             'error' => mb_substr($reason.':'.class_basename($e), 0, 60),
         ]);
+
+        if ($quiet) {
+            return;
+        }
 
         $chat = $session->chat;
         ['line' => $line, 'reason' => $why] = WhatsAppInbox::check($chat);
@@ -576,6 +630,10 @@ class WhatsAppOrders
      * يقع إلّا لفاتورةٍ سُدّدت كلُّها بإشعارٍ موثَّق أو بيد موظّف — فدفعةٌ جزئيّة،
      * أو رابطٌ فشل أو انتهى، لا تصل هنا. ومرّةً واحدة: الحالُ تُقلب تحت القفل
      * قبل الرسالة. ولا يرمي: لوحةُ التجهيز لا تسقط بسبب رسالة.
+     *
+     * والتأكيدُ رسالةٌ بعد التفعيل لا جزءٌ منه: إن لم يصل الزبونَ يراه الموظّفُ
+     * «لم يصل» ويعيده من الصندوق (`resendPaid`) — رسالةً وحدها، فلا تحصيلَ ثانيًا
+     * ولا مهمّةَ تجهيزٍ ثانية.
      */
     public static function prepared(int $invoiceId): void
     {
@@ -586,11 +644,11 @@ class WhatsAppOrders
                 return;
             }
 
-            $claimed = DB::transaction(function () use ($session) {
+            $attempt = DB::transaction(function () use ($session) {
                 $locked = WhatsAppOrderSession::whereKey($session->id)->lockForUpdate()->first();
 
                 if (! in_array($locked->state, [WhatsAppOrderSession::AWAITING_PAYMENT, WhatsAppOrderSession::NEEDS_HUMAN], true)) {
-                    return false;
+                    return null;
                 }
 
                 $locked->forceFill([
@@ -599,49 +657,157 @@ class WhatsAppOrders
                     'paid_at' => now(),
                     'open_key' => null,
                     'closed_at' => now(),
-                ])->save();
+                ]);
+                $attempt = self::claimSend($locked, self::SEND_PAID);
+                $locked->save();
 
-                return true;
+                return $attempt;
             });
 
-            if ($claimed) {
-                self::notifyPaid($session->fresh());
+            if ($attempt !== null) {
+                self::notifyPaid($session->fresh(), $attempt);
             }
         } catch (Throwable $e) {
             report($e);
         }
     }
 
-    private static function notifyPaid(WhatsAppOrderSession $session): void
+    private static function notifyPaid(WhatsAppOrderSession $session, int $attempt): void
     {
-        $lang = (string) $session->language;
-        $business = Business::find($session->business_id);
-        $invoice = CustomerInvoice::where('business_id', $session->business_id)->find($session->customer_invoice_id);
+        try {
+            $lang = (string) $session->language;
+            $business = Business::find($session->business_id);
+            $invoice = CustomerInvoice::where('business_id', $session->business_id)->find($session->customer_invoice_id);
 
-        if ($business === null || $invoice === null) {
-            return;
-        }
+            if ($business === null || $invoice === null) {
+                self::recordSend((int) $session->id, self::SEND_PAID, null, null, true);
 
-        $d = (array) $session->details;
-        $when = WhatsAppOrderCheckout::whenText((int) $business->id, (string) ($d['fulfil'] ?? FlowerOrder::DELIVERY), $d, $lang);
-
-        $chat = $session->chat;
-        ['line' => $line, 'reason' => $reason] = WhatsAppInbox::check($chat);
-
-        if ($reason === null && $line !== null) {
-            $body = WhatsAppOrderTexts::say($lang, 'paid', ['number' => (string) $invoice->number]);
-            if ($when !== null) {
-                $body .= "\n".WhatsAppOrderTexts::say($lang, 'paid_when', ['when' => $when]);
+                return;
             }
-            $body .= "\n".WhatsAppOrderTexts::say($lang, 'paid_thanks');
 
-            WhatsAppOrderReplies::send($chat, $line, ['kind' => 'text', 'body' => $body], $lang);
+            $d = (array) $session->details;
+            $when = WhatsAppOrderCheckout::whenText((int) $business->id, (string) ($d['fulfil'] ?? FlowerOrder::DELIVERY), $d, $lang);
 
-            return;
+            $chat = $session->chat;
+            ['line' => $line, 'reason' => $reason] = WhatsAppInbox::check($chat);
+
+            if ($reason === null && $line !== null) {
+                $body = WhatsAppOrderTexts::say($lang, 'paid', ['number' => (string) $invoice->number]);
+                if ($when !== null) {
+                    $body .= "\n".WhatsAppOrderTexts::say($lang, 'paid_when', ['when' => $when]);
+                }
+                $body .= "\n".WhatsAppOrderTexts::say($lang, 'paid_thanks');
+
+                $record = WhatsAppOrderReplies::send($chat, $line, ['kind' => 'text', 'body' => $body], $lang);
+                self::recordSend((int) $session->id, self::SEND_PAID, 'chat', (int) $record->id, $record->status === WhatsAppStatus::FAILED);
+
+                return;
+            }
+
+            $amount = Money::format((float) $invoice->total, Storefront::currency($business));
+            $row = self::template($business, $session, WhatsAppEvent::ORDER_PAID, [(string) ($d['name'] ?? ''), (string) $invoice->number, $amount, (string) ($when ?? '—')], 'paid:'.$attempt);
+
+            self::recordSend((int) $session->id, self::SEND_PAID, 'log', $row?->id, $row === null || $row->status !== WhatsAppStatus::QUEUED);
+        } catch (Throwable $e) {
+            report($e);
+            self::recordSend((int) $session->id, self::SEND_PAID, null, null, true);
+        }
+    }
+
+    /* ═══════════ حالُ الرسالتين ═══════════ */
+
+    /**
+     * أين وصلت رسالةُ الرابط أو التأكيد — من صفّها نفسِه، بما كتبته إشعاراتُ ميتا.
+     *
+     * رسالةٌ قبلتها ميتا ثمّ ردّتها بإشعار (رقمٌ لا يستقبل مثلًا) تُقرأ «فشلت» هنا
+     * لا «أُرسلت». وحجزٌ لم يُكتب مصيرُه بعد `SENDING_STALE_MINUTES` انقطع: «فشلت».
+     *
+     * @return string|null `sending`، أو حالٌ من `WhatsAppStatus`، أو `null` لما لم يُرسل قطّ
+     */
+    public static function sendStatus(WhatsAppOrderSession $session, string $key): ?string
+    {
+        $entry = ((array) ($session->context ?? []))['sends'][$key] ?? null;
+
+        if (! is_array($entry)) {
+            return null;
         }
 
-        $amount = Money::format((float) $invoice->total, Storefront::currency($business));
-        self::template($business, $session, WhatsAppEvent::ORDER_PAID, [(string) ($d['name'] ?? ''), (string) $invoice->number, $amount, (string) ($when ?? '—')], 'paid');
+        if (($entry['state'] ?? null) === self::SENDING) {
+            $at = isset($entry['at']) ? Carbon::parse((string) $entry['at']) : null;
+
+            return $at !== null && $at->gt(now()->subMinutes(self::SENDING_STALE_MINUTES)) ? self::SENDING : WhatsAppStatus::FAILED;
+        }
+
+        $id = (int) ($entry['id'] ?? 0);
+        $status = match ($id > 0 ? ($entry['via'] ?? null) : null) {
+            'chat' => WhatsAppChatMessage::where('business_id', $session->business_id)->whereKey($id)->value('status'),
+            'log' => WhatsAppMessage::where('business_id', $session->business_id)->whereKey($id)->value('status'),
+            default => null,
+        };
+
+        return $status ?? WhatsAppStatus::FAILED;
+    }
+
+    /** لم تصل الزبونَ ولن تصل — فتُعاد */
+    private static function undelivered(?string $status): bool
+    {
+        return in_array($status, WhatsAppStatus::TERMINAL, true);
+    }
+
+    /**
+     * يحجز الإرسالَ في طلبٍ مقفول — مرّةً، إلّا أن يكون ما قبله لم يصل.
+     *
+     * فنداءان معًا (مهمّةٌ أُعيدت، نقرتان على «إعادة الإرسال») رسالةٌ واحدة: الثاني
+     * يجد الحجزَ قائمًا. والحفظُ على من نادى.
+     *
+     * @return int|null رقمُ المحاولة، أو `null` إن كانت رسالةٌ في طريقها أو وصلت
+     */
+    private static function claimSend(WhatsAppOrderSession $locked, string $key): ?int
+    {
+        $context = (array) ($locked->context ?? []);
+        $entry = $context['sends'][$key] ?? null;
+
+        if (is_array($entry) && ! self::undelivered(self::sendStatus($locked, $key))) {
+            return null;
+        }
+
+        $attempt = (int) (is_array($entry) ? ($entry['n'] ?? 0) : 0) + 1;
+        $context['sends'][$key] = ['state' => self::SENDING, 'via' => null, 'id' => null, 'n' => $attempt, 'at' => now()->toIso8601String()];
+        $locked->context = $context;
+
+        return $attempt;
+    }
+
+    /** ما ردّت به ميتا — صفُّ الرسالة الذي يحمل حالَها من بعد، أو أنّها لم تخرج */
+    private static function recordSend(int $sessionId, string $key, ?string $via, ?int $id, bool $failed): void
+    {
+        DB::transaction(function () use ($sessionId, $key, $via, $id, $failed) {
+            $locked = WhatsAppOrderSession::whereKey($sessionId)->lockForUpdate()->first();
+
+            if ($locked === null) {
+                return;
+            }
+
+            $context = (array) ($locked->context ?? []);
+            $previous = (array) ($context['sends'][$key] ?? []);
+            $context['sends'][$key] = [
+                'state' => $failed ? WhatsAppStatus::FAILED : 'done',
+                'via' => $via,
+                'id' => $id,
+                'n' => max(1, (int) ($previous['n'] ?? 1)),
+                'at' => now()->toIso8601String(),
+            ];
+            $locked->context = $context;
+
+            $error = $key.'_not_sent';
+            if ($failed) {
+                $locked->error = $error;
+            } elseif ($locked->error === $error) {
+                $locked->error = null;
+            }
+
+            $locked->save();
+        });
     }
 
     /* ═══════════ الموظّف ═══════════ */
@@ -710,6 +876,118 @@ class WhatsAppOrders
     }
 
     /**
+     * يعيد الموظّفُ رابطَ الدفع نفسَه لزبونٍ لم يصله — أو يعيد إصدارَ ما تعذّر بعد موافقته.
+     *
+     * بالمسار نفسه (`issue`): الفاتورةُ برمزها، والرابطُ المفتوحُ نفسُه، والإرسالُ
+     * محجوزٌ تحت القفل — فلا ورقةٌ ثانية ولا رابطٌ ثانٍ، ونقرتان رسالةٌ واحدة.
+     * ورابطٌ وصل أو في طريقه لا يُعاد من هنا: الزبونُ يكتب فيصله ثانيةً.
+     *
+     * ومحاولةُ رابطٍ سابقةٌ لم تُعرف نتيجتُها (`PaymentLinks::doubt`) لا يُطلب بعدها رابطٌ
+     * جديدٌ إلّا بـ`$replaceUncertain` — قرارُ موظّفٍ قيل له إنّ الأوّل ربّما أُنشئ عند Paymob.
+     *
+     * @return string|null حالُ رسالة الرابط بعد المحاولة — و`confirming` إن تغيّر المبلغُ فأُعيد الملخّصُ للزبون
+     */
+    public static function resendLink(WhatsAppChat $chat, ?User $user = null, bool $replaceUncertain = false): ?string
+    {
+        $session = DB::transaction(function () use ($chat) {
+            WhatsAppChat::whereKey($chat->id)->lockForUpdate()->first();
+            $locked = WhatsAppOrderSession::where('open_key', $chat->id)->lockForUpdate()->first();
+            $why = $locked === null ? __('لا طلب آليًّا مفتوحًا في هذه المحادثة.') : self::cannotResendLink($locked);
+
+            if ($why !== null) {
+                throw ValidationException::withMessages(['order' => $why]);
+            }
+
+            if ($locked->state === WhatsAppOrderSession::NEEDS_HUMAN) {
+                $locked->forceFill(['state' => WhatsAppOrderSession::AWAITING_PAYMENT, 'handoff_reason' => null, 'error' => null])->save();
+            }
+
+            return $locked;
+        });
+
+        self::issue((int) $session->id, byStaff: true, userId: $user?->id, replaceUncertain: $replaceUncertain);
+        $session->refresh();
+
+        return $session->state === WhatsAppOrderSession::CONFIRMING
+            ? WhatsAppOrderSession::CONFIRMING
+            : self::sendStatus($session, self::SEND_LINK);
+    }
+
+    /**
+     * لمَ لا يُعاد الرابطُ من الصندوق — أو `null` إن جاز.
+     *
+     * يجوز لطلبٍ ينتظر الدفعَ لم تصل رسالةُ رابطه (أو علقت فاتورتُه قبل الرابط)،
+     * ولطلبٍ حُوِّل لموظّفٍ لأنّ فاتورتَه أو رابطَه تعذّر. ورابطٌ انتهى أو دُفع لا يُعاد.
+     */
+    private static function cannotResendLink(WhatsAppOrderSession $session): ?string
+    {
+        $retry = $session->state === WhatsAppOrderSession::NEEDS_HUMAN && in_array($session->handoff_reason, self::RETRYABLE, true);
+
+        if ($session->state !== WhatsAppOrderSession::AWAITING_PAYMENT && ! $retry) {
+            return __('لا رابط دفع يُعاد لهذا الطلب.');
+        }
+
+        $link = $session->payment_link_id !== null
+            ? CustomerPaymentLink::where('business_id', $session->business_id)->find($session->payment_link_id)
+            : null;
+
+        if ($link !== null && ! $link->open()) {
+            return __('رابط الدفع انتهى أو أُغلق — أنشئ رابطًا من صفحة الفاتورة.');
+        }
+
+        if ($retry) {
+            return null;
+        }
+
+        $status = self::sendStatus($session, self::SEND_LINK);
+
+        if ($status === null) {
+            // لم يُحجز إرسالٌ قطّ: المهمّةُ تعمل الآن — أو علقت قبل الرابط
+            $since = $session->confirmed_at ?? $session->updated_at;
+
+            return $since !== null && $since->lt(now()->subMinutes(self::SENDING_STALE_MINUTES))
+                ? null
+                : __('الرابط يُجهَّز الآن — انتظر قليلًا.');
+        }
+
+        return self::undelivered($status) ? null : __('رسالة الرابط وصلت العميل أو في طريقها — لا حاجة لإعادتها.');
+    }
+
+    /**
+     * يعيد الموظّفُ تأكيدَ الدفع لزبونٍ دفع ولم يصله التأكيد.
+     *
+     * رسالةٌ وحدها (`notifyPaid`): لا تحصيلٌ ولا تفعيلٌ ولا مهمّةُ تجهيزٍ ثانية.
+     * وتأكيدٌ وصل أو في طريقه لا يُعاد.
+     *
+     * @return string|null حالُ رسالة التأكيد بعد المحاولة
+     */
+    public static function resendPaid(WhatsAppChat $chat): ?string
+    {
+        [$session, $attempt] = DB::transaction(function () use ($chat) {
+            WhatsAppChat::whereKey($chat->id)->lockForUpdate()->first();
+            $latest = self::latest($chat);
+            $locked = $latest !== null ? WhatsAppOrderSession::whereKey($latest->id)->lockForUpdate()->first() : null;
+
+            if ($locked === null || $locked->state !== WhatsAppOrderSession::PAID) {
+                throw ValidationException::withMessages(['order' => __('لا طلب مدفوعًا في هذه المحادثة.')]);
+            }
+
+            if (! self::undelivered(self::sendStatus($locked, self::SEND_PAID))) {
+                throw ValidationException::withMessages(['order' => __('رسالة التأكيد وصلت العميل أو في طريقها — لا حاجة لإعادتها.')]);
+            }
+
+            $attempt = self::claimSend($locked, self::SEND_PAID);
+            $locked->save();
+
+            return [$locked, $attempt];
+        });
+
+        self::notifyPaid($session->fresh(), (int) $attempt);
+
+        return self::sendStatus($session->fresh(), self::SEND_PAID);
+    }
+
+    /**
      * طلبُ المحادثة كما يراه الموظّف — حالُه ومبلغُه وفاتورتُه ورابطُه.
      *
      * @return array<string, mixed>|null
@@ -740,6 +1018,13 @@ class WhatsAppOrders
             'items' => count((array) $session->cart),
             'invoice' => $invoice ? ['id' => (int) $invoice->id, 'number' => (string) $invoice->number] : null,
             'link' => $link ? ['status' => (string) $link->status, 'open' => $link->open(), 'url' => (string) $link->short_url] : null,
+            // محاولةُ رابطٍ لم تُعرف نتيجتُها عند Paymob — فالإعادةُ تطلب جديدًا بقرارٍ صريح
+            'link_uncertain' => $invoice !== null && $link === null && PaymentLinks::doubt($invoice) !== null,
+            // ورسالتا الرابط والتأكيد: أين وصلتا، وهل يُعادان من هنا
+            'link_message' => self::sendStatus($session, self::SEND_LINK),
+            'paid_message' => self::sendStatus($session, self::SEND_PAID),
+            'can_resend_link' => $session->isOpen() && self::cannotResendLink($session) === null,
+            'can_resend_paid' => $session->state === WhatsAppOrderSession::PAID && self::undelivered(self::sendStatus($session, self::SEND_PAID)),
             'updated_at' => optional($session->updated_at)->toIso8601String(),
         ];
     }

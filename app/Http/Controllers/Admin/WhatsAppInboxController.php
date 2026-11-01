@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Models\WhatsAppOrderSession;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMedia;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOrders;
+use App\Support\WhatsAppStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -61,6 +64,8 @@ class WhatsAppInboxController extends Controller
                 'template' => $check['template'] ? (string) $check['template']->template_name : null,
                 // وما خرج إليه من إشعاراتٍ كلُّها في السجلّ — لمن يملك قسمه
                 'log_url' => $user->allows('marketing') ? route('admin.marketing.whatsapp.log', ['q' => (string) $chat->customer_phone]) : null,
+                // وطلبُه الآليّ إن كان: حالُه ومبلغُه وفاتورتُه ورابطُه (`WhatsAppOrders::forChat`)
+                'order' => WhatsAppOrders::forChat($chat),
             ];
         }
 
@@ -194,6 +199,83 @@ class WhatsAppInboxController extends Controller
         return back()->with('toast', $sent->status === 'failed'
             ? ['msg' => __('لم يخرج قالب المتابعة — سببُه مكتوبٌ تحته.'), 'type' => 'danger']
             : ['msg' => __('أُرسل قالب المتابعة — يُفتح الردّ حين يكتب العميل.'), 'type' => 'success']);
+    }
+
+    /**
+     * يتسلّم الموظّفُ المحادثةَ من الطلب الآليّ — فيصمت الآليُّ فيها.
+     *
+     * ويصمت حتى يُنهى الطلبُ من هنا (`closeOrder`)، أو يمضي يومٌ بلا رسالة.
+     */
+    public function takeOverOrder(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        WhatsAppOrders::handoff($found, $request->user());
+
+        return back()->with('toast', ['msg' => __('تسلّمت المحادثة — لن يردّ الطلب الآلي فيها'), 'type' => 'success']);
+    }
+
+    /**
+     * يُنهي الطلبَ الآليَّ في المحادثة — فيعود الآليُّ يستقبل من يكتب «طلب».
+     *
+     * ولا يمسّ فاتورةً ولا رابطًا صدرا: يُداران من صفحتهما كأيّ فاتورة.
+     */
+    public function closeOrder(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        WhatsAppOrders::close($found, $request->user());
+
+        return back()->with('toast', ['msg' => __('أُنهي الطلب الآلي في هذه المحادثة'), 'type' => 'success']);
+    }
+
+    /**
+     * يعيد رابطَ الدفع نفسَه لزبونٍ لم يصله — بلا فاتورةٍ ثانيةٍ ولا رابطٍ ثانٍ (`WhatsAppOrders::resendLink`).
+     *
+     * و`replace_uncertain` قرارٌ صريحٌ بعد محاولةٍ لم تُعرف نتيجتُها عند Paymob — كما
+     * في صفحة الفاتورة (`PaymentRequestController`): رابطٌ جديدٌ يصل الزبونَ وحده.
+     */
+    public function resendOrderLink(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        $request->validate(['replace_uncertain' => ['nullable', 'boolean']], [], ['replace_uncertain' => __('طلب رابط جديد')]);
+
+        $status = WhatsAppOrders::resendLink($found, $request->user(), $request->boolean('replace_uncertain'));
+
+        return back()->with('toast', self::resent($status, __('أُرسل رابط الدفع إلى العميل')));
+    }
+
+    /**
+     * يعيد تأكيدَ الدفع لزبونٍ دفع ولم يصله — رسالةً وحدها (`WhatsAppOrders::resendPaid`).
+     */
+    public function resendOrderPaid(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        return back()->with('toast', self::resent(WhatsAppOrders::resendPaid($found), __('أُرسل تأكيد الدفع إلى العميل')));
+    }
+
+    /**
+     * ما يُقال بعد إعادة الإرسال — بحال الرسالة لا بأنّ الزرّ ضُغط.
+     *
+     * @return array{msg: string, type: string}
+     */
+    private static function resent(?string $status, string $sent): array
+    {
+        return match (true) {
+            $status === WhatsAppOrderSession::CONFIRMING => ['msg' => __('تغيّر مبلغ الطلب — أُرسل الملخّص الجديد ليؤكّده العميل.'), 'type' => 'info'],
+            $status === null, in_array($status, WhatsAppStatus::TERMINAL, true) => ['msg' => __('لم يصل العميلَ شيء — السبب ظاهر في المحادثة وشريط الطلب.'), 'type' => 'danger'],
+            default => ['msg' => $sent, 'type' => 'success'],
+        };
     }
 
     /** مرفقٌ في محادثة — من متجر الجلسة وحده، وما سواه 404 */

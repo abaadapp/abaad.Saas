@@ -1520,6 +1520,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
             ->middleware('throttle:20,1')->name('whatsapp.test');
 
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
+        Route::post('/whatsapp/guided-orders', [WhatsAppOnboardingController::class, 'guidedOrders'])->name('whatsapp.guidedOrders');
 
         /*
          * طلبُ حزمةِ رسائلَ إضافيّة — والحدُّ خمسٌ في الساعة.
@@ -1573,6 +1574,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
             // وخارج نافذة ميتا: قالبُ المتابعة المعتمَد وحده — بفعل الردّ نفسِه
             Route::post('/{chat}/follow-up', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'followUp'])
                 ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-inbox-follow-up'])->name('followUp');
+            // والطلبُ الآليّ في المحادثة: يتسلّمها موظّف، أو يُنهى — بفعل الردّ نفسِه
+            Route::post('/{chat}/order/take-over', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'takeOverOrder'])
+                ->whereNumber('chat')->middleware('may:'.Permissions::INBOX_REPLY)->name('order.takeOver');
+            Route::post('/{chat}/order/close', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'closeOrder'])
+                ->whereNumber('chat')->middleware('may:'.Permissions::INBOX_REPLY)->name('order.close');
+            // وما لم يصل الزبونَ من رسالتَيه يُعاد: رابطُ الدفع نفسُه، أو تأكيدُ الدفع — بلا فاتورةٍ ولا رابطٍ ثانٍ
+            Route::post('/{chat}/order/resend-link', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'resendOrderLink'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-order-resend'])->name('order.resendLink');
+            Route::post('/{chat}/order/resend-paid', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'resendOrderPaid'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-order-resend'])->name('order.resendPaid');
             // محادثةُ زبونٍ لم يكتب بعد — تُفتح من رسالةٍ خرجت إليه
             Route::get('/from/{message}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'open'])
                 ->whereNumber('message')->name('open');

@@ -407,9 +407,10 @@ class WhatsAppTemplates
             return;
         }
 
+        // وقالبا الطلب الآليّ يبقيان: رُبطا يومَ اعتمدتهما ميتا ولا يُعاد ربطُهما إلّا بمزامنة (`adopt`)
         WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
             ->where('business_id', $businessId)
-            ->whereNotIn('event_type', [...WhatsAppEvent::RIBBON_EVENTS, WhatsAppInbox::FOLLOW_UP_EVENT])
+            ->whereNotIn('event_type', [...WhatsAppEvent::RIBBON_EVENTS, WhatsAppInbox::FOLLOW_UP_EVENT, ...WhatsAppEvent::GUIDED_ORDER])
             ->delete();
 
         foreach (WhatsAppEvent::RIBBON_EVENTS as $event) {
@@ -494,6 +495,35 @@ class WhatsAppTemplates
                         'language_code' => in_array($preferred, $approved, true) || in_array('*', $approved, true) ? $preferred : (string) $approved[0],
                         'enabled' => true,
                         'variable_mapping' => ['1' => 'business_name'],
+                    ],
+                );
+            }
+        }
+
+        /*
+         * وقالبا الطلب الآليّ — في حساب متجرٍ فُتح له الطلب وحده، ويومَ يُعتمدان.
+         *
+         * ومتغيّراتُهما تُكتب مع الرسالة نفسِها (`WhatsAppOrders::template`)،
+         * فالخريطةُ هنا وصفٌ يُقرأ لا مصدر.
+         */
+        if ($scope === WhatsAppMode::OWNER_BUSINESS && $businessId !== null && WhatsAppOrders::allowed($businessId)) {
+            foreach (WhatsAppEvent::GUIDED_ORDER as $event) {
+                $name = WhatsAppEvent::guidedTemplateName($businessId, $event);
+                $approved = array_keys(array_filter((array) ($templates[$name] ?? []), fn ($status) => $status === self::APPROVED));
+
+                if ($approved === []) {
+                    continue;
+                }
+
+                WhatsAppTemplateMapping::firstOrCreate(
+                    ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => $event],
+                    [
+                        'template_name' => $name,
+                        'language_code' => in_array($preferred, $approved, true) || in_array('*', $approved, true) ? $preferred : (string) $approved[0],
+                        'enabled' => true,
+                        'variable_mapping' => $event === WhatsAppEvent::ORDER_PAYMENT_LINK
+                            ? ['1' => 'customer_name', '2' => 'invoice_number', '3' => 'amount', '4' => 'payment_link']
+                            : ['1' => 'customer_name', '2' => 'invoice_number', '3' => 'amount', '4' => 'schedule'],
                     ],
                 );
             }

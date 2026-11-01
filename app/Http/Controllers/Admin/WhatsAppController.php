@@ -133,6 +133,9 @@ class WhatsAppController extends Controller
                 ? Branch::where('business_id', $business->id)->orderBy('name')->get(['id', 'name'])->all()
                 : [],
 
+            /* والطلباتُ الآليّة: لمن أذنت له المنصّة وحده — مفتاحُها وشروطُها كلٌّ بحاله */
+            'guided_orders' => \App\Support\WhatsAppOrders::view($business),
+
             /* ومن يملك الربط: صاحبُ الحساب أو مديره — والشاشةُ تقوله ولا تُخفي الزرّ بلا سبب */
             'may_manage' => (bool) auth()->user()?->isAdmin(),
             // الحصّة تُعرض للمشترك وحده — رقمه الخاص لا حدَّ عليه منّا

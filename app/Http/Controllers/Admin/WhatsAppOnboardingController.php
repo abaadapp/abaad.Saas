@@ -14,6 +14,7 @@ use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppOnboarding;
+use App\Support\WhatsAppOrders;
 use App\Support\WhatsAppOwnApp;
 use Illuminate\Http\Request;
 
@@ -279,5 +280,35 @@ class WhatsAppOnboardingController extends Controller
         Activity::log('settings', 'واتساب — الردّ التلقائيّ: '.($data['enabled'] ? 'شُغّل' : 'أُوقف'));
 
         return back()->with('toast', ['msg' => __('حُفظ الردّ التلقائي'), 'type' => 'success']);
+    }
+
+    /**
+     * «الطلبات الآليّة عبر واتساب» — مفتاحٌ مستقلٌّ عن الردّ الترحيبيّ.
+     *
+     * لمتجرٍ أذنت له المنصّة وحده (`WhatsAppOrders::allowed`)، ولصاحبه أو مديره.
+     * والإشعالُ لا يُشغّل ما لم تكتمل شروطُه (`readiness`): يُحفظ، وتقول الشاشةُ ما ينقص.
+     */
+    public function guidedOrders(Request $request)
+    {
+        $business = $this->business();
+
+        abort_unless(WhatsAppOrders::allowed((int) $business->id), 404);
+
+        if (! $this->mayManage()) {
+            return back()->withErrors(['enabled' => __('هذا الإعداد لصاحب الحساب أو مديره.')]);
+        }
+
+        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+
+        WhatsAppOrders::save((int) $business->id, (bool) $data['enabled']);
+
+        Activity::log('settings', 'واتساب — الطلبات الآليّة: '.($data['enabled'] ? 'شُغّلت' : 'أُوقفت'));
+
+        return back()->with('toast', [
+            'msg' => $data['enabled'] && ! WhatsAppOrders::active($business)
+                ? __('حُفظ — ولا تعمل الطلبات الآلية حتى تكتمل شروطها')
+                : __('حُفظ إعداد الطلبات الآلية'),
+            'type' => 'success',
+        ]);
     }
 }

@@ -489,6 +489,12 @@ final class CustomerInvoicePreparations
                 'subject_id' => $prep->id, 'subject_type' => 'customer_invoice_preparation', 'business_id' => (int) $prep->business_id,
             ]);
 
+            /*
+             * وفاتورةُ طلبٍ جاء من واتساب يُبلَّغ زبونُه برقم طلبه — بعد أن تثبت
+             * المهمّة لا قبلها، ولا يُسقطها شيءٌ هناك (`WhatsAppOrders::prepared`).
+             */
+            DB::afterCommit(fn () => WhatsAppOrders::prepared($invoiceId));
+
             return [$prep, null];
         });
     }

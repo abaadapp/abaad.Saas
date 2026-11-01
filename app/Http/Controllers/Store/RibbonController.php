@@ -52,6 +52,7 @@ use App\Support\Store\CardIdentityUnconfirmed;
 use App\Support\Store\DeliverySchedule;
 use App\Support\Store\OrderWindow;
 use App\Support\Store\ShopClock;
+use App\Support\Store\StoreLegal;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\TermsChanged;
 use App\Support\Store\WebCheckout;
@@ -157,6 +158,31 @@ class RibbonController extends Controller
             'paying' => $this->paying($business, (string) $second, $ctx),
             StoreCustomPages::PATH => $this->render('store.ribbon.page', $this->customPageData($business, $custom, $ctx, $lang, $base)),
         };
+    }
+
+    /**
+     * صفحةٌ قانونيّة — بترويسة المتجر وتذييله وألوانه، لا بقالبٍ آخر.
+     *
+     * يناديها `StorefrontController` قبل `page`: روابطُها (`StoreLegal::PATHS`)
+     * لكلّ متجرٍ على الطرق الثلاث، لا مساراتٌ من مسارات هذه الواجهة. وما لم
+     * ينشره صاحبُه «غير موجود» — لا قالبٌ لم يراجعه.
+     */
+    public function legal(Business $business, string $kind, string $base): Response
+    {
+        $lang = $this->lang();
+        $bid = (int) $business->id;
+        $published = StoreLegal::published($bid, $kind);
+
+        abort_if($published === null, 404);
+
+        $ctx = $this->context($business, $base, $lang, StoreLegal::PATHS[$kind]);
+
+        return $this->render('store.ribbon.legal', $ctx + [
+            'legalTitle' => StoreLegal::title($kind, $lang),
+            'legalBlocks' => StoreLegal::blocks(StoreLegal::bodyFor($published, $lang)),
+            'legalUpdated' => $published['at']?->timezone(config('app.timezone'))->format('Y/m/d'),
+            'legalVersion' => $published['version'],
+        ]);
     }
 
     /**
@@ -1026,6 +1052,8 @@ class RibbonController extends Controller
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
             'nav' => $nav,
+            // وروابطُ الصفحات القانونيّة المنشورة — في التذييل، ولا شيء لمن لم ينشر (`StoreLegal::links`)
+            'legalLinks' => StoreLegal::links($bid, $base, $lang),
             /*
              * والتذييلُ كما رتّبه صاحبُه — أعمدتُه وعناوينُها وما يظهر فيها،
              * من القائمة والفئات والمجموعات نفسِها. والفراغُ التذييلُ القائم.

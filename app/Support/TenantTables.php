@@ -104,6 +104,8 @@ class TenantTables
          * إثباتُ ما وافق عليه كلُّ زبون، ولا تُكتب من جديد. انظر `Store\StoreTerms`.
          */
         'store_terms_versions',
+        // ونسخُ الصفحات القانونيّة — لا يشير إليها شيء، وتُستعاد كاملةً كنسخ الشروط
+        'store_legal_versions',
         'orders', 'order_items', 'order_item_addons', 'order_item_components', 'order_edits',
         'boutique_component_dues',
         'boutique_credit_offsets',

@@ -236,6 +236,7 @@ export const WEBSITE_TABS: SectionTab[] = [
     { label: 'المتجر والطلبات', routeName: 'admin.website.shop', section: 'website' },
     { label: 'الدومين', routeName: 'admin.website.domain', section: 'website' },
     { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'الصفحات القانونية', routeName: 'admin.website.legal', section: 'website' },
 ];
 
 /*
@@ -268,6 +269,7 @@ export const THEME_TABS: SectionTab[] = [
     { label: 'المتجر والطلبات', routeName: 'admin.website.shop', section: 'website' },
     { label: 'الدومين', routeName: 'admin.website.domain', section: 'website' },
     { label: 'الظهور في البحث', routeName: 'admin.website.seo', section: 'website' },
+    { label: 'الصفحات القانونية', routeName: 'admin.website.legal', section: 'website' },
 ];
 
 /*

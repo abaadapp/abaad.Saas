@@ -8,16 +8,23 @@ use App\Models\Customer;
 use App\Models\Setting;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppInboundMessage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * ردٌّ واحدٌ على أوّل رسالةٍ تصل رقمَ المحلّ — وما بعدها صمت.
  *
- * ═══ ولمَ هو مُطفأ حتى يُشعله صاحبُه ═══
+ * ═══ مُشعَلٌ لمن لم يقل رأيه، وصامتٌ لمن أطفأه ═══
  *
- * هذا أوّلُ شيءٍ في النظام يكتب إلى زبونٍ **بلا أن يفعل أحدٌ شيئًا**. وكلُّ
- * ما سواه يتبع فعلًا: بيعةً تمّت، أو حالةَ طلبٍ تبدّلت. فميزةٌ تردّ وحدَها
- * تُشعلها يدٌ تعرف ما تكتب — ولا تُورَث بترقية.
+ * كان مُطفأً حتى يُشعله صاحبُه، فلم يردّ رقمٌ على زبونٍ قطّ إلّا بيدٍ تذكّرت.
+ * وقرارُ صاحب المنتج (2026-11-01): الافتراضُ إشعالٌ لكلّ متجرٍ برقمه، حاليٍّ
+ * وجديد، بلا اسمٍ ولا رقمِ متجرٍ ولا قائمة. ومن أطفأه صراحةً (`0` محفوظ) يبقى
+ * صامتًا، ومن كتب نصّه يبقى نصُّه. وما لم يُكتب نصٌّ يُردّ بنصٍّ عامٍّ باسم
+ * المتجر نفسِه (`defaultText`).
+ *
+ * والإشعالُ ليس إرسالًا: يخرج الردّ إن عمل الرقمُ وأذنت الباقةُ وصحّ الربطُ
+ * ورُوجع دليلُ فوترة تطبيق التاجر — كلُّ حارسٍ في `decide` كما كان، ولا يُتجاوز
+ * `billing_unproven` أبدًا. والشاشةُ تقول أيّها الحال (`state`).
  *
  * ═══ ونافذةُ الأربعِ والعشرين ═══
  *
@@ -55,9 +62,27 @@ class WhatsAppAutoReply
     public const WINDOW_HOURS = 24;
 
     /**
-     * إعداداتُ هذا المتجر — وافتراضُ الإشعال «لا».
+     * ما ليس رسالةً كتبها زبون — فلا يُردّ عليه.
      *
-     * @return array{enabled:bool, ar:string, en:string, branch_id:?int, cooldown_hours:int}
+     * تفاعلٌ بوجهٍ على رسالتنا، وإشعارُ نظامٍ بتبدّل رقمه، وما لا تدعمه ميتا،
+     * و«ترحيبٌ» تطلبه حين يفتح المحادثةَ ولم يكتب حرفًا.
+     */
+    public const NOT_A_MESSAGE = ['reaction', 'system', 'unsupported', 'request_welcome', 'ephemeral', 'unknown'];
+
+    /** أحوالُ الميزة كما تقولها الشاشة — `state` */
+    public const WORKING = 'working';
+
+    public const WAITING = 'waiting';
+
+    public const OFF = 'off';
+
+    /**
+     * إعداداتُ هذا المتجر — وافتراضُ الإشعال «نعم» لمن لم يقل رأيه.
+     *
+     * و`explicit` يقول أقال: صفٌّ محفوظٌ لمفتاح الإشعال — `1` أو `0`. فمن أطفأه
+     * يبقى مُطفأً، ولا يقرأ أحدٌ «لم يُضبط» على أنّه «أُطفئ».
+     *
+     * @return array{enabled:bool, explicit:bool, ar:string, en:string, branch_id:?int, cooldown_hours:int}
      */
     public static function settings(int $businessId): array
     {
@@ -65,10 +90,12 @@ class WhatsAppAutoReply
             ->whereIn('key', self::KEYS)->pluck('value', 'key');
 
         $cooldown = (int) ($rows[self::COOLDOWN] ?? self::DEFAULT_COOLDOWN);
+        $explicit = $rows->has(self::ENABLED) && $rows[self::ENABLED] !== null && (string) $rows[self::ENABLED] !== '';
 
         return [
-            // مُطفأةٌ ما لم تُكتب `1` صراحةً — لا افتراضَ بالإشعال
-            'enabled' => (string) ($rows[self::ENABLED] ?? '0') === '1',
+            // مُشعَلةٌ ما لم تُكتب `0` صراحةً — ومن أطفأها يبقى على قوله
+            'enabled' => $explicit ? (string) $rows[self::ENABLED] === '1' : true,
+            'explicit' => $explicit,
             'ar' => (string) ($rows[self::TEXT_AR] ?? ''),
             'en' => (string) ($rows[self::TEXT_EN] ?? ''),
             'branch_id' => filled($rows[self::BRANCH] ?? null) ? (int) $rows[self::BRANCH] : null,
@@ -154,7 +181,11 @@ class WhatsAppAutoReply
             return;
         }
 
-        $decision = self::decide($connection, $from);
+        $decision = self::decide($connection, $from, $row, (string) ($message['type'] ?? ''));
+
+        if ($decision === null && ! self::claim($connection, $row)) {
+            $decision = 'cooldown';
+        }
 
         if ($decision !== null) {
             $row->forceFill(['reply_status' => WhatsAppInboundMessage::SKIPPED, 'reply_reason' => $decision])->save();
@@ -166,17 +197,68 @@ class WhatsAppAutoReply
     }
 
     /**
+     * يحجز الردَّ لهذا الزبون قبل أن يخرج — فرسالتان في اللحظة نفسها لا تُردّان مرّتين.
+     *
+     * ═══ والعطبُ الذي وُضع لأجله ═══
+     *
+     * التهدئةُ تقرأ `replied_at`، وكان يُختم بعد أن يعود نداءُ ميتا. فرسالتان
+     * مختلفتان من الزبون نفسِه تصلان معًا (إشعاران متوازيان) تقرآن كلتاهما «لا
+     * ردَّ قبلي» وتخرجان ردَّين. فيُختم الحجزُ أوّلًا، وصفُّ المتجر مقفلٌ ريثما
+     * يُسأل عن ردٍّ سبقه — والثانيةُ تجد الحجزَ فتصمت. وإن فشل الإرسالُ رُفع الحجز
+     * (`send`)، فلا يصمت الرقمُ عن زبونٍ لم يصله شيء.
+     */
+    private static function claim(WhatsAppConnection $connection, WhatsAppInboundMessage $row): bool
+    {
+        $hours = self::settings((int) $connection->business_id)['cooldown_hours'];
+
+        return DB::transaction(function () use ($connection, $row, $hours) {
+            Business::whereKey($connection->business_id)->lockForUpdate()->first();
+
+            $taken = WhatsAppInboundMessage::where('business_id', $connection->business_id)
+                ->where('from_phone', $row->from_phone)
+                ->whereKeyNot($row->id)
+                ->whereNotNull('replied_at')
+                ->where('replied_at', '>', now()->subHours($hours))
+                ->exists();
+
+            if ($taken) {
+                return false;
+            }
+
+            $row->forceFill(['replied_at' => now()])->save();
+
+            return true;
+        });
+    }
+
+    /**
      * ما يمنع الردّ — و`null` تعني «لا مانع».
      *
      * وتُردّ **علّةً** لا `false`: «لم يُردّ» بلا سببٍ سؤالٌ بلا جواب يوم
      * يسأل التاجر لماذا لم يردّ رقمُه.
      */
-    private static function decide(WhatsAppConnection $connection, string $from): ?string
+    private static function decide(WhatsAppConnection $connection, string $from, ?WhatsAppInboundMessage $row = null, string $type = ''): ?string
     {
         $settings = self::settings((int) $connection->business_id);
 
         if (! $settings['enabled']) {
             return 'disabled';
+        }
+
+        // ولا ردَّ على ما لم يكتبه زبون — تفاعلٌ أو إشعارُ نظامٍ أو «ترحيبٌ» بلا حرف
+        if (in_array(strtolower($type), self::NOT_A_MESSAGE, true)) {
+            return 'not_a_message';
+        }
+
+        /*
+         * ولا ردَّ خارج نافذة ميتا — رسالةٌ وصلت متأخّرة.
+         *
+         * ميتا تعيد الإشعارَ أيّامًا حين لا يُجاب بـ٢٠٠، فقد تصل «مرحبا» كُتبت
+         * قبل يومين. والنصُّ الحرُّ بعد الأربعِ والعشرين يُردّ (١٣١٠٤٧) — وردٌّ
+         * على تحيّةٍ قديمةٍ يُربك الزبونَ قبل أن يُردّ.
+         */
+        if ($row !== null && $row->received_at !== null && $row->received_at->lt(now()->subHours(self::WINDOW_HOURS))) {
+            return 'outside_window';
         }
 
         /*
@@ -204,8 +286,23 @@ class WhatsAppAutoReply
             return WhatsAppStatus::SKIP_OWN_NOT_ALLOWED;
         }
 
+        /*
+         * وربطٌ بتطبيق التاجر لم يُراجَع دليلُ فوترته لا يردّ — باسمه لا بحالٍ عامّة.
+         *
+         * بابُ الإرسال يمنعه أيضًا (`MetaWhatsAppClient::account`)، لكنّ «لم يُردّ»
+         * يُقال بسببه: بانتظار إثبات الفوترة — لا «فشل».
+         */
+        if (WhatsAppOwnApp::awaitsBilling($connection)) {
+            return WhatsAppOwnApp::AWAITS_BILLING;
+        }
+
         if (! $connection->isUsable()) {
             return 'connection_unusable';
+        }
+
+        // ولا يُعرف بأمان على أيّ حساب رسائل تُحتسب — لا ردّ (`WhatsAppOwnApp::sendAccount`)
+        if (($account = WhatsAppOwnApp::sendAccount($connection)['problem']) !== null) {
+            return $account;
         }
 
         if (self::text($connection, $settings, $from) === '') {
@@ -241,6 +338,11 @@ class WhatsAppAutoReply
 
         $body = trim($language === 'en' ? ($settings['en'] ?: $settings['ar']) : ($settings['ar'] ?: $settings['en']));
 
+        // وما لم يكتب صاحبُ المتجر نصًّا يُردّ بالنصّ العامّ — باسم متجره هو، بلغة زبونه
+        if ($body === '') {
+            $body = self::defaultText((int) $connection->business_id, $language === 'en' ? 'en' : 'ar');
+        }
+
         if ($body === '' || blank($settings['branch_id'] ?? null)) {
             return $body;
         }
@@ -255,6 +357,59 @@ class WhatsAppAutoReply
             ->whereKey($settings['branch_id'])->value('name');
 
         return filled($branch) ? $body."\n".$branch : $body;
+    }
+
+    /**
+     * النصُّ العامّ — باسم هذا المتجر وحده، يُقرأ لحظةَ الردّ.
+     *
+     * لا يُحفظ في الإعدادات: من بدّل اسمَ متجره يُردّ باسمه الجديد، ولا يقع اسمُ
+     * متجرٍ في ردّ غيره — يُقرأ من صفّ المتجر الذي وصلته الرسالة. والإنجليزيُّ
+     * بالاسم الإنجليزيّ إن كُتب، وإلّا بالاسم كما هو.
+     */
+    public static function defaultText(int $businessId, string $lang): string
+    {
+        $business = Business::find($businessId);
+        $name = trim((string) ($lang === 'en' ? ($business?->name_en ?: $business?->name) : $business?->name));
+
+        if ($lang === 'en') {
+            return $name !== ''
+                ? 'Welcome to '.$name.'! Thank you for reaching out — we have received your message and will reply shortly.'
+                : 'Welcome! Thank you for reaching out — we have received your message and will reply shortly.';
+        }
+
+        return $name !== ''
+            ? 'أهلًا بك في '.$name.'! شكرًا لتواصلك معنا — وصلتنا رسالتك وسنردّ عليك قريبًا.'
+            : 'أهلًا بك! شكرًا لتواصلك معنا — وصلتنا رسالتك وسنردّ عليك قريبًا.';
+    }
+
+    /**
+     * أيعمل الردُّ الآن؟ — بالحرّاس نفسِها التي يمرّ بها كلُّ ردّ، لا بمقبض الإشعال وحده.
+     *
+     * «يعمل» حين يُرسل فعلًا لو كتب زبونٌ الآن. و«بانتظار» حين يُشعَل ويمنعه
+     * ربطٌ لم يكتمل أو فوترةٌ لم تُراجَع أو باقة — والسببُ بكلماته. و«متوقف»
+     * لمن أطفأه.
+     *
+     * @return array{state:string, reason:?string}
+     */
+    public static function state(Business $business): array
+    {
+        if (! self::settings((int) $business->id)['enabled']) {
+            return ['state' => self::OFF, 'reason' => null];
+        }
+
+        $connection = WhatsAppConnections::forBusiness((int) $business->id);
+
+        $reason = match (true) {
+            WhatsAppFeature::blockReason($business) !== null => __('واتساب غير متاح لحسابك الآن — يعمل الرد حين يُفتح.'),
+            ! WhatsAppFeature::canUseOwnNumber($business) => __('يعمل الرد من رقم متجرك الخاص وحده — باقتك لا تتيح الرقم الخاص بعد.'),
+            $connection === null || $connection->owner_type !== WhatsAppMode::OWNER_BUSINESS => __('بانتظار ربط رقم متجرك — يعمل الرد فور اكتماله.'),
+            WhatsAppOwnApp::awaitsBilling($connection) => __('بانتظار إثبات فوترة ميتا — يعمل الرد فور مراجعة الدليل.'),
+            ! $connection->isUsable() => __('بانتظار اكتمال ربط رقمك — يعمل الرد فور عودته.'),
+            WhatsAppOwnApp::sendAccount($connection)['problem'] !== null => WhatsAppOwnApp::say((string) WhatsAppOwnApp::sendAccount($connection)['problem']),
+            default => null,
+        };
+
+        return ['state' => $reason === null ? self::WORKING : self::WAITING, 'reason' => $reason];
     }
 
     /**
@@ -314,7 +469,6 @@ class WhatsAppAutoReply
             $row->forceFill([
                 'reply_status' => WhatsAppInboundMessage::SENT,
                 'reply_reason' => null,
-                'replied_at' => now(),
             ])->save();
 
             return;
@@ -323,6 +477,8 @@ class WhatsAppAutoReply
         $row->forceFill([
             'reply_status' => WhatsAppInboundMessage::FAILED,
             'reply_reason' => mb_substr((string) $result['code'], 0, 60),
+            // ويُرفع الحجزُ (`claim`) — فالتهدئةُ لا تقرأ ردًّا لم يصل
+            'replied_at' => null,
             /*
              * ولا يُختم `replied_at` على فاشلة.
              *

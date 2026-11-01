@@ -496,13 +496,15 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
 
     /* ═════════════ ٧ · ما لا يتغيّر ═════════════ */
 
-    public function test_linking_never_turns_on_the_auto_reply(): void
+    /** والربطُ لا يكتب رأيًا عن صاحب المتجر في الردّ التلقائيّ — يبقى على افتراضه */
+    public function test_linking_writes_no_auto_reply_preference(): void
     {
         Http::fake($this->abaadAppMeta());
 
         $this->paste()->assertSessionHasNoErrors();
 
-        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['enabled']);
+        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['explicit']);
+        $this->assertFalse(\App\Models\Setting::where('business_id', $this->shop->id)->where('key', WhatsAppAutoReply::ENABLED)->exists());
     }
 
     /** الوصلاتُ القائمة لا تُفحص ولا تُمسّ بالترحيل: كلُّ أعمدة الفحص فارغة */

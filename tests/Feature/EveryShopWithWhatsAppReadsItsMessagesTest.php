@@ -100,6 +100,13 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         ]);
         Branch::create(['business_id' => $b->id, 'name' => 'الرئيسي']);
 
+        /*
+         * والردُّ التلقائيّ مُشعَلٌ افتراضًا منذ 2026-11-01 — وهذه الحرّاسُ تعدّ ما
+         * يُخرجه الصندوقُ نفسُه. فيقول المتجرُ رأيه صراحةً: مُطفأ، كما كان ضمنًا.
+         * وحارسُ الردّ التلقائيّ يُشعله بنفسه (`WhatsAppAutoReply::save`).
+         */
+        Setting::create(['business_id' => $b->id, 'key' => WhatsAppAutoReply::ENABLED, 'value' => '0']);
+
         return $b->fresh();
     }
 

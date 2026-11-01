@@ -284,17 +284,19 @@ final class StoreLegal
     }
 
     /**
-     * الشروطُ صفحةً عامّة: نسخةٌ مكتوبة، وصاحبُها نشرها هنا أو اشترط الموافقةَ عليها.
+     * الشروطُ صفحةً عامّة: نسخةٌ مكتوبة، وصاحبُها نشرها من هذه الشاشة.
      *
-     * والثاني يعني أنّها معروضةٌ للزبائن في الإتمام أصلًا — فصفحتُها النصُّ نفسُه.
-     * ونسخةٌ كُتبت ولم تُشترط ولم تُنشر تبقى مسوّدةَ صاحبها، لا تُفتح للعموم بالنشر.
+     * واشتراطُ الموافقة عليها في الإتمام (`store_terms_on`) لا يفتحها صفحةً وحده.
+     * كان يفتحها، فظهرت شروطُ متجرٍ قائمٍ في رابطٍ عامٍّ وفي تذييله يومَ النشر،
+     * قبل أن يراجعها صاحبُها هنا — وقرارُ صاحب المنتج أنّ كلَّ صفحةٍ قانونيّةٍ تبقى
+     * مسوّدةً حتّى ينشرها التاجرُ بنفسه. والإتمامُ يعرضها ويشترطها كما كان.
      */
     private static function publishedTerms(int $bid): ?array
     {
         // والإعداداتُ أوّلًا — محفوظةٌ في ذاكرة الطلب، فمن لم يفتح شروطَه لا يُسأل عنه سؤالٌ آخر
         $site = MarketingSettings::group($bid, 'website');
 
-        if (($site[StoreTerms::ON] ?? '0') !== '1' && ($site[self::TERMS_PUBLIC] ?? '0') !== '1') {
+        if (($site[self::TERMS_PUBLIC] ?? '0') !== '1') {
             return null;
         }
 
@@ -361,7 +363,7 @@ final class StoreLegal
     /**
      * ما يُعرض في المحرّر: المسوّدة، وإلّا المنشور، وإلّا القالب.
      *
-     * @return array{ar: string, en: string, from: string}
+     * @return array{ar: string, en: string, from: string}  `from`: draft | published | existing | template
      */
     public static function source(int $bid, string $kind): array
     {
@@ -373,7 +375,10 @@ final class StoreLegal
         $existing = $kind === self::TERMS ? StoreTerms::current($bid) : self::latest($bid, $kind);
 
         if ($existing !== null && (trim((string) $existing->body_ar) !== '' || trim((string) $existing->body_en) !== '')) {
-            return ['ar' => (string) $existing->body_ar, 'en' => (string) $existing->body_en, 'from' => 'published'];
+            // وشروطٌ مكتوبةٌ لم تُنشر صفحةً بعد «قائمةٌ» لا «منشورة» — تُراجَع ثمّ تُنشر
+            $from = $kind === self::TERMS && self::publishedTerms($bid) === null ? 'existing' : 'published';
+
+            return ['ar' => (string) $existing->body_ar, 'en' => (string) $existing->body_en, 'from' => $from];
         }
 
         return ['ar' => self::template($bid, $kind, 'ar'), 'en' => self::template($bid, $kind, 'en'), 'from' => 'template'];

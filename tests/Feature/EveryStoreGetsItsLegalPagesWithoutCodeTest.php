@@ -201,15 +201,34 @@ class EveryStoreGetsItsLegalPagesWithoutCodeTest extends TestCase
         MarketingSettings::save($this->ribbon->id, 'website', [StoreTerms::ON => '1']);
         $this->fresh();
 
-        $this->get('/s/ribbon/terms')->assertOk()->assertSee('شروط سعود كما كتبها');
-        $this->get('/s/ribbon/terms?lang=en')->assertOk()->assertSee('Saud terms as written');
+        /*
+         * والشروطُ المشترطةُ في الإتمام لا تصير صفحةً عامّةً وحدها — ولا رابطًا في التذييل.
+         *
+         * كانت تُفتح بالاشتراط وحده، فظهرت على متجرٍ قائمٍ يومَ النشر بلا أن
+         * يضغط صاحبُه «نشر». والإتمامُ يشترطها كما كان.
+         */
+        $this->get('/s/ribbon/terms')->assertNotFound();
+        $home = (string) $this->get('/s/ribbon')->assertOk()->getContent();
+        $this->assertStringNotContainsString('data-testid="rb-foot-legal"', $home);
+        $this->assertTrue(StoreTerms::required($this->ribbon->id), 'والإتمامُ يشترطها كما كان');
 
+        // ويجدها صاحبُها في الشاشة كما كتبها — لا قالبًا فوقها
         $this->actingAs($this->saud)->get(route('admin.website.legal'))->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('pages.2.kind', StoreLegal::TERMS)
-                ->where('pages.2.from', 'published')
+                ->where('pages.2.from', 'existing')
+                ->where('pages.2.published', null)
                 ->where('pages.2.body_ar', 'شروط سعود كما كتبها'));
 
+        // فإن نشرها كما هي صارت صفحةً — بالنسخة نفسِها، لا بنسخةٍ ثانية
+        $this->facts($this->saud, 'SALAM SITY TRADING LLC');
+        $this->fresh();
+        $this->publish($this->saud, StoreLegal::TERMS, 'شروط سعود كما كتبها', 'Saud terms as written')
+            ->assertSessionHasNoErrors();
+        $this->fresh();
+
+        $this->get('/s/ribbon/terms')->assertOk()->assertSee('شروط سعود كما كتبها');
+        $this->get('/s/ribbon/terms?lang=en')->assertOk()->assertSee('Saud terms as written');
         $this->assertSame(1, StoreTermsVersion::count());
         $this->assertSame(0, StoreLegalVersion::count());
     }

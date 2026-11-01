@@ -20,7 +20,7 @@ interface LegalPage {
     title_en: string;
     url: string | null;
     published: { version: number; at: string | null } | null;
-    from: 'draft' | 'published' | 'template';
+    from: 'draft' | 'published' | 'existing' | 'template';
     body_ar: string;
     body_en: string;
     can_restore: boolean;
@@ -115,7 +115,9 @@ function LegalPageCard({ page, token }: { page: LegalPage; token: string }) {
         ? t('منشورة — الإصدار :n', { n: page.published.version })
         : page.from === 'draft'
             ? t('غير منشورة — مسودة محفوظة')
-            : t('غير منشورة — قالب جاهز للمراجعة');
+            : page.from === 'existing'
+                ? t('غير منشورة — شروطك الحالية جاهزة للمراجعة')
+                : t('غير منشورة — قالب جاهز للمراجعة');
 
     const draft = () => form.put(route('admin.website.legal.draft', page.kind), { preserveScroll: true });
     const publish = () => form.post(route('admin.website.legal.publish', page.kind), { preserveScroll: true });

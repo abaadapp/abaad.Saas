@@ -62,7 +62,15 @@ class ImagesOptimize extends Command
         /*
          * وصورٌ بعينها لا تُطلب إلّا لصنع نسخها في متجرٍ واحد: لا جردَ بها،
          * ولا نقلَ مراجع، ولا رجوع — فلا يُظنّ أنّ `--swap --path` ينقل صورةً واحدة.
+         * و`--path` فارغٌ ليس «بلا --path»: لو أُسقط لصارت الدفعةُ عامّةً
+         * بحدّها (خمسون صورة) — فيردّ الأمرَ كلَّه.
          */
+        if (collect((array) $this->option('path'))->contains(fn ($p) => trim((string) $p) === '')) {
+            $this->error('--path فارغ — سمِّ كلَّ صورةٍ بمسارها. لم تُعالج صورة.');
+
+            return self::FAILURE;
+        }
+
         if ($this->chosen() !== [] && (! $this->option('apply') || $this->option('business') === null
             || $this->option('swap') || filled($this->option('rollback')) || $this->option('recover') || $this->option('retire-plan'))) {
             $this->error('--path يُستعمل مع --apply و--business وحدهما — لم تُعالج صورة.');
@@ -283,15 +291,25 @@ class ImagesOptimize extends Command
          * وصورٌ سمّاها صاحبُ القرار بمساراتها — بترتيبه هو لا بترتيب الجداول:
          * رئيسيّةُ متجرٍ أوّلًا، لا أقدمُ أصنافه. ولا تُقبل إلّا من صور هذا
          * المتجر الحيّة نفسها (`candidates`): مسارٌ لمتجرٍ آخر، أو لا يشير
-         * إليه صفّ، أو نسخةٌ، أو غيرُ موجود — يردّ الدفعةَ كلَّها قبل أن تُفكّ صورة.
+         * إليه صفّ، أو نسخةٌ — يردّ الدفعةَ كلَّها قبل أن تُفكّ صورة. وكذا
+         * ما لا يُقرأ صورةً على القرص، وما يعرضه متجرٌ آخر أيضًا: نسختُه
+         * تُخدم هناك كذلك، وتجربةُ متجرٍ لا تغيّر ما يراه زبائنُ غيره.
          */
         if (($chosen = $this->chosen()) !== []) {
-            $outside = array_values(array_diff($chosen, $candidates));
+            $business = (int) $this->option('business');
+            $mine = ImageReferences::live($business);
+            $all = ImageReferences::live();
 
-            if ($outside !== []) {
-                $this->error('ليست من صور المتجر '.$this->option('business').' الحيّة: '.implode('، ', $outside).' — لم تُعالج صورة.');
+            foreach ([
+                'ليست من صور المتجر '.$business.' الحيّة' => array_diff($chosen, $candidates),
+                'لا تُقرأ صورةً على القرص' => array_filter($chosen, fn ($p) => ImageVariants::needs($p) === null),
+                'يعرضها متجرٌ آخر أيضًا' => array_filter($chosen, fn ($p) => array_sum($all[$p] ?? []) > array_sum($mine[$p] ?? [])),
+            ] as $why => $bad) {
+                if ($bad !== []) {
+                    $this->error($why.': '.implode('، ', $bad).' — لم تُعالج صورة.');
 
-                return self::FAILURE;
+                    return self::FAILURE;
+                }
             }
 
             $candidates = $chosen;
@@ -359,10 +377,15 @@ class ImagesOptimize extends Command
         return ($count['failed'] ?? 0) > 0 ? self::FAILURE : self::SUCCESS;
     }
 
-    /** @return list<string> المساراتُ التي سُمّيت بـ`--path`، بلا تكرارٍ وبترتيبها */
+    /**
+     * المساراتُ التي سُمّيت بـ`--path`، بلا تكرارٍ وبترتيبها — كما كُتبت حرفًا:
+     * مسافةٌ حول مسارٍ تجعله غيرَ مسارِ المتجر فيُردّ، لا يُصحَّح.
+     *
+     * @return list<string>
+     */
     private function chosen(): array
     {
-        return array_values(array_unique(array_filter(array_map(fn ($p) => trim((string) $p), (array) $this->option('path')), fn ($p) => $p !== '')));
+        return array_values(array_unique(array_map(fn ($p) => (string) $p, (array) $this->option('path'))));
     }
 
     /**

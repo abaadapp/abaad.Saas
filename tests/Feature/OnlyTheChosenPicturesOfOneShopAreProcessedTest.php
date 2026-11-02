@@ -164,26 +164,126 @@ class OnlyTheChosenPicturesOfOneShopAreProcessedTest extends TestCase
         $this->assertSame([], Storage::disk('local')->allFiles('image-swaps'), 'نُقل مرجع');
     }
 
-    public function test_the_limit_and_the_server_gate_still_hold(): void
+    /*
+     * ‏`--path` فارغٌ كان يُسقَط بصمت — فتصير الدفعةُ عامّةً بحدّها (خمسون
+     * صورةً من صور المتجر). فارغًا أو مسافاتٍ أو بلا قيمة، وحدَه أو مع صورةٍ
+     * صالحة: يُردّ الأمرُ كلُّه. والسطرُ كما يكتبه المشغّل في الطرفيّة.
+     */
+    public function test_an_empty_or_blank_path_refuses_everything_rather_than_becoming_a_general_batch(): void
+    {
+        $mine = $this->product($this->shop);
+        $this->product($this->shop);
+        $run = 'images:optimize --apply --business='.$this->shop->id.' ';
+
+        foreach (['--path=', '--path="   "', '--path', '--path='.$mine.' --path=', '--path='.$mine.' --path=" "'] as $given) {
+            $this->artisan($run.$given)->expectsOutputToContain('--path فارغ')->assertFailed();
+            $this->assertSame([], $this->copies(), $given);
+        }
+
+        // ‏ومسارٌ حوله مسافةٌ غيرُ مسارِ المتجر: يُردّ ولا يُصحَّح
+        $this->artisan($run.'--path=" '.$mine.'"')->expectsOutputToContain('ليست من صور المتجر')->assertFailed();
+        $this->assertSame([], $this->copies());
+    }
+
+    public function test_a_picture_named_twice_is_processed_once_in_its_first_place(): void
+    {
+        $card = $this->product($this->shop);
+        $hero = $this->photo('website/'.$this->shop->id);
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'store_hero_image', 'value' => '/storage/'.$hero]);
+
+        $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$hero, $card, $hero]])
+            ->expectsOutputToContain('عولجت 2 صورة: made=2')->assertSuccessful();
+
+        $this->assertCount(4, $this->copies());
+        Storage::disk('public')->assertExists((string) ImageVariants::display($card));
+    }
+
+    public function test_a_named_picture_missing_or_unreadable_on_disk_refuses_the_batch(): void
+    {
+        $mine = $this->product($this->shop);
+        $gone = $this->product($this->shop);
+        Storage::disk('public')->delete($gone);
+        $broken = $this->product($this->shop);
+        Storage::disk('public')->put($broken, 'ليست صورة');
+
+        foreach ([$gone, $broken] as $bad) {
+            $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$mine, $bad]])
+                ->expectsOutputToContain('لا تُقرأ صورةً على القرص: '.$bad)->assertFailed();
+            $this->assertSame([], $this->copies(), $bad);
+        }
+    }
+
+    /*
+     * ‏ونسخةُ صورةٍ يعرضها متجرٌ آخر تُخدم هناك أيضًا — فتجربةُ متجرٍ لا
+     * تُسمّيها، بصفّ منتجٍ كانت أو بإعداد واجهةٍ أو بطاقةِ صنف.
+     */
+    public function test_a_picture_another_shop_also_shows_refuses_the_batch(): void
+    {
+        $mine = $this->product($this->shop);
+        $product = $this->product($this->shop);
+        Product::create(['business_id' => $this->other->id, 'name' => 'باقة', 'price' => 5, 'cost' => 1, 'quantity' => 3, 'alert_qty' => 1, 'active' => true, 'image' => $product]);
+        $hero = $this->photo('website/'.$this->shop->id);
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'store_hero_image', 'value' => '/storage/'.$hero]);
+        Category::create(['business_id' => $this->other->id, 'name' => 'ورد', 'card_image' => '/storage/'.$hero]);
+        $before = $this->snapshot();
+
+        foreach ([$product, $hero] as $shared) {
+            $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$mine, $shared]])
+                ->expectsOutputToContain('يعرضها متجرٌ آخر أيضًا: '.$shared)->assertFailed();
+            $this->assertSame([], $this->copies(), $shared);
+        }
+
+        // ‏وصورةُ المتجر وحده تُعالج كما هي
+        $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$mine]])
+            ->expectsOutputToContain('made=1')->assertSuccessful();
+        $this->assertSame($before, $this->snapshot(), 'تغيّر أصلٌ أو مرجع');
+    }
+
+    public function test_the_limit_and_every_server_check_still_hold_before_each_named_picture(): void
     {
         $first = $this->product($this->shop);
         $second = $this->product($this->shop);
+        $third = $this->product($this->shop);
 
         $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$first, $second], '--limit' => 1])
             ->expectsOutputToContain('made=1')->assertSuccessful();
         Storage::disk('public')->assertExists((string) ImageVariants::display($first));
         Storage::disk('public')->assertMissing((string) ImageVariants::display($second));
 
-        // ‏وحارسُ الخادم كما هو: ذاكرةٌ تحت الحدّ توقف المسمّاةَ أيضًا
+        // ‏وحارسُ الخادم كما هو: الذاكرةُ والحِملُ والقرصُ والطابور — كلٌّ يوقف المسمّاةَ قبل أن تُفكّ
         $meminfo = tempnam(sys_get_temp_dir(), 'mem');
         $loadavg = tempnam(sys_get_temp_dir(), 'load');
-        file_put_contents($meminfo, "MemTotal: 984064 kB\nMemAvailable: ".(300 * 1024)." kB\n");
-        file_put_contents($loadavg, "0.10 0.10 0.10 1/100 42\n");
-        config(['images.batch_gate' => true, 'images.meminfo' => $meminfo, 'images.loadavg' => $loadavg, 'images.gate_min_disk_mb' => 1]);
+        $quiet = function () use ($meminfo, $loadavg) {
+            file_put_contents($meminfo, "MemTotal: 984064 kB\nMemAvailable: ".(900 * 1024)." kB\n");
+            file_put_contents($loadavg, "0.10 0.10 0.10 1/100 42\n");
+            config(['images.gate_min_disk_mb' => 1]);
+            DB::table('jobs')->delete();
+        };
+        $job = fn (int $available) => ['queue' => 'default', 'payload' => '{}', 'attempts' => 0, 'reserved_at' => null, 'available_at' => $available, 'created_at' => time()];
+        config(['images.batch_gate' => true, 'images.meminfo' => $meminfo, 'images.loadavg' => $loadavg, 'queue.default' => 'database', 'images.gate_max_queue' => 0]);
 
-        $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$second]])
-            ->expectsOutputToContain('low_memory')->assertSuccessful();
-        Storage::disk('public')->assertMissing((string) ImageVariants::display($second));
+        foreach ([
+            'low_memory' => fn () => file_put_contents($meminfo, "MemTotal: 984064 kB\nMemAvailable: ".(300 * 1024)." kB\n"),
+            'busy_cpu' => fn () => file_put_contents($loadavg, "0.95 0.10 0.10 1/100 42\n"),
+            'low_disk' => fn () => config(['images.gate_min_disk_mb' => PHP_INT_MAX >> 21]),
+            'queue_busy' => fn () => DB::table('jobs')->insert($job(time() - 1)),
+        ] as $reason => $busy) {
+            $quiet();
+            $busy();
+            $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$second]])
+                ->expectsOutputToContain('وقفت الدفعة قبل '.$second.': '.$reason)->assertSuccessful();
+            Storage::disk('public')->assertMissing((string) ImageVariants::display($second));
+        }
+
+        // ‏وقبل كلِّ صورةٍ لا قبل الأولى وحدها: عملٌ يحين في الطابور أثناء الدفعة يوقف الثانية
+        $quiet();
+        config(['images.pause_ms' => 2500]);
+        DB::table('jobs')->insert($job(time() + 2));
+
+        $this->artisan('images:optimize', ['--apply' => true, '--business' => $this->shop->id, '--path' => [$second, $third]])
+            ->expectsOutputToContain('وقفت الدفعة قبل '.$third.': queue_busy')->assertSuccessful();
+        Storage::disk('public')->assertExists((string) ImageVariants::display($second));
+        Storage::disk('public')->assertMissing((string) ImageVariants::display($third));
 
         @unlink($meminfo);
         @unlink($loadavg);

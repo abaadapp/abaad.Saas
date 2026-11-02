@@ -46,7 +46,8 @@ class ImagesOptimize extends Command
         {--swap : ينقل المراجعَ الحيّة إلى النسخ — يحتاج --business}
         {--rollback= : معرّفُ جولة نقلٍ يُعاد ما فيها}
         {--recover : يقرأ كلَّ نقلٍ انقطع ويختمه بما وجد}
-        {--retire-plan : ما يمكن الاستغناءُ عنه من الأصول، بلا محو}';
+        {--retire-plan : ما يمكن الاستغناءُ عنه من الأصول، بلا محو}
+        {--path=* : صورةٌ بعينها من صور المتجر الحيّة (يتكرّر، وبترتيبه) — مع --apply و--business وحدهما}';
 
     protected $description = 'جرد صور النظام وصنع نسخها الأخفّ ونقل مراجعها تدريجيًّا دون محو أيّ أصل';
 
@@ -58,6 +59,25 @@ class ImagesOptimize extends Command
 
     public function handle(): int
     {
+        /*
+         * وصورٌ بعينها لا تُطلب إلّا لصنع نسخها في متجرٍ واحد: لا جردَ بها،
+         * ولا نقلَ مراجع، ولا رجوع — فلا يُظنّ أنّ `--swap --path` ينقل صورةً واحدة.
+         * و`--path` فارغٌ ليس «بلا --path»: لو أُسقط لصارت الدفعةُ عامّةً
+         * بحدّها (خمسون صورة) — فيردّ الأمرَ كلَّه.
+         */
+        if (collect((array) $this->option('path'))->contains(fn ($p) => trim((string) $p) === '')) {
+            $this->error('--path فارغ — سمِّ كلَّ صورةٍ بمسارها. لم تُعالج صورة.');
+
+            return self::FAILURE;
+        }
+
+        if ($this->chosen() !== [] && (! $this->option('apply') || $this->option('business') === null
+            || $this->option('swap') || filled($this->option('rollback')) || $this->option('recover') || $this->option('retire-plan'))) {
+            $this->error('--path يُستعمل مع --apply و--business وحدهما — لم تُعالج صورة.');
+
+            return self::FAILURE;
+        }
+
         $lock = Cache::lock('images:optimize', 3600);
 
         if (! $lock->get()) {
@@ -267,6 +287,34 @@ class ImagesOptimize extends Command
         $done = 0;
         $candidates = $this->candidates();
 
+        /*
+         * وصورٌ سمّاها صاحبُ القرار بمساراتها — بترتيبه هو لا بترتيب الجداول:
+         * رئيسيّةُ متجرٍ أوّلًا، لا أقدمُ أصنافه. ولا تُقبل إلّا من صور هذا
+         * المتجر الحيّة نفسها (`candidates`): مسارٌ لمتجرٍ آخر، أو لا يشير
+         * إليه صفّ، أو نسخةٌ — يردّ الدفعةَ كلَّها قبل أن تُفكّ صورة. وكذا
+         * ما لا يُقرأ صورةً على القرص، وما يعرضه متجرٌ آخر أيضًا: نسختُه
+         * تُخدم هناك كذلك، وتجربةُ متجرٍ لا تغيّر ما يراه زبائنُ غيره.
+         */
+        if (($chosen = $this->chosen()) !== []) {
+            $business = (int) $this->option('business');
+            $mine = ImageReferences::live($business);
+            $all = ImageReferences::live();
+
+            foreach ([
+                'ليست من صور المتجر '.$business.' الحيّة' => array_diff($chosen, $candidates),
+                'لا تُقرأ صورةً على القرص' => array_filter($chosen, fn ($p) => ImageVariants::needs($p) === null),
+                'يعرضها متجرٌ آخر أيضًا' => array_filter($chosen, fn ($p) => array_sum($all[$p] ?? []) > array_sum($mine[$p] ?? [])),
+            ] as $why => $bad) {
+                if ($bad !== []) {
+                    $this->error($why.': '.implode('، ', $bad).' — لم تُعالج صورة.');
+
+                    return self::FAILURE;
+                }
+            }
+
+            $candidates = $chosen;
+        }
+
         foreach ($candidates as $path) {
             if ($done >= $limit) {
                 break;
@@ -327,6 +375,17 @@ class ImagesOptimize extends Command
         $this->line('بقي '.$left.' صورةً تنتظر، و'.$failed.' فشلت (تُعاد حتى '.self::ATTEMPTS.' مرّات، ثمّ بـ --retry-failed).');
 
         return ($count['failed'] ?? 0) > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * المساراتُ التي سُمّيت بـ`--path`، بلا تكرارٍ وبترتيبها — كما كُتبت حرفًا:
+     * مسافةٌ حول مسارٍ تجعله غيرَ مسارِ المتجر فيُردّ، لا يُصحَّح.
+     *
+     * @return list<string>
+     */
+    private function chosen(): array
+    {
+        return array_values(array_unique(array_map(fn ($p) => (string) $p, (array) $this->option('path'))));
     }
 
     /**

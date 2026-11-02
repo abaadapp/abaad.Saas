@@ -61,4 +61,11 @@ return [
 
     'meminfo' => env('IMAGES_MEMINFO', '/proc/meminfo'),
 
+    /*
+    | سجلُّ ما تُرك من الصور (`logs/images-*.log`): سطرٌ لكلّ موضعٍ وسبب في
+    | هذه المدّة بالثواني، وما بعده يُعدّ ولا يُكتب — فذاكرةٌ ناقصةٌ ساعةً لا
+    | تملأ القرص سطورًا.
+    */
+    'note_every' => (int) env('IMAGES_NOTE_EVERY', 600),
+
 ];

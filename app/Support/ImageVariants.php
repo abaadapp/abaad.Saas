@@ -6,6 +6,7 @@ use App\Support\Store\StoreImageUpload;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * نسخٌ أخفُّ من صورةٍ محفوظة — إلى جوارها، والأصلُ لا يُمسّ.
@@ -32,6 +33,12 @@ use Illuminate\Support\Facades\Storage;
  * كلُّ ما كُتب يُعاد فتحُه من القرص ويُفحص حجمُه ونوعُه وأبعادُه. وما تعذّر
  * منه يُمحى ما كُتب معه في الجولة نفسها، فلا تبقى صورةٌ بنصف نسخها — وتُعاد
  * المحاولةُ في الجولة التالية.
+ *
+ * ═══ ولا تُرى نسخةٌ نصفَ مكتوبة ═══
+ *
+ * النسخةُ تُكتب في ملفٍّ مؤقّتٍ مخفيٍّ ثمّ تُنشر باسمها دفعةً واحدة
+ * (`publish`) — فانقطاعٌ في منتصف الكتابة لا يترك بالاسم الذي تقرؤه الصفحات
+ * إلّا لا شيء. وما بقي ناقصًا من قبلُ يُعرف من رأسه (`sound`) ويُعاد صنعُه.
  */
 final class ImageVariants
 {
@@ -63,6 +70,9 @@ final class ImageVariants
     private const WORTH = 0.9;
 
     private const DISK = 'public';
+
+    /** ملفٌّ مؤقّتٌ أقدمُ من هذا تركته عمليّةٌ انقطعت — لا كاتبٌ ينتظره (بالثواني) */
+    private const STALE = 600;
 
     /** ضلعُ نسخة العرض لهذا الملفّ — أو `null` لملفٍّ في مجلّدٍ لا تُصنع له نسخ */
     public static function side(string $path): ?int
@@ -136,14 +146,25 @@ final class ImageVariants
             return;
         }
 
-        Storage::disk(self::DISK)->delete(array_values(array_diff([self::path($raw, self::THUMB), $display], [$raw])));
+        $disk = Storage::disk(self::DISK);
+        $copies = array_values(array_diff([self::path($raw, self::THUMB), $display], [$raw]));
+
+        // ‏وما تركته كتابةٌ انقطعت إلى جوار نسخه — لا يبقى بعد أصله
+        foreach ($copies as $copy) {
+            foreach (self::leftovers($disk->path($copy)) as $tmp) {
+                @unlink($tmp);
+            }
+        }
+
+        $disk->delete($copies);
     }
 
     /**
      * ما تحتاجه هذه الصورة — من رأس الملفّ وحده، بلا فكّ.
      *
      * نسخةُ عرضٍ لما ليس WebP بحدّه، ومصغّرةٌ لما هو أعرضُ منها. وما عنده
-     * نسختُه لا يُطلب مرّةً أخرى.
+     * نسختُه لا يُطلب مرّةً أخرى — ما دامت كاملة: نسخةٌ قطعها انقطاعٌ قبل هذا
+     * الإصلاح تُطلب من جديد، فلا تبقى معروضةً ناقصةً أبدًا.
      *
      * @return array{display: bool, thumb: bool, type: int, w: int, h: int}|null
      */
@@ -161,9 +182,9 @@ final class ImageVariants
         $long = max($w, $h);
 
         return [
-            'display' => ($type !== IMAGETYPE_WEBP || $long > $side) && ! is_file($disk->path((string) self::display($path))),
+            'display' => ($type !== IMAGETYPE_WEBP || $long > $side) && ! self::sound($disk->path((string) self::display($path))),
             'thumb' => in_array(strtok($path, '/'), self::THUMBS, true) && $long > self::THUMB
-                && ! is_file($disk->path(self::path($path, self::THUMB))),
+                && ! self::sound($disk->path(self::path($path, self::THUMB))),
             'type' => $type, 'w' => $w, 'h' => $h,
         ];
     }
@@ -232,7 +253,18 @@ final class ImageVariants
 
         try {
             // ‏و`$written` بالمرجع: ما كُتب قبل أن تسقط الجولةُ يُعرف فيُمحى
-            $out = self::exclusive(function () use ($path, $decode, $need, $write, $out, &$written, $pixels) {
+            $out = self::exclusive(function () use ($path, $decode, $write, $out, &$written, $pixels) {
+                /*
+                 * وما يُحتاج يُسأل مرّةً أخرى داخل القفل: رفعٌ وجولةٌ يطلبان
+                 * الصورةَ نفسها، فينتظر أحدُهما دوره والآخرُ يصنع نسخها — فلا
+                 * تُفكّ مرّتين.
+                 */
+                $need = self::needs($path);
+
+                if ($need === null || (! $need['display'] && ! $need['thumb'])) {
+                    return $out;
+                }
+
                 /*
                  * والذاكرةُ تُسأل داخل القفل لا قبله: فكٌّ آخرُ انتهى للتوّ لا
                  * يُحسب على هذه، ولا يبدأ غيرُها بين السؤال والفكّ.
@@ -384,22 +416,122 @@ final class ImageVariants
     }
 
     /**
-     * يكتب النسخة ثمّ يقرؤها من القرص — ولا يُصدَّق «كُتب» وحده.
+     * ينشر النسخة — وما نشره هو وحده يُمحى إن سقطت الجولة بعده.
      *
      * @param  list<string>  $written
      */
     private static function put(string $path, string $bytes, \GdImage $image, array &$written): bool
     {
-        $disk = Storage::disk(self::DISK);
+        $done = self::publish($path, $bytes, $image);
 
-        if (is_file($disk->path($path)) || ! $disk->put($path, $bytes)) {
+        if (in_array($done, ['published', 'replaced'], true)) {
+            $written[] = $path;
+        }
+
+        return $done !== 'failed';
+    }
+
+    /**
+     * يضع النسخةَ باسمها كاملةً أو لا يضعها — ولا يمسّ نسخةً سليمةً سبقته.
+     *
+     * ═══ لمَ لا تُكتب باسمها مباشرةً ═══
+     *
+     * الكتابةُ تأخذ وقتًا، وعمليّةٌ تنقطع في منتصفها — إيقافٌ أو انهيارٌ أو
+     * انقطاعُ كهرباء — تترك نصفَ ملفٍّ بالاسم الذي تقرؤه الصفحات: يُعرض للزبون
+     * مكسورًا، والجولةُ التالية تراه موجودًا فلا تُصلحه. فتُكتب أوّلًا في ملفٍّ
+     * مخفيٍّ إلى جوارها، وتُثبَّت على القرص (`fsync`)، وتُفحص بحجمها ورأسها
+     * وأبعادها — ثمّ تأخذ اسمَها دفعةً واحدة.
+     *
+     * ═══ ولا تُستبدل سليمة ═══
+     *
+     * النشرُ رابطٌ صلب (`link`): يفشل إن سبقه ملفٌّ بالاسم، في اللحظة التي
+     * يُنشأ فيها — فلا نافذةَ بين «هل هي موجودة؟» والكتابة. رفعٌ وجولةٌ يصنعان
+     * النسخةَ نفسها معًا: الأوّلُ يُنشر، والثاني يجدها سليمةً فيتركها كما هي.
+     * وما سبق ناقصًا — من قبل هذا الإصلاح — يُستبدل باسمه دفعةً واحدة (`rename`).
+     *
+     * @return 'published'|'kept'|'replaced'|'failed'
+     */
+    public static function publish(string $path, string $bytes, \GdImage $image): string
+    {
+        $disk = Storage::disk(self::DISK);
+        $final = $disk->path($path);
+        $tmp = dirname($path).'/.'.Str::random(12).'.'.basename($path);
+        $staged = $disk->path($tmp);
+
+        foreach (self::leftovers($final) as $old) {
+            if ((int) @filemtime($old) < time() - self::STALE) {
+                @unlink($old);
+            }
+        }
+
+        try {
+            if (! $disk->put($tmp, $bytes) || ! self::flush($staged)) {
+                return 'failed';
+            }
+
+            clearstatcache(true, $staged);
+
+            if ((int) @filesize($staged) !== strlen($bytes) || ! self::sound($staged) || ! self::fits(@getimagesize($staged), $image)) {
+                return 'failed';
+            }
+
+            if (@link($staged, $final)) {
+                return 'published';
+            }
+
+            clearstatcache(true, $final);
+
+            if (is_file($final)) {
+                return self::sound($final) ? 'kept' : (@rename($staged, $final) ? 'replaced' : 'failed');
+            }
+
+            // ‏قرصٌ لا يعرف الروابط الصلبة — والاسمُ ما زال خاليًا
+            return @rename($staged, $final) ? 'published' : 'failed';
+        } finally {
+            @unlink($staged);
+        }
+    }
+
+    /**
+     * نسخةٌ كاملةٌ على القرص — من رأسها وحده، بلا فكّ.
+     *
+     * رأسُ WebP يكتب حجمَ الملفّ: ما قُطع في منتصفه أقصرُ ممّا يقوله رأسُه.
+     * و`getimagesize` لا يرى ذلك — يقرأ الرأسَ ويصدّقه.
+     */
+    private static function sound(string $file): bool
+    {
+        clearstatcache(true, $file);
+        $size = @filesize($file);
+        $head = is_int($size) && $size >= 12 ? @file_get_contents($file, false, null, 0, 12) : false;
+
+        return is_string($head) && strlen($head) === 12 && str_starts_with($head, 'RIFF') && substr($head, 8, 4) === 'WEBP'
+            && unpack('V', substr($head, 4, 4))[1] + 8 === $size;
+    }
+
+    /** يثبّت ما كُتب على القرص قبل أن يأخذ اسمه — فانقطاعُ الكهرباء لا يترك الاسمَ على فراغ */
+    private static function flush(string $file): bool
+    {
+        $handle = @fopen($file, 'r+');
+
+        if ($handle === false) {
             return false;
         }
 
-        $written[] = $path;
-        clearstatcache(true, $disk->path($path));
+        try {
+            return ! function_exists('fsync') || @fsync($handle);
+        } finally {
+            fclose($handle);
+        }
+    }
 
-        return (int) @filesize($disk->path($path)) === strlen($bytes) && self::fits(@getimagesize($disk->path($path)), $image);
+    /**
+     * ملفّاتٌ مؤقّتةٌ لهذه النسخة إلى جوارها — مخفيّة، فلا يعدّها الجرد ولا تُعرض.
+     *
+     * @return list<string>
+     */
+    private static function leftovers(string $final): array
+    {
+        return glob(dirname($final).'/.*.'.basename($final)) ?: [];
     }
 
     private static function fits(array|false $info, \GdImage $image): bool

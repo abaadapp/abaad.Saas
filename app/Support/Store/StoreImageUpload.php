@@ -145,8 +145,14 @@ final class StoreImageUpload
         $path = (string) $file->getRealPath();
         $info = $path === '' ? false : @getimagesize($path);
 
-        if (is_array($info) && in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)
-            && $info[0] * $info[1] <= self::MAX_PIXELS) {
+        $decodable = is_array($info) && in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true);
+
+        // ‏أبعادٌ فوق السقف تُحفظ كما رُفعت — ويُكتب لماذا لم تُصغَّر
+        if ($decodable && $info[0] * $info[1] > self::MAX_PIXELS) {
+            \App\Support\ImageMemory::note('shrunk_upload', 'too_large', $info[0], $info[1]);
+        }
+
+        if ($decodable && $info[0] * $info[1] <= self::MAX_PIXELS) {
             $done = self::kept($path, $info[2], $info[0], $info[1], $side);
 
             if ($done !== null) {

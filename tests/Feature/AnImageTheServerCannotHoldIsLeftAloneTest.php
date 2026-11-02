@@ -233,6 +233,48 @@ class AnImageTheServerCannotHoldIsLeftAloneTest extends TestCase
         $this->assertSame(['product_upload=0', 'variants=0', 'product_upload=4', 'variants=4'], $where(), 'السطرُ التالي لم يقل كم سُكت عنه');
     }
 
+    public function test_the_images_log_is_a_daily_file_in_storage_at_warning(): void
+    {
+        // ‏كما يقرؤه الإنتاج: من ملفّ الضبط لا ممّا ضبطه هذا الاختبار
+        $channel = (require config_path('logging.php'))['channels']['images'];
+
+        $this->assertSame(['daily', storage_path('logs/images.log'), 'warning'], [$channel['driver'], $channel['path'], $channel['level']]);
+        $this->assertSame('error', config('logging.channels.system.level'), 'هذا الاختبار لا يُشبه سجلَّ الإنتاج');
+    }
+
+    public function test_a_log_that_cannot_be_written_never_stops_an_upload(): void
+    {
+        // ‏ملفُّ اليوم أنشأه غيرُ مستخدم التطبيق فلا يُكتب فيه — أو مجلّدُه لا يُفتح
+        $blocked = (string) tempnam(sys_get_temp_dir(), 'not-a-dir');
+        config(['logging.channels.images.path' => $blocked.'/images.log']);
+        $this->available(120);
+        $bytes = $this->jpeg(2000, 1500);
+
+        $path = ProductImages::putAll([UploadedFile::fake()->createWithContent('rose.jpg', $bytes)])[0];
+
+        $this->assertSame(md5($bytes), md5((string) Storage::disk('public')->get($path)), 'الرفعُ سقط لأنّ السجلّ لا يُكتب');
+        $this->assertSame('', (string) file_get_contents($this->systemLog));
+        @unlink($blocked);
+    }
+
+    public function test_the_throttle_on_the_database_cache_keeps_an_open_transaction_usable(): void
+    {
+        // ‏الإنتاج يحفظ الذاكرةَ المؤقّتة في القاعدة — وسطرٌ فشل في PostgreSQL يُفسد معاملتَه كلَّها
+        config(['cache.default' => 'database']);
+        $this->available(120);
+
+        DB::transaction(function () {
+            foreach (range(1, 3) as $i) {
+                ProductImages::putAll([UploadedFile::fake()->createWithContent('rose.jpg', $this->jpeg(900, 700))]);
+            }
+
+            $this->assertSame($this->shop->id, DB::table('businesses')->where('id', $this->shop->id)->value('id'), 'المعاملةُ فسدت');
+        });
+
+        $this->assertSame(['product_upload', 'variants'], array_map(fn ($l) => $l[1]['where'], $this->imageLines()));
+        $this->assertSame(2, DB::table('cache')->where('key', 'like', '%images:note:%:low_memory')->count());
+    }
+
     public function test_an_upload_when_memory_is_short_is_kept_as_it_came_and_still_succeeds(): void
     {
         $this->available(120);

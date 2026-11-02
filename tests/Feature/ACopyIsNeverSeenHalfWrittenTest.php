@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\Business;
 use App\Models\Product;
 use App\Support\ImageVariants;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -257,11 +260,80 @@ class ACopyIsNeverSeenHalfWrittenTest extends TestCase
         $this->assertSame($file, DB::table('products')->where('id', $product->id)->value('image'));
     }
 
+    public function test_a_copy_is_never_published_under_an_original_name(): void
+    {
+        [, $file] = $this->oldProduct();
+        $original = md5((string) Storage::disk('public')->get($file));
+        $image = imagecreatetruecolor(2400, 1800);
+        $bytes = $this->webp($image, 80);
+
+        $this->assertSame('failed', ImageVariants::publish($file, $bytes, $image), 'نُشرت نسخةٌ باسم الأصل');
+        $this->assertSame('failed', ImageVariants::publish('logos/'.Str::random(40).'.png.w640.webp', $bytes, $image), 'نُشرت نسخةٌ في مجلّدٍ لا نسخَ له');
+        $this->assertSame($original, md5((string) Storage::disk('public')->get($file)));
+        $this->assertSame([$file], Storage::disk('public')->allFiles('products'));
+    }
+
+    public function test_the_slow_path_waits_for_the_copy_lock_and_gives_up_without_writing(): void
+    {
+        Sleep::fake(syncWithCarbon: true);
+        $image = imagecreatetruecolor(800, 600);
+        $bytes = $this->webp($image, 80);
+        $copy = 'products/'.Str::random(40).'.jpg.w640.webp';
+
+        // ‏كاتبٌ آخرُ يقرّر في هذه النسخة الآن — والقرصُ بلا روابط صلبة، أو اسمُها مأخوذٌ بنسخةٍ ناقصة
+        $held = Cache::lock('images:publish:'.md5($copy), 30);
+        $this->assertTrue($held->get());
+
+        config(['images.hard_links' => false]);
+        $this->assertSame('failed', ImageVariants::publish($copy, $bytes, $image), 'نُشرت والقفلُ بيد غيرها');
+        config(['images.hard_links' => true]);
+        Storage::disk('public')->put($copy, 'RIFF short');
+        $this->assertSame('failed', ImageVariants::publish($copy, $bytes, $image), 'استُبدلت والقفلُ بيد غيرها');
+        $this->assertSame('RIFF short', Storage::disk('public')->get($copy));
+        $this->assertSame([$copy], Storage::disk('public')->allFiles('products'), 'بقي ملفٌّ مؤقّت');
+
+        $held->release();
+        $this->assertSame('replaced', ImageVariants::publish($copy, $bytes, $image));
+        $this->assertWhole($copy);
+    }
+
     public function test_two_processes_racing_for_one_copy_leave_exactly_one_whole_copy(): void
+    {
+        $this->race(fn ($copy) => Storage::disk('public')->delete($copy), ['kept', 'published']);
+    }
+
+    public function test_without_hard_links_two_processes_still_leave_exactly_one_whole_copy(): void
+    {
+        // ‏قرصٌ لا يعرف الروابط الصلبة، أو `link` معطّلةٌ في الخادم — فالنشرُ بالقفل وحده
+        config(['images.hard_links' => false]);
+
+        $this->race(fn ($copy) => Storage::disk('public')->delete($copy), ['kept', 'published']);
+    }
+
+    public function test_two_processes_replacing_a_short_copy_replace_it_once(): void
+    {
+        $this->race(fn ($copy, $payloads) => Storage::disk('public')->put($copy, substr($payloads[0], 0, 100)), ['kept', 'replaced']);
+    }
+
+    /**
+     * عمليّتان حقيقيّتان تنشران النسخةَ نفسها في اللحظة نفسها، جولةً بعد جولة.
+     *
+     * والقفلُ في ملفّات (`cache.default=file`) ليراه الطرفان — كما يرى رفعٌ
+     * وجولةٌ على الخادم قفلَ القاعدة.
+     *
+     * @param  callable(string, list<string>): void  $before  ما يسبق كلَّ جولةٍ على اسم النسخة
+     * @param  list<string>  $expected  نتيجتا العمليّتين مرتّبتين
+     */
+    private function race(callable $before, array $expected): void
     {
         if (! function_exists('pcntl_fork') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('pcntl وposix غير متاحين هنا');
         }
+
+        $locks = sys_get_temp_dir().'/abaad-race-'.Str::random(8);
+        config(['cache.stores.file.path' => $locks, 'cache.stores.file.lock_path' => $locks]);
+        Cache::purge('file');
+        Cache::setDefaultDriver('file');
 
         $image = imagecreatetruecolor(800, 600);
         imagefilledrectangle($image, 0, 0, 799, 599, imagecolorallocate($image, 40, 140, 90));
@@ -270,9 +342,11 @@ class ACopyIsNeverSeenHalfWrittenTest extends TestCase
         $flag = (string) tempnam(sys_get_temp_dir(), 'race');
 
         foreach (range(1, 8) as $round) {
-            Storage::disk('public')->delete($copy);
+            $before($copy, $payloads);
+            file_put_contents($flag, '');
             $go = microtime(true) + 0.2;
             $pid = pcntl_fork();
+            $this->assertNotSame(-1, $pid);
 
             if ($pid === 0) {
                 try {
@@ -290,12 +364,13 @@ class ACopyIsNeverSeenHalfWrittenTest extends TestCase
 
             $results = [$mine, (string) file_get_contents($flag)];
             sort($results);
-            $this->assertSame(['kept', 'published'], $results, 'الجولة '.$round);
+            $this->assertSame($expected, $results, 'الجولة '.$round);
             $this->assertContains(md5((string) Storage::disk('public')->get($copy)), array_map('md5', $payloads));
             $this->assertWhole($copy);
             $this->assertSame([$copy], Storage::disk('public')->allFiles('products'), 'بقي ملفٌّ مؤقّت في الجولة '.$round);
         }
 
         @unlink($flag);
+        (new Filesystem)->deleteDirectory($locks);
     }
 }

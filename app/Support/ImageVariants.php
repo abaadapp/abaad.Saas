@@ -453,6 +453,11 @@ final class ImageVariants
      */
     public static function publish(string $path, string $bytes, \GdImage $image): string
     {
+        // ‏باسم نسخةٍ وحده — فلا يُكتب فوق أصلٍ ولو نودي باسمه
+        if (! self::isVariant($path) || self::side(self::base($path)) === null) {
+            return 'failed';
+        }
+
         $disk = Storage::disk(self::DISK);
         $final = $disk->path($path);
         $tmp = dirname($path).'/.'.Str::random(12).'.'.basename($path);
@@ -475,21 +480,41 @@ final class ImageVariants
                 return 'failed';
             }
 
-            if (@link($staged, $final)) {
+            if (self::hardLinks() && @link($staged, $final)) {
                 return 'published';
             }
 
-            clearstatcache(true, $final);
+            /*
+             * الاسمُ مأخوذ، أو قرصٌ لا يعرف الروابط الصلبة: يُقرَّر تحت قفلٍ
+             * على هذه النسخة وحدها، ويُسأل من جديد داخله. فكاتبان لا يقرّران
+             * معًا: الأوّلُ ينشر أو يستبدل الناقصة، والثاني يجدها سليمةً
+             * فيتركها. و`rename` يضع الملفَّ باسمه دفعةً واحدة — قارئٌ يرى
+             * القديمةَ أو الجديدة، لا نصفًا.
+             */
+            return Cache::lock('images:publish:'.md5($path), 30)->block(10, function () use ($staged, $final) {
+                clearstatcache(true, $final);
+                $taken = is_file($final);
 
-            if (is_file($final)) {
-                return self::sound($final) ? 'kept' : (@rename($staged, $final) ? 'replaced' : 'failed');
-            }
+                if ($taken && self::sound($final)) {
+                    return 'kept';
+                }
 
-            // ‏قرصٌ لا يعرف الروابط الصلبة — والاسمُ ما زال خاليًا
-            return @rename($staged, $final) ? 'published' : 'failed';
+                return @rename($staged, $final) ? ($taken ? 'replaced' : 'published') : 'failed';
+            });
+        } catch (LockTimeoutException) {
+            return 'failed';
         } finally {
             @unlink($staged);
         }
+    }
+
+    /**
+     * هل يُنشر برابطٍ صلب؟ — والدالّةُ قد تُعطَّل على خادم (`disable_functions`)،
+     * والقرصُ قد لا يعرفها: فيُنشر بالقفل وحده.
+     */
+    private static function hardLinks(): bool
+    {
+        return function_exists('link') && (bool) config('images.hard_links', true);
     }
 
     /**
@@ -531,7 +556,7 @@ final class ImageVariants
      */
     private static function leftovers(string $final): array
     {
-        return glob(dirname($final).'/.*.'.basename($final)) ?: [];
+        return function_exists('glob') ? (glob(dirname($final).'/.*.'.basename($final)) ?: []) : [];
     }
 
     private static function fits(array|false $info, \GdImage $image): bool

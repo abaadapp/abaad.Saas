@@ -68,4 +68,10 @@ return [
     */
     'note_every' => (int) env('IMAGES_NOTE_EVERY', 600),
 
+    /*
+    | نشرُ النسخة باسمها برابطٍ صلب (`link`) — يرفض ما سبقه في لحظته. يُطفأ
+    | لقرصٍ لا يعرف الروابط الصلبة، فيُنشر تحت قفلٍ على النسخة (`ImageVariants::publish`).
+    */
+    'hard_links' => (bool) env('IMAGES_HARD_LINKS', true),
+
 ];

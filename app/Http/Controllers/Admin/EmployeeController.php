@@ -923,7 +923,8 @@ class EmployeeController extends Controller
      *
      * لمن يمنحها وحده (`Permissions::grantsInbox`) ولمتجرٍ فُتح له الصندوق،
      * وإلّا لا شيء. وصاحبُ النشاط ليس فيها — يملكها بدوره — ولا الفاعلُ
-     * نفسُه: لا يُعدِّل أحدٌ صلاحيته.
+     * نفسُه: لا يُعدِّل أحدٌ صلاحيته. ولا من هو فوق الفاعل (`Permissions::beyond`):
+     * مديرٌ مخوَّل لا يمسّ حسابَ من يفتح ما لا يفتحه — كما في ملفّ الموظّف.
      *
      * @return array{staff: list<array{id: int, name: string, job_title: ?string, active: bool, level: string}>}|null
      */
@@ -940,7 +941,7 @@ class EmployeeController extends Controller
                 ->whereKeyNot($actor->id)
                 ->orderBy('name')
                 ->get()
-                ->reject(fn (User $u) => Permissions::isOwner($u))
+                ->reject(fn (User $u) => Permissions::isOwner($u) || Permissions::beyond($actor, $u) !== [])
                 ->map(fn (User $u) => [
                     'id' => (int) $u->id,
                     'name' => (string) $u->name,
@@ -954,9 +955,10 @@ class EmployeeController extends Controller
     /**
      * محادثاتُ واتساب لعدّة موظّفين بحفظةٍ واحدة — منحًا أو سحبًا.
      *
-     * الحارسُ حارسُ الحقل الواحد (`inboxGrant`) لكلّ صفّ: يمنحها صاحبُ
-     * النشاط أو مديرُه المخوَّل، ولا صاحبُ النشاط فيها ولا الفاعلُ نفسُه،
-     * ولا موظّفٌ من متجرٍ آخر. والصفوفُ كلُّها أو لا شيء، وكلُّ تبدّلٍ يُكتب
+     * الحارسُ حارسُ ملفّ الموظّف لكلّ صفّ (`inboxGrant` و`refuseTouchingSomeoneAboveMe`):
+     * يمنحها صاحبُ النشاط أو مديرُه المخوَّل، ولا صاحبُ النشاط فيها ولا الفاعلُ
+     * نفسُه، ولا موظّفٌ من متجرٍ آخر، ولا من يفتح ما لا يفتحه الفاعل — فالجماعيُّ
+     * لا يكون بابًا خلفيًّا لما يردّه الملفّ. والصفوفُ كلُّها أو لا شيء، وكلُّ تبدّلٍ يُكتب
      * في سجلّ النشاط باسم فاعله. والسحبُ يسري في الطلب التالي للموظّف ولو
      * كانت المحادثاتُ مفتوحةً أمامه (`WhatsAppInboxController`).
      */
@@ -982,6 +984,7 @@ class EmployeeController extends Controller
             $wanted->keys()->contains(fn (int $id) => ! $staff->has($id)) => __('موظفٌ ليس في متجرك.'),
             $wanted->has($actor->id) => __('لا يمكنك تعديل صلاحيات حسابك الخاص.'),
             $staff->contains(fn (User $u) => Permissions::isOwner($u)) => __('صاحب النشاط يملك محادثات واتساب بدوره — لا تُعدَّل صلاحيته.'),
+            ($above = $staff->first(fn (User $u) => Permissions::beyond($actor, $u) !== [])) !== null => __('حساب :name يفتح ما لا تفتحه — لا يُمسّ إلا ممّن يملكه.', ['name' => $above->name]),
             default => null,
         };
 

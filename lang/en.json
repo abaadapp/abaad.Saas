@@ -10401,5 +10401,7 @@
     "هذا الرد أُرسل من قبل — لم يُرسل مرة ثانية.": "This reply was already sent — it was not sent again.",
     "موظفٌ ليس في متجرك.": "An employee who is not in your shop.",
     "لم يتغيّر شيء في صلاحيات محادثات واتساب": "Nothing changed in WhatsApp conversation access",
-    "حُدّثت صلاحيات محادثات واتساب لـ:n موظف": "WhatsApp conversation access updated for :n employees"
+    "حُدّثت صلاحيات محادثات واتساب لـ:n موظف": "WhatsApp conversation access updated for :n employees",
+    "هذا الرد قيد الإرسال — لم يُرسل مرة ثانية.": "This reply is still being sent — it was not sent again.",
+    "حساب :name يفتح ما لا تفتحه — لا يُمسّ إلا ممّن يملكه.": "The :name account opens what you can't — only someone who has it can change it."
 }

@@ -21,6 +21,8 @@ use App\Support\WhatsAppMode;
 use App\Support\WhatsAppStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -64,6 +66,14 @@ class AShopAndItsStaffShareOneWhatsAppInboxTest extends TestCase
 
     private static int $seq = 0;
 
+    /** ميتا ترفض كلَّ شيء */
+    private bool $metaRefuses = false;
+
+    /** ميتا ترفض رفعَ الملفّ رقم كذا — ما سواه يُرفع */
+    private ?int $failUpload = null;
+
+    private int $uploads = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -79,7 +89,13 @@ class AShopAndItsStaffShareOneWhatsAppInboxTest extends TestCase
         Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
 
         Http::preventStrayRequests();
-        Http::fake(['graph.example.test/*' => fn () => Http::response(['messages' => [['id' => 'wamid.OUT-'.(++self::$seq)]]], 200)]);
+        Http::fake(fn (HttpRequest $r) => match (true) {
+            $this->metaRefuses => Http::response(['error' => ['code' => 131026, 'message' => 'Message undeliverable']], 400),
+            str_ends_with($r->url(), '/media') => ++$this->uploads === $this->failUpload
+                ? Http::response(['error' => ['code' => 131053, 'message' => 'Media upload error']], 400)
+                : Http::response(['id' => 'MEDIA-'.(++self::$seq)], 200),
+            default => Http::response(['messages' => [['id' => 'wamid.OUT-'.(++self::$seq)]]], 200),
+        });
         Storage::fake('local');
 
         $this->shop = $this->shop('محل الورد');
@@ -293,10 +309,11 @@ class AShopAndItsStaffShareOneWhatsAppInboxTest extends TestCase
         $this->inbound('PN-A', 'wamid.D');
         $chat = $this->chatWith(self::CUSTOMER);
 
-        $this->reply($this->replier, $chat, 'تم', 'key-one')->assertSessionHasNoErrors();
+        $this->reply($this->replier, $chat, 'تم', 'key-one')->assertSessionHasNoErrors()->assertSessionHas('toast.type', 'success');
+        // وردٌّ ضاع جوابُه فأعاده المتصفّح: يُقال ما جرى أوّلَ مرّة — ولا يخرج ثانيةً
         $this->reply($this->replier, $chat, 'تم', 'key-one')
             ->assertSessionHasNoErrors()
-            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'info');
+            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'info' && str_contains($t['msg'], 'أُرسل من قبل'));
         // والمفتاحُ نفسُه من حسابٍ آخر في اللحظة نفسها لا يُخرجه ثانيةً
         $this->reply($this->owner, $chat, 'تم', 'key-one')->assertSessionHasNoErrors();
 
@@ -310,6 +327,143 @@ class AShopAndItsStaffShareOneWhatsAppInboxTest extends TestCase
         // ومفتاحٌ مكسور يُردّ بسببه ولا يُرسل شيء
         $this->reply($this->replier, $chat, 'تم', 'bad key!')->assertSessionHasErrors('client_key');
         $this->assertSame(2, $this->sent());
+    }
+
+    public function test_a_twin_request_while_the_first_is_still_sending_sends_nothing_on_the_database_store(): void
+    {
+        // مخزنُ الإنتاج نفسُه — القفلُ صفٌّ في `cache_locks` لا ذاكرةُ العمليّة
+        config(['cache.default' => 'database']);
+
+        /*
+         * وعلى PostgreSQL: الاختبارُ كلُّه داخل معاملة (`RefreshDatabase`)، وإدخالُ
+         * قفلٍ مأخوذٍ يُرفض فتُلغى المعاملةُ كلُّها — والطلبُ على الإنتاج ليس
+         * داخل معاملة. فالأقفالُ هنا على اتّصالٍ ثانٍ بالقاعدة نفسها، كما هي هناك.
+         * وSQLite في الذاكرة قاعدةٌ لكلّ اتّصال، ولا تُلغي معاملتَها بإدخالٍ رُفض.
+         */
+        if (DB::getDriverName() === 'pgsql') {
+            config([
+                'database.connections.locks' => config('database.connections.pgsql'),
+                'cache.stores.database.lock_connection' => 'locks',
+            ]);
+            $this->beforeApplicationDestroyed(fn () => DB::connection('locks')->table('cache_locks')->where('key', 'like', '%wa-inbox-reply%')->delete());
+        }
+
+        $this->inbound('PN-A', 'wamid.T');
+        $chat = $this->chatWith(self::CUSTOMER);
+
+        // الطلبُ الأوّل يحمل القفلَ ولم يكتب صفًّا بعد
+        $first = Cache::lock(WhatsAppInbox::replyKey($chat, 'key-twin').':lock', 60);
+        $this->assertTrue($first->get());
+        $this->assertFalse(Cache::lock(WhatsAppInbox::replyKey($chat, 'key-twin').':lock', 60)->get());
+
+        $this->reply($this->replier, $chat, 'تم', 'key-twin')
+            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'info' && str_contains($t['msg'], 'قيد الإرسال'));
+        // ومن حسابٍ آخر في اللحظة نفسها
+        $this->reply($this->owner, $chat, 'تم', 'key-twin')
+            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'info' && str_contains($t['msg'], 'قيد الإرسال'));
+        $this->assertSame(0, WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->count());
+        $this->assertSame(0, $this->sent());
+
+        // أطلقه فخرج — مرّةً واحدة
+        $first->release();
+        $this->reply($this->replier, $chat, 'تم', 'key-twin')->assertSessionHas('toast.type', 'success');
+        $this->reply($this->replier, $chat, 'تم', 'key-twin')->assertSessionHas('toast.type', 'info');
+        $this->assertSame(1, $this->sent());
+    }
+
+    public function test_a_reply_recorded_before_the_request_died_is_never_sent_twice(): void
+    {
+        $this->inbound('PN-A', 'wamid.Z');
+        $chat = $this->chatWith(self::CUSTOMER);
+
+        // كُتب صفُّه وحُفظ تحت مفتاحه — ثمّ مات الطلبُ قبل أن يعرف جوابَ ميتا
+        $row = WhatsAppChatMessage::create([
+            'business_id' => $this->shop->id, 'chat_id' => $chat->id, 'direction' => WhatsAppChatMessage::OUT,
+            'body' => 'تم', 'whatsapp_connection_id' => $this->line->id, 'phone_number_id' => 'PN-A',
+            'sender_user_id' => $this->replier->id, 'sender_name' => 'منى', 'status' => WhatsAppStatus::QUEUED,
+        ]);
+        Cache::put(WhatsAppInbox::replyKey($chat, 'key-died'), [$row->id], now()->addDay());
+
+        $this->reply($this->replier, $chat, 'تم', 'key-died')
+            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'info' && str_contains($t['msg'], 'قيد الإرسال'));
+        $this->assertSame(0, $this->sent());
+        $this->assertSame(1, WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->count());
+    }
+
+    public function test_a_request_that_died_after_meta_took_the_reply_does_not_send_it_again_on_retry(): void
+    {
+        $this->inbound('PN-A', 'wamid.Y');
+        $chat = $this->chatWith(self::CUSTOMER);
+
+        // ميتا أخذت الردّ — ثمّ مات الطلبُ قبل أن يكتب «أُرسل» على صفّه
+        $died = false;
+        WhatsAppChatMessage::saving(function (WhatsAppChatMessage $m) use (&$died) {
+            if (! $died && $m->status === WhatsAppStatus::SENT) {
+                $died = true;
+                throw new \RuntimeException('انقطع الطلب');
+            }
+        });
+
+        $this->reply($this->replier, $chat, 'تم', 'key-dead')->assertServerError();
+        $this->assertSame(1, $this->sent());
+
+        // أعاده المتصفّح بالمفتاح نفسه: صفُّه مكتوبٌ تحته «قيد الإرسال» — فلا يخرج ثانيةً
+        $this->reply($this->replier, $chat, 'تم', 'key-dead')
+            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'info' && str_contains($t['msg'], 'قيد الإرسال'));
+        $this->assertSame(1, $this->sent());
+        $this->assertSame([WhatsAppStatus::QUEUED], WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->pluck('status')->all());
+    }
+
+    public function test_a_meta_failure_is_said_again_when_retried_with_its_key_and_a_new_reply_goes_out(): void
+    {
+        $this->inbound('PN-A', 'wamid.F');
+        $chat = $this->chatWith(self::CUSTOMER);
+        $this->metaRefuses = true;
+
+        $this->reply($this->replier, $chat, 'هل يصل؟', 'key-fail')->assertSessionHas('toast.type', 'danger');
+        $failed = WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->sole();
+        $this->assertSame(WhatsAppStatus::FAILED, $failed->status);
+        $this->assertStringContainsString('undeliverable', (string) $failed->error_message);
+
+        // الضغطةُ الثانية لا تقول «أُرسل» عن فشل — ولا تُعيد المحاولة بالمفتاح نفسه
+        $calls = Http::recorded()->count();
+        $this->reply($this->replier, $chat, 'هل يصل؟', 'key-fail')
+            ->assertSessionHas('toast', fn (array $t) => $t['type'] === 'danger' && str_contains($t['msg'], 'لم يخرج'));
+        $this->assertSame($calls, Http::recorded()->count());
+
+        // وبعد الفشل المؤكَّد: ردٌّ جديدٌ بمفتاحه يخرج، والفاشلُ باقٍ بسببه
+        $this->metaRefuses = false;
+        $this->reply($this->replier, $chat, 'هل يصل؟', 'key-retry')->assertSessionHas('toast.type', 'success');
+        $this->assertSame([WhatsAppStatus::FAILED, WhatsAppStatus::SENT], WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->orderBy('id')->pluck('status')->all());
+        // محاولتان إلى ميتا: الأولى رُدّت، والثانية بمفتاحٍ جديد — لا ثالثةَ من الضغطة المكرّرة
+        $this->assertSame(2, $this->sent());
+    }
+
+    public function test_one_attachment_failing_is_said_and_what_went_out_is_not_sent_again(): void
+    {
+        $this->inbound('PN-A', 'wamid.M');
+        $chat = $this->chatWith(self::CUSTOMER);
+        // الملفُّ الثاني يُردّ عند الرفع
+        $this->failUpload = 2;
+
+        $post = fn () => $this->actingAs($this->replier)->post(route('admin.whatsappInbox.reply', $chat->id), [
+            'body' => 'الصورتان', 'client_key' => 'key-files',
+            'files' => [UploadedFile::fake()->image('one.jpg'), UploadedFile::fake()->image('two.jpg')],
+        ]);
+
+        $post()->assertSessionHas('toast.type', 'danger');
+        $this->assertSame(
+            [[null, WhatsAppStatus::SENT], ['image', WhatsAppStatus::SENT], ['image', WhatsAppStatus::FAILED]],
+            WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->orderBy('id')->get()
+                ->map(fn ($m) => [$m->media_type, $m->status])->all(),
+        );
+        $this->assertSame(2, $this->sent());
+
+        // والإعادةُ بالمفتاح نفسه تقول الفشلَ ولا تُكرّر النصَّ ولا الصورةَ التي وصلت
+        $calls = Http::recorded()->count();
+        $post()->assertSessionHas('toast.type', 'danger');
+        $this->assertSame($calls, Http::recorded()->count());
+        $this->assertSame(3, WhatsAppChatMessage::where('direction', WhatsAppChatMessage::OUT)->count());
     }
 
     public function test_a_reply_refused_for_its_reason_does_not_burn_its_key(): void
@@ -421,6 +575,45 @@ class AShopAndItsStaffShareOneWhatsAppInboxTest extends TestCase
         // ومتجرٌ لم يُفتح له الصندوقُ لا يمنح شيئًا
         $this->shop->forceFill(['whatsapp_enabled' => false])->save();
         $this->actingAs($this->owner->fresh())->post(route('admin.employees.inboxAccess'), $levels([$this->none->id => 'reply']))->assertNotFound();
+        $this->assertSame(WhatsAppInbox::VIEW, $this->none->fresh()->whatsapp_inbox);
+    }
+
+    public function test_an_authorised_manager_never_touches_someone_who_opens_more_than_he_does(): void
+    {
+        // مديرٌ مضيَّق: «الموظفين» واللوحة وحدهما — وخوّله صاحبُ النشاط بالردّ
+        $manager = $this->user($this->shop, 'manager', WhatsAppInbox::REPLY, ['dashboard', 'employees'], 'مدير');
+        $accountant = $this->user($this->shop, 'accountant', null, ['dashboard', 'finance'], 'محاسب');
+
+        // ملفُّ الموظّف يردّه — والجماعيُّ لا يكون بابًا خلفيًّا له
+        $this->actingAs($manager)->post(route('admin.employees.inboxAccess'), ['levels' => [$accountant->id => WhatsAppInbox::REPLY]])
+            ->assertSessionHasErrors('levels');
+        $this->actingAs($manager)->post(route('admin.employees.inboxAccess'), ['levels' => [
+            $this->none->id => WhatsAppInbox::VIEW, $accountant->id => WhatsAppInbox::VIEW,
+        ]])->assertSessionHasErrors('levels');
+        $this->assertNull($accountant->fresh()->whatsapp_inbox);
+        $this->assertNull($this->none->fresh()->whatsapp_inbox);
+
+        // ولا يراه في الشاشة — ويرى من دونه
+        $roster = collect($this->actingAs($manager)->get(route('admin.employees.index'))->assertOk()->viewData('page')['props']['inboxAccess']['staff'])->pluck('id');
+        $this->assertNotContains($accountant->id, $roster);
+        $this->assertNotContains($this->owner->id, $roster);
+        $this->assertNotContains($manager->id, $roster);
+        $this->assertContains($this->none->id, $roster);
+
+        // ومن دونه يمنحه
+        $this->actingAs($manager)->post(route('admin.employees.inboxAccess'), ['levels' => [$this->none->id => WhatsAppInbox::VIEW]])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppInbox::VIEW, $this->none->fresh()->whatsapp_inbox);
+
+        // وصاحبُ النشاط يمسّ الجميع
+        $this->actingAs($this->owner)->post(route('admin.employees.inboxAccess'), ['levels' => [$accountant->id => WhatsAppInbox::VIEW]])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppInbox::VIEW, $accountant->fresh()->whatsapp_inbox);
+
+        // وسحبُ الردّ عن المدير يسحب منه المنحَ معه
+        $this->actingAs($this->owner)->post(route('admin.employees.inboxAccess'), ['levels' => [$manager->id => WhatsAppInbox::VIEW]])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($manager->fresh())->post(route('admin.employees.inboxAccess'), ['levels' => [$this->none->id => 'none']])->assertForbidden();
         $this->assertSame(WhatsAppInbox::VIEW, $this->none->fresh()->whatsapp_inbox);
     }
 

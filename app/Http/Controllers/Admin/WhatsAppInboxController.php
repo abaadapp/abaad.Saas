@@ -156,17 +156,22 @@ class WhatsAppInboxController extends Controller
             return back()->withErrors(['body' => __('اكتب ردًّا أو أرفق ملفًّا.')]);
         }
 
-        $sent = WhatsAppInbox::reply($found, $request->user(), (string) ($data['body'] ?? ''), $files, $data['client_key'] ?? null);
+        ['parts' => $parts, 'again' => $again] = WhatsAppInbox::reply($found, $request->user(), (string) ($data['body'] ?? ''), $files, $data['client_key'] ?? null);
 
-        if ($sent === null) {
-            return back()->with('toast', ['msg' => __('هذا الرد أُرسل من قبل — لم يُرسل مرة ثانية.'), 'type' => 'info']);
-        }
+        /*
+         * وما يُقال بحال الصفوف لا بأنّ الطلب وصل: مفتاحٌ أُجيب من قبل يُقال
+         * فيه ما جرى أوّلَ مرّة — فشلٌ بسببه، أو «قيد الإرسال»، أو «أُرسل» —
+         * ولا يخرج شيءٌ ثانيةً.
+         */
+        $failed = collect($parts)->where('status', WhatsAppStatus::FAILED)->isNotEmpty();
+        $pending = $parts === [] || collect($parts)->contains('status', WhatsAppStatus::QUEUED);
 
-        $failed = collect($sent)->where('status', 'failed')->count();
-
-        return back()->with('toast', $failed === 0
-            ? ['msg' => __('أُرسل الردّ'), 'type' => 'success']
-            : ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'danger']);
+        return back()->with('toast', match (true) {
+            $failed => ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'danger'],
+            $again && $pending => ['msg' => __('هذا الرد قيد الإرسال — لم يُرسل مرة ثانية.'), 'type' => 'info'],
+            $again => ['msg' => __('هذا الرد أُرسل من قبل — لم يُرسل مرة ثانية.'), 'type' => 'info'],
+            default => ['msg' => __('أُرسل الردّ'), 'type' => 'success'],
+        });
     }
 
     /**

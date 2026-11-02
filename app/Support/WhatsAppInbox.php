@@ -105,6 +105,12 @@ final class WhatsAppInbox
     /** حدُّ واتساب للنصّ ٤٠٩٦ */
     public const MAX_BODY = 4000;
 
+    /**
+     * كم يُحجز مفتاحُ الردّ وهو يخرج — نصٌّ وثلاثةُ ملفّاتٍ إلى ميتا، كلٌّ
+     * بمهلته. وطلبٌ مات وهو يحمل القفل يُطلق بعدها.
+     */
+    public const REPLY_LOCK_SECONDS = 300;
+
     /* ═══ لماذا لم تُحفظ رسالةٌ وصلت رقمَ المتجر — يُكتب على وصلتها بلا نصّها ═══ */
 
     /** صندوقُ المحادثات غير متاحٍ للمتجر — باقتُه لا تشمل واتساب أو أُطفئ لحسابه (`available`) */
@@ -694,10 +700,24 @@ final class WhatsAppInbox
      *
      * والمرسِلُ من الجلسة، والرقمُ من `check` — لا شيء منهما من الطلب.
      *
+     * ═══ والضغطتان ردٌّ واحد ═══
+     *
+     * المربّعُ يحمل مفتاحًا لكلّ ردٍّ يُكتب، ويتبدّل بعد أن يُجاب. فضغطةٌ
+     * ثانية، أو طلبٌ أعاده المتصفّحُ بعد انقطاع، يصل بالمفتاح نفسه:
+     *
+     * - طلبٌ بالمفتاح نفسِه يُرسل الآن (قفلٌ ذرّيّ في مخزن الذاكرة — قاعدةُ
+     *   البيانات على الإنتاج): لا يخرج شيء، ويُقال إنّه قيد الإرسال.
+     * - وأُجيب من قبل: لا يخرج شيء، ويُعاد ما خرج أوّلَ مرّة بحاله —
+     *   وصلٌ أو فشلٌ بسببه أو «قيد الإرسال» — لا «أُرسل» عن فشل.
+     *
+     * والصفوفُ تُكتب ويُحفظ معرّفُها تحت المفتاح **قبل** أن تُسأل ميتا: طلبٌ
+     * مات بعد أن خرج الردُّ لا يُخرجه ثانيةً حين يُعاد، ويبقى صفُّه يقول
+     * حالَه. والحجزُ بعد `check`: ردٌّ رُدّ لسببه لا يحجز مفتاحَه.
+     *
      * @param  list<UploadedFile>  $files
-     * @return list<WhatsAppChatMessage>|null
+     * @return array{parts: list<WhatsAppChatMessage>, again: bool} `again`: هذا المفتاحُ أُجيب أو يُجاب — لم يخرج الآن شيء
      */
-    public static function reply(WhatsAppChat $chat, User $sender, string $body, array $files = [], ?string $key = null): ?array
+    public static function reply(WhatsAppChat $chat, User $sender, string $body, array $files = [], ?string $key = null): array
     {
         ['line' => $line, 'reason' => $reason] = self::check($chat);
 
@@ -705,76 +725,122 @@ final class WhatsAppInbox
             throw ValidationException::withMessages(['body' => $reason]);
         }
 
-        /*
-         * ═══ والضغطتان ردٌّ واحد ═══
-         *
-         * المربّعُ يحمل مفتاحًا لكلّ ردٍّ يُكتب، ويتبدّل بعد أن يخرج. فضغطةٌ
-         * ثانية، أو طلبٌ أعاده المتصفّحُ بعد انقطاع، يصل بالمفتاح نفسه فلا
-         * يخرج ثانيةً — ولو جاء من حسابٍ آخر في اللحظة نفسها. والحجزُ بعد
-         * `check`: ردٌّ رُدّ لسببه لا يحجز مفتاحَه فيُرفض حين يُعاد.
-         * و`null` = خرج من قبل.
-         */
-        if ($key !== null && ! Cache::add('wa-inbox-reply:'.$chat->business_id.':'.$chat->id.':'.$key, $sender->id, now()->addDay())) {
-            return null;
-        }
-
         $body = mb_substr(trim($body), 0, self::MAX_BODY);
-        $sent = [];
 
-        if ($body !== '') {
-            $sent[] = self::deliverPart($chat, $line, $sender, $body, null);
+        if ($key === null) {
+            return ['parts' => self::send($chat, $line, self::draft($chat, $line, $sender, $body, $files)), 'again' => false];
         }
 
-        foreach ($files as $file) {
-            $sent[] = self::deliverPart($chat, $line, $sender, null, $file);
+        $done = self::replyKey($chat, $key);
+        $lock = Cache::lock($done.':lock', self::REPLY_LOCK_SECONDS);
+
+        if (! $lock->get()) {
+            return ['parts' => self::partsOf($chat, Cache::get($done)), 'again' => true];
         }
 
-        return $sent;
+        try {
+            if (Cache::has($done)) {
+                return ['parts' => self::partsOf($chat, Cache::get($done)), 'again' => true];
+            }
+
+            $drafts = self::draft($chat, $line, $sender, $body, $files);
+            Cache::put($done, array_map(fn (array $d) => $d['message']->id, $drafts), now()->addDay());
+
+            return ['parts' => self::send($chat, $line, $drafts), 'again' => false];
+        } finally {
+            $lock->release();
+        }
     }
 
-    private static function deliverPart(WhatsAppChat $chat, WhatsAppConnection $line, User $sender, ?string $body, ?UploadedFile $file): WhatsAppChatMessage
+    /** اسمُ مفتاح الردّ في مخزن الذاكرة — والقفلُ باسمه وذيلِه `:lock` */
+    public static function replyKey(WhatsAppChat $chat, string $key): string
     {
-        $mime = $file ? (string) ($file->getMimeType() ?: $file->getClientMimeType()) : null;
+        return 'wa-inbox-reply:'.$chat->business_id.':'.$chat->id.':'.$key;
+    }
 
-        $message = WhatsAppChatMessage::create([
-            'business_id' => $chat->business_id,
-            'chat_id' => $chat->id,
-            'direction' => WhatsAppChatMessage::OUT,
-            'body' => $body,
-            'media_type' => $file ? WhatsAppMedia::kind($mime) : null,
-            'whatsapp_connection_id' => $line->id,
-            'phone_number_id' => (string) $line->phone_number_id,
-            'sender_user_id' => $sender->id,
-            'sender_name' => mb_substr((string) $sender->name, 0, 150),
-            'status' => WhatsAppStatus::QUEUED,
-        ]);
+    /**
+     * صفوفُ الردّ قبل أن يخرج — كلٌّ «قيد الإرسال»، والملفُّ محفوظٌ معه.
+     *
+     * @param  list<UploadedFile>  $files
+     * @return list<array{message: WhatsAppChatMessage, files: list<array<string, string>>, preview: string}>
+     */
+    private static function draft(WhatsAppChat $chat, WhatsAppConnection $line, User $sender, string $body, array $files): array
+    {
+        $parts = $body !== '' ? [[$body, null]] : [];
 
-        $files = [];
-
-        if ($file !== null) {
-            $kept = self::keep($message, (string) file_get_contents($file->getRealPath()), (string) $mime, (string) $file->getClientOriginalName());
-            $files[] = ['disk' => $kept->disk, 'path' => $kept->path, 'mime' => $kept->mime, 'name' => $kept->name];
+        foreach ($files as $file) {
+            $parts[] = [null, $file];
         }
 
-        // والنداءُ خارجَ أيّ معاملة — انظر `CrmWhatsApp::send`
-        $out = WhatsAppMedia::deliver($line, (string) $chat->customer_phone, $body, $files);
+        return array_map(function (array $part) use ($chat, $line, $sender) {
+            [$text, $file] = $part;
+            $mime = $file ? (string) ($file->getMimeType() ?: $file->getClientMimeType()) : null;
 
-        $message->forceFill($out['state'] === 'sent'
-            ? ['status' => WhatsAppStatus::SENT, 'wamid' => $out['id'], 'sent_at' => now()]
-            : [
-                'status' => WhatsAppStatus::FAILED,
-                'failed_at' => now(),
-                'error_code' => 'provider_failed',
-                'error_message' => mb_substr((string) $out['message'], 0, 500),
+            $message = WhatsAppChatMessage::create([
+                'business_id' => $chat->business_id,
+                'chat_id' => $chat->id,
+                'direction' => WhatsAppChatMessage::OUT,
+                'body' => $text,
+                'media_type' => $file ? WhatsAppMedia::kind($mime) : null,
+                'whatsapp_connection_id' => $line->id,
+                'phone_number_id' => (string) $line->phone_number_id,
+                'sender_user_id' => $sender->id,
+                'sender_name' => mb_substr((string) $sender->name, 0, 150),
+                'status' => WhatsAppStatus::QUEUED,
+            ]);
+
+            $kept = [];
+
+            if ($file !== null) {
+                $copy = self::keep($message, (string) file_get_contents($file->getRealPath()), (string) $mime, (string) $file->getClientOriginalName());
+                $kept[] = ['disk' => $copy->disk, 'path' => $copy->path, 'mime' => $copy->mime, 'name' => $copy->name];
+            }
+
+            return ['message' => $message, 'files' => $kept, 'preview' => $text ?? ($file ? '['.$file->getClientOriginalName().']' : '')];
+        }, $parts);
+    }
+
+    /**
+     * يخرج كلُّ صفٍّ إلى ميتا بحاله — والنداءُ خارجَ أيّ معاملة (انظر `CrmWhatsApp::send`).
+     *
+     * @param  list<array{message: WhatsAppChatMessage, files: list<array<string, string>>, preview: string}>  $drafts
+     * @return list<WhatsAppChatMessage>
+     */
+    private static function send(WhatsAppChat $chat, WhatsAppConnection $line, array $drafts): array
+    {
+        return array_map(function (array $d) use ($chat, $line) {
+            $message = $d['message'];
+            $out = WhatsAppMedia::deliver($line, (string) $chat->customer_phone, $message->body, $d['files']);
+
+            $message->forceFill($out['state'] === 'sent'
+                ? ['status' => WhatsAppStatus::SENT, 'wamid' => $out['id'], 'sent_at' => now()]
+                : [
+                    'status' => WhatsAppStatus::FAILED,
+                    'failed_at' => now(),
+                    'error_code' => 'provider_failed',
+                    'error_message' => mb_substr((string) $out['message'], 0, 500),
+                ])->save();
+
+            $chat->forceFill([
+                'last_message_at' => now(),
+                'last_preview' => self::preview($d['preview']),
+                'last_direction' => WhatsAppChatMessage::OUT,
             ])->save();
 
-        $chat->forceFill([
-            'last_message_at' => now(),
-            'last_preview' => self::preview($body ?? ($file ? '['.$file->getClientOriginalName().']' : '')),
-            'last_direction' => WhatsAppChatMessage::OUT,
-        ])->save();
+            return $message;
+        }, $drafts);
+    }
 
-        return $message;
+    /**
+     * صفوفُ ردٍّ أُجيب مفتاحُه — بحالها الآن، ومن هذه المحادثة وحدها.
+     *
+     * @return list<WhatsAppChatMessage>
+     */
+    private static function partsOf(WhatsAppChat $chat, mixed $ids): array
+    {
+        return is_array($ids) && $ids !== []
+            ? WhatsAppChatMessage::where('chat_id', $chat->id)->whereIn('id', $ids)->orderBy('id')->get()->all()
+            : [];
     }
 
     /* ═══════════════════ القراءة ═══════════════════ */

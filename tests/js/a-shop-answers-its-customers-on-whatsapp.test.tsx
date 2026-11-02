@@ -115,9 +115,11 @@ describe('صندوق المحادثات', () => {
         const thread = screen.getByTestId('thread');
         expect(within(thread).getByTestId('bubble-in')).toHaveTextContent('متى يصل؟');
         expect(within(thread).getByTestId('bubble-out')).toHaveTextContent('خلال ساعة');
-        expect(within(thread).getByTestId('bubble-sender')).toHaveTextContent('منى');
+        // واسمُ من ردّ فوق ردّه — فيعرف الزملاءُ من كتب
+        expect(within(thread).getByTestId('bubble-out')).toHaveTextContent('منى');
         expect(within(thread).getByTestId('bubble-notice')).toHaveTextContent('إشعار آلي');
-        expect(within(screen.getByTestId('bubble-out')).getByTestId('item-status')).toHaveTextContent('وصلت جهاز الزبون');
+        // وعلامةُ التسليم بمعناها مكتوبًا لمن لا يرى العلامة
+        expect(within(screen.getByTestId('bubble-out')).getByRole('img', { name: 'وصلت جهاز الزبون' })).toBeInTheDocument();
 
         expect(screen.queryByTestId('inbox-composer')).toBeNull();
         expect(screen.getByTestId('inbox-read-only')).toHaveTextContent('للمشاهدة فقط');

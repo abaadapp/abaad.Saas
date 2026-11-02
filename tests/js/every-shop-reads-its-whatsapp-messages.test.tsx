@@ -171,12 +171,15 @@ describe('سجلّ رسائل واتساب', () => {
 });
 
 describe('صندوق المحادثات لكلّ متجر', () => {
-    it('من لم يكتب بعدُ محادثةٌ في القائمة تُفتح من رسالته', () => {
+    it('من لم يكتب بعدُ محادثةٌ في القائمة تُفتح من رسالته', async () => {
         inbox();
 
         const row = within(screen.getByTestId('chat-list')).getByTestId('chat-row');
-        expect(row).toHaveAttribute('href', '/admin.whatsappInbox.open/11');
         expect(row).toHaveTextContent('طلبك جاهز');
+
+        await userEvent.setup().click(row);
+        const { router } = await import('@inertiajs/react');
+        expect(router.visit).toHaveBeenCalledWith('/admin.whatsappInbox.open/11');
     });
 
     it('وما ينقص الربطَ يُقال بخطواته — والمحادثاتُ تحته', () => {

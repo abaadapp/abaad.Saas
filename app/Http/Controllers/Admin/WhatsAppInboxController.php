@@ -48,8 +48,10 @@ class WhatsAppInboxController extends Controller
         $business = $this->business($request);
         $user = $request->user();
         $q = (string) $request->query('q', '');
+        // «الكل» أو «غير المقروءة» — وما سواهما «الكل»
+        $filter = $request->query('f') === WhatsAppInbox::UNREAD ? WhatsAppInbox::UNREAD : null;
 
-        $page = WhatsAppInbox::page($business, $user, $q);
+        $page = WhatsAppInbox::page($business, $user, $q, $filter);
 
         $thread = null;
         $chatId = (string) $request->query('c', '');
@@ -77,7 +79,7 @@ class WhatsAppInboxController extends Controller
                 'prev_page_url' => $page->previousPageUrl(),
                 'next_page_url' => $page->nextPageUrl(),
             ],
-            'params' => ['q' => $q, 'c' => $thread ? (string) $thread['id'] : null],
+            'params' => ['q' => $q, 'c' => $thread ? (string) $thread['id'] : null, 'f' => $filter ?? 'all'],
             'thread' => $thread,
             'canReply' => WhatsAppInbox::canReply($user),
             'line' => self::line($business),
@@ -90,6 +92,7 @@ class WhatsAppInboxController extends Controller
             'readiness' => WhatsAppFeature::readiness($business),
             'mayManage' => (bool) $user->isAdmin(),
             'unread' => WhatsAppInbox::unreadTotal($user),
+            'unreadChats' => WhatsAppInbox::unreadChats($business, $user),
             'stamp' => WhatsAppInbox::stamp($business),
             'files' => [
                 'max' => WhatsAppMedia::MAX_FILES,
@@ -142,6 +145,8 @@ class WhatsAppInboxController extends Controller
 
         $data = $request->validate([
             'body' => ['nullable', 'string', 'max:'.WhatsAppInbox::MAX_BODY],
+            // مفتاحُ هذا الردّ من المربّع — الضغطةُ الثانية تحمله فلا يخرج ثانيةً
+            'client_key' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
             ...WhatsAppMedia::rules('files'),
         ]);
 
@@ -151,7 +156,11 @@ class WhatsAppInboxController extends Controller
             return back()->withErrors(['body' => __('اكتب ردًّا أو أرفق ملفًّا.')]);
         }
 
-        $sent = WhatsAppInbox::reply($found, $request->user(), (string) ($data['body'] ?? ''), $files);
+        $sent = WhatsAppInbox::reply($found, $request->user(), (string) ($data['body'] ?? ''), $files, $data['client_key'] ?? null);
+
+        if ($sent === null) {
+            return back()->with('toast', ['msg' => __('هذا الرد أُرسل من قبل — لم يُرسل مرة ثانية.'), 'type' => 'info']);
+        }
 
         $failed = collect($sent)->where('status', 'failed')->count();
 

@@ -1028,6 +1028,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::put('/job-titles/{id}', [JobTitleController::class, 'update'])->name('jobTitles.update');
     Route::delete('/job-titles/{id}', [JobTitleController::class, 'destroy'])->name('jobTitles.destroy');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    // محادثاتُ واتساب لعدّة موظّفين بحفظةٍ واحدة — لصاحب النشاط ومديره المخوَّل (`EmployeeController::inboxAccess`)
+    Route::post('/employees/whatsapp-inbox', [EmployeeController::class, 'inboxAccess'])->name('employees.inboxAccess');
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');

@@ -14,6 +14,7 @@ use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -915,6 +916,101 @@ class EmployeeController extends Controller
             'can_grant' => Permissions::grantsInbox(auth()->user()) && $employee?->id !== auth()->id()
                 && ! ($employee !== null && Permissions::isOwner($employee)),
         ];
+    }
+
+    /**
+     * موظّفو المتجر ومستوى كلٍّ في محادثات واتساب — لشاشة المنح الجماعيّ.
+     *
+     * لمن يمنحها وحده (`Permissions::grantsInbox`) ولمتجرٍ فُتح له الصندوق،
+     * وإلّا لا شيء. وصاحبُ النشاط ليس فيها — يملكها بدوره — ولا الفاعلُ
+     * نفسُه: لا يُعدِّل أحدٌ صلاحيته.
+     *
+     * @return array{staff: list<array{id: int, name: string, job_title: ?string, active: bool, level: string}>}|null
+     */
+    public static function inboxRoster(): ?array
+    {
+        $actor = auth()->user();
+
+        if (! Permissions::grantsInbox($actor) || ! WhatsAppInbox::available($actor?->business)) {
+            return null;
+        }
+
+        return [
+            'staff' => User::where('business_id', $actor->business_id)
+                ->whereKeyNot($actor->id)
+                ->orderBy('name')
+                ->get()
+                ->reject(fn (User $u) => Permissions::isOwner($u))
+                ->map(fn (User $u) => [
+                    'id' => (int) $u->id,
+                    'name' => (string) $u->name,
+                    'job_title' => $u->job_title,
+                    'active' => $u->status === 'نشط',
+                    'level' => $u->whatsapp_inbox ?: 'none',
+                ])->values()->all(),
+        ];
+    }
+
+    /**
+     * محادثاتُ واتساب لعدّة موظّفين بحفظةٍ واحدة — منحًا أو سحبًا.
+     *
+     * الحارسُ حارسُ الحقل الواحد (`inboxGrant`) لكلّ صفّ: يمنحها صاحبُ
+     * النشاط أو مديرُه المخوَّل، ولا صاحبُ النشاط فيها ولا الفاعلُ نفسُه،
+     * ولا موظّفٌ من متجرٍ آخر. والصفوفُ كلُّها أو لا شيء، وكلُّ تبدّلٍ يُكتب
+     * في سجلّ النشاط باسم فاعله. والسحبُ يسري في الطلب التالي للموظّف ولو
+     * كانت المحادثاتُ مفتوحةً أمامه (`WhatsAppInboxController`).
+     */
+    public function inboxAccess(Request $request)
+    {
+        $actor = auth()->user();
+
+        abort_unless(WhatsAppInbox::available($actor->business), 404);
+
+        if (! Permissions::grantsInbox($actor)) {
+            abort(403, __('صلاحيات محادثات واتساب يمنحها صاحب النشاط، أو مديرٌ منحه هو الردّ على المحادثات.'));
+        }
+
+        $data = $request->validate([
+            'levels' => ['required', 'array', 'max:500'],
+            'levels.*' => ['required', 'string', Rule::in(['none', ...WhatsAppInbox::LEVELS])],
+        ]);
+
+        $wanted = collect($data['levels'])->mapWithKeys(fn ($level, $id) => [(int) $id => $level === 'none' ? null : (string) $level]);
+        $staff = User::where('business_id', $this->bid())->whereIn('id', $wanted->keys())->get()->keyBy('id');
+
+        $refusal = match (true) {
+            $wanted->keys()->contains(fn (int $id) => ! $staff->has($id)) => __('موظفٌ ليس في متجرك.'),
+            $wanted->has($actor->id) => __('لا يمكنك تعديل صلاحيات حسابك الخاص.'),
+            $staff->contains(fn (User $u) => Permissions::isOwner($u)) => __('صاحب النشاط يملك محادثات واتساب بدوره — لا تُعدَّل صلاحيته.'),
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            throw ValidationException::withMessages(['levels' => $refusal]);
+        }
+
+        $changed = DB::transaction(function () use ($staff, $wanted) {
+            $changed = 0;
+
+            foreach ($staff as $employee) {
+                $before = $employee->whatsapp_inbox ?: null;
+                $after = $wanted[$employee->id];
+
+                if ($before === $after) {
+                    continue;
+                }
+
+                $employee->forceFill(['whatsapp_inbox' => $after])->save();
+                $this->logInboxGrant($employee, $before, $after);
+                $changed++;
+            }
+
+            return $changed;
+        });
+
+        return back()->with('toast', $changed === 0
+            ? ['msg' => __('لم يتغيّر شيء في صلاحيات محادثات واتساب'), 'type' => 'info']
+            : ['msg' => __('حُدّثت صلاحيات محادثات واتساب لـ:n موظف', ['n' => $changed]), 'type' => 'success']);
     }
 
     /**

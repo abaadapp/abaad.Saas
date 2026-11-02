@@ -46,7 +46,8 @@ class ImagesOptimize extends Command
         {--swap : ينقل المراجعَ الحيّة إلى النسخ — يحتاج --business}
         {--rollback= : معرّفُ جولة نقلٍ يُعاد ما فيها}
         {--recover : يقرأ كلَّ نقلٍ انقطع ويختمه بما وجد}
-        {--retire-plan : ما يمكن الاستغناءُ عنه من الأصول، بلا محو}';
+        {--retire-plan : ما يمكن الاستغناءُ عنه من الأصول، بلا محو}
+        {--path=* : صورةٌ بعينها من صور المتجر الحيّة (يتكرّر، وبترتيبه) — مع --apply و--business وحدهما}';
 
     protected $description = 'جرد صور النظام وصنع نسخها الأخفّ ونقل مراجعها تدريجيًّا دون محو أيّ أصل';
 
@@ -58,6 +59,17 @@ class ImagesOptimize extends Command
 
     public function handle(): int
     {
+        /*
+         * وصورٌ بعينها لا تُطلب إلّا لصنع نسخها في متجرٍ واحد: لا جردَ بها،
+         * ولا نقلَ مراجع، ولا رجوع — فلا يُظنّ أنّ `--swap --path` ينقل صورةً واحدة.
+         */
+        if ($this->chosen() !== [] && (! $this->option('apply') || $this->option('business') === null
+            || $this->option('swap') || filled($this->option('rollback')) || $this->option('recover') || $this->option('retire-plan'))) {
+            $this->error('--path يُستعمل مع --apply و--business وحدهما — لم تُعالج صورة.');
+
+            return self::FAILURE;
+        }
+
         $lock = Cache::lock('images:optimize', 3600);
 
         if (! $lock->get()) {
@@ -267,6 +279,24 @@ class ImagesOptimize extends Command
         $done = 0;
         $candidates = $this->candidates();
 
+        /*
+         * وصورٌ سمّاها صاحبُ القرار بمساراتها — بترتيبه هو لا بترتيب الجداول:
+         * رئيسيّةُ متجرٍ أوّلًا، لا أقدمُ أصنافه. ولا تُقبل إلّا من صور هذا
+         * المتجر الحيّة نفسها (`candidates`): مسارٌ لمتجرٍ آخر، أو لا يشير
+         * إليه صفّ، أو نسخةٌ، أو غيرُ موجود — يردّ الدفعةَ كلَّها قبل أن تُفكّ صورة.
+         */
+        if (($chosen = $this->chosen()) !== []) {
+            $outside = array_values(array_diff($chosen, $candidates));
+
+            if ($outside !== []) {
+                $this->error('ليست من صور المتجر '.$this->option('business').' الحيّة: '.implode('، ', $outside).' — لم تُعالج صورة.');
+
+                return self::FAILURE;
+            }
+
+            $candidates = $chosen;
+        }
+
         foreach ($candidates as $path) {
             if ($done >= $limit) {
                 break;
@@ -327,6 +357,12 @@ class ImagesOptimize extends Command
         $this->line('بقي '.$left.' صورةً تنتظر، و'.$failed.' فشلت (تُعاد حتى '.self::ATTEMPTS.' مرّات، ثمّ بـ --retry-failed).');
 
         return ($count['failed'] ?? 0) > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /** @return list<string> المساراتُ التي سُمّيت بـ`--path`، بلا تكرارٍ وبترتيبها */
+    private function chosen(): array
+    {
+        return array_values(array_unique(array_filter(array_map(fn ($p) => trim((string) $p), (array) $this->option('path')), fn ($p) => $p !== '')));
     }
 
     /**

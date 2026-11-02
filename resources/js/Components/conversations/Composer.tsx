@@ -31,6 +31,9 @@ export function MessageComposer({
     errors,
     above,
     trailing,
+    disabled = false,
+    allowFilesOnly = false,
+    testIds,
 }: {
     value: string;
     onChange: (v: string) => void;
@@ -47,10 +50,15 @@ export function MessageComposer({
     errors?: { body?: string; files?: string };
     above?: ReactNode;
     trailing?: ReactNode;
+    /** ما يمنع الإرسالَ قيل في `above` — فيُقفل الحقلُ والمرفقُ والزرّ معه */
+    disabled?: boolean;
+    /** ملفٌّ بلا نصّ ردٌّ يخرج — لصفحةٍ يقبل خادمُها ذلك */
+    allowFilesOnly?: boolean;
+    testIds?: { body?: string; send?: string; files?: string };
 }) {
     const t = useTranslate();
     const picker = useRef<HTMLInputElement>(null);
-    const canSend = !processing && value.trim() !== '';
+    const canSend = !disabled && !processing && (value.trim() !== '' || (allowFilesOnly && files.length > 0));
 
     return (
         <div className="shrink-0 bg-[var(--cv-bar,#f0f2f5)] px-3 py-2.5">
@@ -95,6 +103,7 @@ export function MessageComposer({
                     multiple
                     className="hidden"
                     accept={accept}
+                    data-testid={testIds?.files}
                     onChange={(e) => {
                         onAddFiles(Array.from(e.target.files ?? []));
                         e.target.value = '';
@@ -105,7 +114,7 @@ export function MessageComposer({
                     variant="ghost"
                     size="icon"
                     onClick={() => picker.current?.click()}
-                    disabled={files.length >= maxFiles}
+                    disabled={disabled || files.length >= maxFiles}
                     aria-label={t('إرفاق ملف')}
                     className="text-[var(--cv-icon,#54656f)] hover:bg-transparent hover:text-[var(--cv-ink,#111b21)]"
                     title={t('حتى :n ملفات، :kb ميغابايت للملف', { n: maxFiles, kb: Math.round(maxKb / 1024) })}
@@ -125,6 +134,8 @@ export function MessageComposer({
                     }}
                     placeholder={placeholder}
                     aria-label={placeholder}
+                    disabled={disabled}
+                    data-testid={testIds?.body}
                     dir="auto"
                     className="max-h-40 min-h-[40px] flex-1 resize-none self-center bg-transparent px-1.5 py-[9px] text-[15px] leading-[1.45] text-inherit outline-none placeholder:text-[var(--cv-faint,#667781)] field-sizing-content"
                 />
@@ -138,6 +149,7 @@ export function MessageComposer({
                     onClick={onSend}
                     /* والضغطتان أمرٌ واحد: `processing` يُقفل الزرّ حتّى يعود الردّ */
                     disabled={!canSend}
+                    data-testid={testIds?.send}
                     aria-label={t('إرسال')}
                     title={t('إرسال')}
                     className={cn(

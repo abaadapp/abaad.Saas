@@ -594,7 +594,10 @@ class PageController extends Controller
 
     public function employeesIndex(): Response
     {
-        return Inertia::render('Admin/Employees/Index', $this->employeesData());
+        return Inertia::render('Admin/Employees/Index', $this->employeesData() + [
+            // ومحادثاتُ واتساب لعدّة موظّفين — لمن يمنحها وحده، وإلّا لا شيء
+            'inboxAccess' => EmployeeController::inboxRoster(),
+        ]);
     }
 
     /**

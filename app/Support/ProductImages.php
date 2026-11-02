@@ -358,8 +358,18 @@ class ProductImages
             default => null,
         };
 
-        if ($decode === null || ! function_exists($decode)
-            || $w * $h > StoreImageUpload::MAX_PIXELS || ! StoreImageUpload::roomFor($w * $h)) {
+        if ($decode === null || ! function_exists($decode)) {
+            return null;
+        }
+
+        // ‏أبعادٌ فوق السقف تُحفظ كما رُفعت — ويُكتب لماذا لم تُضغط
+        if ($w * $h > StoreImageUpload::MAX_PIXELS) {
+            ImageMemory::note('product_upload', 'too_large', $w, $h);
+
+            return null;
+        }
+
+        if (! StoreImageUpload::roomFor($w * $h)) {
             return null;
         }
 

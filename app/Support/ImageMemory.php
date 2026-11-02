@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -86,14 +87,48 @@ final class ImageMemory
         return $available - self::need($pixels) >= $reserve ? null : 'low_memory';
     }
 
-    /** يكتب في السجلّ لمَ لم تُفكّ صورة — ليُعرف ما تُرك ولماذا */
+    /**
+     * يكتب في السجلّ لمَ لم تُفكّ صورة — ليُعرف ما تُرك ولماذا.
+     *
+     * ═══ في سجلٍّ لها ═══
+     *
+     * سجلُّ النظام على الإنتاج لا يكتب إلّا الأخطاء (`LOG_LEVEL=error`)، وصورةٌ
+     * تُركت لأنّ الذاكرة لا تكفي ليست خطأً — فكانت تُرمى صامتة. فتُكتب في سجلٍّ
+     * للصور وحدها (`logs/images-*.log`) بمستوى التحذير، ولا يتغيّر مستوى سجلّ
+     * النظام. وما فيها أبعادٌ وذاكرةٌ واسمُ ملفٍّ عشوائيّ — لا زبونَ ولا متجرَ
+     * يُعرف منها.
+     *
+     * ═══ ولا يتضخّم ═══
+     *
+     * ذاكرةٌ تبقى ناقصةً ساعةً ورفعٌ بعد رفع: سطرٌ لكلّ مرّة يملأ القرص بما
+     * يقوله سطرٌ واحد. فيُكتب الأوّلُ لكلّ (موضع، سبب)، وما بعده في
+     * `images.note_every` ثانيةً يُعدّ ولا يُكتب — والسطرُ التالي يقول كم
+     * سُكت عنه (`suppressed`).
+     *
+     * ولا يُسقط شيئًا: سجلٌّ أو ذاكرةٌ مؤقّتةٌ تعذّرت لا تردّ رفعًا ولا توقف جولة.
+     */
     public static function note(string $where, string $reason, int $w, int $h, ?string $path = null): void
     {
-        Log::warning('images.'.$reason, array_filter([
-            'where' => $where, 'path' => $path, 'width' => $w, 'height' => $h,
-            'megapixels' => round($w * $h / 1_000_000, 1),
-            'need_mb' => (int) round(self::need($w * $h) / 1048576),
-            'available_mb' => ($a = self::available()) === null ? null : (int) round($a / 1048576),
-        ], fn ($v) => $v !== null));
+        try {
+            $key = 'images:note:'.$where.':'.$reason;
+            $every = max(0, (int) config('images.note_every', 600));
+
+            if ($every > 0 && ! Cache::add($key, true, $every)) {
+                Cache::add($key.':quiet', 0, 86400);
+                Cache::increment($key.':quiet');
+
+                return;
+            }
+
+            Log::channel('images')->warning('images.'.$reason, array_filter([
+                'where' => $where, 'path' => $path, 'width' => $w, 'height' => $h,
+                'megapixels' => round($w * $h / 1_000_000, 1),
+                'need_mb' => (int) round(self::need($w * $h) / 1048576),
+                'available_mb' => ($a = self::available()) === null ? null : (int) round($a / 1048576),
+                'suppressed' => (int) Cache::pull($key.':quiet', 0) ?: null,
+            ], fn ($v) => $v !== null));
+        } catch (\Throwable) {
+            // ‏سطرُ السجلّ لا يستحقّ رفعًا مردودًا
+        }
     }
 }

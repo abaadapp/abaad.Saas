@@ -73,6 +73,16 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // ‏لمَ تُركت صورة — ذاكرةٌ لا تكفي أو أبعادٌ فوق السقف (`ImageMemory::note`).
+        // ‏في سجلٍّ لها بمستوى التحذير: سجلُّ النظام على الإنتاج للأخطاء وحدها.
+        'images' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/images.log'),
+            'level' => env('IMAGES_LOG_LEVEL', 'warning'),
+            'days' => env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

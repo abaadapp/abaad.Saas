@@ -61,4 +61,17 @@ return [
 
     'meminfo' => env('IMAGES_MEMINFO', '/proc/meminfo'),
 
+    /*
+    | سجلُّ ما تُرك من الصور (`logs/images-*.log`): سطرٌ لكلّ موضعٍ وسبب في
+    | هذه المدّة بالثواني، وما بعده يُعدّ ولا يُكتب — فذاكرةٌ ناقصةٌ ساعةً لا
+    | تملأ القرص سطورًا.
+    */
+    'note_every' => (int) env('IMAGES_NOTE_EVERY', 600),
+
+    /*
+    | نشرُ النسخة باسمها برابطٍ صلب (`link`) — يرفض ما سبقه في لحظته. يُطفأ
+    | لقرصٍ لا يعرف الروابط الصلبة، فيُنشر تحت قفلٍ على النسخة (`ImageVariants::publish`).
+    */
+    'hard_links' => (bool) env('IMAGES_HARD_LINKS', true),
+
 ];

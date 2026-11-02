@@ -157,11 +157,17 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
         $tall = $this->stored(736, 1104);
         ImageVariants::make($tall);
 
-        foreach ([$thumbOnly, $displayOnly, $none, $small, $tall] as $raw) {
+        $external = 'https://cdn.example.com/flowers/'.Str::random(20).'.jpg';
+
+        foreach ([$thumbOnly, $displayOnly, $none, $small, $tall, $external] as $raw) {
             $this->product($this->shop, $raw);
         }
 
         $html = $this->get('/s/ribbon/shop')->assertOk()->getContent();
+
+        $img = $this->img($html, $external);
+        $this->assertSame($external, $img['src'], 'رابطٌ خارجيّ يمرّ كما هو');
+        $this->assertArrayNotHasKey('srcset', $img, 'ولا أحجامَ لما ليس على قرص أبعاد');
 
         $img = $this->img($html, $thumbOnly);
         $this->assertSame($this->url($thumbOnly.'.w640.webp'), $img['src']);
@@ -223,6 +229,7 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
         $both = $this->product($this->shop, $raw = $this->stored(2400, 1800));
         ImageVariants::make($raw);
         $bare = $this->product($this->shop, $this->stored(2400, 1800));
+        $external = $this->product($this->shop, 'https://cdn.example.com/flowers/rose.jpg');
         $site = Builder::create($this->shop, 'store', 'modern', $owner->id);
         $app = rtrim((string) config('app.url'), '/');
 
@@ -231,5 +238,7 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
         $this->assertSame($app.$this->url($raw.'.w640.webp').' 640w, '.$app.$this->url($raw.'.w1600.webp').' 1600w', $products[$both->id]['srcset']);
         $this->assertSame($app.$this->url($raw.'.w640.webp'), $products[$both->id]['thumb'], 'المصغّرةُ لمتصفّحٍ لا يقرأ srcset');
         $this->assertNull($products[$bare->id]['srcset'], 'بلا نسخ: لا أحجام');
+        $this->assertSame('https://cdn.example.com/flowers/rose.jpg', $products[$external->id]['thumb'], 'رابطٌ خارجيّ يمرّ كما هو');
+        $this->assertNull($products[$external->id]['srcset']);
     }
 }

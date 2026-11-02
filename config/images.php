@@ -50,4 +50,15 @@ return [
 
     'scan_timeout_ms' => (int) env('IMAGES_SCAN_TIMEOUT_MS', 15000),
 
+    /*
+    | ذاكرةُ الخادم لا حدُّ PHP (`ImageMemory`): أكبرُ صورةٍ تُفكّ في جولة
+    | الصور القديمة بالميغابكسل، وما يبقى متاحًا للبيع وواتساب والدفع
+    | وقاعدة البيانات بعد أن تُحسب ذاكرةُ الصورة. والملفُّ يُقرأ منه ما يتاح.
+    */
+    'max_megapixels' => (float) env('IMAGES_MAX_MEGAPIXELS', 24),
+
+    'reserve_mb' => (int) env('IMAGES_RESERVE_MB', 200),
+
+    'meminfo' => env('IMAGES_MEMINFO', '/proc/meminfo'),
+
 ];

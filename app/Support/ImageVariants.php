@@ -173,7 +173,9 @@ final class ImageVariants
      *
      *  • `made`: كُتب كلُّ ما يُحتاج وقُرئ من القرص صحيحًا.
      *  • `ready`: لا ينقصه شيء.
-     *  • `skipped`: لا تُصنع له نسخة — GIF أو نوعٌ لا يُفكّ، أو نسخةٌ لا توفّر.
+     *  • `skipped`: لا تُصنع له نسخة — GIF أو نوعٌ لا يُفكّ، أو نسخةٌ لا توفّر، أو
+     *    أكبرُ من سقف البكسلات (`ImageMemory::maxPixels`).
+     *  • `deferred`: لا تتّسع ذاكرةُ الخادم المتاحة لفكّها الآن (`ImageMemory`) — تُعاد لاحقًا.
      *  • `failed`: تعذّر شيءٌ — ومُحي ما كُتب في هذه الجولة، فيُعاد لاحقًا.
      *  • `missing`: لا أصلَ على القرص.
      *  • `estimated`: `$write = false` — حُسب ولم يُكتب، لجردٍ يقدّر قبل أن يُصنع شيء.
@@ -218,7 +220,10 @@ final class ImageVariants
 
         $pixels = $need['w'] * $need['h'];
 
-        if ($pixels > StoreImageUpload::MAX_PIXELS || ! StoreImageUpload::roomFor($pixels)) {
+        // ‏فوق السقف تُترك أبدًا ويُقال لماذا — صورةٌ لا يتّسع لها خادمٌ بغيغابايت
+        if ($pixels > StoreImageUpload::MAX_PIXELS || $pixels > ImageMemory::maxPixels()) {
+            ImageMemory::note('variants', 'too_large', $need['w'], $need['h'], $path);
+
             return ['status' => 'skipped', 'reason' => 'too_large'] + $out;
         }
 
@@ -227,7 +232,20 @@ final class ImageVariants
 
         try {
             // ‏و`$written` بالمرجع: ما كُتب قبل أن تسقط الجولةُ يُعرف فيُمحى
-            $out = self::exclusive(function () use ($path, $decode, $need, $write, $out, &$written) {
+            $out = self::exclusive(function () use ($path, $decode, $need, $write, $out, &$written, $pixels) {
+                /*
+                 * والذاكرةُ تُسأل داخل القفل لا قبله: فكٌّ آخرُ انتهى للتوّ لا
+                 * يُحسب على هذه، ولا يبدأ غيرُها بين السؤال والفكّ.
+                 *
+                 * وما لا يتّسع الآن يُؤجَّل لا يُترك: الذاكرةُ تعود، والصورةُ
+                 * باقيةٌ في الدور.
+                 */
+                if (ImageMemory::shortFor($pixels) !== null || ! StoreImageUpload::roomFor($pixels)) {
+                    ImageMemory::note('variants', 'low_memory', $need['w'], $need['h'], $path);
+
+                    return ['status' => 'deferred', 'reason' => 'low_memory'] + $out;
+                }
+
                 return self::build($path, $decode, $need, $write, $out, $written);
             });
         } catch (\Throwable $e) {

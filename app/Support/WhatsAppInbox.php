@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\CrmMessage;
 use App\Models\Customer;
+use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\WhatsAppChat;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -83,6 +85,9 @@ final class WhatsAppInbox
 
     public const PER_PAGE = 30;
 
+    /** مرشِّحُ القائمة: ما فيه واردٌ لم يقرأه هذا الموظّف (`page`) */
+    public const UNREAD = 'unread';
+
     public const THREAD_PAGE = 50;
 
     /** إشعاراتُ الطلبات التي تُعرض في الخيط بين الرسائل — حدٌّ لكلّ صفحة */
@@ -99,6 +104,12 @@ final class WhatsAppInbox
 
     /** حدُّ واتساب للنصّ ٤٠٩٦ */
     public const MAX_BODY = 4000;
+
+    /**
+     * كم يُحجز مفتاحُ الردّ وهو يخرج — نصٌّ وثلاثةُ ملفّاتٍ إلى ميتا، كلٌّ
+     * بمهلته. وطلبٌ مات وهو يحمل القفل يُطلق بعدها.
+     */
+    public const REPLY_LOCK_SECONDS = 300;
 
     /* ═══ لماذا لم تُحفظ رسالةٌ وصلت رقمَ المتجر — يُكتب على وصلتها بلا نصّها ═══ */
 
@@ -689,10 +700,24 @@ final class WhatsAppInbox
      *
      * والمرسِلُ من الجلسة، والرقمُ من `check` — لا شيء منهما من الطلب.
      *
+     * ═══ والضغطتان ردٌّ واحد ═══
+     *
+     * المربّعُ يحمل مفتاحًا لكلّ ردٍّ يُكتب، ويتبدّل بعد أن يُجاب. فضغطةٌ
+     * ثانية، أو طلبٌ أعاده المتصفّحُ بعد انقطاع، يصل بالمفتاح نفسه:
+     *
+     * - طلبٌ بالمفتاح نفسِه يُرسل الآن (قفلٌ ذرّيّ في مخزن الذاكرة — قاعدةُ
+     *   البيانات على الإنتاج): لا يخرج شيء، ويُقال إنّه قيد الإرسال.
+     * - وأُجيب من قبل: لا يخرج شيء، ويُعاد ما خرج أوّلَ مرّة بحاله —
+     *   وصلٌ أو فشلٌ بسببه أو «قيد الإرسال» — لا «أُرسل» عن فشل.
+     *
+     * والصفوفُ تُكتب ويُحفظ معرّفُها تحت المفتاح **قبل** أن تُسأل ميتا: طلبٌ
+     * مات بعد أن خرج الردُّ لا يُخرجه ثانيةً حين يُعاد، ويبقى صفُّه يقول
+     * حالَه. والحجزُ بعد `check`: ردٌّ رُدّ لسببه لا يحجز مفتاحَه.
+     *
      * @param  list<UploadedFile>  $files
-     * @return list<WhatsAppChatMessage>
+     * @return array{parts: list<WhatsAppChatMessage>, again: bool} `again`: هذا المفتاحُ أُجيب أو يُجاب — لم يخرج الآن شيء
      */
-    public static function reply(WhatsAppChat $chat, User $sender, string $body, array $files = []): array
+    public static function reply(WhatsAppChat $chat, User $sender, string $body, array $files = [], ?string $key = null): array
     {
         ['line' => $line, 'reason' => $reason] = self::check($chat);
 
@@ -701,62 +726,121 @@ final class WhatsAppInbox
         }
 
         $body = mb_substr(trim($body), 0, self::MAX_BODY);
-        $sent = [];
 
-        if ($body !== '') {
-            $sent[] = self::deliverPart($chat, $line, $sender, $body, null);
+        if ($key === null) {
+            return ['parts' => self::send($chat, $line, self::draft($chat, $line, $sender, $body, $files)), 'again' => false];
         }
 
-        foreach ($files as $file) {
-            $sent[] = self::deliverPart($chat, $line, $sender, null, $file);
+        $done = self::replyKey($chat, $key);
+        $lock = Cache::lock($done.':lock', self::REPLY_LOCK_SECONDS);
+
+        if (! $lock->get()) {
+            return ['parts' => self::partsOf($chat, Cache::get($done)), 'again' => true];
         }
 
-        return $sent;
+        try {
+            if (Cache::has($done)) {
+                return ['parts' => self::partsOf($chat, Cache::get($done)), 'again' => true];
+            }
+
+            $drafts = self::draft($chat, $line, $sender, $body, $files);
+            Cache::put($done, array_map(fn (array $d) => $d['message']->id, $drafts), now()->addDay());
+
+            return ['parts' => self::send($chat, $line, $drafts), 'again' => false];
+        } finally {
+            $lock->release();
+        }
     }
 
-    private static function deliverPart(WhatsAppChat $chat, WhatsAppConnection $line, User $sender, ?string $body, ?UploadedFile $file): WhatsAppChatMessage
+    /** اسمُ مفتاح الردّ في مخزن الذاكرة — والقفلُ باسمه وذيلِه `:lock` */
+    public static function replyKey(WhatsAppChat $chat, string $key): string
     {
-        $mime = $file ? (string) ($file->getMimeType() ?: $file->getClientMimeType()) : null;
+        return 'wa-inbox-reply:'.$chat->business_id.':'.$chat->id.':'.$key;
+    }
 
-        $message = WhatsAppChatMessage::create([
-            'business_id' => $chat->business_id,
-            'chat_id' => $chat->id,
-            'direction' => WhatsAppChatMessage::OUT,
-            'body' => $body,
-            'media_type' => $file ? WhatsAppMedia::kind($mime) : null,
-            'whatsapp_connection_id' => $line->id,
-            'phone_number_id' => (string) $line->phone_number_id,
-            'sender_user_id' => $sender->id,
-            'sender_name' => mb_substr((string) $sender->name, 0, 150),
-            'status' => WhatsAppStatus::QUEUED,
-        ]);
+    /**
+     * صفوفُ الردّ قبل أن يخرج — كلٌّ «قيد الإرسال»، والملفُّ محفوظٌ معه.
+     *
+     * @param  list<UploadedFile>  $files
+     * @return list<array{message: WhatsAppChatMessage, files: list<array<string, string>>, preview: string}>
+     */
+    private static function draft(WhatsAppChat $chat, WhatsAppConnection $line, User $sender, string $body, array $files): array
+    {
+        $parts = $body !== '' ? [[$body, null]] : [];
 
-        $files = [];
-
-        if ($file !== null) {
-            $kept = self::keep($message, (string) file_get_contents($file->getRealPath()), (string) $mime, (string) $file->getClientOriginalName());
-            $files[] = ['disk' => $kept->disk, 'path' => $kept->path, 'mime' => $kept->mime, 'name' => $kept->name];
+        foreach ($files as $file) {
+            $parts[] = [null, $file];
         }
 
-        // والنداءُ خارجَ أيّ معاملة — انظر `CrmWhatsApp::send`
-        $out = WhatsAppMedia::deliver($line, (string) $chat->customer_phone, $body, $files);
+        return array_map(function (array $part) use ($chat, $line, $sender) {
+            [$text, $file] = $part;
+            $mime = $file ? (string) ($file->getMimeType() ?: $file->getClientMimeType()) : null;
 
-        $message->forceFill($out['state'] === 'sent'
-            ? ['status' => WhatsAppStatus::SENT, 'wamid' => $out['id'], 'sent_at' => now()]
-            : [
-                'status' => WhatsAppStatus::FAILED,
-                'failed_at' => now(),
-                'error_code' => 'provider_failed',
-                'error_message' => mb_substr((string) $out['message'], 0, 500),
+            $message = WhatsAppChatMessage::create([
+                'business_id' => $chat->business_id,
+                'chat_id' => $chat->id,
+                'direction' => WhatsAppChatMessage::OUT,
+                'body' => $text,
+                'media_type' => $file ? WhatsAppMedia::kind($mime) : null,
+                'whatsapp_connection_id' => $line->id,
+                'phone_number_id' => (string) $line->phone_number_id,
+                'sender_user_id' => $sender->id,
+                'sender_name' => mb_substr((string) $sender->name, 0, 150),
+                'status' => WhatsAppStatus::QUEUED,
+            ]);
+
+            $kept = [];
+
+            if ($file !== null) {
+                $copy = self::keep($message, (string) file_get_contents($file->getRealPath()), (string) $mime, (string) $file->getClientOriginalName());
+                $kept[] = ['disk' => $copy->disk, 'path' => $copy->path, 'mime' => $copy->mime, 'name' => $copy->name];
+            }
+
+            return ['message' => $message, 'files' => $kept, 'preview' => $text ?? ($file ? '['.$file->getClientOriginalName().']' : '')];
+        }, $parts);
+    }
+
+    /**
+     * يخرج كلُّ صفٍّ إلى ميتا بحاله — والنداءُ خارجَ أيّ معاملة (انظر `CrmWhatsApp::send`).
+     *
+     * @param  list<array{message: WhatsAppChatMessage, files: list<array<string, string>>, preview: string}>  $drafts
+     * @return list<WhatsAppChatMessage>
+     */
+    private static function send(WhatsAppChat $chat, WhatsAppConnection $line, array $drafts): array
+    {
+        return array_map(function (array $d) use ($chat, $line) {
+            $message = $d['message'];
+            $out = WhatsAppMedia::deliver($line, (string) $chat->customer_phone, $message->body, $d['files']);
+
+            $message->forceFill($out['state'] === 'sent'
+                ? ['status' => WhatsAppStatus::SENT, 'wamid' => $out['id'], 'sent_at' => now()]
+                : [
+                    'status' => WhatsAppStatus::FAILED,
+                    'failed_at' => now(),
+                    'error_code' => 'provider_failed',
+                    'error_message' => mb_substr((string) $out['message'], 0, 500),
+                ])->save();
+
+            $chat->forceFill([
+                'last_message_at' => now(),
+                'last_preview' => self::preview($d['preview']),
+                'last_direction' => WhatsAppChatMessage::OUT,
             ])->save();
 
-        $chat->forceFill([
-            'last_message_at' => now(),
-            'last_preview' => self::preview($body ?? ($file ? '['.$file->getClientOriginalName().']' : '')),
-            'last_direction' => WhatsAppChatMessage::OUT,
-        ])->save();
+            return $message;
+        }, $drafts);
+    }
 
-        return $message;
+    /**
+     * صفوفُ ردٍّ أُجيب مفتاحُه — بحالها الآن، ومن هذه المحادثة وحدها.
+     *
+     * @return list<WhatsAppChatMessage>
+     */
+    private static function partsOf(WhatsAppChat $chat, mixed $ids): array
+    {
+        return is_array($ids) && $ids !== []
+            ? WhatsAppChatMessage::where('chat_id', $chat->id)->whereIn('id', $ids)->orderBy('id')->get()->all()
+            : [];
     }
 
     /* ═══════════════════ القراءة ═══════════════════ */
@@ -778,9 +862,13 @@ final class WhatsAppInbox
      * `open` يومَ يُضغط عليها. وما لم يخرج إلى واتساب (`skipped`…) ليس منها.
      *
      * والبحثُ باسم العميل (ملفُّه في هذا المتجر أو اسمُه على واتساب) أو برقمه.
+     *
+     * و`unread` يُبقي ما فيه واردٌ لم يقرأه **هذا** الموظّف — فما قرأه زميلُه
+     * يبقى عنده غيرَ مقروء. ومن لم يكتب بعدُ لا واردَ له، فلا يدخل فيه.
      */
-    public static function page(Business $business, User $user, ?string $q): LengthAwarePaginator
+    public static function page(Business $business, User $user, ?string $q, ?string $filter = null): LengthAwarePaginator
     {
+        $unreadOnly = $filter === self::UNREAD;
         $q = trim(str_replace('%', '', (string) $q));
         $like = Search::like();
         $digits = $q === '' ? '' : (string) preg_replace('/\D+/', '', Digits::western($q));
@@ -800,6 +888,7 @@ final class WhatsAppInbox
                     $w->orWhereIn('customer_id', $customers);
                 }
             }))
+            ->when($unreadOnly, fn ($query) => $query->whereExists(self::unreadFor($user, 'whatsapp_chats.id')))
             /*
              * ومحادثةٌ فُتحت من إشعارٍ ولم يُكتب فيها تُرتَّب بآخر ما خرج إلى زبونها —
              * لا تسقط إلى أسفل القائمة ولا تعلوها (`open` لا يختم `last_message_at`).
@@ -825,7 +914,7 @@ final class WhatsAppInbox
             ->groupBy('m.recipient_phone', 'm.sender_phone_number_id', 'm.source_mode')
             ->selectRaw('null as chat_id, max(m.id) as message_id, max(m.created_at) as last_at');
 
-        $page = DB::query()->fromSub($chats->unionAll($quiet), 'inbox')
+        $page = DB::query()->fromSub($unreadOnly ? $chats : $chats->unionAll($quiet), 'inbox')
             ->orderByRaw('case when last_at is null then 1 else 0 end')
             ->orderByDesc('last_at')->orderByDesc('chat_id')->orderByDesc('message_id')
             ->paginate(self::PER_PAGE)->withQueryString();
@@ -944,6 +1033,24 @@ final class WhatsAppInbox
                 where r.chat_id = whatsapp_chat_messages.chat_id and r.user_id = ?), 0)', [$user->id]);
     }
 
+    /** واردٌ لم يقرأه هذا الموظّف في المحادثة `$chatColumn` — لـ`whereExists` */
+    private static function unreadFor(User $user, string $chatColumn): \Closure
+    {
+        return fn ($w) => $w->selectRaw('1')->from('whatsapp_chat_messages as u')
+            ->whereColumn('u.chat_id', $chatColumn)
+            ->where('u.direction', WhatsAppChatMessage::IN)
+            ->whereRaw('u.id > coalesce((select r.last_read_message_id from whatsapp_chat_reads r
+                where r.chat_id = u.chat_id and r.user_id = ?), 0)', [$user->id]);
+    }
+
+    /** كم محادثةً فيها ما لم يقرأه هذا الموظّف — عدُّ حبّة «غير المقروءة» */
+    public static function unreadChats(Business $business, User $user): int
+    {
+        return WhatsAppChat::where('business_id', $business->id)
+            ->whereExists(self::unreadFor($user, 'whatsapp_chats.id'))
+            ->count();
+    }
+
     /** كلُّ ما لم يقرأه هذا الموظّف — شارةُ الشريط */
     public static function unreadTotal(User $user): int
     {
@@ -963,13 +1070,20 @@ final class WhatsAppInbox
      * ختمُ آخر تغييرٍ في صندوق هذا المتجر — تقرؤه الشاشةُ لتعرف أنّ جديدًا وصل.
      *
      * رسالةٌ جديدة تُغيّر أكبرَ معرّف، وحالٌ تبدّلت تُغيّر آخرَ تحديث.
+     *
+     * والإشعاراتُ الآليّة في الختم أيضًا (`whatsapp_messages`): تُعرض في
+     * الخيط والقائمة، فإشعارُ طلبٍ خرج الآن أو قرأه الزبون يصل الشاشاتِ
+     * المفتوحةَ كلَّها كما يصلها ردُّ زميل — لا حين يكتب الزبون بعده.
      */
     public static function stamp(Business $business): string
     {
         $row = WhatsAppChatMessage::where('business_id', $business->id)
             ->selectRaw('max(id) as id, max(updated_at) as at')->first();
+        $notice = WhatsAppMessage::where('business_id', $business->id)
+            ->selectRaw('max(id) as id, max(updated_at) as at')->first();
 
-        return ((int) ($row?->id ?? 0)).'|'.((string) ($row?->at ?? ''));
+        return ((int) ($row?->id ?? 0)).'|'.((string) ($row?->at ?? ''))
+            .'|'.((int) ($notice?->id ?? 0)).'|'.((string) ($notice?->at ?? ''));
     }
 
     public static function markRead(WhatsAppChat $chat, User $user): void
@@ -1007,6 +1121,18 @@ final class WhatsAppInbox
                 ])->all()
             : [];
 
+        // وفواتيرُه بالقسم نفسِه — «فواتير العملاء» تحت «الطلبات» (`Permissions::ALIASES`)
+        $invoices = $customer && $viewer->allows('orders')
+            ? CustomerInvoice::where('business_id', $chat->business_id)->where('customer_id', $customer->id)
+                ->orderByDesc('id')->limit(3)->get(['id', 'number', 'total', 'status'])
+                ->map(fn (CustomerInvoice $i) => [
+                    'number' => (string) $i->number,
+                    'total' => (float) $i->total,
+                    'status' => (string) $i->status,
+                    'url' => route('admin.customerInvoices.show', $i->id),
+                ])->all()
+            : [];
+
         $connection = WhatsAppConnection::find($chat->whatsapp_connection_id);
 
         return [
@@ -1019,6 +1145,7 @@ final class WhatsAppInbox
                 'url' => $viewer->allows('customers') ? route('admin.customers.show', $customer->id) : null,
             ] : null,
             'orders' => $orders,
+            'invoices' => $invoices,
             'source' => $chat->source_mode,
             // الرقمُ المعروض وحده — لا معرّفُ الوصلة ولا رمزُها
             'line_number' => $connection && (string) $connection->phone_number_id === (string) $chat->phone_number_id
@@ -1066,7 +1193,12 @@ final class WhatsAppInbox
 
         $items = $rows->map(fn (WhatsAppChatMessage $m) => self::bubble($m, $autoReplied->has((string) $m->wamid)))
             ->concat(self::notices($chat, $lower, $upper))
-            ->sortBy([['ts', 'asc'], ['order', 'asc']])
+            /*
+             * والثانيةُ الواحدة تتّسع لردّين: زميلان ردّا معًا، أو ردٌّ وملفّه.
+             * فالمعرّفُ يفصل بينهما بترتيب كتابتهما — لا بترتيب الاستعلام
+             * التنازليّ الذي كان يقلبهما.
+             */
+            ->sortBy([['ts', 'asc'], ['order', 'asc'], ['id', 'asc']])
             ->values();
 
         return [
@@ -1132,6 +1264,7 @@ final class WhatsAppInbox
             'attachments' => $m->attachments->map(fn (WhatsAppChatAttachment $a) => [
                 'id' => $a->id,
                 'name' => (string) $a->name,
+                'size' => (int) $a->size,
                 'image' => str_starts_with((string) $a->mime, 'image/'),
                 'url' => route('admin.whatsappInbox.attachment', $a->id),
             ])->values()->all(),

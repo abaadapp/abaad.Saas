@@ -3,6 +3,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { EMPLOYEE_TABS } from '@/Components/SectionTabs';
 import EmployeesPanel, { type JobTitle } from '../Settings/panels/EmployeesPanel';
+import InboxAccessRoster, { type InboxRoster } from './partials/InboxAccessRoster';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -14,7 +15,7 @@ import type { Employee } from '@/types/models';
  * تبقى لأن رابطها منشورٌ في روابط محفوظة، ولأن «موظف جديد» يعود إليها.
  */
 export default function EmployeesIndex() {
-    const { employees, jobTitles } = usePage<PageProps<{ employees: Employee[]; jobTitles: JobTitle[] }>>().props;
+    const { employees, jobTitles, inboxAccess } = usePage<PageProps<{ employees: Employee[]; jobTitles: JobTitle[]; inboxAccess?: InboxRoster | null }>>().props;
     const t = useTranslate();
 
     return (
@@ -33,6 +34,9 @@ export default function EmployeesIndex() {
             <SectionTabs tabs={EMPLOYEE_TABS} current="admin.employees.index" />
 
             <EmployeesPanel employees={employees} jobTitles={jobTitles} />
+
+            {/* ومحادثاتُ واتساب لعدّة موظّفين — لمن يمنحها وحده (`EmployeeController::inboxRoster`) */}
+            {inboxAccess && <InboxAccessRoster roster={inboxAccess} />}
         </AdminLayout>
     );
 }

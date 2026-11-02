@@ -39,6 +39,8 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- حدودُ جولة الصور القديمة تقرأ حِملَ الجهاز نفسه، وجهازُ CI مشغولٌ بالاختبارات: تُفتح وتُحاكى في AnOldImageWaitsForAQuietServerTest -->
+        <env name="IMAGES_BATCH_GATE" value="false"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

@@ -70,6 +70,11 @@ export interface DocProduct {
     was: number | null;
     final: number;
     image: string | null;
+    /**
+     * مصغّرةُ البطاقة — صورةٌ بعرض ٦٤٠ لرفٍّ يرسمها بعرض مئتين. وتغيب في
+     * مستندٍ قديم أو لصورةٍ لم تُصنع مصغّرتها، فتُرسم `image` كما كانت.
+     */
+    thumb?: string | null;
     category_id: number | null;
 }
 

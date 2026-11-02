@@ -10,7 +10,7 @@
             {{-- والشعارُ كاملًا بنسبته — لا يُكبَّر في ٤:٣ ولا يُقصّ. وبلا شعارٍ يبقى الإطارُ كما كان --}}
             @if ($logo)
                 <div style="border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)" data-testid="rb-sec-about-frame">
-                    <img src="{{ $logo }}" alt="" style="width:100%;height:auto;display:block" data-testid="rb-sec-about-image">
+                    <img src="{{ $logo }}" alt="" loading="lazy" decoding="async" style="width:100%;height:auto;display:block" data-testid="rb-sec-about-image">
                 </div>
             @else
                 <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)"></div>

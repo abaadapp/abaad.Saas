@@ -9,6 +9,7 @@ use App\Models\Currency;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\ImageVariants;
 use App\Support\MarketingSettings;
 use App\Support\Store\PageEditor;
 use App\Support\Store\StoreCollections;
@@ -135,7 +136,8 @@ class RibbonImagesShowWholeWhenAskedTest extends TestCase
     /** المحفوظُ في مجلّد المتجر — بأبعاده */
     private function stored(): array
     {
-        $files = Storage::disk('public')->files('website/'.$this->shop->id);
+        // ‏أصلٌ واحد — ونسخُه الأخفُّ إلى جواره تُصنع مع الرفع (`ImageVariants`)
+        $files = array_values(array_filter(Storage::disk('public')->files('website/'.$this->shop->id), fn ($f) => ! ImageVariants::isVariant($f)));
         $this->assertCount(1, $files, 'ملفٌّ واحدٌ في مجلّد المتجر وحده');
         $bytes = Storage::disk('public')->get($files[0]);
 

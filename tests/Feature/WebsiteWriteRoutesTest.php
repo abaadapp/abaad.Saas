@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsitePage;
+use App\Support\ImageVariants;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -167,7 +168,8 @@ class WebsiteWriteRoutesTest extends TestCase
             'image' => UploadedFile::fake()->image('wide.jpg', 3200, 1600),
         ])->assertSessionHasNoErrors();
 
-        $files = Storage::disk('public')->allFiles('website/'.$this->shop->id);
+        // ‏أصلٌ واحد — ونسخُه الأخفُّ إلى جواره (`ImageVariants`)
+        $files = array_values(array_filter(Storage::disk('public')->allFiles('website/'.$this->shop->id), fn ($f) => ! ImageVariants::isVariant($f)));
         $this->assertCount(1, $files);
         $size = getimagesize(Storage::disk('public')->path($files[0]));
         $this->assertSame([2560, 1280], [$size[0], $size[1]], 'حُفظت الصورةُ بأبعادها كما رُفعت');

@@ -23,6 +23,8 @@ export interface Product {
     sku: string;
     barcode: string;
     image: string | null;
+    /** مصغّرةُ شبكة الصندوق — تغيب حيث لا تُرسل، فتُرسم `image` */
+    thumb?: string;
     stock_status: string;
     active: boolean;
     /** يُعرض في المتجر على الإنترنت — و`active` فوقه: الموقوفُ لا يُباع في أيّ قناة */

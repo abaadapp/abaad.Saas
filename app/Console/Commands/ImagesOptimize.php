@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\ImageGate;
 use App\Support\ImageMemory;
 use App\Support\ImageReferences;
 use App\Support\ImageSwap;
@@ -9,6 +10,7 @@ use App\Support\ImageVariants;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -277,6 +279,19 @@ class ImagesOptimize extends Command
                 continue;
             }
 
+            /*
+             * والخادمُ يُسأل قبل كلّ صورة — ذاكرتُه وحِملُه وقرصُه وطوابيرُه
+             * (`ImageGate`). وما لا يتّسع تقف عنده الدفعةُ قبل أن تُفكّ صورة،
+             * وتُعاد في الجولة التالية من حيث وقفت.
+             */
+            if (($why = ImageGate::blocked()) !== null) {
+                $count['paused'] = 1;
+                $this->warn('وقفت الدفعة قبل '.$path.': '.$why['reason'].' — الآن '.($why['value'] ?? 'لا يُقرأ').' والحدّ '.$why['limit'].'. لم تُفكّ صورة، وتُعاد في الجولة التالية.');
+                $this->paused($why, $path);
+
+                break;
+            }
+
             $r = ImageVariants::make($path);
             $count[$r['status']] = ($count[$r['status']] ?? 0) + 1;
             $done++;
@@ -312,6 +327,20 @@ class ImagesOptimize extends Command
         $this->line('بقي '.$left.' صورةً تنتظر، و'.$failed.' فشلت (تُعاد حتى '.self::ATTEMPTS.' مرّات، ثمّ بـ --retry-failed).');
 
         return ($count['failed'] ?? 0) > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * سطرٌ في سجلّ الصور لدفعةٍ وقفت — والسجلُّ لا يُسقط الجولة.
+     *
+     * @param  array{reason: string, value: float|int|null, limit: float|int}  $why
+     */
+    private function paused(array $why, string $path): void
+    {
+        try {
+            Log::channel('images')->warning('images.batch_paused', $why + ['path' => $path]);
+        } catch (\Throwable) {
+            // ‏الوقفةُ قيلت على الشاشة — والسجلُّ لا يستحقّ أكثر
+        }
     }
 
     /**

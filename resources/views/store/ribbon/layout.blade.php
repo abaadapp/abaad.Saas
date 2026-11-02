@@ -392,7 +392,7 @@
                     <span class="rb-vcard-img">
                         @if ($rbCard['image'])
                             {{-- والاسمُ مكتوبٌ تحت الصورة، فلا يُقرأ مرّتين: الصورةُ زينةٌ للقارئ الصوتيّ --}}
-                            <img src="{{ $rbCard['image'] }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async" @if (($rbCard['fit'] ?? 'cover') === 'contain') class="is-contain" @endif data-fit="{{ $rbCard['fit'] ?? 'cover' }}">
+                            <img src="{{ \App\Support\ImageVariants::link($rbCard['image'], \App\Support\ImageVariants::THUMB) }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async" @if (($rbCard['fit'] ?? 'cover') === 'contain') class="is-contain" @endif data-fit="{{ $rbCard['fit'] ?? 'cover' }}">
                         @else
                             <span class="rb-stripes" aria-hidden="true"></span>
                         @endif

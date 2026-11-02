@@ -9,6 +9,7 @@ use App\Models\Currency;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\ImageVariants;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\PageEditor;
@@ -157,7 +158,9 @@ class ACategoryCardHidesAndWearsItsPictureTest extends TestCase
         $this->assertSame($url, $this->roses->fresh()->card_image);
 
         $html = $this->get('/s/ribbon')->assertOk()->getContent();
-        $this->assertStringContainsString('<img src="'.$url.'"', $html, 'البطاقةُ لم تلبس صورتَها');
+        // ‏صورتُها نفسُها — بمصغّرتها التي صُنعت مع الرفع، والمحفوظُ على الأصل
+        $this->assertStringStartsWith($url.'.w', ImageVariants::link($url, ImageVariants::THUMB));
+        $this->assertStringContainsString('<img src="'.ImageVariants::link($url, ImageVariants::THUMB).'"', $html, 'البطاقةُ لم تلبس صورتَها');
         $this->assertSame(1, substr_count($html, 'data-testid="rb-cat-image"'), 'صورةُ قسمٍ ظهرت على بطاقة غيره');
         $this->assertStringContainsString('repeating-linear-gradient', $html, 'البطاقةُ بلا صورة فقدت خطوطها');
     }

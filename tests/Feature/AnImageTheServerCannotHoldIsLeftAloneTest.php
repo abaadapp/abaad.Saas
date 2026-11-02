@@ -314,12 +314,14 @@ class AnImageTheServerCannotHoldIsLeftAloneTest extends TestCase
 
         $thumbs = array_map(fn ($p) => ImageVariants::make($p, false)['thumb'], $products);
         $this->assertNotContains(0, $thumbs);
-        $this->assertSame(0, ImageVariants::make($banners[0], false)['thumb'], 'صورةُ الشريط صُنعت لها مصغّرة');
+        // ‏وصورُ الموقع لها مصغّرةٌ أيضًا — بطاقةُ القسم وبطاقةُ الشريط تُرسمان صغيرتين
+        $web = array_map(fn ($p) => ImageVariants::make($p, false)['thumb'], $banners);
+        $this->assertNotContains(0, $web, 'صورةُ الشريط بلا مصغّرة لبطاقتها');
 
         $this->artisan('images:optimize', ['--sample' => 6])
             ->expectsOutputToContain('صورة مقيسة')
             ->expectsOutputToContain('2 — '.round(array_sum($thumbs) / 2 / 1024).' KB')
-            ->expectsOutputToContain('0 — —')
+            ->expectsOutputToContain('2 — '.round(array_sum($web) / 2 / 1024).' KB')
             ->doesntExpectOutputToContain('المصغّرةُ في القوائم')
             ->expectsOutputToContain('أقصى ذاكرةٍ مقيمةٍ للعمليّة')
             ->assertSuccessful();

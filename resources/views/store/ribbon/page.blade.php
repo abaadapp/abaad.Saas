@@ -56,7 +56,7 @@
             @case ('image')
                 <div class="rb-wrap" style="padding-top:28px">
                     <figure class="rb-cp-figure is-{{ $rbB['image']['fit'] }}" data-testid="rb-page-image" data-fit="{{ $rbB['image']['fit'] }}">
-                        <img src="{{ $rbB['image']['url'] }}" alt="" decoding="async" @if ($loop->first) fetchpriority="high" @else loading="lazy" @endif
+                        <img src="{{ \App\Support\ImageVariants::link($rbB['image']['url'], \App\Support\ImageVariants::DISPLAY) }}" alt="" decoding="async" @if ($loop->first) fetchpriority="high" @else loading="lazy" @endif
                              @if ($rbB['image']['w']) width="{{ $rbB['image']['w'] }}" height="{{ $rbB['image']['h'] }}" @endif>
                     </figure>
                 </div>
@@ -66,7 +66,7 @@
                     <div class="rb-cp-gallery" data-testid="rb-page-gallery">
                         @foreach ($rbB['images'] as $rbImg)
                             <figure class="rb-cp-figure is-{{ $rbImg['fit'] }}" data-testid="rb-page-gallery-image" data-fit="{{ $rbImg['fit'] }}">
-                                <img src="{{ $rbImg['url'] }}" alt="" loading="lazy" decoding="async"
+                                <img src="{{ \App\Support\ImageVariants::link($rbImg['url'], \App\Support\ImageVariants::DISPLAY) }}" alt="" loading="lazy" decoding="async"
                                      @if ($rbImg['w']) width="{{ $rbImg['w'] }}" height="{{ $rbImg['h'] }}" @endif>
                             </figure>
                         @endforeach
@@ -78,7 +78,7 @@
                     <div class="rb-cp-sec @if (! $rbB['image']) is-text-only @elseif ($rbB['layout'] === 'top') is-top @endif @if ($rbB['flip']) is-flip @endif">
                         @if ($rbB['image'])
                             <figure class="rb-cp-figure is-{{ $rbB['image']['fit'] }}" data-testid="rb-page-section-image" data-fit="{{ $rbB['image']['fit'] }}">
-                                <img src="{{ $rbB['image']['url'] }}" alt="" loading="lazy" decoding="async"
+                                <img src="{{ \App\Support\ImageVariants::link($rbB['image']['url'], \App\Support\ImageVariants::DISPLAY) }}" alt="" loading="lazy" decoding="async"
                                      @if ($rbB['image']['w']) width="{{ $rbB['image']['w'] }}" height="{{ $rbB['image']['h'] }}" @endif>
                             </figure>
                         @endif
@@ -122,7 +122,7 @@
                     <div class="rb-cp-promo">
                         @if ($rbB['image'])
                             <figure class="rb-cp-figure is-{{ $rbB['image']['fit'] }}" data-fit="{{ $rbB['image']['fit'] }}">
-                                <img src="{{ $rbB['image']['url'] }}" alt="" loading="lazy" decoding="async"
+                                <img src="{{ \App\Support\ImageVariants::link($rbB['image']['url'], \App\Support\ImageVariants::DISPLAY) }}" alt="" loading="lazy" decoding="async"
                                      @if ($rbB['image']['w']) width="{{ $rbB['image']['w'] }}" height="{{ $rbB['image']['h'] }}" @endif>
                             </figure>
                         @endif

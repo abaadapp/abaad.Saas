@@ -1310,6 +1310,8 @@ class Demo
                 'sku' => $p->sku,
                 'barcode' => $p->barcode,
                 'image' => $p->image,
+                // ‏ومصغّرتُها لشبكة الصندوق — بطاقةٌ بعرض مئتين على هاتف الكاشير طوال اليوم
+                'thumb' => ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB),
                 'stock_status' => $p->stockStatusAt($qty),
                 /* ومن لا يُعدّ على رفٍّ تقوله الشاشةُ فلا تكتب له «المتوفر: ٠» */
                 'tracks_stock' => $p->tracksStock(),

@@ -166,4 +166,17 @@ return [
         'intval',
         explode(',', (string) env('WHATSAPP_GUIDED_ORDERS_BUSINESSES', '5')),
     ))),
+
+    /*
+     * من تصل زبائنَه رسائلُ الحال حين تتحرّك مهامُّ فواتيره في لوحة التجهيز
+     * (`WhatsAppAutomation::handlePreparation`) — كطلبات الموقع تمامًا.
+     *
+     * تبدأ بمتجر سعود (RIBBON) وحده: لوحتُه مهامُّ فواتير في أغلبها. ومتجرٌ آخر
+     * شغّل تجهيزَ الفواتير لا تتغيّر رسائلُه حتى يُضاف هنا بمعرّفه، أو من البيئة
+     * بقائمةٍ مفصولةٍ بفواصل. ومفاتيحُ المتجر (`wa_on_*`) تحكم بعدها كما للطلبات.
+     */
+    'invoice_task_notices_businesses' => array_values(array_filter(array_map(
+        'intval',
+        explode(',', (string) env('WHATSAPP_INVOICE_TASK_NOTICES_BUSINESSES', '5')),
+    ))),
 ];

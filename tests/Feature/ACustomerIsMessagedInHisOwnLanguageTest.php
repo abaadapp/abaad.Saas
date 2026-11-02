@@ -56,6 +56,8 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
         parent::setUp();
         app()->setLocale('ar');
         Http::preventStrayRequests();
+        // وعلى PostgreSQL قد يصير هذا المتجرُ رقمَ ٥ بترتيب التشغيل — فلا تلحقه دورةُ RIBBON المسمّاة بالمعرّف
+        config(['whatsapp.ribbon_businesses' => [], 'whatsapp.invoice_task_notices_businesses' => []]);
 
         $this->shop = Business::create([
             'name' => 'محل الورد', 'type' => 'محل ورود', 'status' => 'نشط', 'whatsapp_enabled' => true,

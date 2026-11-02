@@ -185,6 +185,8 @@ class SendWhatsAppMessage implements ShouldQueue
             // وقالبا الطلب الآليّ بمتغيّراتهما مكتوبةً مع الصفّ (`WhatsAppOrders::template`) — لا فراغَ فيها
             in_array($message->event_type, WhatsAppEvent::GUIDED_ORDER, true) => self::written($message),
             $order !== null => WhatsAppTemplates::variables($business, $order, $message->source_mode),
+            // ومهمّةُ فاتورةٍ في لوحة التجهيز بقوالب الطلبات نفسِها (`WhatsAppAutomation::handlePreparation`)
+            $invoice !== null && in_array($message->event_type, WhatsAppEvent::ORDER_STATUS_EVENTS, true) => WhatsAppTemplates::taskVariables($business, $invoice, $message->source_mode),
             // وما دُفع يُقرأ من الصفّ — كتبه الرابطُ يومَ دُفع (`handlePaidLink`)
             $invoice !== null && $paid => isset(($message->metadata ?? [])['amount'])
                 ? WhatsAppTemplates::paidVariables($business, $invoice, (float) $message->metadata['amount'])

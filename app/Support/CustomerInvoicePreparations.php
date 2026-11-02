@@ -495,6 +495,11 @@ final class CustomerInvoicePreparations
              */
             DB::afterCommit(fn () => WhatsAppOrders::prepared($invoiceId));
 
+            // وظهورُها «مؤكّدًا» حالٌ كأيّ حال: رسالتُه لزبونها إن كان متجرُها يرسلها (`WhatsAppAutomation::handlePreparation`)
+            $preparationId = (int) $prep->id;
+            $businessId = (int) $prep->business_id;
+            DB::afterCommit(fn () => WhatsAppAutomation::handlePreparation($businessId, $preparationId, null, self::FIRST));
+
             return [$prep, null];
         });
     }
@@ -688,6 +693,15 @@ final class CustomerInvoicePreparations
             }
 
             $prep->forceFill(['status' => $to, 'status_changed_at' => now()])->save();
+
+            /*
+             * ورسالةُ الحال لزبونها — بعد تثبيت النقل، ولا يُسقطه شيءٌ هناك.
+             *
+             * وهي ما كان ينقص: طلباتُ الموقع يُعلن حالَها `OrderObserver`، والمهمّةُ
+             * لا طلبَ لها فكانت تتحرّك صامتة (`WhatsAppAutomation::handlePreparation`).
+             */
+            $moved = $from;
+            DB::afterCommit(fn () => WhatsAppAutomation::handlePreparation($businessId, $prepId, $moved, $to));
 
             return null;
         });

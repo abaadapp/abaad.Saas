@@ -5,9 +5,13 @@ namespace App\Support;
 use App\Jobs\SendWhatsAppMessage;
 use App\Models\Business;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerInvoicePreparation;
 use App\Models\CustomerPaymentLink;
 use App\Models\Order;
+use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppOrderSession;
+use App\Models\WhatsAppTemplateMapping;
 
 /**
  * القرار كلّه هنا — لا في متحكّم ولا في شاشة.
@@ -242,6 +246,113 @@ class WhatsAppAutomation
             'dedupe_key' => $dedupe ?? 'inv:'.$business->id.':'.$invoice->id.':'.$event,
         ] + ($metadata === [] ? [] : ['metadata' => $metadata]);
 
+        return self::enqueue($base, $phone, $connection, $template);
+    }
+
+    /**
+     * مهمّةُ فاتورةٍ تحرّكت في لوحة التجهيز — رسالةُ حالها لزبونها، كطلب الموقع.
+     *
+     * ═══ لمَ هنا ═══
+     *
+     * لوحةُ التجهيز تحمل نوعين: طلباتُ الموقع (`orders`) ومهامُّ فواتير العملاء
+     * (`customer_invoice_preparations`). الأولى تُعلَن من `OrderObserver`، والثانية
+     * لا طلبَ لها فلا يسمعها أحد — فكان سعود يحرّك مهامَّه كلَّها ولا يصل زبونَه
+     * شيء، ولا صفَّ في السجلّ يقول لماذا. فتُنادى من بابَي المهمّة نفسَيهما
+     * (`CustomerInvoicePreparations::activate` و`move`) بعد تثبيت المعاملة.
+     *
+     * ═══ وبالقرار نفسِه ═══
+     *
+     * الحدثُ من الحال كما للطلب (`WhatsAppEvent::forBusinessTransition`)، وكلُّ
+     * سؤالٍ قبل الرسالة هو هو: المتجرُ ومفتاحُ الحدث ورقمُ الزبون والوصلةُ والقالبُ
+     * المعتمَد بلغة الزبون. والمرّةُ واحدة: المفتاحُ المهمّةُ والحدث — فمهمّةٌ رجعت
+     * من «جاهز» ثمّ عادت إليه لا تُرسل ثانية.
+     *
+     * ═══ ولمن ═══
+     *
+     * للمتاجر المسمّاة في `whatsapp.invoice_task_notices_businesses` وحدها — تبدأ
+     * بـRIBBON. فمتجرٌ آخر شغّل تجهيز الفواتير لا تتغيّر رسائلُه بلا قرار.
+     *
+     * ولا يرمي: لوحةُ التجهيز لا تسقط بسبب رسالة.
+     */
+    public static function handlePreparation(int $businessId, int $preparationId, ?string $from, string $to): ?WhatsAppMessage
+    {
+        try {
+            return self::decidePreparation($businessId, $preparationId, $from, $to);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /** أتصل رسائلُ الحال مهامَّ فواتير هذا المتجر؟ */
+    public static function preparationNotices(int $businessId): bool
+    {
+        return in_array($businessId, array_map('intval', (array) config('whatsapp.invoice_task_notices_businesses', [])), true);
+    }
+
+    private static function decidePreparation(int $businessId, int $preparationId, ?string $from, string $to): ?WhatsAppMessage
+    {
+        if ($from === $to || ! self::preparationNotices($businessId)) {
+            return null;
+        }
+
+        $event = WhatsAppEvent::forBusinessTransition($businessId, $from, $to);
+        $business = Business::find($businessId);
+
+        if ($event === null || ! $business || ! WhatsAppEvent::allowedForBusiness($businessId, $event)) {
+            return null;
+        }
+
+        $prep = CustomerInvoicePreparation::where('business_id', $businessId)->find($preparationId);
+        $invoice = $prep ? CustomerInvoice::where('business_id', $businessId)->find($prep->customer_invoice_id) : null;
+
+        if ($invoice === null) {
+            return null;
+        }
+
+        // وطلبُ واتساب الآليّ يؤكّد دفعَه برسالته (`WhatsAppOrders::prepared`) — لا تأكيدان
+        if ($event === WhatsAppEvent::ORDER_CONFIRMED
+            && WhatsAppOrderSession::where('business_id', $businessId)->where('customer_invoice_id', $invoice->id)->exists()) {
+            return null;
+        }
+
+        if (WhatsAppFeature::blockReason($business) !== null || ! self::eventEnabled($businessId, $event)) {
+            return null;
+        }
+
+        $mode = WhatsAppFeature::effectiveMode($business);
+        $customer = $invoice->customer;
+        $phone = WhatsAppPhone::normalize($customer?->contact_phone ?: $customer?->phone);
+        $connection = WhatsAppConnections::resolve($business);
+        $template = WhatsAppTemplates::resolve($business, $event, $mode, $customer?->language);
+
+        return self::enqueue([
+            'business_id' => $businessId,
+            'order_id' => null,
+            // والورقةُ مسمّاةٌ في الصفّ: السجلُّ والمحادثةُ يقرآن رقمَها، والمُرسِلُ متغيّراتِه
+            'customer_invoice_id' => $invoice->id,
+            'customer_id' => $invoice->customer_id,
+            'whatsapp_connection_id' => $connection?->id,
+            'sender_phone_number_id' => $connection?->phone_number_id,
+            'source_mode' => $mode,
+            'event_type' => $event,
+            'direction' => 'outbound',
+            'recipient_phone' => $phone,
+            'template_name' => $template?->template_name,
+            'language_code' => $template?->languageFor($customer?->language),
+            'dedupe_key' => 'prep:'.$businessId.':'.$prep->id.':'.$event,
+            'metadata' => ['customer_invoice_preparation_id' => (int) $prep->id, 'status' => $to],
+        ], $phone, $connection, $template);
+    }
+
+    /**
+     * ما يُقيَّد ممتنعًا بسببه، أو يُكتب في الطابور ويُدفع إليه — مرّةً بمفتاحه.
+     *
+     * صفٌّ سبقه بالمفتاح نفسه يعني أنّ الحدث وصل مرّتين: لا صفٌّ ولا طابور.
+     */
+    private static function enqueue(array $base, ?string $phone, ?WhatsAppConnection $connection, ?WhatsAppTemplateMapping $template): ?WhatsAppMessage
+    {
         $skip = match (true) {
             $phone === null => WhatsAppStatus::SKIP_NO_RECIPIENT,
             $connection === null => WhatsAppStatus::SKIP_NO_CONNECTION,

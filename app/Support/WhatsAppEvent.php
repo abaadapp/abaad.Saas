@@ -57,6 +57,15 @@ class WhatsAppEvent
         self::ORDER_OUT_FOR_DELIVERY,
     ];
 
+    /** أحداثُ حال الطلب — ومهمّةُ الفاتورة في لوحة التجهيز تُرسلها بقوالبها نفسِها */
+    public const ORDER_STATUS_EVENTS = [
+        self::ORDER_RECEIVED,
+        self::ORDER_CONFIRMED,
+        self::ORDER_READY,
+        self::ORDER_OUT_FOR_DELIVERY,
+        self::ORDER_DELIVERED,
+    ];
+
     /** ما يُربط قالبُه فقط يومَ يظهر عند ميتا معتمَدًا. */
     public const ON_APPROVAL = [self::INVOICE_PAID];
 
@@ -126,6 +135,23 @@ class WhatsAppEvent
             OrderStatus::OUT_FOR_DELIVERY => self::ORDER_OUT_FOR_DELIVERY,
             default => null,
         };
+    }
+
+    /**
+     * الانتقال → حدث هذا المتجر — كـ`forBusinessStatus`، إلّا قفزةً تتخطّى التأكيد.
+     *
+     * في RIBBON «جديد» ← «قيد التجهيز» مباشرةً (`OrderStatus::NEXT` يجيزها) لا يمرّ
+     * بـ«مؤكّد»، فكانت رسالةُ التأكيد تضيع والزبونُ لا يعلم أنّ طلبه قُبل. فالقفزةُ
+     * نفسُها تأكيد. ولا تكرار: التأكيدُ مرّةً للطلب (`WhatsAppAutomation::dedupeKey`).
+     * وبقيّةُ المتاجر على دورتها كما كانت.
+     */
+    public static function forBusinessTransition(int $businessId, ?string $from, ?string $to): ?string
+    {
+        if (self::isRibbonBusiness($businessId) && $from === OrderStatus::PENDING && $to === OrderStatus::PREPARING) {
+            return self::ORDER_CONFIRMED;
+        }
+
+        return self::forBusinessStatus($businessId, $to);
     }
 
     /** مفاتيح مقابض الإرسال في إعدادات المتجر. */

@@ -363,6 +363,13 @@ class ProductImages
             return null;
         }
 
+        // ‏وذاكرةُ الخادم لا حدُّ PHP: ما لا يتّسع له الآن يُحفظ كما رُفع، والرفعُ ينجح
+        if (ImageMemory::shortFor($w * $h) !== null) {
+            ImageMemory::note('product_upload', 'low_memory', $w, $h);
+
+            return null;
+        }
+
         try {
             $image = @$decode($source);
 

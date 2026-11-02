@@ -193,6 +193,13 @@ final class StoreImageUpload
             return null;
         }
 
+        // ‏وذاكرةُ الخادم لا حدُّ PHP: ما لا يتّسع له الآن يُحفظ كما رُفع، والرفعُ ينجح
+        if (\App\Support\ImageMemory::shortFor($w * $h) !== null) {
+            \App\Support\ImageMemory::note('store_upload', 'low_memory', $w, $h);
+
+            return null;
+        }
+
         $image = match ($type) {
             IMAGETYPE_JPEG => @imagecreatefromjpeg($path),
             IMAGETYPE_PNG => @imagecreatefrompng($path),

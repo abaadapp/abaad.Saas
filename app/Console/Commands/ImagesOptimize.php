@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\ImageMemory;
 use App\Support\ImageReferences;
 use App\Support\ImageSwap;
 use App\Support\ImageVariants;
@@ -91,15 +92,18 @@ class ImagesOptimize extends Command
         $refs = ImageReferences::scan();
         $rows = [];
         $todo = [];
+        $over = 0;
 
         foreach ($files as $path => $bytes) {
             $kind = $this->kind($path, $refs[$path] ?? []);
             $rows[$kind] ??= ['n' => 0, 'bytes' => 0];
             $rows[$kind]['n']++;
             $rows[$kind]['bytes'] += $bytes;
+            $need = in_array($kind, ['product', 'category', 'website'], true) ? ImageVariants::needs($path) : null;
 
-            if (in_array($kind, ['product', 'category', 'website'], true) && $this->pending($path)) {
+            if ($need !== null && ($need['display'] || $need['thumb'])) {
                 $todo[$kind][] = $path;
+                $over += $need['w'] * $need['h'] > ImageMemory::maxPixels() ? 1 : 0;
             }
         }
 
@@ -118,13 +122,23 @@ class ImagesOptimize extends Command
 
         $this->private();
 
+        $this->line('');
+        $this->measured($estimate);
+        $cap = ImageMemory::maxPixels() / 1_000_000;
+        $this->line($over > 0
+            ? 'فوق سقف '.$cap.' ميغابكسل: '.$over.' صورة — تُترك في الجولة ويُكتب سببُها في السجلّ.'
+            : 'لا صورةَ تنتظر فوق سقف '.$cap.' ميغابكسل.');
+
         if ($estimate['n'] > 0) {
-            $this->line('');
-            $this->line('العيّنة: '.$estimate['n'].' صورة — متوسّطُ المعالجة '.round($estimate['ms'] / $estimate['n']).' ملّي‌ثانية، وذروةُ الذاكرة '.$this->mb($estimate['peak']).'.');
-            $this->line('المصغّرةُ في القوائم: نحو '.round($estimate['thumb'] / $estimate['n'] / 1024).' KB بدل '.round($estimate['before'] / $estimate['n'] / 1024).' KB للصورة.');
             $all = array_sum(array_map('count', $todo));
-            $this->line('كلُّ ما ينتظر ('.$all.'): نحو '.round($estimate['ms'] / $estimate['n'] * $all / 1000 / 60, 1).' دقيقة معالجة — '.(int) ceil($all / max(1, (int) $this->option('limit'))).' دفعة.');
+            $this->line('متوسّطُ المعالجة '.round($estimate['ms'] / $estimate['n']).' ملّي‌ثانية للصورة. كلُّ ما ينتظر ('.$all.'): نحو '
+                .round($estimate['ms'] / $estimate['n'] * $all / 1000 / 60, 1).' دقيقة معالجة — '.(int) ceil($all / max(1, (int) $this->option('limit'))).' دفعة.');
         }
+
+        // ‏ذاكرةُ العمليّة كما يراها النظام — مكتبةُ الصور تحجز خارج حساب PHP فلا تُصدَّق ذروتُه
+        $available = ImageMemory::available();
+        $this->line('أقصى ذاكرةٍ مقيمةٍ للعمليّة: '.$this->mb($this->rss())
+            .($available === null ? '' : '، والمتاحُ في الخادم الآن '.$this->mb($available)).'.');
 
         $this->scanCost();
         $this->line('الجردُ كلُّه: '.round(microtime(true) - $started, 1).' ثانية. لم يُكتب شيء.');
@@ -135,40 +149,88 @@ class ImagesOptimize extends Command
     /**
      * يقدّر التوفير بعيّنةٍ من كلّ فئة — تُضغط في الذاكرة ولا تُكتب.
      *
+     * وكلُّ متوسّطٍ من الصور التي قيس لها هو وحده: نسخةُ العرض ممّا صُنعت له
+     * نسخةُ عرض، والمصغّرةُ ممّا صُنعت له مصغّرة. وصورُ الشريط والأقسام لا
+     * مصغّرةَ لها، فلا تدخل متوسّطَ المصغّرات — كان يُحسب الأصلُ مكانها فيقول
+     * «١٢٣١ KB» لمصغّرةٍ حجمُها أربعون.
+     *
+     * وما لم يُفكّ (فوق السقف، أو ذاكرةٌ لا تكفي) لا يُقاس — يُعدّ بسببه.
+     *
      * @param  array<string, list<string>>  $todo
-     * @return array{n: int, ms: float, peak: int, before: int, thumb: int, ratio: array<string, float>}
+     * @return array{n: int, ms: float, ratio: array<string, float>, kinds: array<string, array<string, int>>, unmeasured: array<string, int>}
      */
     private function estimate(array $todo): array
     {
-        $out = ['n' => 0, 'ms' => 0.0, 'peak' => 0, 'before' => 0, 'thumb' => 0, 'ratio' => []];
+        $out = ['n' => 0, 'ms' => 0.0, 'ratio' => [], 'kinds' => [], 'unmeasured' => []];
         $per = max(1, intdiv(max(1, (int) $this->option('sample')), max(1, count($todo))));
 
         foreach ($todo as $kind => $paths) {
-            $before = 0;
-            $after = 0;
+            $k = ['n' => 0, 'before' => 0, 'after' => 0, 'display_n' => 0, 'display' => 0, 'thumb_n' => 0, 'thumb' => 0];
 
             foreach (array_slice($paths, 0, $per) as $path) {
                 $r = ImageVariants::make($path, false);
+                $measured = $r['status'] === 'estimated' || ($r['status'] === 'skipped' && $r['reason'] === 'no_saving');
 
-                if ($r['before'] === 0) {
+                if (! $measured) {
+                    $why = (string) ($r['reason'] ?? $r['status']);
+                    $out['unmeasured'][$why] = ($out['unmeasured'][$why] ?? 0) + 1;
+
                     continue;
                 }
 
                 $out['n']++;
                 $out['ms'] += $r['ms'];
-                $out['peak'] = max($out['peak'], $r['peak']);
-                $out['before'] += $r['before'];
-                $out['thumb'] += $r['thumb'] ?: $r['before'];
-                $before += $r['before'];
-                $after += $r['display'] ?: $r['before'];
+                $k['n']++;
+                $k['before'] += $r['before'];
+                $k['after'] += $r['display'] ?: $r['before'];
+
+                if ($r['display'] > 0) {
+                    $k['display_n']++;
+                    $k['display'] += $r['display'];
+                }
+
+                if ($r['thumb'] > 0) {
+                    $k['thumb_n']++;
+                    $k['thumb'] += $r['thumb'];
+                }
             }
 
-            if ($before > 0) {
-                $out['ratio'][$kind] = $after / $before;
+            if ($k['before'] > 0) {
+                $out['ratio'][$kind] = $k['after'] / $k['before'];
+                $out['kinds'][$kind] = $k;
             }
         }
 
         return $out;
+    }
+
+    /** جدولُ العيّنة: كم قيس، ومتوسّطُ الأصل ونسخة العرض والمصغّرة كلٌّ من صوره */
+    private function measured(array $estimate): void
+    {
+        $labels = ['product' => 'صور المنتجات', 'category' => 'صور الأقسام', 'website' => 'صور الموقع والمحرّر والشريط'];
+        $avg = fn (int $sum, int $n) => $n > 0 ? round($sum / $n / 1024).' KB' : '—';
+
+        if ($estimate['kinds'] !== []) {
+            $this->info('العيّنة ('.$estimate['n'].' صورة مقيسة):');
+            $this->table(['الفئة', 'مقيسة', 'متوسّطُ الأصل', 'نسخةُ العرض', 'المصغّرة'], collect($estimate['kinds'])->map(fn ($k, $kind) => [
+                $labels[$kind] ?? $kind, $k['n'], $avg($k['before'], $k['n']),
+                $k['display_n'].' — '.$avg($k['display'], $k['display_n']),
+                $k['thumb_n'].' — '.$avg($k['thumb'], $k['thumb_n']),
+            ])->values()->all());
+        }
+
+        foreach ($estimate['unmeasured'] as $why => $n) {
+            $this->line('لم تُقس '.$n.' من العيّنة: '.$why.'.');
+        }
+    }
+
+    /** أقصى ذاكرةٍ مقيمةٍ لهذه العمليّة — بالبايت، كما يعدّها النظام */
+    private function rss(): int
+    {
+        $max = (int) (getrusage()['ru_maxrss'] ?? 0);
+
+        // ‏لينكس يعدّها كيلوبايتاتٍ، وماك بايتات
+        return PHP_OS_FAMILY === 'Darwin' ? $max : $max * 1024;
     }
 
     /** القرصُ الخاصّ — بالمجلّد، حجمًا وعددًا. لا يُفتح فيه ملفّ */
@@ -218,6 +280,13 @@ class ImagesOptimize extends Command
             $r = ImageVariants::make($path);
             $count[$r['status']] = ($count[$r['status']] ?? 0) + 1;
             $done++;
+
+            // ‏ذاكرةُ الخادم لا تكفي الآن: تقف الدفعةُ كلُّها — ما بعدها لن يجد ما لم تجده
+            if ($r['status'] === 'deferred') {
+                $this->warn('وقفت الدفعة: الذاكرةُ المتاحة لا تتّسع لفكّ '.$path.' مع الهامش — تُعاد في الجولة التالية.');
+
+                break;
+            }
 
             if ($r['status'] === 'made' || $r['status'] === 'ready') {
                 unset($state[$path]);

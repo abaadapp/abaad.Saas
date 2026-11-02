@@ -78,28 +78,35 @@ describe('cardSizes: عرضُ البطاقة لا يُقدَّر أصغرَ مم
 
     const shapes: LayoutTokens['grid'][] = ['classic', 'dense', 'large', 'editorial'];
     const widths = Object.keys(WIDTH_PX) as LayoutTokens['width'][];
+    const spacing = Object.entries(spacingFromCss());
 
+    /*
+     * ‏كلُّ عيّنةٍ تُفحص — قرابةُ مليونٍ لكلّ شكل — والمخالفاتُ تُجمع ثمّ تُعرض معًا:
+     * `expect` لكلّ عيّنةٍ تجاوز مهلةَ الاختبار على خادم CI دون أن يُضيف فحصًا.
+     */
     it.each(shapes)('%s: كلُّ كثافةٍ وعرضٍ وعددٍ وشاشة من 280 إلى 2560', (shape) => {
         let worst = 0;
+        const smaller: string[] = [];
         for (const width of widths)
             for (const columns of [2, 3, 4, 6])
                 for (const center of [false, true])
                     for (const count of [1, 2, 3, 4, 8, 24]) {
                         const g = gridOf(shape, columns);
                         for (const first of shape === 'editorial' ? [false, true] : [false])
-                            for (const [density, steps] of Object.entries(spacingFromCss())) {
+                            for (const [density, steps] of spacing) {
                                 const sizes = cardSizes(g, { width, density: density as LayoutTokens['density'] }, center, count, first ? 2 : 1);
                                 for (let vw = 280; vw <= 2560; vw += 2) {
                                     const real = actual(vw, g, width, center, count, first, steps[vw < 640 ? 0 : 1]);
                                     const said = claimed(sizes, vw);
-                                    expect(said, `${shape} ${width} ${density} cols=${columns} center=${center} n=${count} first=${first} vw=${vw} → ${sizes}`).toBeGreaterThanOrEqual(real - 1e-6);
+                                    if (said < real - 1e-6) smaller.push(`${shape} ${width} ${density} cols=${columns} center=${center} n=${count} first=${first} vw=${vw}: ${said} < ${real} ← ${sizes}`);
                                     worst = Math.max(worst, said / real);
                                 }
                             }
                     }
+        expect(smaller.slice(0, 5)).toEqual([]);
         // ‏ولا يزيد عليه إلّا تقريبُ الكسر — فلا يجلب الصورةَ الكبيرة بلا حاجة
         expect(worst).toBeLessThan(1.02);
-    });
+    }, 30_000);
 
     it('بطاقةُ هاتفٍ عرضُه 390 في قالبٍ عاديّ: عرضُ الشاشة إلّا الحشوة — فشاشةُ 3x تطلب ألفَ بكسل', () => {
         const sizes = cardSizes(gridOf('classic', 4), { width: 'normal', density: 'balanced' }, false, 8);

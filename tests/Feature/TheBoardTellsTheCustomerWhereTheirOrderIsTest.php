@@ -366,6 +366,29 @@ class TheBoardTellsTheCustomerWhereTheirOrderIsTest extends TestCase
         ], $this->templates());
     }
 
+    public function test_a_website_order_walks_the_board_and_each_step_reaches_the_customer_once(): void
+    {
+        $order = $this->order($this->customer('en'), 'WEB-5');
+
+        $this->actingAs($this->owner)->post(route('admin.preparation.move', $order->number), ['status' => OrderStatus::CONFIRMED])->assertSessionHasNoErrors();
+        $this->actingAs($this->staff)->post(route('admin.preparation.move', $order->number), ['status' => OrderStatus::READY])->assertSessionHasNoErrors();
+        $this->actingAs($this->owner)->post(route('admin.preparation.move', $order->number), ['status' => OrderStatus::OUT_FOR_DELIVERY])->assertSessionHasNoErrors();
+        // وتكرارُ الضغط على الحال نفسها، ثمّ التسليم — لا رسالةَ فيهما
+        $this->actingAs($this->staff)->post(route('admin.preparation.move', $order->number), ['status' => OrderStatus::OUT_FOR_DELIVERY]);
+        $this->actingAs($this->staff)->post(route('admin.preparation.move', $order->number), ['status' => OrderStatus::DELIVERED])->assertSessionHasNoErrors();
+
+        $this->assertSame([
+            'ribbon_order_received_en/en',
+            'ribbon_order_confirmed/en',
+            'ribbon_order_ready/en',
+            'ribbon_order_out_for_delivery/en',
+        ], $this->templates());
+        $this->assertSame(4, WhatsAppMessage::where('order_id', $order->id)->where('status', WhatsAppStatus::SENT)->count());
+        foreach ($this->sent() as $m) {
+            $this->assertStringEndsWith('/PN-RIBBON/messages', $m['_url'], 'من رقم سعود لا من رقم أبعاد');
+        }
+    }
+
     public function test_new_straight_to_preparing_still_confirms_once(): void
     {
         $skipped = $this->order($this->customer(), 'WEB-3');
@@ -511,6 +534,47 @@ class TheBoardTellsTheCustomerWhereTheirOrderIsTest extends TestCase
         $this->assertSame(WhatsAppStatus::DELIVERED, $ready->fresh()->status);
         $this->metaSays((string) $ready->provider_message_id, 'read');
         $this->assertSame(WhatsAppStatus::READ, $ready->fresh()->status);
+
+        // وتُفتح المحادثةُ من الرسالة: الإشعاران فيها بحالهما ورقمِ الفاتورة
+        $this->actingAs($this->owner)->get(route('admin.whatsappInbox.open', $ready->id))->assertRedirect();
+        $chatId = WhatsAppChat::where('business_id', $this->shop->id)->sole()->id;
+        $thread = $this->actingAs($this->owner)->get(route('admin.whatsappInbox.index', ['c' => $chatId]))->assertOk()->viewData('page')['props']['thread'];
+        $notices = collect($thread['messages'])->where('kind', 'notice')->keyBy('id');
+        $this->assertSame(WhatsAppStatus::READ, $notices[$ready->id]['status']);
+        $this->assertSame('invoice', $notices[$ready->id]['subject_kind']);
+        $this->assertStringContainsString((string) $task->invoice->number, $notices[$ready->id]['subject']['label']);
+        $this->assertCount(2, $notices, 'التأكيدُ والجاهزيّة');
+    }
+
+    public function test_a_failed_or_skipped_message_shows_its_reason_and_never_reads_as_delivered(): void
+    {
+        WhatsAppTemplateMapping::where('business_id', $this->shop->id)->where('event_type', WhatsAppEvent::ORDER_OUT_FOR_DELIVERY)->update(['meta_status' => 'REJECTED']);
+        $task = $this->task($this->customer());
+        $this->refuse = ['code' => 131026, 'message' => 'Message undeliverable', 'type' => 'OAuthException'];
+        $this->moveTask($this->staff, $task, OrderStatus::READY)->assertSessionHasNoErrors();
+        $this->refuse = null;
+        $this->moveTask($this->staff, $task, OrderStatus::OUT_FOR_DELIVERY)->assertSessionHasNoErrors();
+
+        $failed = WhatsAppMessage::where('event_type', WhatsAppEvent::ORDER_READY)->sole();
+        $skipped = WhatsAppMessage::where('event_type', WhatsAppEvent::ORDER_OUT_FOR_DELIVERY)->sole();
+        $this->assertSame(WhatsAppStatus::FAILED, $failed->status);
+        $this->assertNull($failed->delivered_at);
+        $this->assertSame(WhatsAppStatus::SKIPPED, $skipped->status);
+
+        $rows = collect($this->actingAs($this->owner)->get(route('admin.marketing.whatsapp.log'))->assertOk()->viewData('page')['props']['rows'])->keyBy('id');
+        $this->assertSame(WhatsAppStatus::FAILED, $rows[$failed->id]['status']);
+        $this->assertNotEmpty($rows[$failed->id]['error'], 'سببُ الفشل مكتوب');
+        $this->assertSame(WhatsAppStatus::SKIPPED, $rows[$skipped->id]['status']);
+        $this->assertNotEmpty($rows[$skipped->id]['reason'], 'وسببُ التخطّي مكتوب');
+
+        // والمتخطّى لم يخرج — فلا يظهر في المحادثة كأنّه أُرسل
+        WhatsAppMessage::whereKey($skipped->id)->update(['recipient_phone' => '96891234567', 'sender_phone_number_id' => 'PN-RIBBON']);
+        $this->actingAs($this->owner)->get(route('admin.whatsappInbox.open', $failed->id))->assertRedirect();
+        $chatId = WhatsAppChat::where('business_id', $this->shop->id)->sole()->id;
+        $thread = $this->actingAs($this->owner)->get(route('admin.whatsappInbox.index', ['c' => $chatId]))->assertOk()->viewData('page')['props']['thread'];
+        $ids = collect($thread['messages'])->where('kind', 'notice')->pluck('status', 'id');
+        $this->assertSame(WhatsAppStatus::FAILED, $ids[$failed->id], 'الفاشلُ يظهر فاشلًا');
+        $this->assertArrayNotHasKey($skipped->id, $ids->all());
     }
 
     /* ═════════════ ٥ · متجرٌ آخر ═════════════ */

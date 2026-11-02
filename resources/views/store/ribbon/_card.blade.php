@@ -2,13 +2,19 @@
 {{--
     و«استفسر عبر واتساب» لمن شُغّل له الزرّ — باسم الصنف ورابطه، بلا فتح صفحته
     (`StoreWhatsapp::product`). بجوار رابط البطاقة لا داخله: رابطٌ داخل رابطٍ لا يصحّ.
+
+    والصورةُ بأحجامها (`srcset`) وعرضِ البطاقة الحقيقيّ (`sizes`) — فالهاتفُ
+    بكثافة 3x يأخذ ما يكفي وضوحَه، والحاسوبُ المصغّرة. و`sizes` حسابُ `.rb-grid`
+    في القالب نفسه: حاويةٌ بعرض 1280 وحشوةٍ 24 من كلّ جهة، وأعمدةٌ لا تقلّ عن
+    230 بينها 24 — عمودٌ تحت 532، فاثنان، فثلاثةٌ من 786، فأربعةٌ من 1040،
+    وأربعةٌ بعرض 290 حين تبلغ الحاويةُ حدَّها.
 --}}
 @php($rbAsk = ($waNumber ?? '') !== '')
 @if ($rbAsk)<div class="rb-card-wrap">@endif
 <a href="{{ $base }}/p/{{ $p['id'] }}" class="rb-card" data-testid="rb-product">
     <div class="rb-img">
         @if ($p['image'])
-            <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy">
+            <img src="{{ $p['image'] }}" @if ($p['srcset'] ?? null) srcset="{{ $p['srcset'] }}" sizes="(min-width: 1280px) 290px, (min-width: 1040px) calc(25vw - 30px), (min-width: 786px) calc(33.34vw - 32px), (min-width: 532px) calc(50vw - 36px), calc(100vw - 48px)" @endif alt="{{ $p['name'] }}" loading="lazy">
         @else
             <div class="rb-stripes" style="--tint: {{ $p['tint'] }}"></div>
         @endif

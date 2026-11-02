@@ -580,6 +580,8 @@ class Preview
             // ‏نسخةُ العرض لصفحة المنتج، والمصغّرةُ لبطاقته — كلٌّ إن صُنعت، وإلّا الأصل
             'image' => self::image($p),
             'thumb' => self::image($p, ImageVariants::THUMB),
+            // ‏وأحجامُ البطاقة كلُّها بروابطَ كاملة — يختار المتصفّحُ بعرضها وكثافة الشاشة
+            'srcset' => self::image($p) === null ? null : ImageVariants::srcset($p->getRawOriginal('image'), fn ($u) => Media::url($u)),
             'category_id' => $p->category_id,
         ];
     }

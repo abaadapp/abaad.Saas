@@ -261,6 +261,8 @@ export function Media({
     /** حوافُّ حادّة — الصورةُ الملاصقةُ لحافّة القسم لا تُدوَّر */
     square,
     className,
+    srcSet,
+    sizes,
 }: {
     src?: string | null;
     alt?: string;
@@ -269,6 +271,9 @@ export function Media({
     eager?: boolean;
     square?: boolean;
     className?: string;
+    /** أحجامُ الصورة وعرضُها المرسوم — لا يُكتب أحدُهما بلا الآخر */
+    srcSet?: string | null;
+    sizes?: string;
 }) {
     return (
         <div
@@ -284,6 +289,9 @@ export function Media({
         >
             {src && (
                 <img
+                    /* ‏الأحجامُ قبل `src`: المتصفّحُ يبدأ التحميلَ حين يُكتب `src` */
+                    sizes={srcSet && sizes ? sizes : undefined}
+                    srcSet={srcSet && sizes ? srcSet : undefined}
                     src={src}
                     alt={alt ?? ''}
                     loading={eager ? 'eager' : 'lazy'}

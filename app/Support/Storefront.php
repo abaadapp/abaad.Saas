@@ -671,6 +671,8 @@ class Storefront
                     // الإنترنت لمنتجٍ بلا صورة — ولا تُعرض صورةُ غريبٍ بضاعةً للتاجر
                     // ‏المصغّرةُ للرفّ — والصورةُ بحجمها في صفحة الصنف
                     'image' => ProductImages::hasRealMain($p) ? ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB) : null,
+                    // ‏وأحجامُها من الأصل — يختار المتصفّحُ بعرض البطاقة وكثافة الشاشة
+                    'srcset' => ProductImages::hasRealMain($p) ? ImageVariants::srcset($p->getRawOriginal('image')) : null,
                     'price' => $price,
                     // «من ١٨٫٠٠٠» حين تختلف أسعار المقاسات — انظر price()
                     'from' => $from,

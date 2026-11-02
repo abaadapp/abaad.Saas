@@ -162,8 +162,14 @@ final class ImageVariants
      * لا يُكتب `srcset` إلّا بنسختين فعلًا على القرص بعرضين مختلفين: المصغّرةُ
      * والأكبرُ منها (نسخةُ العرض، أو الأصلُ حين يكون هو العرض). والعرضُ من رأس
      * الملفّ نفسه لا من الضلع المطلوب — صورةٌ طوليّةٌ عرضُها أقلُّ من ضلعها.
+     *
+     * ولا يُكتب فيه عرضٌ لم يُصنع: صورةٌ أصلُها أصغرُ من المصغّرة نسخةٌ واحدة
+     * بلا `srcset`، والأكبرُ فيه هو الأصلُ نفسُه حين لا نسخةَ عرضٍ — فالمتصفّح
+     * لا يُعطى صورةً أكبرَ ممّا صُوِّر.
+     *
+     * و`$url` لمن يكتب الرابطَ بنطاقٍ كاملٍ لا بمساره (موقعُ المنشئ: `Media::url`).
      */
-    public static function srcset(?string $value): ?string
+    public static function srcset(?string $value, ?\Closure $url = null): ?string
     {
         $value = trim((string) $value);
         $parts = self::stored($value) ?? (self::isPath($value) ? ['', $value] : null);
@@ -180,7 +186,8 @@ final class ImageVariants
             $info = @getimagesize($disk->path($candidate));
 
             if (is_array($info) && $info[0] > 0) {
-                $set[(int) $info[0]] = ($prefix === '' ? Storage::url($candidate) : $prefix.$candidate).' '.(int) $info[0].'w';
+                $link = $prefix === '' ? Storage::url($candidate) : $prefix.$candidate;
+                $set[(int) $info[0]] = ($url === null ? $link : $url($link)).' '.(int) $info[0].'w';
             }
         }
 

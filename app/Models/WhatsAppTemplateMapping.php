@@ -34,16 +34,40 @@ class WhatsAppTemplateMapping extends Model
      * لغتُه إن كانت ميتا قد اعتمدت القالبَ بها — وإلّا لغةُ القالب الأصل.
      * فلا يُطلب من ميتا ما لم تعتمده فتردّه بـ`132001` وتُقيَّد الرسالةُ
      * فاشلةً على زبونٍ كان يقبل العربيّة.
+     *
+     * ولغةٌ بإقليمها («en-US»، «ar_OM») تُقرأ بأصلها: يُختار المعتمَدُ بالأصل نفسِه.
+     * وكانت تُقارَن حرفيًّا، فيصل زبونًا لغتُه `en-US` قالبٌ عربيّ وإنجليزيُّه معتمَد.
      */
     public function languageFor(?string $wanted): string
     {
         $own = (string) $this->language_code;
+        $wanted = trim((string) $wanted);
 
-        if ($wanted === null || $wanted === '' || $wanted === $own) {
+        if ($wanted === '' || $wanted === $own) {
             return $own;
         }
 
-        return in_array($wanted, (array) ($this->approved_languages ?? []), true) ? $wanted : $own;
+        $approved = array_map('strval', (array) ($this->approved_languages ?? []));
+
+        if (in_array($wanted, $approved, true)) {
+            return $wanted;
+        }
+
+        $base = self::baseLanguage($wanted);
+
+        foreach ([$own, ...$approved] as $language) {
+            if (self::baseLanguage($language) === $base) {
+                return $language;
+            }
+        }
+
+        return $own;
+    }
+
+    /** «en-US» و«en_US» و«EN» كلُّها `en` */
+    private static function baseLanguage(string $language): string
+    {
+        return strtolower(explode('-', str_replace('_', '-', trim($language)))[0]);
     }
 
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }

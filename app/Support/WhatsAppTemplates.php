@@ -324,6 +324,23 @@ class WhatsAppTemplates
     }
 
     /**
+     * متغيّراتُ رسالة حالٍ لمهمّة فاتورةٍ في لوحة التجهيز — كطلبٍ رقمُه رقمُ الفاتورة.
+     *
+     * قوالبُ الطلبات نفسُها (`variables`): قوالبُ RIBBON الأربعة بلا متغيّرات من
+     * رقمه، وغيرُها اسمُ المتجر ورقمُ الورقة.
+     *
+     * @return list<string>
+     */
+    public static function taskVariables(Business $business, CustomerInvoice $invoice, ?string $mode = null): array
+    {
+        if (WhatsAppEvent::isRibbonBusiness((int) $business->id) && $mode === WhatsAppMode::BUSINESS_OWN) {
+            return [];
+        }
+
+        return self::invoiceVariables($business, $invoice);
+    }
+
+    /**
      * قيمُ متغيّرات رسائل الفواتير — ولا فراغَ فيها.
      *
      * وميتا ترفض متغيّرًا بلا قيمة (`132000`)، فكان تذكيرُ السداد يُبنى

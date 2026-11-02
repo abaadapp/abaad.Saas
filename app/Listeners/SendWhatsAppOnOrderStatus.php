@@ -17,7 +17,7 @@ class SendWhatsAppOnOrderStatus
 {
     public function handle(OrderStatusChanged $event): void
     {
-        $type = WhatsAppEvent::forBusinessStatus((int) $event->order->business_id, $event->to);
+        $type = WhatsAppEvent::forBusinessTransition((int) $event->order->business_id, $event->from, $event->to);
 
         if ($type === null) {
             return;

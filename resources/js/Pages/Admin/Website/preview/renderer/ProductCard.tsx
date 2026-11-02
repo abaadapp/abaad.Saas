@@ -1,6 +1,6 @@
 import { allowOrders, orderUrl, showPrices } from './commerce';
 import { Phone } from './icons';
-import type { LayoutTokens } from './layout';
+import { WIDTH_PX, type LayoutTokens } from './layout';
 import { Link, Media, Price, Tag } from './primitives';
 import type { DocProduct, Mode, SiteDocument } from './types';
 
@@ -45,6 +45,7 @@ export function ProductCard({
     eager,
     card,
     ratio,
+    sizes,
 }: {
     p: DocProduct;
     doc: SiteDocument;
@@ -53,6 +54,8 @@ export function ProductCard({
     eager?: boolean;
     card: LayoutTokens['card'];
     ratio: string;
+    /** عرضُ البطاقة في شبكتها (`cardSizes`) — وبلا `sizes` تُرسم المصغّرةُ وحدها */
+    sizes?: string;
 }) {
     const order = allowOrders(doc) ? orderUrl(doc.brand, p, doc.currency, 'أودّ طلب') : null;
     const prices = showPrices(doc);
@@ -61,8 +64,16 @@ export function ProductCard({
 
     const shot = (square?: boolean, badge?: React.ReactNode) => (
         <div className="w-frame" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
-            {/* المصغّرةُ للبطاقة إن صُنعت — والصورةُ نفسُها بحجمها في صفحة المنتج */}
-            <Media src={p.thumb || p.image} alt={p.name} ratio={ratio} eager={eager} square={square} />
+            {/* المصغّرةُ للبطاقة إن صُنعت، وأحجامُها ليختار المتصفّحُ بعرض البطاقة وكثافة الشاشة */}
+            <Media
+                src={p.thumb || p.image}
+                srcSet={p.srcset}
+                sizes={sizes}
+                alt={p.name}
+                ratio={ratio}
+                eager={eager}
+                square={square}
+            />
             {badge}
         </div>
     );
@@ -309,4 +320,82 @@ export function gridOf(shape: LayoutTokens['grid'], columns: number): { columns:
         default:
             return { columns, min: 190 };
     }
+}
+
+/**
+ * حشوةُ القسم الأفقيّة وفجوةُ الشبكة لكلّ كثافة — دون 640 ومن 640 (`site.css`،
+ * و`a-builder-card-asks-for-its-true-width` يقرؤها من هناك فلا تفترقان).
+ */
+export const SPACING: Record<LayoutTokens['density'], [{ pad: number; gap: number }, { pad: number; gap: number }]> = {
+    balanced: [
+        { pad: 18, gap: 18 },
+        { pad: 24, gap: 18 },
+    ],
+    compact: [
+        { pad: 16, gap: 12 },
+        { pad: 20, gap: 12 },
+    ],
+    spacious: [
+        { pad: 20, gap: 24 },
+        { pad: 28, gap: 28 },
+    ],
+};
+
+/**
+ * عرضُ بطاقةٍ في `Grid` لـ`sizes` — كما يرسمه CSS، ولا يقلّ عنه.
+ *
+ * الشبكةُ `auto-fit` بأعمدةٍ لا تضيق عن `min`، داخل حاويةٍ بعرض القالب
+ * (`WIDTH_PX`) وحشوةِ كثافته (`SPACING`)، والمتوسّطةُ لا تتّسع لأكثر من
+ * `columns` (`Grid`). فيُكتب لكلّ مدى من عرض الشاشة عرضُ بطاقته، والكسرُ
+ * يُقرَّب صعودًا: تقديرٌ أصغرُ يجلب المصغّرةَ إلى شاشة 3x فتتشوّش.
+ *
+ * و`count` عددُ البطاقات: `auto-fit` يطوي الأعمدةَ الفارغة فتتّسع بطاقتان
+ * في شبكةٍ تتّسع لأربع. و`span` للبطاقة الأولى في الشبكة التحريريّة: عمودان
+ * من 760 (`site.css`).
+ */
+export function cardSizes(
+    g: { columns: number; min: number },
+    layout: Pick<LayoutTokens, 'width' | 'density'>,
+    center: boolean,
+    count: number,
+    span: 1 | 2 = 1,
+): string {
+    const content = WIDTH_PX[layout.width] === '100%' ? Infinity : parseInt(WIDTH_PX[layout.width], 10);
+    const cap = center ? Math.min(content, Math.max(1, Math.min(g.columns, 6)) * (g.min + 60)) : content;
+    // ‏والعريضةُ بلا حدٍّ تتّسع لأعمدةٍ أكثر من ستّة — يحدّها عددُ البطاقات وحده
+    const most = Math.max(1, count);
+    const space = (vw: number) => SPACING[layout.density][vw < 640 ? 0 : 1];
+    const columns = (vw: number) => {
+        const { pad, gap } = space(vw);
+        return Math.max(1, Math.min(most, Math.floor((Math.min(vw - 2 * pad, cap) + gap) / (g.min + gap))));
+    };
+    // ‏حيث يتبدّل شيء: عمودٌ يُضاف، أو حشوةٌ تتّسع، أو حاويةٌ تبلغ حدَّها، أو البطاقةُ الأولى تتّسع
+    const points = new Set<number>([640, 760]);
+    for (const { pad, gap } of SPACING[layout.density]) {
+        for (let n = 2; n <= most && n * g.min + (n - 1) * gap + 2 * pad <= 3840; n++) points.add(n * g.min + (n - 1) * gap + 2 * pad);
+        if (cap !== Infinity) points.add(cap + 2 * pad);
+    }
+
+    const at = (vw: number) => {
+        const { pad, gap } = space(vw);
+        const n = columns(vw);
+        const wide = span === 2 && n >= 2 && vw >= 760;
+        if (vw - 2 * pad >= cap) {
+            const card = (cap - (n - 1) * gap) / n;
+            return `${Math.ceil(wide ? 2 * card + gap : card)}px`;
+        }
+        const k = wide ? 2 / n : 1 / n;
+        const vwPart = Math.ceil(100 * k * 100) / 100;
+        const px = Math.floor((2 * pad + (n - 1) * gap) * k - (wide ? gap : 0));
+        return px >= 0 ? `calc(${vwPart}vw - ${px}px)` : `calc(${vwPart}vw + ${-px}px)`;
+    };
+
+    const list: string[] = [];
+    let last = at(0);
+    for (const x of [...points].sort((a, b) => a - b)) {
+        const v = at(x);
+        if (v !== last) list.unshift(`(min-width: ${x}px) ${v}`);
+        last = v;
+    }
+    return [...list, at(0)].join(', ');
 }

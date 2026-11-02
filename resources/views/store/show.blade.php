@@ -200,7 +200,8 @@
                 <article class="card" data-cat="{{ $p['category_id'] ?? 'none' }}" data-seasons="{{ $inSeasons }}">
                     <div class="shot">
                         @if ($p['image'])
-                            <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy">
+                            {{-- ‏`sizes` حسابُ `.grid` أعلاه: حاويةٌ 1100 بحشوة 16، وعمودان بينهما 14، فثلاثةٌ من 700، فأربعةٌ من 1000 --}}
+                            <img src="{{ $p['image'] }}" @if ($p['srcset'] ?? null) srcset="{{ $p['srcset'] }}" sizes="(min-width: 1100px) 257px, (min-width: 1000px) calc(25vw - 18px), (min-width: 700px) calc(33.34vw - 20px), calc(50vw - 23px)" @endif alt="{{ $p['name'] }}" loading="lazy">
                         @else
                             <span>🌷</span>
                         @endif

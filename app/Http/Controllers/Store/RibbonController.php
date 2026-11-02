@@ -1233,6 +1233,9 @@ class RibbonController extends Controller
             'category_id' => $p->category_id,
             // ‏المصغّرةُ للبطاقة — والصورةُ بحجمها في صفحة الصنف
             'image' => ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB),
+            // ‏وأحجامُها كلُّها من الأصل لا من رابط المصغّرة: بطاقةٌ بعرض الهاتف على شاشة 3x
+            // تحتاج ألفَ بكسل، والمصغّرةُ ستُّمئة — فيختار المتصفّحُ بعرض البطاقة (`_card`)
+            'srcset' => ImageVariants::srcset($p->getRawOriginal('image')),
             'price' => $price,
             'price_text' => Money::format($price, $currency),
             'from' => $prices->count() > 1 && $prices->min() !== $prices->max(),

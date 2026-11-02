@@ -47,7 +47,7 @@
                     وحدها — ارتفاعُه ارتفاعُ الصورة.
                 --}}
                 <div style="border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)" data-testid="rb-about-frame">
-                    <img src="{{ $rbAbout }}" alt="" style="width:100%;height:auto;display:block" data-testid="rb-about-image">
+                    <img src="{{ \App\Support\ImageVariants::link($rbAbout, \App\Support\ImageVariants::DISPLAY) }}" alt="" decoding="async" style="width:100%;height:auto;display:block" data-testid="rb-about-image">
                 </div>
             @endif
         </div>

@@ -59,10 +59,10 @@ final class ImageVariants
     /**
      * المجلّداتُ التي تُصنع لها مصغّرة — صورُ المنتجات تُعرض في القوائم.
      *
-     * وصورُ الموقع روابطُ في الإعدادات تُرسم بحجمها في الشريط والواجهة: لا
-     * قائمةَ تقرأ مصغّرتها، فلا تُكتب على القرص.
+     * وصورُ الموقع أيضًا: بطاقةُ القسم وبطاقةُ الشريط تُرسمان بعرض مئةٍ
+     * وستّين إلى ثلاثمئة، وصورتُهما محفوظةٌ بعرض ٢٥٦٠ (`link`).
      */
-    private const THUMBS = ['products'];
+    private const THUMBS = ['products', 'website'];
 
     private const QUALITY = ['thumb' => 75, 'display' => 82];
 
@@ -127,16 +127,122 @@ final class ImageVariants
             return $raw;
         }
 
-        $display = self::display($raw);
-        $wanted = $side === self::THUMB ? [self::path($raw, self::THUMB), $display] : [$display];
+        return Storage::url(self::chosen($raw, $side));
+    }
 
-        foreach (array_filter($wanted) as $candidate) {
-            if ($candidate === $raw || is_file(Storage::disk(self::DISK)->path($candidate))) {
-                return Storage::url($candidate);
+    /**
+     * أخفُّ نسخةٍ لصورةٍ كما تُحفظ في الإعدادات والأقسام — رابطًا لا مسارًا.
+     *
+     * صورُ الموقع تُحفظ روابطَ (`/storage/website/5/a.jpg`، أو مطلقةً بنطاق
+     * أبعاد) لا مسارات. فيُقرأ منها المسار، وتُطلب نسختُه كما في `url`، ويخرج
+     * الرابطُ بالشكل الذي دخل به: النسبيُّ نسبيًّا والمطلقُ بنطاقه.
+     *
+     * ويُترك كما هو كلُّ ما ليس صورةً على قرصنا العامّ: رابطٌ خارجيّ، وصورةٌ
+     * مضمّنة، ورابطٌ باستعلامٍ أو `..`، ونسخةٌ أصلًا، وما لا نسخةَ له بعد. ولا
+     * يُكتب شيء: الإعدادُ يبقى على الأصل، والنسخةُ تُختار لحظةَ الرسم.
+     */
+    public static function link(?string $value, int $side): string
+    {
+        $value = trim((string) $value);
+        $parts = self::stored($value);
+
+        if ($parts === null) {
+            return $value;
+        }
+
+        [$prefix, $raw] = $parts;
+        $chosen = self::chosen($raw, $side);
+
+        return $chosen === $raw ? $value : $prefix.$chosen;
+    }
+
+    /**
+     * عرضُ كلّ نسخةٍ موجودةٍ لهذه الصورة — لـ`srcset`، أو `null`.
+     *
+     * لا يُكتب `srcset` إلّا بنسختين فعلًا على القرص بعرضين مختلفين: المصغّرةُ
+     * والأكبرُ منها (نسخةُ العرض، أو الأصلُ حين يكون هو العرض). والعرضُ من رأس
+     * الملفّ نفسه لا من الضلع المطلوب — صورةٌ طوليّةٌ عرضُها أقلُّ من ضلعها.
+     */
+    public static function srcset(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        $parts = self::stored($value) ?? (self::isPath($value) ? ['', $value] : null);
+
+        if ($parts === null) {
+            return null;
+        }
+
+        [$prefix, $raw] = $parts;
+        $disk = Storage::disk(self::DISK);
+        $set = [];
+
+        foreach (array_unique([self::chosen($raw, self::THUMB), self::chosen($raw, self::DISPLAY)]) as $candidate) {
+            $info = @getimagesize($disk->path($candidate));
+
+            if (is_array($info) && $info[0] > 0) {
+                $set[(int) $info[0]] = ($prefix === '' ? Storage::url($candidate) : $prefix.$candidate).' '.(int) $info[0].'w';
             }
         }
 
-        return Storage::url($raw);
+        ksort($set);
+
+        return count($set) > 1 ? implode(', ', $set) : null;
+    }
+
+    /** المسارُ الذي تُعرض منه هذه الصورة بهذا الضلع — نسخةٌ موجودة، أو الأصل */
+    private static function chosen(string $raw, int $side): string
+    {
+        // ‏ومصغّرةٌ أصلًا تبقى مصغّرة — لا يُستبدل بها ما هو أثقلُ منها
+        if (($display = self::display($raw)) === null || str_ends_with($raw, '.w'.self::THUMB.'.webp')) {
+            return $raw;
+        }
+
+        $wanted = $side === self::THUMB ? [self::path($raw, self::THUMB), $display] : [$display];
+
+        foreach ($wanted as $candidate) {
+            if ($candidate === $raw || is_file(Storage::disk(self::DISK)->path($candidate))) {
+                return $candidate;
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * رابطُ صورةٍ على قرصنا العامّ مقسومًا: أوّلُه كما كُتب، ومسارُه — أو `null`.
+     *
+     * والأوّلُ أحدُ ثلاثة: رابطُ القرص كما يردّه `Storage::url`، ومسارُه وحده
+     * (`/storage/`)، والمسارُ بنطاق أبعاد (`APP_URL`) كما يكتبه الموقعُ المنشور.
+     * وما سواها — نطاقُ تاجرٍ أو مستضيفٌ آخر — ليس لنا فيُترك.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private static function stored(string $value): ?array
+    {
+        if ($value === '' || preg_match('/[?#\\\\\s]|\.\./', $value)) {
+            return null;
+        }
+
+        $disk = rtrim(Storage::disk(self::DISK)->url(''), '/').'/';
+        $path = rtrim((string) parse_url($disk, PHP_URL_PATH), '/').'/';
+        $app = rtrim((string) config('app.url'), '/').$path;
+
+        foreach (array_unique([$disk, $path, $app]) as $prefix) {
+            if ($prefix !== '/' && str_starts_with($value, $prefix)) {
+                $raw = substr($value, strlen($prefix));
+
+                return self::isPath($raw) ? [$prefix, $raw] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /** مسارُ ملفٍّ في مجلّدٍ تُصنع له نسخ — لا رابطٌ ولا ما يخرج من القرص */
+    private static function isPath(string $raw): bool
+    {
+        return $raw !== '' && ! str_starts_with($raw, '/') && ! str_contains($raw, '://')
+            && ! str_contains($raw, '..') && ! str_contains($raw, ':') && self::side($raw) !== null;
     }
 
     /** نسخُ ملفٍّ ما — لمن يمحوه، فلا تبقى نسخةٌ لا أصلَ لها */

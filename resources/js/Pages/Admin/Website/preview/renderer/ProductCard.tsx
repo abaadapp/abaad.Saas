@@ -61,7 +61,8 @@ export function ProductCard({
 
     const shot = (square?: boolean, badge?: React.ReactNode) => (
         <div className="w-frame" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
-            <Media src={p.image} alt={p.name} ratio={ratio} eager={eager} square={square} />
+            {/* المصغّرةُ للبطاقة إن صُنعت — والصورةُ نفسُها بحجمها في صفحة المنتج */}
+            <Media src={p.thumb || p.image} alt={p.name} ratio={ratio} eager={eager} square={square} />
             {badge}
         </div>
     );

@@ -59,6 +59,24 @@ return [
 
     'reserve_mb' => (int) env('IMAGES_RESERVE_MB', 200),
 
+    /*
+    | حدودُ الجولة نفسها — تُسأل قبل كلّ صورةٍ قديمة (`ImageGate`)، وأبعدُ من
+    | هامش الفكّ: ذاكرةٌ متاحة، وحِملُ الدقيقة الأخيرة كما في `/proc/loadavg`،
+    | وما يبقى في القرص، وأعمالُ الطابور الجاهزةُ للعامل. وما لا يُقرأ يوقفها.
+    | والرفعُ لا يمرّ من هنا.
+    */
+    'batch_gate' => (bool) env('IMAGES_BATCH_GATE', true),
+
+    'gate_available_mb' => (int) env('IMAGES_GATE_AVAILABLE_MB', 350),
+
+    'gate_max_load' => (float) env('IMAGES_GATE_MAX_LOAD', 0.8),
+
+    'gate_min_disk_mb' => (int) env('IMAGES_GATE_MIN_DISK_MB', 1024),
+
+    'gate_max_queue' => (int) env('IMAGES_GATE_MAX_QUEUE', 20),
+
+    'loadavg' => env('IMAGES_LOADAVG', '/proc/loadavg'),
+
     'meminfo' => env('IMAGES_MEMINFO', '/proc/meminfo'),
 
     /*

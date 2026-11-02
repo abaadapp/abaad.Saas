@@ -235,9 +235,9 @@ class EveryProductPhotoGetsALighterCopyTest extends TestCase
         $this->artisan('images:optimize')->expectsOutputToContain('صور الموقع والمحرّر والشريط')->expectsOutputToContain('صور الأقسام')->assertSuccessful();
         $this->artisan('images:optimize', ['--apply' => true])->assertSuccessful();
 
-        // ‏صورُ الموقع نسخةُ عرضٍ وحدها — لا قائمةَ تقرأ مصغّرتها
+        // ‏صورُ الموقع نسخةُ عرضٍ ومصغّرة — بطاقةُ القسم والشريط تقرأ المصغّرة (`ImageVariants::link`)
         Storage::disk('public')->assertExists((string) ImageVariants::display($hero));
-        Storage::disk('public')->assertMissing(ImageVariants::path($hero, ImageVariants::THUMB));
+        Storage::disk('public')->assertExists(ImageVariants::path($hero, ImageVariants::THUMB));
         $this->assertSame($was, [$bar->fresh()->value, $hero2->fresh()->value, $cat->fresh()->card_image, $this->raw($product)], 'النسخُ غيّرت صفًّا');
 
         $this->artisan('images:optimize', ['--swap' => true, '--business' => $id])->expectsOutputToContain('نُقلت مراجعُ 3 صورة')->assertSuccessful();

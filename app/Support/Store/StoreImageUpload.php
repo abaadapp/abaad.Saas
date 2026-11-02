@@ -93,6 +93,12 @@ final class StoreImageUpload
     /**
      * يحفظ الصورةَ في مجلّد المتجر — ويردّ رابطَها وأبعادَها.
      *
+     * ونسخُها الأخفّ تُصنع معها (`ImageVariants::makeQuietly`): WebP بضلع
+     * الواجهة ومصغّرةٌ للبطاقات، بشفافيّتها واتّجاهها — ولا تُحفظ نسخةٌ لا
+     * تنقص عن أصلها عُشرًا. والأصلُ والرابطُ المحفوظُ لا يتغيّران، والصفحةُ
+     * تختار النسخة لحظةَ الرسم (`ImageVariants::link`). وما لا تتّسع له
+     * الذاكرةُ الآن يبقى بلا نسخ، والرفعُ ينجح.
+     *
      * @return array{url: string, w: int, h: int}
      */
     public static function store(int $businessId, UploadedFile $file): array
@@ -531,6 +537,7 @@ final class StoreImageUpload
     {
         $path = 'website/'.$businessId.'/'.Str::random(40).'.'.$ext;
         Storage::disk('public')->put($path, $bytes);
+        \App\Support\ImageVariants::makeQuietly($path);
 
         return ['url' => Storage::url($path), 'w' => $w, 'h' => $h];
     }

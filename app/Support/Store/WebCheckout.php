@@ -17,6 +17,7 @@ use App\Support\BoutiqueDues;
 use App\Support\CouponLimits;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
+use App\Support\ImageVariants;
 use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\NotesAndEdits;
@@ -379,7 +380,8 @@ final class WebCheckout
                 'name_en' => $l['product']->name_en,
                 'variant' => $l['variant']?->name,
                 'variant_en' => $l['variant']?->name_en,
-                'image' => $l['product']->image,
+                // ‏المصغّرةُ — السلّةُ ترسمها بعرض ثمانٍ وثمانين
+                'image' => ImageVariants::url((string) $l['product']->getRawOriginal('image'), ImageVariants::THUMB),
                 'price' => (float) $l['price'],
                 'qty' => (int) $l['qty'],
                 // إجماليُّ البند بإضافاته — هو ما يدخل المجموعَ الفرعيّ فوقه

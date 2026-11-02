@@ -223,6 +223,7 @@
                             "was": null,
                             "final": 4.75,
                             "image": "http://localhost/storage/products/sample2.jpg",
+                            "thumb": "http://localhost/storage/products/sample2.jpg",
                             "category_id": 1
                         },
                         {
@@ -234,6 +235,7 @@
                             "was": 18,
                             "final": 14.4,
                             "image": "http://localhost/storage/products/sample1.jpg",
+                            "thumb": "http://localhost/storage/products/sample1.jpg",
                             "category_id": 1
                         },
                         {
@@ -245,6 +247,7 @@
                             "was": null,
                             "final": 12.5,
                             "image": "http://localhost/storage/products/sample0.jpg",
+                            "thumb": "http://localhost/storage/products/sample0.jpg",
                             "category_id": 1
                         }
                     ]
@@ -341,6 +344,7 @@
                             "was": null,
                             "final": 4.75,
                             "image": "http://localhost/storage/products/sample2.jpg",
+                            "thumb": "http://localhost/storage/products/sample2.jpg",
                             "category_id": 1
                         },
                         {
@@ -352,6 +356,7 @@
                             "was": 18,
                             "final": 14.4,
                             "image": "http://localhost/storage/products/sample1.jpg",
+                            "thumb": "http://localhost/storage/products/sample1.jpg",
                             "category_id": 1
                         },
                         {
@@ -363,6 +368,7 @@
                             "was": null,
                             "final": 12.5,
                             "image": "http://localhost/storage/products/sample0.jpg",
+                            "thumb": "http://localhost/storage/products/sample0.jpg",
                             "category_id": 1
                         }
                     ]
@@ -489,6 +495,7 @@
                 "was": null,
                 "final": 4.75,
                 "image": "http://localhost/storage/products/sample2.jpg",
+                "thumb": "http://localhost/storage/products/sample2.jpg",
                 "category_id": 1
             },
             {
@@ -500,6 +507,7 @@
                 "was": 18,
                 "final": 14.4,
                 "image": "http://localhost/storage/products/sample1.jpg",
+                "thumb": "http://localhost/storage/products/sample1.jpg",
                 "category_id": 1
             },
             {
@@ -511,6 +519,7 @@
                 "was": null,
                 "final": 12.5,
                 "image": "http://localhost/storage/products/sample0.jpg",
+                "thumb": "http://localhost/storage/products/sample0.jpg",
                 "category_id": 1
             }
         ],

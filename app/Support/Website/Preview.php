@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Review;
 use App\Models\Website;
 use App\Support\CategoryName;
+use App\Support\ImageVariants;
 use App\Support\ProductDescription;
 use App\Support\ProductName;
 use App\Support\Demo;
@@ -576,7 +577,9 @@ class Preview
             // السعر بعد الخصم يُحسب هنا لا في العارض: حسابُ مالٍ في موضعٍ واحد
             'was' => $discount > 0 ? $price : null,
             'final' => $discount > 0 ? round($price * (1 - $discount / 100), 3) : $price,
+            // ‏نسخةُ العرض لصفحة المنتج، والمصغّرةُ لبطاقته — كلٌّ إن صُنعت، وإلّا الأصل
             'image' => self::image($p),
+            'thumb' => self::image($p, ImageVariants::THUMB),
             'category_id' => $p->category_id,
         ];
     }
@@ -591,12 +594,16 @@ class Preview
      *
      * وهذا علاجٌ في مخرج الموقع لا في مصدره: الأصل ألّا يُكتب في العمود رابطٌ
      * وهميّ يوم يُضاف منتجٌ بلا صورة.
+     *
+     * والصورةُ أخفُّ نسخها بالضلع المطلوب (`ImageVariants::url`): كان يخرج
+     * الأصلُ نفسُه — صورةُ هاتفٍ بميغابايتين في بطاقةٍ بعرض مئتين. والعمودُ
+     * يبقى على الأصل، وما لم تُصنع نسختُه يخرج أصلُه كما كان.
      */
-    private static function image(Product $p): ?string
+    private static function image(Product $p, int $side = ImageVariants::DISPLAY): ?string
     {
         $raw = (string) $p->getRawOriginal('image');
 
-        return str_contains($raw, 'picsum.photos') ? null : Media::url($raw);
+        return str_contains($raw, 'picsum.photos') ? null : Media::url(ImageVariants::url($raw, $side));
     }
 
     /**
@@ -674,7 +681,7 @@ class Preview
              * ولو أُخذت لصار غلافُ «باقات» صورةً عشوائية من الإنترنت. والغياب
              * هنا لا يعني التوقّف: يُجرَّب الصنفُ الذي يليه.
              */
-            $url = self::image($product);
+            $url = self::image($product, ImageVariants::THUMB);
 
             if ($url !== null) {
                 $out[$key] = $url;

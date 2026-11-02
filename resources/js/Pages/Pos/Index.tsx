@@ -548,9 +548,10 @@ export default function PosIndex() {
                                             <div className="relative aspect-square overflow-hidden bg-gray-50">
                                                 {p.image ? (
                                                     <img
-                                                        src={p.image}
+                                                        src={p.thumb || p.image}
                                                         alt={p.label}
                                                         loading="lazy"
+                                                        decoding="async"
                                                         className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                                                     />
                                                 ) : (

@@ -63,6 +63,21 @@ describe('معرضُ صفحة الصنف', () => {
         expect(thumbs.map((t) => t.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true']);
     });
 
+    it('ينقل أحجامَ الصورة معها — وصورةٌ بلا أحجامٍ لا تُبقي أحجامَ ما قبلها', () => {
+        const { main, thumbs } = page();
+        thumbs[1].dataset.srcset = 'b.w640.webp 640w, b.w1600.webp 1600w';
+        main.srcset = 'a.w640.webp 640w, a.w1600.webp 1600w';
+
+        thumbs[1].click();
+        expect(main.getAttribute('srcset')).toBe('b.w640.webp 640w, b.w1600.webp 1600w');
+        expect(main.getAttribute('src')).toBe('b.jpg');
+
+        // ‏و`srcset` يسبق `src` في المتصفّح — لو بقي لبقيت الصورةُ السابقة معروضة
+        thumbs[2].click();
+        expect(main.hasAttribute('srcset')).toBe(false);
+        expect(main.getAttribute('src')).toBe('c.jpg');
+    });
+
     it('ينتقل بالأسهم بترتيب العرض — والعربيّةُ من اليمين', () => {
         const { main, thumbs } = page('rtl');
         thumbs[0].focus();

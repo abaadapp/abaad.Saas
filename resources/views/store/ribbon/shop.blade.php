@@ -21,7 +21,7 @@
         --}}
         <figure data-testid="rb-collection-image" data-fit="{{ $collection['fit'] }}"
                 style="margin:0 0 24px;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft);display:flex;align-items:center;justify-content:center;{{ $collection['fit'] === 'cover' ? 'aspect-ratio:21/8' : '' }}">
-            <img src="{{ $collection['image'] }}" alt="" decoding="async"
+            <img src="{{ \App\Support\ImageVariants::link($collection['image'], \App\Support\ImageVariants::DISPLAY) }}" alt="" decoding="async"
                  @if ($collection['size']) width="{{ $collection['size']['w'] }}" height="{{ $collection['size']['h'] }}" @endif
                  style="display:block;{{ $collection['fit'] === 'cover' ? 'width:100%;height:100%;object-fit:cover' : 'width:auto;height:auto;max-width:100%;max-height:min(42vh,340px);object-fit:contain' }}">
         </figure>

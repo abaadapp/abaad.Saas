@@ -199,6 +199,7 @@ class ACopyIsNeverSeenHalfWrittenTest extends TestCase
 
         $this->assertTrue(ImageVariants::needs($file)['display'], 'النسخةُ الناقصة عُدّت كاملة');
         $this->assertFalse(ImageVariants::needs($file)['thumb'], 'المصغّرةُ السليمة طُلبت من جديد');
+        $this->assertFalse(ImageVariants::needs($file)['mid'], 'الوسطى السليمة طُلبت من جديد');
 
         $this->artisan('images:optimize', ['--apply' => true])->expectsOutputToContain('made=1')->assertSuccessful();
 
@@ -206,7 +207,7 @@ class ACopyIsNeverSeenHalfWrittenTest extends TestCase
         $this->assertSame($thumbBefore, md5((string) Storage::disk('public')->get($thumb)), 'استُبدلت مصغّرةٌ سليمة');
         $this->assertSame($original, md5((string) Storage::disk('public')->get($file)));
         $this->assertSame($file, DB::table('products')->where('id', $product->id)->value('image'));
-        $expected = [$file, $display, $thumb];
+        $expected = [$file, $display, ImageVariants::path($file, ImageVariants::MID), $thumb];
         $files = Storage::disk('public')->allFiles('products');
         sort($expected);
         sort($files);
@@ -255,7 +256,7 @@ class ACopyIsNeverSeenHalfWrittenTest extends TestCase
         $this->assertTrue($raced);
         $this->assertSame(md5($theirs), md5((string) Storage::disk('public')->get((string) ImageVariants::display($file))), 'الجولةُ كتبت فوق نسخة الرفع');
         $this->assertWhole(ImageVariants::path($file, ImageVariants::THUMB));
-        $this->assertCount(3, Storage::disk('public')->allFiles('products'), 'بقي ملفٌّ مؤقّت');
+        $this->assertCount(4, Storage::disk('public')->allFiles('products'), 'بقي ملفٌّ مؤقّت — أو نقصت نسخة (الأصلُ ونسخُه الثلاث)');
         $this->assertSame($original, md5((string) Storage::disk('public')->get($file)));
         $this->assertSame($file, DB::table('products')->where('id', $product->id)->value('image'));
     }

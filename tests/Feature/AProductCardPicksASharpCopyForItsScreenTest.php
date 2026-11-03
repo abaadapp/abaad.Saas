@@ -130,7 +130,7 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
             $img = $this->img($this->get($page)->assertOk()->getContent(), $raw);
 
             $this->assertSame($this->url($raw.'.w640.webp'), $img['src'], $page.': المصغّرةُ لمتصفّحٍ لا يقرأ srcset');
-            $this->assertSame($this->url($raw.'.w640.webp').' 640w, '.$this->url($raw.'.w1600.webp').' 1600w', $img['srcset'] ?? null, $page);
+            $this->assertSame($this->url($raw.'.w640.webp').' 640w, '.$this->url($raw.'.w1280.webp').' 1280w, '.$this->url($raw.'.w1600.webp').' 1600w', $img['srcset'] ?? null, $page);
             $this->assertSame(self::RIBBON_SIZES, $img['sizes'] ?? null, $page.': عرضُ البطاقة من شبكة .rb-grid');
             $this->assertSame('lazy', $img['loading']);
         }
@@ -171,12 +171,11 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
 
         $img = $this->img($html, $thumbOnly);
         $this->assertSame($this->url($thumbOnly.'.w640.webp'), $img['src']);
-        $this->assertSame($this->url($thumbOnly.'.w640.webp').' 640w, '.$this->url($thumbOnly).' 2400w', $img['srcset'] ?? null, 'بلا نسخة عرض: الأصلُ هو الأكبر');
+        $this->assertSame($this->url($thumbOnly.'.w640.webp').' 640w, '.$this->url($thumbOnly.'.w1280.webp').' 1280w, '.$this->url($thumbOnly).' 2400w', $img['srcset'] ?? null, 'بلا نسخة عرض: الأصلُ هو الأكبر');
 
         $img = $this->img($html, $displayOnly);
-        $this->assertSame($this->url($displayOnly.'.w1600.webp'), $img['src'], 'بلا مصغّرة: نسخةُ العرض');
-        $this->assertArrayNotHasKey('srcset', $img);
-        $this->assertArrayNotHasKey('sizes', $img);
+        $this->assertSame($this->url($displayOnly.'.w1280.webp'), $img['src'], 'بلا مصغّرة: الوسطى قبل نسخة العرض');
+        $this->assertSame($this->url($displayOnly.'.w1280.webp').' 1280w, '.$this->url($displayOnly.'.w1600.webp').' 1600w', $img['srcset'] ?? null, 'ما بقي على القرص وحده');
 
         $img = $this->img($html, $none);
         $this->assertSame($this->url($none), $img['src'], 'بلا نسخ: الأصلُ كما كان');
@@ -198,9 +197,9 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
         $this->product($this->shop, $raw);
 
         $img = $this->img($this->get('/s/ribbon/shop')->assertOk()->getContent(), $raw);
-        $this->assertSame($this->url($raw.'.w640.webp').' 640w, '.$this->url($raw.'.w1600.webp').' 1600w', $img['srcset'] ?? null);
+        $this->assertSame($this->url($raw.'.w640.webp').' 640w, '.$this->url($raw.'.w1280.webp').' 1280w, '.$this->url($raw.'.w1600.webp').' 1600w', $img['srcset'] ?? null);
 
-        foreach ([$raw.'.w640.webp', $raw.'.w1600.webp'] as $copy) {
+        foreach ([$raw.'.w640.webp', $raw.'.w1280.webp', $raw.'.w1600.webp'] as $copy) {
             $im = imagecreatefromwebp(Storage::disk('public')->path($copy));
             $this->assertSame(127, (imagecolorat($im, 2, 2) >> 24) & 127, $copy.': الحافّةُ الشفّافة بقيت شفّافة');
         }
@@ -218,7 +217,7 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
         $html = $this->get('/s/plain')->assertOk()->getContent();
         $img = $this->img($html, $raw);
         $this->assertSame($this->url($raw.'.w640.webp'), $img['src']);
-        $this->assertSame($this->url($raw.'.w640.webp').' 640w, '.$this->url($raw.'.w1600.webp').' 1600w', $img['srcset'] ?? null);
+        $this->assertSame($this->url($raw.'.w640.webp').' 640w, '.$this->url($raw.'.w1280.webp').' 1280w, '.$this->url($raw.'.w1600.webp').' 1600w', $img['srcset'] ?? null);
         $this->assertSame(self::CLASSIC_SIZES, $img['sizes'] ?? null, 'عرضُ البطاقة من شبكة .grid');
         $this->assertArrayNotHasKey('srcset', $this->img($html, $bare), 'بلا نسخ: الأصلُ وحده');
     }
@@ -235,7 +234,7 @@ class AProductCardPicksASharpCopyForItsScreenTest extends TestCase
 
         $products = collect(Preview::document($site->refresh())['data']['products'])->keyBy('id');
 
-        $this->assertSame($app.$this->url($raw.'.w640.webp').' 640w, '.$app.$this->url($raw.'.w1600.webp').' 1600w', $products[$both->id]['srcset']);
+        $this->assertSame($app.$this->url($raw.'.w640.webp').' 640w, '.$app.$this->url($raw.'.w1280.webp').' 1280w, '.$app.$this->url($raw.'.w1600.webp').' 1600w', $products[$both->id]['srcset']);
         $this->assertSame($app.$this->url($raw.'.w640.webp'), $products[$both->id]['thumb'], 'المصغّرةُ لمتصفّحٍ لا يقرأ srcset');
         $this->assertNull($products[$bare->id]['srcset'], 'بلا نسخ: لا أحجام');
         $this->assertSame('https://cdn.example.com/flowers/rose.jpg', $products[$external->id]['thumb'], 'رابطٌ خارجيّ يمرّ كما هو');

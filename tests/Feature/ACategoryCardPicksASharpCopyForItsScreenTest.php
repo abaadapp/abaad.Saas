@@ -169,7 +169,7 @@ class ACategoryCardPicksASharpCopyForItsScreenTest extends TestCase
             $img = $this->img($this->get($page)->assertOk()->getContent(), $tall);
 
             $this->assertSame($tall.'.w640.webp', $img['src'], $page.': المصغّرةُ لمتصفّحٍ لا يقرأ srcset');
-            $this->assertSame($tall.'.w640.webp 360w, '.$tall.'.w2560.webp 900w', $img['srcset'] ?? null, $page.': العرضُ من رأس الملفّ — الطوليّةُ أضيقُ من ضلعها');
+            $this->assertSame($tall.'.w640.webp 360w, '.$tall.'.w1280.webp 720w, '.$tall.'.w2560.webp 900w', $img['srcset'] ?? null, $page.': العرضُ من رأس الملفّ — الطوليّةُ أضيقُ من ضلعها');
             $this->assertSame(StoreMedia::cardSizes(2, ['w' => 900, 'h' => 1600], 'cover'), $img['sizes'] ?? null, $page);
             $this->assertSame('calc(50vw - 34px)', trim(explode(',', explode('(min-width: 384px)', $img['sizes'])[1])[0]), $page.': بطاقتان على الهاتف: (390 − 48 − 16) ÷ 2 − 2 = 161');
         }
@@ -177,9 +177,9 @@ class ACategoryCardPicksASharpCopyForItsScreenTest extends TestCase
 
     /*
      * ‏وكلُّ شاشةٍ أصغرَ نسخةٍ تكفيها — كما في صفحة سعود (تسعُ بطاقات):
-     *   الطوليّة: المصغّرةُ (360) لـ1x و2x، ونسخةُ العرض لـ3x (تحتاج 483).
-     *   المربّعة: المصغّرةُ (640) تكفي الهاتفَ بكثافاته كلِّها.
-     *   العريضة 16:9: تُرسم بارتفاع الإطار فتفيض — 3x تحتاج 644 فتأخذ نسخةَ العرض.
+     *   الطوليّة: المصغّرةُ (360) لـ1x و2x، والوسطى (720) لـ3x (تحتاج 483) — لا نسخةُ العرض.
+     *   المربّعة (1200): المصغّرةُ (640) تكفي الهاتفَ بكثافاته كلِّها، ولا وسطى لها.
+     *   العريضة 16:9: تُرسم بارتفاع الإطار فتفيض — 3x تحتاج 644 فتأخذ الوسطى (1280).
      */
     public function test_each_screen_takes_the_smallest_copy_that_keeps_the_picture_sharp(): void
     {
@@ -196,9 +196,9 @@ class ACategoryCardPicksASharpCopyForItsScreenTest extends TestCase
 
         $html = $this->get('/s/ribbon')->assertOk()->getContent();
         $expect = [
-            $tall => ['phone1x' => 360, 'phone2x' => 360, 'phone3x' => 900, 'desktop1x' => 360, 'desktop2x' => 360],
+            $tall => ['phone1x' => 360, 'phone2x' => 360, 'phone3x' => 720, 'desktop1x' => 360, 'desktop2x' => 360],
             $square => ['phone1x' => 640, 'phone2x' => 640, 'phone3x' => 640, 'desktop1x' => 640, 'desktop2x' => 640],
-            $wide => ['phone1x' => 640, 'phone2x' => 640, 'phone3x' => 1920, 'desktop1x' => 640, 'desktop2x' => 640],
+            $wide => ['phone1x' => 640, 'phone2x' => 640, 'phone3x' => 1280, 'desktop1x' => 640, 'desktop2x' => 640],
         ];
         $screens = ['phone1x' => [390, 1], 'phone2x' => [390, 2], 'phone3x' => [390, 3], 'desktop1x' => [1366, 1], 'desktop2x' => [1440, 2]];
 
@@ -250,12 +250,11 @@ class ACategoryCardPicksASharpCopyForItsScreenTest extends TestCase
 
         $img = $this->img($html, $thumbOnly);
         $this->assertSame($thumbOnly.'.w640.webp', $img['src']);
-        $this->assertSame($thumbOnly.'.w640.webp 360w, '.$thumbOnly.' 900w', $img['srcset'] ?? null, 'بلا نسخة عرض: الأصلُ هو الأكبر');
+        $this->assertSame($thumbOnly.'.w640.webp 360w, '.$thumbOnly.'.w1280.webp 720w, '.$thumbOnly.' 900w', $img['srcset'] ?? null, 'بلا نسخة عرض: الأصلُ هو الأكبر');
 
         $img = $this->img($html, $displayOnly);
-        $this->assertSame($displayOnly.'.w2560.webp', $img['src'], 'بلا مصغّرة: نسخةُ العرض');
-        $this->assertArrayNotHasKey('srcset', $img);
-        $this->assertArrayNotHasKey('sizes', $img);
+        $this->assertSame($displayOnly.'.w1280.webp', $img['src'], 'بلا مصغّرة: الوسطى قبل نسخة العرض');
+        $this->assertSame($displayOnly.'.w1280.webp 720w, '.$displayOnly.'.w2560.webp 900w', $img['srcset'] ?? null, 'ما بقي على القرص وحده');
 
         $img = $this->img($html, $none);
         $this->assertSame($none, $img['src'], 'بلا نسخ: الأصلُ كما كان');
@@ -276,9 +275,9 @@ class ACategoryCardPicksASharpCopyForItsScreenTest extends TestCase
         $this->category($png);
 
         $img = $this->img($this->get('/s/ribbon')->assertOk()->getContent(), $png);
-        $this->assertSame($png.'.w640.webp 640w, '.$png.'.w2560.webp 1800w', $img['srcset'] ?? null);
+        $this->assertSame($png.'.w640.webp 640w, '.$png.'.w1280.webp 1280w, '.$png.'.w2560.webp 1800w', $img['srcset'] ?? null);
 
-        foreach ([$png.'.w640.webp', $png.'.w2560.webp'] as $copy) {
+        foreach ([$png.'.w640.webp', $png.'.w1280.webp', $png.'.w2560.webp'] as $copy) {
             $im = imagecreatefromwebp(Storage::disk('public')->path(substr($copy, strlen('/storage/'))));
             $this->assertSame(127, (imagecolorat($im, 2, 2) >> 24) & 127, $copy.': الحافّةُ الشفّافة بقيت شفّافة');
         }

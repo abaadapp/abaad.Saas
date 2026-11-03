@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Business;
 use App\Models\Product;
+use App\Support\ImageState;
 use App\Support\ImageVariants;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -192,14 +193,32 @@ class AnOldImageWaitsForAQuietServerTest extends TestCase
         $other->release();
     }
 
-    public function test_an_upload_does_not_wait_for_the_batch_limits(): void
+    /*
+     * ‏ورفعٌ والخادمُ مشغول: يُحفظ الأصلُ ولا يُفكّ الآن — تنتظر نسخُه في قائمةٍ
+     * (`ImageState::waiting`) لا تتكرّر فيها، وتُصنع في الجولة القصيرة حين يهدأ.
+     */
+    public function test_an_upload_on_a_busy_server_keeps_its_picture_and_its_copies_follow_when_it_calms(): void
     {
         $this->server(memory: 900, load: '3.50');
         $path = $this->original();
+        $before = md5((string) Storage::disk('public')->get($path));
 
-        // ‏الرفعُ يصنع نسخَه بحارس الفكّ وحده — التاجرُ لا ينتظر هدوءَ الخادم
+        ImageVariants::makeQuietly($path);
         ImageVariants::makeQuietly($path);
 
+        $this->assertSame([$path], Storage::disk('public')->files('products'), 'فُكّت صورةٌ والخادمُ مشغول');
+        $this->assertSame([$path], array_keys(ImageState::waiting()), 'لا تنتظر — أو انتظرت مرّتين');
+        $this->assertSame('busy_cpu', ImageState::waiting()[$path]['reason']);
+
+        // ‏وجولةُ الانتظار نفسُها تسأل الخادم — ما زال مشغولًا فلا تفكّ
+        $this->artisan('images:optimize', ['--backlog' => true])->expectsOutputToContain('وقفت الدفعة')->assertSuccessful();
+        $this->assertSame([$path], Storage::disk('public')->files('products'));
+
+        $this->server(memory: 900, load: '0.20');
+        $this->artisan('images:optimize', ['--backlog' => true])->expectsOutputToContain('made=1')->assertSuccessful();
+
         Storage::disk('public')->assertExists($path.'.w640.webp');
+        $this->assertSame([], ImageState::waiting(), 'بقيت تنتظر بعد أن صُنعت');
+        $this->assertSame($before, md5((string) Storage::disk('public')->get($path)), 'تغيّر الأصل');
     }
 }

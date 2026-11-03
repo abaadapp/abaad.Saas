@@ -215,7 +215,7 @@ class AStorePageAsksForTheLightestCopyTest extends TestCase
         $html = $this->get('/s/ribbon/p/'.$rose->id)->assertOk()->getContent();
         $display = Storage::url($main.'.w1600.webp');
 
-        $this->assertMatchesRegularExpression('/<img src="'.preg_quote($display, '/').'"\s+srcset="'.preg_quote(Storage::url($main.'.w640.webp'), '/').' 640w, '.preg_quote($display, '/').' 1600w" sizes="[^"]+"[^>]*fetchpriority="high"[^>]*data-rb-main/', $html);
+        $this->assertMatchesRegularExpression('/<img src="'.preg_quote($display, '/').'"\s+srcset="'.preg_quote(Storage::url($main.'.w640.webp'), '/').' 640w, '.preg_quote(Storage::url($main.'.w1280.webp'), '/').' 1280w, '.preg_quote($display, '/').' 1600w" sizes="[^"]+"[^>]*fetchpriority="high"[^>]*data-rb-main/', $html);
 
         // ‏والشريطُ مصغّراتٌ، وكلُّ زرٍّ يفتح الصورةَ بحجمها وأحجامِها — والطوليّةُ بعرضها لا بضلعها
         preg_match_all('/<button[^>]*class="rb-thumb[^"]*" data-src="([^"]+)"[^>]*data-srcset="([^"]+)"[^>]*>\s*(?:\{\{--.*?--\}\}\s*)?<img src="([^"]+)"/s', $html, $m);

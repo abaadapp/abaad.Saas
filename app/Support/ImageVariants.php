@@ -11,12 +11,17 @@ use Illuminate\Support\Str;
 /**
  * نسخٌ أخفُّ من صورةٍ محفوظة — إلى جوارها، والأصلُ لا يُمسّ.
  *
- * ═══ نسختان لكلّ صورة ═══
+ * ═══ ثلاثُ نسخٍ لكلّ صورة ═══
  *
  *  • **المصغّرة** (`THUMB`): للقوائم والبطاقات — رفُّ متجرٍ بأربعين صنفًا لا
  *    يُنزِل أربعين صورةً بعرض ١٦٠٠ ليرسمها في مربّعاتٍ بعرض ثلاثمئة.
+ *  • **الوسطى** (`MID`): لشاشة الهاتف الكثيفة — بطاقةٌ بعرض ١٦١ على 3x تحتاج
+ *    ٤٨٣ بكسلًا، وشريطٌ بعرض الهاتف ١١٧٠. فلا تُنزَل نسخةُ العرض بضلع ٢٥٦٠.
  *  • **نسخةُ العرض**: WebP بالضلع الذي تُعرض به صورُ مجلّدها (`SIDES`) —
  *    لصورةٍ قديمةٍ رُفعت JPEG أو PNG بأبعاد الهاتف قبل أن يُضغط الرفع.
+ *
+ * وكلُّ نسخةٍ تُصنع من الأصل نفسه، ولا تُصنع إلّا أصغرَ ممّا فوقها بعُشرٍ على
+ * الأقلّ (`WORTH`) — وما لم يستحقّ مكانه يُذكر (`skips`) فلا يُفكّ له الأصلُ مرّةً أخرى.
  *
  * والشفافيّةُ باقية (WebP يحملها)، والنسبةُ باقية (لا قصَّ ولا مطّ)، وGIF
  * تُترك لأنّها قد تتحرّك.
@@ -46,6 +51,17 @@ final class ImageVariants
     public const THUMB = 640;
 
     /**
+     * ضلعُ النسخة الوسطى — قِيس على صور RIBBON قبل أن يُعتمد.
+     *
+     * بطاقةُ القسم الطوليّة على هاتف 3x تحتاج ٤٨٣ بكسلًا عرضًا، و٥٤٣ على أعرض
+     * الهواتف (٤٣٠ نقطة): ضلعُ ١٢٨٠ يعطيها ٧٢٠ — ويكفي بطاقةَ المنتج المربّعة
+     * (١٠٢٦) والشريطَ بعرض الهاتف (١١٧٠). وضلعُ ٩٦٠ يعطي ٥٤٠ فيقصر عن أعرض
+     * الهواتف فترجع إلى نسخة العرض. وصورُ RIBBON الطوليّةُ الأربع: ٣٤٢ كيلوبايت
+     * بدل ١٠٥٠، والفرقُ في وضوحها عن نسخة العرض أقلُّ من ديسيبل.
+     */
+    public const MID = 1280;
+
+    /**
      * ضلعُ نسخة العرض لكلّ مجلّد — الحدُّ نفسُه الذي تُرفع به صورُه اليوم.
      *
      * صورُ المنتجات في إطار صفحة الصنف (`ProductImages::MAX_SIDE`)، وصورُ
@@ -64,9 +80,15 @@ final class ImageVariants
      */
     private const THUMBS = ['products', 'website'];
 
-    private const QUALITY = ['thumb' => 75, 'display' => 82];
+    private const QUALITY = ['thumb' => 75, 'mid' => 82, 'display' => 82];
 
-    /** نسخةٌ لا تنقص عن أصلها عُشرًا لا تستحقّ مكانها على القرص */
+    /**
+     * نسخةٌ لا تنقص عمّا يُعرض بدلها عُشرًا لا تستحقّ مكانها على القرص.
+     *
+     * وما يُعرض بدلها أصغرُ ما فوقها على القرص: الوسطى إن وُجدت ثمّ نسخةُ العرض
+     * ثمّ الأصل — صُنع في الجولة نفسها أو قبلها. فالحكمُ واحدٌ في كلّ جولة:
+     * مصغّرةٌ لا تستحقّ اليوم لا تُصنع غدًا لأنّ نسخةَ العرض صُنعت أمس.
+     */
     private const WORTH = 0.9;
 
     private const DISK = 'public';
@@ -160,8 +182,9 @@ final class ImageVariants
      * عرضُ كلّ نسخةٍ موجودةٍ لهذه الصورة — لـ`srcset`، أو `null`.
      *
      * لا يُكتب `srcset` إلّا بنسختين فعلًا على القرص بعرضين مختلفين: المصغّرةُ
-     * والأكبرُ منها (نسخةُ العرض، أو الأصلُ حين يكون هو العرض). والعرضُ من رأس
-     * الملفّ نفسه لا من الضلع المطلوب — صورةٌ طوليّةٌ عرضُها أقلُّ من ضلعها.
+     * والوسطى والأكبرُ منهما (نسخةُ العرض، أو الأصلُ حين يكون هو العرض). والعرضُ
+     * من رأس الملفّ نفسه لا من الضلع المطلوب — صورةٌ طوليّةٌ عرضُها أقلُّ من ضلعها.
+     * فيأخذ المتصفّحُ أصغرَها عرضًا ممّا يكفي بكسلاتِ مكانها (`sizes`).
      *
      * ولا يُكتب فيه عرضٌ لم يُصنع: صورةٌ أصلُها أصغرُ من المصغّرة نسخةٌ واحدة
      * بلا `srcset`، والأكبرُ فيه هو الأصلُ نفسُه حين لا نسخةَ عرضٍ — فالمتصفّح
@@ -182,7 +205,7 @@ final class ImageVariants
         $disk = Storage::disk(self::DISK);
         $set = [];
 
-        foreach (array_unique([self::chosen($raw, self::THUMB), self::chosen($raw, self::DISPLAY)]) as $candidate) {
+        foreach (array_unique([self::chosen($raw, self::THUMB), self::chosen($raw, self::MID), self::chosen($raw, self::DISPLAY)]) as $candidate) {
             $info = @getimagesize($disk->path($candidate));
 
             if (is_array($info) && $info[0] > 0) {
@@ -204,7 +227,12 @@ final class ImageVariants
             return $raw;
         }
 
-        $wanted = $side === self::THUMB ? [self::path($raw, self::THUMB), $display] : [$display];
+        // ‏وما غاب فالأقربُ إليه فوقه: الوسطى أخفُّ من نسخة العرض، ونسخةُ العرض من الأصل
+        $wanted = match ($side) {
+            self::THUMB => [self::path($raw, self::THUMB), self::path($raw, self::MID), $display],
+            self::MID => [self::path($raw, self::MID), $display],
+            default => [$display],
+        };
 
         foreach ($wanted as $candidate) {
             if ($candidate === $raw || is_file(Storage::disk(self::DISK)->path($candidate))) {
@@ -260,7 +288,7 @@ final class ImageVariants
         }
 
         $disk = Storage::disk(self::DISK);
-        $copies = array_values(array_diff([self::path($raw, self::THUMB), $display], [$raw]));
+        $copies = array_values(array_diff([self::path($raw, self::THUMB), self::path($raw, self::MID), $display], [$raw]));
 
         // ‏وما تركته كتابةٌ انقطعت إلى جوار نسخه — لا يبقى بعد أصله
         foreach ($copies as $copy) {
@@ -275,11 +303,12 @@ final class ImageVariants
     /**
      * ما تحتاجه هذه الصورة — من رأس الملفّ وحده، بلا فكّ.
      *
-     * نسخةُ عرضٍ لما ليس WebP بحدّه، ومصغّرةٌ لما هو أعرضُ منها. وما عنده
-     * نسختُه لا يُطلب مرّةً أخرى — ما دامت كاملة: نسخةٌ قطعها انقطاعٌ قبل هذا
-     * الإصلاح تُطلب من جديد، فلا تبقى معروضةً ناقصةً أبدًا.
+     * نسخةُ عرضٍ لما ليس WebP بحدّه، ووسطى لما يُعرض أعرضَ منها، ومصغّرةٌ لما
+     * هو أعرضُ منها — ولا تكبيرَ لصورةٍ أصغر. وما عنده نسختُه لا يُطلب مرّةً
+     * أخرى — ما دامت كاملة: نسخةٌ قطعها انقطاعٌ تُطلب من جديد، فلا تبقى
+     * معروضةً ناقصةً أبدًا.
      *
-     * @return array{display: bool, thumb: bool, type: int, w: int, h: int}|null
+     * @return array{display: bool, mid: bool, thumb: bool, type: int, w: int, h: int}|null
      */
     public static function needs(string $path): ?array
     {
@@ -293,10 +322,14 @@ final class ImageVariants
 
         [$w, $h, $type] = $info;
         $long = max($w, $h);
+        $listed = in_array(strtok($path, '/'), self::THUMBS, true);
 
         return [
             'display' => ($type !== IMAGETYPE_WEBP || $long > $side) && ! self::sound($disk->path((string) self::display($path))),
-            'thumb' => in_array(strtok($path, '/'), self::THUMBS, true) && $long > self::THUMB
+            // ‏وضلعُ ما يُعرض بعد نسخة العرض لا ضلعُ الأصل: صورةُ منتجٍ بأربعة آلاف تُعرض بألفٍ وستّمئة
+            'mid' => $listed && min($long, $side) > self::MID
+                && ! self::sound($disk->path(self::path($path, self::MID))),
+            'thumb' => $listed && $long > self::THUMB
                 && ! self::sound($disk->path(self::path($path, self::THUMB))),
             'type' => $type, 'w' => $w, 'h' => $h,
         ];
@@ -305,20 +338,23 @@ final class ImageVariants
     /**
      * يصنع ما ينقص من نسخ ملفٍّ محفوظ — ويقول ما صنع، أو لماذا لم يصنع.
      *
-     *  • `made`: كُتب كلُّ ما يُحتاج وقُرئ من القرص صحيحًا.
+     *  • `made`: كُتب ما يُحتاج وقُرئ من القرص صحيحًا — وما لم يستحقّ مكانه في `skips`.
      *  • `ready`: لا ينقصه شيء.
      *  • `skipped`: لا تُصنع له نسخة — GIF أو نوعٌ لا يُفكّ، أو نسخةٌ لا توفّر، أو
      *    أكبرُ من سقف البكسلات (`ImageMemory::maxPixels`).
      *  • `deferred`: لا تتّسع ذاكرةُ الخادم المتاحة لفكّها الآن (`ImageMemory`) — تُعاد لاحقًا.
      *  • `failed`: تعذّر شيءٌ — ومُحي ما كُتب في هذه الجولة، فيُعاد لاحقًا.
-     *  • `missing`: لا أصلَ على القرص.
+     *  • `missing`: لا أصلَ على القرص — أو مُحي وهي تُصنع، فمُحي ما صُنع له.
      *  • `estimated`: `$write = false` — حُسب ولم يُكتب، لجردٍ يقدّر قبل أن يُصنع شيء.
      *
-     * @return array{status: string, reason: ?string, before: int, display: int, thumb: int, ms: float, peak: int}
+     * و`skips` النسخُ التي فُحصت فلم تنقص عمّا يُعرض بدلها عُشرًا (`WORTH`) — يحفظها
+     * من يعود إلى الصورة (`ImageState`) فلا يُفكّ أصلُها لها مرّةً أخرى.
+     *
+     * @return array{status: string, reason: ?string, before: int, display: int, mid: int, thumb: int, skips: list<string>, ms: float, peak: int}
      */
     public static function make(string $path, bool $write = true): array
     {
-        $out = ['status' => 'ready', 'reason' => null, 'before' => 0, 'display' => 0, 'thumb' => 0, 'ms' => 0.0, 'peak' => 0];
+        $out = ['status' => 'ready', 'reason' => null, 'before' => 0, 'display' => 0, 'mid' => 0, 'thumb' => 0, 'skips' => [], 'ms' => 0.0, 'peak' => 0];
         $disk = Storage::disk(self::DISK);
 
         // ‏ومفتاحُ WebP نفسُه يطفئها: خادمٌ تُفسد مكتبتُه الصورَ لا تُصنع عليه نسخ
@@ -337,7 +373,7 @@ final class ImageVariants
             return ['status' => 'skipped', 'reason' => 'not_an_image'] + $out;
         }
 
-        if (! $need['display'] && ! $need['thumb']) {
+        if (! self::wanted($need)) {
             return $out;
         }
 
@@ -366,7 +402,7 @@ final class ImageVariants
 
         try {
             // ‏و`$written` بالمرجع: ما كُتب قبل أن تسقط الجولةُ يُعرف فيُمحى
-            $out = self::exclusive(function () use ($path, $decode, $write, $out, &$written, $pixels) {
+            $out = self::exclusive(function () use ($path, $decode, $write, $out, &$written, $pixels, $disk) {
                 /*
                  * وما يُحتاج يُسأل مرّةً أخرى داخل القفل: رفعٌ وجولةٌ يطلبان
                  * الصورةَ نفسها، فينتظر أحدُهما دوره والآخرُ يصنع نسخها — فلا
@@ -374,7 +410,7 @@ final class ImageVariants
                  */
                 $need = self::needs($path);
 
-                if ($need === null || (! $need['display'] && ! $need['thumb'])) {
+                if ($need === null || ! self::wanted($need)) {
                     return $out;
                 }
 
@@ -391,7 +427,20 @@ final class ImageVariants
                     return ['status' => 'deferred', 'reason' => 'low_memory'] + $out;
                 }
 
-                return self::build($path, $decode, $need, $write, $out, $written);
+                $out = self::build($path, $decode, $need, $write, $out, $written);
+
+                /*
+                 * وصاحبُ الصورة حذفها وهي تُصنع: حذفُه محا نسخها (`forget`) قبل أن
+                 * تُنشر هذه. فلا تبقى بعده نسخٌ لا أصلَ لها.
+                 */
+                if ($written !== [] && ! is_file($disk->path($path))) {
+                    $disk->delete($written);
+                    $written = [];
+
+                    return ['status' => 'missing', 'reason' => 'deleted_while_made'] + $out;
+                }
+
+                return $out;
             });
         } catch (\Throwable $e) {
             report($e);
@@ -409,13 +458,25 @@ final class ImageVariants
         return $out;
     }
 
+    /** أينقصها شيء؟ */
+    private static function wanted(array $need): bool
+    {
+        return $need['display'] || $need['mid'] || $need['thumb'];
+    }
+
     /**
-     * @param  array{display: bool, thumb: bool, type: int, w: int, h: int}  $need
+     * النسخُ من الأصل نفسه، من الأكبر إلى الأصغر — كلٌّ بما يُعرض بدلها.
+     *
+     * والوسطى من الأصل لا من نسخة العرض، والمصغّرةُ من الوسطى التي فُكّت من
+     * الأصل في هذه الجولة — لا من ملفٍّ مضغوطٍ قبلها.
+     *
+     * @param  array{display: bool, mid: bool, thumb: bool, type: int, w: int, h: int}  $need
      * @param  list<string>  $written
      */
     private static function build(string $path, string $decode, array $need, bool $write, array $out, array &$written): array
     {
-        $source = Storage::disk(self::DISK)->path($path);
+        $disk = Storage::disk(self::DISK);
+        $source = $disk->path($path);
         $image = @$decode($source);
 
         if (! $image instanceof \GdImage) {
@@ -426,46 +487,47 @@ final class ImageVariants
             $image = StoreImageUpload::oriented($image, StoreImageUpload::orientation($source));
         }
 
-        $display = StoreImageUpload::fitted($image, (int) self::side($path));
-        $best = $out['before'];
+        // ‏ما يُعرض بدل النسخة إن لم تُصنع: الأصل، ثمّ أصغرُ ما صُنع فوقها — الآن أو قبلُ
+        $above = $out['before'];
+        $mid = null;
         $made = 0;
 
-        if ($need['display']) {
-            $bytes = self::encode($display, self::QUALITY['display']);
+        foreach (['display' => (int) self::side($path), 'mid' => self::MID, 'thumb' => self::THUMB] as $copy => $side) {
+            $target = self::path($path, $side);
+
+            if (! $need[$copy]) {
+                if (self::sound($disk->path($target))) {
+                    $above = (int) filesize($disk->path($target));
+                }
+
+                continue;
+            }
+
+            $fitted = match ($copy) {
+                'display' => StoreImageUpload::fitted($image, $side),
+                'mid' => $mid = StoreImageUpload::fitted($image, $side),
+                'thumb' => StoreImageUpload::fitted($mid ?? $image, $side),
+            };
+            $bytes = self::encode($fitted, self::QUALITY[$copy]);
 
             if ($bytes === null) {
                 return ['status' => 'failed', 'reason' => 'encode'] + $out;
             }
 
-            if (strlen($bytes) < $out['before'] * self::WORTH) {
-                $out['display'] = strlen($bytes);
-                $best = strlen($bytes);
+            if (strlen($bytes) >= $above * self::WORTH) {
+                $out['skips'][] = $copy;
 
-                if ($write && ! self::put((string) self::display($path), $bytes, $display, $written)) {
-                    return ['status' => 'failed', 'reason' => 'write'] + $out;
-                }
-
-                $made++;
-            }
-        }
-
-        if ($need['thumb'] && max(imagesx($display), imagesy($display)) > self::THUMB) {
-            $thumb = StoreImageUpload::fitted($display, self::THUMB);
-            $bytes = self::encode($thumb, self::QUALITY['thumb']);
-
-            if ($bytes === null) {
-                return ['status' => 'failed', 'reason' => 'encode'] + $out;
+                continue;
             }
 
-            if (strlen($bytes) < $best * self::WORTH) {
-                $out['thumb'] = strlen($bytes);
+            $out[$copy] = strlen($bytes);
+            $above = strlen($bytes);
 
-                if ($write && ! self::put(self::path($path, self::THUMB), $bytes, $thumb, $written)) {
-                    return ['status' => 'failed', 'reason' => 'write'] + $out;
-                }
-
-                $made++;
+            if ($write && ! self::put($target, $bytes, $fitted, $written)) {
+                return ['status' => 'failed', 'reason' => 'write'] + $out;
             }
+
+            $made++;
         }
 
         if ($made === 0) {
@@ -500,7 +562,14 @@ final class ImageVariants
         }
     }
 
-    /** يصنع النسخ ولا يُسقط ما ناداه — رفعٌ نجح لا يُردّ لأنّ مصغّرته تعذّرت */
+    /**
+     * يصنع نسخ صورةٍ رُفعت للتوّ ولا يُسقط ما ناداه — رفعٌ نجح لا يُردّ لأنّ نسخه تعذّرت.
+     *
+     * والأصلُ محفوظٌ قبله، والخادمُ يُسأل أوّلًا (`ImageGate`): مشغولٌ أو موقوفةٌ
+     * معالجتُه — تنتظر الصورةُ نسخها (`ImageState::wait`) وتُصنع في جولةٍ قصيرة بعد
+     * دقائق (`images:optimize --backlog`). وكذا ما تأجّل لذاكرةٍ لا تكفي أو فشل.
+     * والصفحةُ تعرض الأصلَ حتى تُصنع (`link`).
+     */
     public static function makeQuietly(?string $path): void
     {
         if (blank($path)) {
@@ -508,7 +577,19 @@ final class ImageVariants
         }
 
         try {
-            self::make($path);
+            if (($why = ImageGate::blocked()) !== null) {
+                ImageState::wait($path, $why['reason']);
+
+                return;
+            }
+
+            $r = self::make($path);
+
+            if (in_array($r['status'], ['deferred', 'failed'], true)) {
+                ImageState::wait($path, (string) ($r['reason'] ?? $r['status']));
+            } elseif ($r['skips'] !== []) {
+                ImageState::put($path, ['status' => 'made', 'skips' => $r['skips']]);
+            }
         } catch (\Throwable $e) {
             report($e);
         }

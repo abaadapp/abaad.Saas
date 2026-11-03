@@ -78,7 +78,8 @@ return [
         'images' => [
             'driver' => 'daily',
             'path' => storage_path('logs/images.log'),
-            'level' => env('IMAGES_LOG_LEVEL', 'warning'),
+            // ‏وسطرُ كلّ جولة (`images.batch`) بمستوى notice — ما عولج وما بقي
+            'level' => env('IMAGES_LOG_LEVEL', 'notice'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
         ],

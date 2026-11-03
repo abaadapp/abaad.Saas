@@ -230,6 +230,60 @@ class OneCustomerWhoCannotReceiveIsNotABrokenLinkTest extends TestCase
         $this->assertTrue($this->step()['theirs'], 'نُسب حجبُ التطبيق إلى التاجر');
     }
 
+    /**
+     * رسائلُ وصلت، ثمّ فشلٌ لعميلٍ برمز 131026، ثمّ عطبٌ عند أبعاد لم ينجح بعده شيء.
+     *
+     * خطرٌ قائمٌ يُقال بلونه — بلا «لم تصل أيٌّ» وقد وصل بعضُها. ثمّ تسليمٌ بعد
+     * العطب يُعيد المرحلة، ويبقى العميلان في القائمة. وعطبُ جارٍ لا يُعيد الخطر هنا.
+     */
+    public function test_deliveries_before_an_internal_fault_are_not_called_none(): void
+    {
+        $this->delivered(3);
+        $this->message(WhatsAppStatus::FAILED, self::BAD, 30, '131026');
+        $this->message(WhatsAppStatus::FAILED, '96891113333', 10, '200');
+
+        $d = WhatsAppHealth::delivery($this->business->id);
+        $this->assertSame(WhatsAppHealth::FAILING, $d['state'], 'عطبٌ عند أبعاد لم ينجح بعده شيء ولا خطر');
+        $this->assertSame(3, $d['delivered']);
+        $this->assertSame(2, $d['failed']);
+        $this->assertSame(2, $d['customers']);
+
+        $alert = WhatsAppHealth::alert($this->business->id);
+        $this->assertSame('danger', $alert['level']);
+        $this->assertStringNotContainsString('أيٌّ', $alert['text'], 'قيل «لم تصل أيٌّ» وقد وصلت 3');
+        $this->assertStringContainsString('العطب عند أبعاد', $alert['text']);
+
+        $step = $this->step();
+        $this->assertFalse($step['done']);
+        $this->assertTrue($step['theirs']);
+        $this->assertStringNotContainsString('أيٌّ', (string) $step['fix']);
+
+        $this->actingAs($this->owner);
+        $bell = collect(Demo::notifications())->firstWhere('key', 'wa-delivery');
+        $this->assertSame('danger', $bell['color']);
+        $this->assertStringNotContainsString('أيٌّ', $bell['text']);
+
+        // وجارٌ عطبُه أحدثُ من كلّ شيءٍ هنا لا يمسّ هذا المتجر
+        $neighbour = $this->shop('جار');
+        $this->message(WhatsAppStatus::FAILED, '96899990000', 1, '200', $neighbour);
+
+        // ثمّ وصلت رسالةٌ بعد العطب: عبر العطب، ويبقى من لم تصله رسالتُه
+        $this->message(WhatsAppStatus::DELIVERED, '96891114444', 3);
+
+        $d = WhatsAppHealth::delivery($this->business->id);
+        $this->assertSame(WhatsAppHealth::PARTIAL, $d['state']);
+        $this->assertSame(4, $d['delivered']);
+        $this->assertSame(2, $d['failed']);
+        $this->assertSame(2, $d['customers']);
+        $this->assertSame(['200', '131026'], array_column($d['failures'], 'code'), 'الأحدثُ فشلًا ليس أوّلًا');
+        $this->assertTrue($this->step()['done']);
+        $this->assertNull(WhatsAppHealth::alert($this->business->id));
+        $this->assertSame('warning', collect(Demo::notifications())->firstWhere('key', 'wa-delivery')['color']);
+
+        $this->assertSame(WhatsAppHealth::FAILING, WhatsAppHealth::delivery($neighbour->id)['state']);
+        $this->assertSame(0, WhatsAppHealth::delivery($neighbour->id)['delivered']);
+    }
+
     /* ══════════════ 4. كلُّها تفشل ══════════════ */
 
     public function test_when_everything_fails_it_is_said_loudly(): void

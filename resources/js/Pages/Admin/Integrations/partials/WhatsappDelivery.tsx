@@ -52,7 +52,13 @@ export default function WhatsappDelivery({ delivery }: { delivery: Delivery }) {
         untested: { box: 'border-[#e5e7eb] bg-[#fafafa]', text: 'text-[#4b5563]', Icon: Clock },
     }[d.state];
 
-    const title = {
+    /*
+     * و«لم يصل شيء» لا تُقال وقد أكّدت واتساب وصولَ بعضها: رسائلُ وصلت ثمّ
+     * عطبٌ عند أبعاد لم تنجح بعده رسالة انقطاعٌ بعد وصول — خطرٌ قائمٌ بعددٍ صادق.
+     */
+    const cutOff = d.state === 'failing' && d.delivered > 0;
+
+    const title = cutOff ? t('توقّف التسليم بعد أن وصلت رسائل') : {
         ok: t('التسليم يعمل'),
         partial: t('واتساب يعمل — بعض الرسائل لم تصل إلى عملائها'),
         failing: t('لم تصل أيٌّ من رسائل آخر يوم'),
@@ -60,7 +66,10 @@ export default function WhatsappDelivery({ delivery }: { delivery: Delivery }) {
         untested: t('لم تُختبر عملية التسليم مؤخرًا'),
     }[d.state];
 
-    const line = {
+    const line = cutOff ? t('وصلت :n رسالة في آخر يوم، ثمّ لم تنجح رسالةٌ بعد آخر فشل (لم تصل :f). العطب عند أبعاد، ونحن نعالجه.', {
+        n: d.delivered,
+        f: d.failed,
+    }) : {
         ok: t('أكّد واتساب وصول :n من :t رسالة في آخر 24 ساعة.', { n: d.delivered, t: d.attempts }),
         partial: t('الربط يعمل: وصلت :n رسالة، ولم تصل :f رسالة إلى :c عميل. تحقّق من أرقامهم أو تواصل معهم بطريقة أخرى.', {
             n: d.delivered,
@@ -74,7 +83,7 @@ export default function WhatsappDelivery({ delivery }: { delivery: Delivery }) {
 
     return (
         <Card className={cn('border p-5 sm:p-6', tone.box)} asChild>
-            <section aria-label={t('تسليم الرسائل')}>
+            <section aria-label={t('تسليم الرسائل')} data-testid="whatsapp-delivery" data-state={d.state}>
                 <div className="flex items-start gap-3">
                     <tone.Icon className={cn('mt-0.5 size-5 shrink-0', tone.text)} />
                     <div className="min-w-0 flex-1">

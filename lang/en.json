@@ -10429,5 +10429,7 @@
     "و:n عميلًا آخر في سجلّ الرسائل.": "And :n more customers in the message log.",
     "ردود المحادثات في آخر 24 ساعة: أكّد واتساب وصول :n من :t.": "Conversation replies in the last 24 hours: WhatsApp confirmed delivering :n of :t.",
     "ولم يصل :f.": ":f weren't delivered.",
-    "عرض الرسائل التي لم تصل في السجلّ": "Show undelivered messages in the log"
+    "عرض الرسائل التي لم تصل في السجلّ": "Show undelivered messages in the log",
+    "توقّف التسليم بعد أن وصلت رسائل": "Delivery stopped after some messages arrived",
+    "وصلت :n رسالة في آخر يوم، ثمّ لم تنجح رسالةٌ بعد آخر فشل (لم تصل :f). العطب عند أبعاد، ونحن نعالجه.": ":n messages were delivered in the last day, then nothing succeeded after the last failure (:f not delivered). The fault is on Abaad's side and we're fixing it."
 }

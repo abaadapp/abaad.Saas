@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Product;
 use App\Support\ImageState;
 use App\Support\ImageVariants;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -336,7 +337,7 @@ class AMiddleCopyIsMadeOnlyWhereItHelpsTest extends TestCase
     {
         $fake = Storage::disk('public');
 
-        Storage::set('public', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig(), $hook) extends \Illuminate\Filesystem\FilesystemAdapter
+        Storage::set('public', new class($fake->getDriver(), $fake->getAdapter(), $fake->getConfig(), $hook) extends FilesystemAdapter
         {
             /** @var callable */
             private $hook;

@@ -15,6 +15,7 @@ use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppHealth;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLinkCheck;
@@ -72,6 +73,11 @@ class WhatsAppController extends Controller
              * «جاهز» ويمتنع المُرسِل.
              */
             'readiness' => WhatsAppFeature::readiness($business),
+            /*
+             * وما جرى للتسليم في آخر يوم — مَن لم تصله رسالتُه ولماذا، بأرقامٍ
+             * محجوبة. مستقلٌّ عن المراحل: عميلٌ لا يستقبل رقمُه ليس عطبًا في الربط.
+             */
+            'delivery' => WhatsAppHealth::view($business->id, auth()->user()),
             'global_enabled' => WhatsAppFeature::globallyEnabled(),
             'enabled' => (bool) $business->whatsapp_enabled,
             'mode' => $business->whatsapp_mode,

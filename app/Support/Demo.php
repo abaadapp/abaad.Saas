@@ -4455,17 +4455,26 @@ class Demo
          * والنصُّ يفرّق بين ما يُصلحه وما ننتظره نحن: «راجع أرقام زبائنك»
          * لتاجرٍ تطبيقُنا محجوب لومٌ في غير محلّه، ويجعله يلاحق ما لا يملك.
          */
-        $waAlert = WhatsAppHealth::alert($bid);
+        $waDelivery = WhatsAppHealth::delivery($bid);
+        $waAlert = WhatsAppHealth::alertFor($waDelivery);
 
-        if ($waAlert !== null) {
+        /*
+         * وعميلٌ لا يستقبل رقمُه والربطُ يعمل يُقال تنبيهًا لا عطبًا: يعرفه
+         * التاجر ليتّصل بزبونه، ولا يظنّ واتساب انقطع.
+         */
+        if ($waAlert !== null || $waDelivery['state'] === WhatsAppHealth::PARTIAL) {
             $add('wa-delivery', [
-                'text' => $waAlert['ours']
-                    ? __('لم تصل :n رسالة واتساب إلى زبائنك — العطب عندنا ونعالجه', ['n' => $waAlert['count']])
-                    : __('لم تصل :n رسالة واتساب إلى زبائنك — راجع أرقامهم', ['n' => $waAlert['count']]),
+                'text' => match (true) {
+                    $waAlert === null => __('لم تصل :n رسالة واتساب إلى :c عميل — واتساب يعمل، فتحقّق من أرقامهم', [
+                        'n' => $waDelivery['failed'], 'c' => $waDelivery['customers'],
+                    ]),
+                    $waAlert['ours'] => __('لم تصل :n رسالة واتساب إلى زبائنك — العطب عندنا ونعالجه', ['n' => $waAlert['count']]),
+                    default => __('لم تصل :n رسالة واتساب إلى زبائنك — راجع أرقامهم', ['n' => $waAlert['count']]),
+                },
                 'time' => __('آخر يوم'),
                 'section' => 'marketing',
                 'icon' => 'message-circle',
-                'color' => 'danger',
+                'color' => $waAlert === null ? 'warning' : 'danger',
                 /*
                  * ويقود إلى الصفوف نفسِها لا إلى شاشة الربط.
                  *

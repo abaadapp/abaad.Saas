@@ -159,8 +159,18 @@ Schedule::command('finance:post-missing-sales')->dailyAt('01:30')->withoutOverla
 Schedule::command('purge:check')->dailyAt('06:10')->withoutOverlapping();
 
 /*
- * نسخُ الصور القديمة دفعةً كلَّ ساعة — مطفأةٌ حتى يُفتح `images.backfill`.
- * والأصولُ لا تُمسّ، وما صُنع لا يُعاد (`ImagesOptimize`).
+ * نسخُ الصور القديمة لكلّ المتاجر بالدور — دفعةٌ صغيرةٌ كلَّ ربع ساعة، مطفأةٌ حتى
+ * يُفتح `images.backfill`. والأصولُ لا تُمسّ، وما صُنع لا يُعاد، والخادمُ يُسأل قبل
+ * كلّ صورة (`ImagesOptimize`). وفي الخلفيّة: دفعةٌ طالت لا تؤخّر بقيّةَ الجدول.
  */
-Schedule::command('images:optimize', ['--apply', '--limit='.(int) config('images.backfill_batch', 50)])
-    ->hourlyAt(40)->withoutOverlapping()->when(fn () => (bool) config('images.backfill'));
+Schedule::command('images:optimize', ['--apply', '--limit='.(int) config('images.backfill_batch', 10)])
+    ->everyFifteenMinutes()->withoutOverlapping()->runInBackground()->when(fn () => (bool) config('images.backfill'));
+
+/*
+ * وما رُفع والخادمُ مشغول — حُفظ أصلُه وتنتظر نسخُه (`ImageState::waiting`): جولةٌ قصيرةٌ
+ * كلَّ عشر دقائق بالحرّاس أنفسهم، لا تمسّ صورةً قديمة. ولا تبدأ إن لم تنتظر صورة ولم
+ * يفت انتظارُ رفع (`ImageState::missed`) — وما فات تستدركه من القرص قبل أن تبدأ.
+ */
+Schedule::command('images:optimize', ['--backlog', '--limit='.(int) config('images.backlog_batch', 10)])
+    ->everyTenMinutes()->withoutOverlapping()->runInBackground()
+    ->when(fn () => (bool) config('images.backlog', true) && (\App\Support\ImageState::waiting() !== [] || \App\Support\ImageState::missed() !== null));

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,11 +20,38 @@ use Illuminate\Support\Facades\DB;
  *    `gate_max_queue` — طابورٌ يتراكم يعني عاملًا مشغولًا، فلا يُزاد عليه.
  *
  * وما لا يُقرأ يُعدّ مانعًا لا إذنًا: خادمٌ لا يقول ذاكرتَه أو حِملَه لا
- * تُعالج عليه الصور القديمة. والصورُ الجديدة لا تمرّ من هنا — رفعُ التاجر
- * لا ينتظر جولة.
+ * تُعالج عليه الصور القديمة.
+ *
+ * ═══ والرفعُ يسأله ولا ينتظره ═══
+ *
+ * صورةٌ يرفعها تاجرٌ تُصنع نسخها معها ما دام الخادمُ يتّسع (`ImageVariants::makeQuietly`).
+ * وإن لم يتّسع حُفظ أصلُها ونجح الرفع، وتنتظر نسخُها جولةً قصيرةً بعد دقائق
+ * (`ImageState::wait`) — لا يتأخّر الرفعُ ولا يُردّ.
+ *
+ * ═══ ومفتاحُ إيقافٍ عامّ ═══
+ *
+ * `images:optimize --halt` يوقف كلَّ معالجةٍ للصور قبل الصورة التالية — الجولاتِ
+ * والرفعَ معًا (يُحفظ الأصلُ وتنتظر نسخه) — بلا تعديلٍ في البيئة ولا نشر. و`--resume`
+ * يعيدها. وهو في الذاكرة المؤقّتة المشتركة فتراه كلُّ عمليّة.
  */
 final class ImageGate
 {
+    /** مفتاحُ الإيقاف العامّ في الذاكرة المؤقّتة المشتركة */
+    public const HALT = 'images:halt';
+
+    /** متى أُوقفت المعالجة — أو `null` */
+    public static function halted(): ?string
+    {
+        try {
+            $at = Cache::get(self::HALT);
+        } catch (\Throwable) {
+            // ‏ذاكرةٌ لا تُقرأ لا تُعدّ إيقافًا — الحرّاسُ الآخرون باقون
+            return null;
+        }
+
+        return is_string($at) && $at !== '' ? $at : null;
+    }
+
     /**
      * سببُ التوقّف وأرقامُه — أو `null` فتُعالج الصورةُ التالية.
      *
@@ -31,6 +59,10 @@ final class ImageGate
      */
     public static function blocked(): ?array
     {
+        if (self::halted() !== null) {
+            return ['reason' => 'halted', 'value' => null, 'limit' => 0];
+        }
+
         if (! config('images.batch_gate', true)) {
             return null;
         }

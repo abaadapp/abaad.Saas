@@ -158,7 +158,8 @@ export default function PosIndex() {
     const cartProducts = useMemo(
         () =>
             products.map((p) => ({
-                id: p.id, label: p.label, price: p.price, image: p.image,
+                // ‏وسطرُ السلّة بمربّعٍ ٤٨ — المصغّرةُ لا نسخةُ العرض
+                id: p.id, label: p.label, price: p.price, image: p.thumb || p.image,
                 // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة
                 sku: p.sku, barcode: p.barcode, stock: p.tracks_stock === false ? null : p.qty,
                 /*
@@ -279,7 +280,7 @@ export default function PosIndex() {
 
         cart.add({
             key: `p${p.id}`, id: p.id, name: p.label, price: p.price,
-            image: p.image,
+            image: p.thumb || p.image,
             // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
             stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
             tax: p.tax,
@@ -1209,7 +1210,7 @@ export default function PosIndex() {
                         addons: choice.addons,
                         name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
                         price: choice.price,
-                        image: p.image,
+                        image: p.thumb || p.image,
                         stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
                         tax: p.tax,
                         season_id: seasonFor(p.id),

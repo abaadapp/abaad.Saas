@@ -5,9 +5,11 @@ namespace App\Console\Commands;
 use App\Support\ImageGate;
 use App\Support\ImageMemory;
 use App\Support\ImageReferences;
+use App\Support\ImageState;
 use App\Support\ImageSwap;
 use App\Support\ImageVariants;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +19,9 @@ use Illuminate\Support\Facades\Storage;
  * صورُ النظام كلُّها: جردٌ، ونسخٌ أخفّ، ونقلُ مراجع، وخطّةُ استغناءٍ عن الأصول.
  *
  *   images:optimize                          جردٌ وتقديرٌ — لا يكتب شيئًا
- *   images:optimize --apply                  يصنع نسخ دفعةٍ (٥٠) ثمّ يقف
+ *   images:optimize --apply                  يصنع نسخ دفعةٍ (٥٠) ثمّ يقف — بالدور بين المتاجر
+ *   images:optimize --backlog                يصنع نسخ ما رُفع والخادمُ مشغول (`ImageState::waiting`)
+ *   images:optimize --halt | --resume        يوقف كلَّ معالجةٍ للصور قبل الصورة التالية، ويعيدها
  *   images:optimize --swap --business=ID     ينقل مراجعَ متجرٍ إلى نسخها، بسجلّ
  *   images:optimize --rollback=RUN           يُعيد ما نقلته جولة
  *   images:optimize --recover                يقرأ كلَّ نقلٍ انقطع ويقول أين وقف
@@ -34,6 +38,13 @@ use Illuminate\Support\Facades\Storage;
  * المرفقاتُ الخاصّة (القرص `local`): إيصالاتٌ وفواتيرُ موردين ومستنداتٌ
  * وصورُ محادثات. هي بيّنةٌ تُقرأ كما أُرسلت — تُجرد أحجامُها وحدها. والشعاراتُ
  * وأغلفةُ المستندات والصورُ الرمزيّة تُجرد ولا تُنسخ: تدخل الفواتير والمستندات.
+ *
+ * ═══ ولكلّ متجرٍ دورُه ═══
+ *
+ * الجولةُ العامّة (بلا `--business`) لا تمشي بترتيب الجداول — فكان أكبرُ المتاجر
+ * صورًا يأخذ الدفعاتِ كلَّها وينتظر غيرُه أيّامًا. بل صورةٌ من كلّ متجرٍ ينتظر ثمّ
+ * الثانيةُ من كلٍّ (`fair`)، ويبدأ الدورُ بعد آخر متجرٍ عولج في الجولة السابقة.
+ * ومتجرٌ يُنشأ غدًا يدخل الدورَ في جولته الأولى بلا إعداد.
  */
 class ImagesOptimize extends Command
 {
@@ -47,15 +58,18 @@ class ImagesOptimize extends Command
         {--rollback= : معرّفُ جولة نقلٍ يُعاد ما فيها}
         {--recover : يقرأ كلَّ نقلٍ انقطع ويختمه بما وجد}
         {--retire-plan : ما يمكن الاستغناءُ عنه من الأصول، بلا محو}
-        {--path=* : صورةٌ بعينها من صور المتجر الحيّة (يتكرّر، وبترتيبه) — مع --apply و--business وحدهما}';
+        {--path=* : صورةٌ بعينها من صور المتجر الحيّة (يتكرّر، وبترتيبه) — مع --apply و--business وحدهما}
+        {--backlog : يصنع نسخ الصور المرفوعة التي تنتظر — بلا جردٍ ولا مسح}
+        {--halt : يوقف كلَّ معالجةٍ للصور قبل الصورة التالية — الجولات والرفع}
+        {--resume : يعيد معالجة الصور بعد --halt}';
 
     protected $description = 'جرد صور النظام وصنع نسخها الأخفّ ونقل مراجعها تدريجيًّا دون محو أيّ أصل';
 
-    /** حالُ ما عولج — على القرص الخاصّ، يكتبه هذا الأمر وحده تحت قفله */
-    private const STATE = 'image-variants/state.json';
-
     /** مرّاتُ المحاولة قبل أن يُترك فاشلًا حتى يُطلب */
     private const ATTEMPTS = 3;
+
+    /** آخرُ متجرٍ عولجت صورتُه في الجولة العامّة — يبدأ الدورُ التالي بعده (`fair`) */
+    private const CURSOR = 'images:cursor';
 
     public function handle(): int
     {
@@ -72,10 +86,15 @@ class ImagesOptimize extends Command
         }
 
         if ($this->chosen() !== [] && (! $this->option('apply') || $this->option('business') === null
-            || $this->option('swap') || filled($this->option('rollback')) || $this->option('recover') || $this->option('retire-plan'))) {
+            || $this->option('swap') || filled($this->option('rollback')) || $this->option('recover') || $this->option('retire-plan') || $this->option('backlog'))) {
             $this->error('--path يُستعمل مع --apply و--business وحدهما — لم تُعالج صورة.');
 
             return self::FAILURE;
+        }
+
+        // ‏والمفتاحُ لا ينتظر قفلَ الجولة: يُرى قبل الصورة التالية في أيّ جولةٍ تعمل الآن
+        if ($this->option('halt') || $this->option('resume')) {
+            return $this->toggle((bool) $this->option('halt'));
         }
 
         $lock = Cache::lock('images:optimize', 3600);
@@ -88,15 +107,14 @@ class ImagesOptimize extends Command
 
         try {
             // ‏أولويّةٌ أدنى من البيع والدفع وواتساب على معالجٍ واحد — والجردُ يفكّ عيّنته أيضًا
-            if (function_exists('proc_nice')) {
-                @proc_nice(10);
-            }
+            $this->yieldToOthers();
 
             return match (true) {
                 filled($this->option('rollback')) => $this->rollback((string) $this->option('rollback')),
                 (bool) $this->option('recover') => $this->recover(),
                 (bool) $this->option('swap') => $this->swap(),
                 (bool) $this->option('retire-plan') => $this->retirePlan(),
+                (bool) $this->option('backlog') => $this->backlog(),
                 (bool) $this->option('apply') => $this->apply(),
                 default => $this->inventory(),
             };
@@ -115,6 +133,9 @@ class ImagesOptimize extends Command
         $rows = [];
         $todo = [];
         $over = 0;
+        $state = ImageState::all();
+        $owners = $this->owners();
+        $byShop = [];
 
         foreach ($files as $path => $bytes) {
             $kind = $this->kind($path, $refs[$path] ?? []);
@@ -123,9 +144,11 @@ class ImagesOptimize extends Command
             $rows[$kind]['bytes'] += $bytes;
             $need = in_array($kind, ['product', 'category', 'website'], true) ? ImageVariants::needs($path) : null;
 
-            if ($need !== null && ($need['display'] || $need['thumb'])) {
+            if ($need !== null && $this->wants($need, $state[$path] ?? null)) {
                 $todo[$kind][] = $path;
                 $over += $need['w'] * $need['h'] > ImageMemory::maxPixels() ? 1 : 0;
+                $shop = preg_match('#^website/(\d+)/#', $path, $m) ? (int) $m[1] : (int) ($owners[$path] ?? 0);
+                $byShop[$shop] = ($byShop[$shop] ?? 0) + 1;
             }
         }
 
@@ -143,6 +166,22 @@ class ImagesOptimize extends Command
         ])->values()->all());
 
         $this->private();
+
+        // ‏ما ينتظر في كلّ متجر — والجولةُ العامّة تأخذ منها بالدور (`fair`)
+        if ($byShop !== []) {
+            arsort($byShop);
+            $this->info('تنتظر في '.count($byShop).' متجرًا (أكثرُها):');
+            $this->table(['المتجر', 'تنتظر'], collect($byShop)->take(15)->map(fn ($n, $shop) => [$shop ?: '—', $n])->values()->all());
+        }
+
+        $waiting = count(ImageState::waiting());
+        $failed = count(array_filter($state, fn ($s) => ($s['status'] ?? null) === 'failed'));
+        $this->line('مرفوعةٌ تنتظر نسخها: '.$waiting.'. فشلت: '.$failed.'. موقوفة: '.(ImageGate::halted() === null ? 'لا' : 'نعم منذ '.ImageGate::halted()).'.');
+
+        if (($missed = ImageState::missed()) !== null) {
+            $this->warn('فات انتظارُ رفعٍ '.max(1, $missed['count']).' مرّةً منذ '.Carbon::createFromTimestamp($missed['since'], config('app.timezone'))->toDateTimeString()
+                .' ('.implode('، ', array_keys($missed['reasons'])).') — تستدركه جولةُ --backlog من القرص.');
+        }
 
         $this->line('');
         $this->measured($estimate);
@@ -187,7 +226,7 @@ class ImagesOptimize extends Command
         $per = max(1, intdiv(max(1, (int) $this->option('sample')), max(1, count($todo))));
 
         foreach ($todo as $kind => $paths) {
-            $k = ['n' => 0, 'before' => 0, 'after' => 0, 'display_n' => 0, 'display' => 0, 'thumb_n' => 0, 'thumb' => 0];
+            $k = ['n' => 0, 'before' => 0, 'after' => 0, 'display_n' => 0, 'display' => 0, 'mid_n' => 0, 'mid' => 0, 'thumb_n' => 0, 'thumb' => 0];
 
             foreach (array_slice($paths, 0, $per) as $path) {
                 $r = ImageVariants::make($path, false);
@@ -209,6 +248,11 @@ class ImagesOptimize extends Command
                 if ($r['display'] > 0) {
                     $k['display_n']++;
                     $k['display'] += $r['display'];
+                }
+
+                if ($r['mid'] > 0) {
+                    $k['mid_n']++;
+                    $k['mid'] += $r['mid'];
                 }
 
                 if ($r['thumb'] > 0) {
@@ -234,9 +278,10 @@ class ImagesOptimize extends Command
 
         if ($estimate['kinds'] !== []) {
             $this->info('العيّنة ('.$estimate['n'].' صورة مقيسة):');
-            $this->table(['الفئة', 'مقيسة', 'متوسّطُ الأصل', 'نسخةُ العرض', 'المصغّرة'], collect($estimate['kinds'])->map(fn ($k, $kind) => [
+            $this->table(['الفئة', 'مقيسة', 'متوسّطُ الأصل', 'نسخةُ العرض', 'الوسطى', 'المصغّرة'], collect($estimate['kinds'])->map(fn ($k, $kind) => [
                 $labels[$kind] ?? $kind, $k['n'], $avg($k['before'], $k['n']),
                 $k['display_n'].' — '.$avg($k['display'], $k['display_n']),
+                $k['mid_n'].' — '.$avg($k['mid'], $k['mid_n']),
                 $k['thumb_n'].' — '.$avg($k['thumb'], $k['thumb_n']),
             ])->values()->all());
         }
@@ -280,11 +325,14 @@ class ImagesOptimize extends Command
 
     private function apply(): int
     {
+        $started = hrtime(true);
         $limit = max(1, (int) $this->option('limit'));
-        $state = $this->state();
+        $state = ImageState::all();
         $count = [];
         $saved = 0;
         $done = 0;
+        $shops = [];
+        $last = null;
         $candidates = $this->candidates();
 
         /*
@@ -315,21 +363,16 @@ class ImagesOptimize extends Command
             $candidates = $chosen;
         }
 
-        foreach ($candidates as $path) {
+        foreach ($this->fair($candidates, $state) as [$path, $shop]) {
             if ($done >= $limit) {
                 break;
             }
 
             $was = $state[$path] ?? null;
 
-            if (! $this->pending($path) || ($was['status'] ?? null) === 'skipped'
-                || (($was['status'] ?? null) === 'failed' && $was['attempts'] >= self::ATTEMPTS && ! $this->option('retry-failed'))) {
-                continue;
-            }
-
             /*
-             * والخادمُ يُسأل قبل كلّ صورة — ذاكرتُه وحِملُه وقرصُه وطوابيرُه
-             * (`ImageGate`). وما لا يتّسع تقف عنده الدفعةُ قبل أن تُفكّ صورة،
+             * والخادمُ يُسأل قبل كلّ صورة — ذاكرتُه وحِملُه وقرصُه وطوابيرُه، ومفتاحُ
+             * الإيقاف (`ImageGate`). وما لا يتّسع تقف عنده الدفعةُ قبل أن تُفكّ صورة،
              * وتُعاد في الجولة التالية من حيث وقفت.
              */
             if (($why = ImageGate::blocked()) !== null) {
@@ -340,41 +383,338 @@ class ImagesOptimize extends Command
                 break;
             }
 
-            $r = ImageVariants::make($path);
+            $r = $this->made($path);
             $count[$r['status']] = ($count[$r['status']] ?? 0) + 1;
             $done++;
+            $shops[$shop] = true;
+            $last = $shop;
 
-            // ‏ذاكرةُ الخادم لا تكفي الآن: تقف الدفعةُ كلُّها — ما بعدها لن يجد ما لم تجده
+            // ‏ذاكرةُ الخادم لا تكفي الآن، أو صورةٌ أخرى تُفكّ: تقف الدفعةُ كلُّها — ما بعدها لن يجد ما لم تجده
             if ($r['status'] === 'deferred') {
-                $this->warn('وقفت الدفعة: الذاكرةُ المتاحة لا تتّسع لفكّ '.$path.' مع الهامش — تُعاد في الجولة التالية.');
+                $this->warn('وقفت الدفعة قبل فكّ '.$path.': '.$r['reason'].' — تُعاد في الجولة التالية.');
 
                 break;
             }
 
-            if ($r['status'] === 'made' || $r['status'] === 'ready') {
-                unset($state[$path]);
-                $saved += $r['display'] > 0 ? $r['before'] - $r['display'] : 0;
-            } elseif (in_array($r['status'], ['skipped', 'failed'], true)) {
-                $state[$path] = [
-                    'status' => $r['status'], 'reason' => $r['reason'], 'at' => now()->toIso8601String(),
-                    'attempts' => ($r['status'] === 'failed' ? ($was['attempts'] ?? 0) : 0) + ($r['status'] === 'failed' ? 1 : 0),
-                ];
+            // ‏وكلُّ صورةٍ تُكتب حالُها حين تنتهي — فانقطاعٌ بعدها لا يُضيعه. وحالٌ لا تُكتب
+            // ‏تقف عندها الدفعة: فشلٌ لا يُعدّ يُعاد كلَّ جولةٍ بلا نهاية
+            if (! ImageState::put($path, $this->outcome($r, $was))) {
+                $this->warn('وقفت الدفعة: لم تُكتب حالُ '.$path.' — تُعاد في الجولة التالية.');
+
+                break;
             }
+            $saved += $r['display'] > 0 ? $r['before'] - $r['display'] : 0;
 
             // ‏ويُترك المعالجُ لغيره بين صورةٍ وأخرى
             usleep(max(0, (int) config('images.pause_ms', 150)) * 1000);
         }
 
-        $this->saveState($state);
-        $left = count(array_filter($candidates, fn ($p) => $this->pending($p) && ! in_array($state[$p]['status'] ?? null, ['skipped'], true)
-            && ! (($state[$p]['status'] ?? null) === 'failed' && $state[$p]['attempts'] >= self::ATTEMPTS)));
-        $failed = count(array_filter($state, fn ($s) => $s['status'] === 'failed'));
+        // ‏والدورُ التالي يبدأ بعد آخر متجرٍ عولج — في الجولة العامّة وحدها
+        if ($last !== null && $this->option('business') === null) {
+            Cache::forever(self::CURSOR, $last);
+        }
+
+        $state = ImageState::all();
+        $left = count(array_filter($candidates, fn ($p) => $this->eligible($p, $state)));
+        $failed = count(array_filter($state, fn ($s) => ($s['status'] ?? null) === 'failed'));
 
         $this->info('عولجت '.$done.' صورة: '.(collect($count)->map(fn ($n, $s) => $s.'='.$n)->implode('، ') ?: 'لا شيء').'.');
         $this->line('نسخُ العرض أخفُّ من أصولها بـ '.$this->mb($saved).'. والأصولُ باقيةٌ كما هي.');
         $this->line('بقي '.$left.' صورةً تنتظر، و'.$failed.' فشلت (تُعاد حتى '.self::ATTEMPTS.' مرّات، ثمّ بـ --retry-failed).');
+        $this->summary('apply', $count, $done, count($shops), $left, $started);
 
         return ($count['failed'] ?? 0) > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * سطرُ الحال بعد صنع صورة — و`null` لما اكتمل (نسخُه على القرص هي الدليل).
+     *
+     * وصورةٌ صُنع بعضُها وتُرك منها ما لم يستحقّ مكانه تُحفظ بما تُرك (`skips`):
+     * فلا تُفكّ لها مرّةً أخرى لتُترك مرّةً أخرى.
+     *
+     * @param  array<string, mixed>  $r
+     */
+    private function outcome(array $r, ?array $was): ?array
+    {
+        return match ($r['status']) {
+            'made', 'ready' => $r['skips'] === [] ? null : ['status' => 'made', 'skips' => $r['skips']],
+            'skipped' => ['status' => 'skipped', 'reason' => $r['reason']] + ($r['skips'] === [] ? [] : ['skips' => $r['skips']]),
+            'failed' => ['status' => 'failed', 'reason' => $r['reason'], 'attempts' => (int) ($was['attempts'] ?? 0) + 1],
+            default => null,
+        };
+    }
+
+    /**
+     * صورٌ رُفعت والخادمُ مشغولٌ أو المعالجةُ موقوفة (`ImageVariants::makeQuietly`) —
+     * تُصنع نسخها الآن بالحرّاس أنفسهم، بترتيب وصولها. لا جردَ ولا مسحَ للقاعدة.
+     *
+     * وما فشل يُعاد حتى `ATTEMPTS` مرّات ثمّ يُترك في الحال فاشلًا — تعيده الجولةُ
+     * العامّة بـ`--retry-failed`. وما مُحي أصلُه أو لم يعد ينقصه شيء يخرج من القائمة.
+     */
+    private function backlog(): int
+    {
+        $started = hrtime(true);
+        $limit = max(1, (int) $this->option('limit'));
+        $count = [];
+        $done = 0;
+        $recovered = $this->recoverMissed();
+
+        foreach (ImageState::waiting() as $path => $entry) {
+            if ($done >= $limit) {
+                break;
+            }
+
+            if (($why = ImageGate::blocked()) !== null) {
+                $count['paused'] = 1;
+                $this->warn('وقفت الدفعة قبل '.$path.': '.$why['reason'].' — تنتظر الجولة التالية.');
+                $this->paused($why, $path);
+
+                break;
+            }
+
+            $r = $this->made((string) $path);
+            $count[$r['status']] = ($count[$r['status']] ?? 0) + 1;
+            $done++;
+
+            if ($r['status'] === 'deferred') {
+                break;
+            }
+
+            if ($r['status'] === 'failed') {
+                $attempts = ImageState::retried((string) $path, (string) $r['reason']);
+
+                // ‏محاولةٌ لا تُعدّ لا تُعاد: تقف الدفعة، فلا تدور صورةٌ تفشل بلا نهاية
+                if ($attempts === null) {
+                    $this->warn('وقفت الدفعة: لم تُكتب محاولةُ '.$path.' — تُعاد في الجولة التالية.');
+
+                    break;
+                }
+
+                if ($attempts < self::ATTEMPTS) {
+                    continue;
+                }
+            }
+
+            /*
+             * تُكتب حالُها قبل أن تخرج من القائمة: انقطاعٌ بينهما يتركها تنتظر ولا يُضيعها.
+             * وما لا يُكتب تقف عنده الدفعة.
+             */
+            $row = $this->outcome($r, ['attempts' => self::ATTEMPTS - 1]);
+
+            if (($row !== null && ! ImageState::put((string) $path, $row)) || ! ImageState::release((string) $path)) {
+                $this->warn('وقفت الدفعة: لم تُكتب حالُ '.$path.' — تُعاد في الجولة التالية.');
+
+                break;
+            }
+
+            usleep(max(0, (int) config('images.pause_ms', 150)) * 1000);
+        }
+
+        $left = count(ImageState::waiting());
+        $this->info('عولجت '.$done.' صورة مرفوعة: '.(collect($count)->map(fn ($n, $s) => $s.'='.$n)->implode('، ') ?: 'لا شيء').'. وتنتظر '.$left.'.'
+            .($recovered > 0 ? ' واستُدرك '.$recovered.' رفعًا فات انتظارُه.' : ''));
+        $this->summary('backlog', $count, $done, 0, $left, $started);
+
+        return ($count['failed'] ?? 0) > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * يصنع نسخ صورة — واستثناءٌ يُعدّ فشلًا لها تُحسب محاولتُه، لا يُسقط الجولة
+     * فتبدأ التاليةُ بالصورة نفسها وتسقط عندها بلا نهاية.
+     *
+     * @return array<string, mixed>
+     */
+    private function made(string $path): array
+    {
+        try {
+            return ImageVariants::make($path);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ['status' => 'failed', 'reason' => 'exception: '.mb_substr($e->getMessage(), 0, 140),
+                'before' => 0, 'display' => 0, 'mid' => 0, 'thumb' => 0, 'skips' => [], 'ms' => 0.0, 'peak' => 0];
+        }
+    }
+
+    /**
+     * رفعٌ فات انتظارُه (`ImageState::missed`) — يُستدرك من القرص لا من سطرٍ لم يُكتب:
+     * كلُّ صورةٍ حيّةٍ أصلُها أحدثُ من أوّل ما فات، وينقصها ما يستحقّ، ولم تُترك ولم تفشل
+     * مرّاتها، ولا تنتظر — تُكتب في القائمة فتُصنع بدورها. وما قبل أوّل ما فات لا يُمسّ:
+     * صورٌ قديمة تنتظر جولتها (`IMAGES_BACKFILL`) لا هذه.
+     *
+     * ويُمحى العلَمُ حين يُكتب كلُّ ما وُجد ولم يفت رفعٌ آخرُ أثناء الاستدراك. وقائمةٌ لا
+     * تتّسع تُبقيه، فتُكمل الجولةُ التالية.
+     */
+    private function recoverMissed(): int
+    {
+        if (($missed = ImageState::missed()) === null) {
+            return 0;
+        }
+
+        $state = ImageState::all();
+        $waiting = ImageState::waiting();
+        $disk = Storage::disk('public');
+        $queued = 0;
+
+        foreach ($this->candidates() as $path) {
+            $file = $disk->path($path);
+
+            if (isset($waiting[$path]) || ! is_file($file) || filemtime($file) < $missed['since'] || ! $this->eligible($path, $state)) {
+                continue;
+            }
+
+            if (! ImageState::wait($path, 'recovered')) {
+                $this->warn('استُدرك '.$queued.' رفعًا وبقي غيرُه — قائمةُ الانتظار لا تتّسع الآن، وتُكمل الجولةُ التالية.');
+
+                return $queued;
+            }
+
+            $queued++;
+        }
+
+        $cleared = ImageState::recovered($missed['count']);
+
+        try {
+            Log::channel('images')->notice('images.recovered', ['queued' => $queued, 'since' => $missed['since'], 'cleared' => $cleared]);
+        } catch (\Throwable) {
+            // ‏السجلُّ لا يُسقط الجولة
+        }
+
+        return $queued;
+    }
+
+    /** يوقف معالجةَ الصور كلَّها أو يعيدها — ويُكتب في سجلّ الصور من فعل ومتى */
+    private function toggle(bool $halt): int
+    {
+        if ($halt) {
+            Cache::forever(ImageGate::HALT, now()->toIso8601String());
+        } else {
+            Cache::forget(ImageGate::HALT);
+        }
+
+        try {
+            Log::channel('images')->warning($halt ? 'images.halted' : 'images.resumed');
+        } catch (\Throwable) {
+            // ‏المفتاحُ قُلب — والسجلُّ لا يستحقّ أكثر
+        }
+
+        $this->info($halt
+            ? 'أُوقفت معالجةُ الصور: الجولاتُ تقف قبل الصورة التالية، والرفعُ يحفظ الأصلَ وتنتظر نسخُه. أعدها بـ --resume.'
+            : 'عادت معالجةُ الصور — وما انتظر يُصنع في الجولة التالية.');
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * أدنى أولويّةٍ على المعالج والقرص — البيعُ والدفعُ وواتساب أولى بهما.
+     *
+     * `proc_nice` للمعالج، و`ionice` للقرص حيث وُجد (لينكس) — وإلّا فالمعالجُ وحده.
+     */
+    private function yieldToOthers(): void
+    {
+        if (function_exists('proc_nice')) {
+            @proc_nice(19);
+        }
+
+        if (function_exists('exec') && function_exists('getmypid') && is_executable('/usr/bin/ionice')) {
+            @exec('/usr/bin/ionice -c3 -p '.(int) getmypid().' 2>/dev/null');
+        }
+    }
+
+    /**
+     * سطرٌ في سجلّ الصور لكلّ جولة: ما عولج وبأيّ حال، وكم متجرًا، وما بقي، وكم أخذت.
+     *
+     * @param  array<string, int>  $count
+     */
+    private function summary(string $mode, array $count, int $done, int $shops, int $left, int $started): void
+    {
+        try {
+            Log::channel('images')->notice('images.batch', ['mode' => $mode, 'done' => $done, 'shops' => $shops, 'left' => $left,
+                'ms' => (int) round((hrtime(true) - $started) / 1e6)] + $count);
+        } catch (\Throwable) {
+            // ‏قيل على الشاشة — والسجلُّ لا يُسقط الجولة
+        }
+    }
+
+    /**
+     * دورٌ بين المتاجر: أوّلُ ما ينتظر في كلّ متجر، ثمّ ثانيه في كلٍّ — فلا ينتظر
+     * متجرٌ صغيرٌ حتى ينتهي أكبرُها. ويبدأ الدورُ بعد آخر متجرٍ عولج (`CURSOR`).
+     *
+     * وما اكتمل أو تُرك يُتخطّى داخل متجره بلا دور. وصاحبُ الصورة متجرُ مجلّدها
+     * (`website/{id}/`) أو متجرُ أصنافها (`owners`).
+     *
+     * @param  list<string>  $paths
+     * @return \Generator<int, array{0: string, 1: int}>
+     */
+    private function fair(array $paths, array $state): \Generator
+    {
+        $owners = $this->option('business') !== null ? [] : $this->owners();
+        $queues = [];
+
+        foreach ($paths as $path) {
+            $shop = $this->option('business') !== null ? (int) $this->option('business')
+                : (preg_match('#^website/(\d+)/#', $path, $m) ? (int) $m[1] : (int) ($owners[$path] ?? 0));
+            $queues[$shop][] = $path;
+        }
+
+        ksort($queues);
+        $shops = array_keys($queues);
+        $after = (int) Cache::get(self::CURSOR, 0);
+        $first = count(array_filter($shops, fn ($id) => $id <= $after));
+        $shops = $first < count($shops) ? [...array_slice($shops, $first), ...array_slice($shops, 0, $first)] : $shops;
+
+        while ($shops !== []) {
+            foreach ($shops as $i => $shop) {
+                do {
+                    $path = array_shift($queues[$shop]);
+                } while ($path !== null && ! $this->eligible($path, $state));
+
+                if ($path === null) {
+                    unset($shops[$i]);
+
+                    continue;
+                }
+
+                yield [$path, $shop];
+            }
+        }
+    }
+
+    /**
+     * صاحبُ كلّ صورة منتج — أوّلُ متجرٍ تشير إليها صفوفُ أصنافه.
+     *
+     * @return array<string, int>
+     */
+    private function owners(): array
+    {
+        $out = [];
+
+        foreach (['products' => 'image', 'product_images' => 'path'] as $table => $column) {
+            $rows = DB::table($table)->select('id', 'business_id', $column)->whereNotNull($column)
+                ->where($column, 'like', 'products/%')->orderBy('id')->lazyById(1000);
+
+            foreach ($rows as $row) {
+                $out[(string) $row->{$column}] ??= (int) $row->business_id;
+            }
+        }
+
+        return $out;
+    }
+
+    /** أتُصنع لهذه الصورة نسخٌ في هذه الجولة؟ — لا تُركت، ولا فشلت مرّاتها كلَّها */
+    private function eligible(string $path, array $state): bool
+    {
+        $was = $state[$path] ?? null;
+
+        if (($was['status'] ?? null) === 'skipped') {
+            return false;
+        }
+
+        if (($was['status'] ?? null) === 'failed' && (int) ($was['attempts'] ?? 0) >= self::ATTEMPTS && ! $this->option('retry-failed')) {
+            return false;
+        }
+
+        return $this->pending($path, $was);
     }
 
     /**
@@ -609,24 +949,26 @@ class ImagesOptimize extends Command
         };
     }
 
-    private function pending(string $path): bool
+    /** أينقصها ما يستحقّ أن يُصنع؟ — وما تُرك منها لأنّه لا يوفّر (`skips`) لا يُطلب ثانيةً */
+    private function pending(string $path, ?array $was = null): bool
     {
         $need = ImageVariants::needs($path);
 
-        return $need !== null && ($need['display'] || $need['thumb']);
+        return $need !== null && $this->wants($need, $was);
     }
 
-    /** @return array<string, array{status: string, reason: ?string, attempts: int, at: string}> */
-    private function state(): array
+    /** @param  array{display: bool, mid: bool, thumb: bool}  $need */
+    private function wants(array $need, ?array $was): bool
     {
-        $raw = Storage::disk('local')->exists(self::STATE) ? Storage::disk('local')->get(self::STATE) : null;
+        $skips = (array) ($was['skips'] ?? []);
 
-        return is_string($raw) ? (array) json_decode($raw, true) : [];
-    }
+        foreach (['display', 'mid', 'thumb'] as $copy) {
+            if ($need[$copy] && ! in_array($copy, $skips, true)) {
+                return true;
+            }
+        }
 
-    private function saveState(array $state): void
-    {
-        Storage::disk('local')->put(self::STATE, json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return false;
     }
 
     /** ما كلّفه مسحُ المراجع — يُقال ليُعرف ثمنُه على القاعدة */

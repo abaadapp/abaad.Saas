@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Support\ImageMemory;
+use App\Support\ImageState;
 use App\Support\ImageVariants;
 use App\Support\ProductImages;
 use App\Support\Store\StoreImageUpload;
@@ -157,7 +158,7 @@ class AnImageTheServerCannotHoldIsLeftAloneTest extends TestCase
             ->expectsOutputToContain('وقفت الدفعة')->expectsOutputToContain('deferred=1')->assertSuccessful();
 
         $this->assertCount(2, Storage::disk('public')->allFiles('products'), 'كُتبت نسخةٌ والذاكرةُ لا تكفي');
-        $this->assertSame([], json_decode((string) Storage::disk('local')->get('image-variants/state.json'), true), 'المؤجَّلُ عُدّ فاشلًا أو متروكًا');
+        $this->assertSame([], ImageState::all(), 'المؤجَّلُ عُدّ فاشلًا أو متروكًا');
         [[$reason, $context]] = $this->imageLines();
         $this->assertSame('images.low_memory', $reason);
         $this->assertSame([$file, 150], [$context['path'], $context['available_mb']]);
@@ -233,12 +234,13 @@ class AnImageTheServerCannotHoldIsLeftAloneTest extends TestCase
         $this->assertSame(['product_upload=0', 'variants=0', 'product_upload=4', 'variants=4'], $where(), 'السطرُ التالي لم يقل كم سُكت عنه');
     }
 
-    public function test_the_images_log_is_a_daily_file_in_storage_at_warning(): void
+    public function test_the_images_log_is_a_daily_file_in_storage_at_notice(): void
     {
         // ‏كما يقرؤه الإنتاج: من ملفّ الضبط لا ممّا ضبطه هذا الاختبار
         $channel = (require config_path('logging.php'))['channels']['images'];
 
-        $this->assertSame(['daily', storage_path('logs/images.log'), 'warning'], [$channel['driver'], $channel['path'], $channel['level']]);
+        // ‏وnotice لا warning: سطرُ كلّ جولة (`images.batch`) يُكتب — ما عولج وما بقي
+        $this->assertSame(['daily', storage_path('logs/images.log'), 'notice'], [$channel['driver'], $channel['path'], $channel['level']]);
         $this->assertSame('error', config('logging.channels.system.level'), 'هذا الاختبار لا يُشبه سجلَّ الإنتاج');
     }
 

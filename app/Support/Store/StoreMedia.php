@@ -2,7 +2,9 @@
 
 namespace App\Support\Store;
 
+use App\Support\ImageVariants;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
 
 /**
  * صورةٌ رفعها صاحبُ المتجر لمتجره — وما سواها لا يُقبل في المجموعات والشريط.
@@ -84,6 +86,106 @@ final class StoreMedia
         return null;
     }
 
+    /*
+     * ═══ عرضُ الصورة المرسومُ في مكانها (`sizes`) ═══
+     *
+     * قواعدُ كلّ مكانٍ من CSS نفسه: [أقلُّ عرضٍ للشاشة، نسبةٌ من vw، ما يُضاف بالبكسل]
+     * من الأوسع إلى الأضيق، والأخيرةُ لما دونها. وفوق ١٢٨٠ الإطارُ ثابتٌ فعرضُه ثابت
+     * (نسبتُه صفر). وكلُّها في إطار `.rb-wrap`/`.rb-section`: ١٢٨٠ وحاشيتان ٢٤.
+     * فتغييرُ CSS مكانٍ يغيّر قاعدتَه هنا معه (`ADisplayPictureAsksForItsDrawnWidthTest`).
+     */
+
+    /**
+     * الواجهة (`home`): عمودان لا يقلّان عن ٣٤٠ وفاصلٌ `clamp(28px, 4vw, 56px)` — عمودٌ واحدٌ
+     * تحت ٧٥٩. وإطارُها ٥:٤ بارتفاعٍ لا يقلّ عن ٢٤٠، فلا يضيق عن ٣٠٠ في أضيق الشاشات.
+     */
+    public const HERO = [[1280, 0, 591], [759, 48, -24], [348, 100, -48], [0, 0, 300]];
+
+    /** الشريط (`sections/banner`): حاشيةٌ داخليّة `clamp(24px, 4vw, 56px)`، عمودان لا يقلّان عن ٣٠٠ وفاصل ٣٢ */
+    public const BANNER = [[1280, 0, 549], [740, 46, -40], [601, 92, -48], [0, 100, -96]];
+
+    /** القسمُ الحرّ (`sections/block`): عمودان لا يقلّان عن ٣٢٠ وفاصل ٤٠ */
+    public const BLOCK = [[1280, 0, 596], [728, 50, -44], [0, 100, -48]];
+
+    /** صفحة «عنّا» (`about`): عمودان لا يقلّان عن ٣٢٠ وفاصلٌ `clamp(28px, 4vw, 52px)` */
+    public const ABOUT = [[1280, 0, 591], [717, 48, -24], [0, 100, -48]];
+
+    /** بعرض الإطار كلِّه: رأسُ المجموعة، وصورةُ الصفحة، والقسمُ وصورتُه فوق نصّه */
+    public const WIDE = [[1280, 0, 1232], [0, 100, -48]];
+
+    /** معرضُ الصفحة (`page`): `auto-fill` بأعمدةٍ لا تقلّ عن ٢٦٠ وفاصل ١٦ — العددُ بعرض الشاشة لا بالصور */
+    public const GALLERY = [[1280, 0, 296], [1136, 25, -24], [860, 33.34, -26.66], [584, 50, -32], [0, 100, -48]];
+
+    /** قسمُ الصفحة بصورةٍ ونصّ (`page`): عمودان لا يقلّان عن ٣٢٠ وفاصلٌ `clamp(20px, 4vw, 48px)` */
+    public const SECTION = [[1280, 0, 592], [1200, 50, -48], [717, 48, -24], [0, 100, -48]];
+
+    /** عرضُ الصفحة (`page` ‏`.rb-cp-promo`): حاشيةٌ `clamp(24px, 4vw, 48px)`، عمودان لا يقلّان عن ٣٠٠ وفاصلٌ `clamp(20px, 4vw, 40px)` */
+    public const PROMO = [[1280, 0, 548], [1200, 50, -92], [1000, 46, -44], [737, 44, -24], [601, 92, -48], [0, 100, -96]];
+
+    /**
+     * `sizes` من قواعد مكانٍ — مضروبةً في نسبة ما يُرسم من الصورة إلى عرض إطارها (`factor`).
+     *
+     * ويُقرَّب لصالح الوضوح: نسبةُ vw والعرضُ الثابت إلى أعلى، وما يُطرح إلى أسفل.
+     *
+     * @param  list<array{0: int, 1: float|int, 2: float|int}>  $rules
+     */
+    public static function sizes(array $rules, float $f = 1.0): string
+    {
+        $num = fn (float $n) => rtrim(rtrim(sprintf('%.2F', $n), '0'), '.');
+        $out = [];
+
+        foreach ($rules as [$from, $vw, $plus]) {
+            // ‏وضجيجُ الكسور العشريّة يُطرح قبل التقريب: ٣٣٫٣٤ × ١٠٠ لا تصير ٣٣٣٥
+            $add = round($plus * $f, 6);
+            $vw = round($vw * $f * 100, 6);
+            $value = $vw == 0 ? $num(ceil($add)).'px'
+                : 'calc('.$num(ceil($vw) / 100).'vw '.($add < 0 ? '- '.$num(floor(round(-$add * 100, 6)) / 100) : '+ '.$num(ceil(round($add * 100, 6)) / 100)).'px)';
+            $out[] = $from > 0 ? '(min-width: '.$from.'px) '.$value : $value;
+        }
+
+        return implode(', ', $out);
+    }
+
+    /**
+     * كم يُرسم من الصورة نسبةً إلى عرض إطارها — من أبعادها الحقيقيّة.
+     *
+     * «ملء الإطار» يرسم الأعرضَ من الإطار بارتفاعه فيفيض عرضُه (أكثرُ من واحد)، و«كاملة»
+     * ترسم الأطولَ منه أضيقَ منه (أقلُّ من واحد). وبلا أبعادٍ معروفة، أو بلا إطارٍ ثابت
+     * النسبة (`$box` = `null`: الصورةُ بنسبتها)، تُرسم بعرض مكانها.
+     *
+     * @param  array{w: int, h: int}|null  $size
+     */
+    public static function factor(?array $size, string $fit, ?float $box): float
+    {
+        if ($size === null || $box === null || $size['h'] < 1) {
+            return 1.0;
+        }
+
+        $ratio = $size['w'] / $size['h'] / $box;
+
+        return $fit === self::CONTAIN ? min(1.0, $ratio) : max(1.0, $ratio);
+    }
+
+    /**
+     * ` srcset="…" sizes="…"` لصورةٍ رفعها هذا المتجر في مكانها — أو لا شيء حين لا
+     * يكون على القرص إلّا حجمٌ واحد (`ImageVariants::srcset`). والقيمتان مهرَّبتان هنا،
+     * فيُكتب في الوسم كما هو.
+     *
+     * @param  list<array{0: int, 1: float|int, 2: float|int}>  $rules
+     */
+    public static function sized(int $businessId, ?string $url, array $rules, string $fit = self::COVER, ?float $box = null): HtmlString
+    {
+        $set = ImageVariants::srcset($url);
+
+        if ($set === null) {
+            return new HtmlString('');
+        }
+
+        $sizes = self::sizes($rules, self::factor(self::size($businessId, (string) $url), $fit, $box));
+
+        return new HtmlString(' srcset="'.e($set).'" sizes="'.e($sizes).'"');
+    }
+
     /**
      * `sizes` لصورة بطاقة القسم في رئيسيّة RIBBON — عرضُها المرسومُ في شبكتها.
      *
@@ -92,35 +194,24 @@ final class StoreMedia
      * الشاشة وحده. وحولها `.rb-section` بعرض ١٢٨٠ وحاشيتين ٢٤، وحدُّ البطاقة
      * بكسلٌ من كلّ جانب، والإطارُ ٤:٣.
      *
-     * وما يُرسم من الصورة ليس عرضَ الإطار دائمًا: «ملء الإطار» يرسم الأعرضَ
-     * من ٤:٣ بارتفاعه فيفيض عرضُه، و«كاملة» ترسم الطوليّةَ أضيقَ منه. فيُضرب
-     * العرضُ في نسبة الصورة من أبعادها (`size`) — والطوليّةُ في «ملء الإطار»
-     * بعرضه نفسه، وعرضُها الحقيقيُّ في `srcset` (`ImageVariants::srcset`).
-     *
-     * ويُقرَّب لصالح الوضوح: نسبةُ vw إلى أعلى وما يُطرح إلى أسفل.
+     * وما يُرسم من الصورة ليس عرضَ الإطار دائمًا (`factor`) — والطوليّةُ في «ملء
+     * الإطار» بعرضه نفسه، وعرضُها الحقيقيُّ في `srcset` (`ImageVariants::srcset`).
      *
      * @param  array{w: int, h: int}|null  $size
      */
     public static function cardSizes(int $cards, ?array $size, string $fit): string
     {
         [$min, $gap, $pad, $wide, $border] = [160, 16, 24, 1280, 2];
-        $ratio = $size === null ? 1.0 : $size['w'] / $size['h'] * 3 / 4;
-        $f = $fit === self::CONTAIN ? min(1.0, $ratio) : max(1.0, $ratio);
         $most = min(max(1, $cards), intdiv($wide - 2 * $pad + $gap, $min + $gap));
-        $num = fn (float $n) => rtrim(rtrim(sprintf('%.2F', $n), '0'), '.');
 
-        // ‏عرضُ الصورة بـ k عمودًا: (الشاشة − الحاشيتين − الفواصل) ÷ k − الحدّ، مضروبًا في النسبة
-        $calc = fn (int $k) => 'calc('.$num(ceil(100 * $f / $k * 100) / 100).'vw - '
-            .$num(floor($f * ((2 * $pad + ($k - 1) * $gap) / $k + $border) * 100) / 100).'px)';
-        $out = ['(min-width: '.$wide.'px) '.$num(ceil($f * (($wide - 2 * $pad - ($most - 1) * $gap) / $most - $border))).'px'];
+        // ‏عرضُ الصورة بـ k عمودًا: (الشاشة − الحاشيتين − الفواصل) ÷ k − الحدّ
+        $rules = [[$wide, 0, ($wide - 2 * $pad - ($most - 1) * $gap) / $most - $border]];
 
-        for ($k = $most; $k >= 2; $k--) {
-            $out[] = '(min-width: '.(($min + $gap) * $k - $gap + 2 * $pad).'px) '.$calc($k);
+        for ($k = $most; $k >= 1; $k--) {
+            $rules[] = [$k === 1 ? 0 : ($min + $gap) * $k - $gap + 2 * $pad, 100 / $k, -((2 * $pad + ($k - 1) * $gap) / $k + $border)];
         }
 
-        $out[] = $calc(1);
-
-        return implode(', ', $out);
+        return self::sizes($rules, self::factor($size, $fit, 4 / 3));
     }
 
     /** أهذا الرابطُ صورةٌ رفعها هذا المتجر؟ — والفراغُ «لا صورة» فيُقبل */

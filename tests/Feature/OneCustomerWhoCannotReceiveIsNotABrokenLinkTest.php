@@ -367,12 +367,23 @@ class OneCustomerWhoCannotReceiveIsNotABrokenLinkTest extends TestCase
 
         $this->assertSame(WhatsAppHealth::UNCONFIRMED, $d['state']);
         $this->assertSame(0, $d['delivered'], 'عُدّت «أُرسلت» وصولًا');
-        $this->assertSame(2, $d['pending']);
+        $this->assertSame(1, $d['attempts'], 'عُدّت رسالةٌ في طابورنا محاولةَ تسليم');
+        $this->assertSame(1, $d['pending']);
 
         $step = $this->step();
         $this->assertFalse($step['done'], 'قيل «تصل» بلا تأكيد تسليم');
         $this->assertTrue($step['theirs'], 'انتظارُ التأكيد عُرض عطبًا على التاجر');
         $this->assertNull(WhatsAppHealth::alert($this->business->id), 'أُنذر بعطبٍ ولم يفشل شيء');
+    }
+
+    /** ورسالةٌ تنتظر في طابورنا لم تبلغ Meta: لم يُجرَّب تسليمُها، فلا تُطفئ المرحلة */
+    public function test_a_message_still_in_our_queue_is_not_a_delivery_attempt(): void
+    {
+        $this->message(WhatsAppStatus::QUEUED, '96891113333', 1);
+
+        $this->assertSame(WhatsAppHealth::UNTESTED, WhatsAppHealth::delivery($this->business->id)['state']);
+        $this->assertNull($this->step());
+        $this->assertTrue(WhatsAppFeature::readiness($this->business->fresh())['ready']);
     }
 
     /* ══════════════ 8. ردود الموظّفين ══════════════ */

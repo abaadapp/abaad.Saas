@@ -87,7 +87,7 @@ final class WhatsAppHealth
      *     مَن لم تصله رسالتُه ولماذا.
      *   · وصل كلُّ شيء، أو وصلت العميلَ رسالةٌ بعد التي فشلت ← `OK`.
      *   · خرجت ولم يؤكَّد تسليمُ شيء ← `UNCONFIRMED`: لا يُقال «يصل».
-     *   · لم يخرج شيء ← `UNTESTED`: لا يُقال «يصل» ولا «لا يصل».
+     *   · لم يخرج شيء (أو ينتظر في طابورنا) ← `UNTESTED`: لا يُقال «يصل» ولا «لا يصل».
      *
      * والترتيبُ بالوقت ثمّ بالمعرّف، لا بترتيب القاعدة: إشعارُ فشلٍ قد يصل
      * من Meta بعد رسالةٍ أحدث منه.
@@ -99,8 +99,11 @@ final class WhatsAppHealth
         $rows = WhatsAppMessage::where('business_id', $businessId)
             ->where('direction', 'outbound')
             ->where('created_at', '>=', now()->subHours(self::WINDOW_HOURS))
-            // وما لم يُرسَل أصلًا (حدثٌ مطفأ، حصّةٌ نفدت) لم يُجرَّب تسليمُه
-            ->whereNotIn('status', WhatsAppStatus::bucket('not_sent'))
+            /*
+             * وما لم يبلغ Meta لم يُجرَّب تسليمُه: حدثٌ مطفأ، حصّةٌ نفدت، أو رسالةٌ
+             * تنتظر في طابورنا (ولو أعادتها الشبكة). المحاولةُ ما خرج أو رُدّ.
+             */
+            ->whereIn('status', [WhatsAppStatus::SENT, ...self::ARRIVED, WhatsAppStatus::FAILED])
             ->orderBy('id')
             ->get(['id', 'event_type', 'template_name', 'recipient_phone', 'status', 'error_code', 'error_message',
                 'sent_at', 'delivered_at', 'read_at', 'failed_at', 'created_at']);
@@ -140,7 +143,8 @@ final class WhatsAppHealth
             'attempts' => $rows->count(),
             'delivered' => $arrived->count(),
             'failed' => $failed->count(),
-            'pending' => $rows->whereIn('status', WhatsAppStatus::bucket('pending'))->count(),
+            // خرجت إلى Meta ولم يُؤكَّد تسليمُها بعد
+            'pending' => $rows->where('status', WhatsAppStatus::SENT)->count(),
             'customers' => $groups->count(),
             'last_error' => $last?->error_message,
             'last_error_code' => $last?->error_code,

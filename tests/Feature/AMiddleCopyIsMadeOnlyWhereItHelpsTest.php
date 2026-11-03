@@ -260,6 +260,20 @@ class AMiddleCopyIsMadeOnlyWhereItHelpsTest extends TestCase
         $this->artisan('images:optimize', ['--apply' => true])->expectsOutputToContain('عولجت 0 صورة')->assertSuccessful();
     }
 
+    /** وجولةٌ صنعت بعضَ نسخ صورةٍ وتركت غيرَها تحفظ ما تركت — فلا تفكّها التاليةُ لتتركه */
+    public function test_a_batch_that_makes_some_copies_and_leaves_one_remembers_it(): void
+    {
+        $path = $this->flatGraphic();
+        Product::create(['business_id' => Business::create(['name' => 'ورد', 'type' => 'عام', 'status' => 'نشط'])->id,
+            'name' => 'شعار', 'price' => 1, 'cost' => 1, 'quantity' => 1, 'alert_qty' => 1, 'active' => true, 'image' => $path]);
+
+        $this->artisan('images:optimize', ['--apply' => true])->expectsOutputToContain('made=1')->assertSuccessful();
+
+        Storage::disk('public')->assertExists((string) ImageVariants::display($path));
+        $this->assertSame(['made', ['thumb']], [ImageState::all()[$path]['status'], ImageState::all()[$path]['skips']]);
+        $this->artisan('images:optimize', ['--apply' => true])->expectsOutputToContain('عولجت 0 صورة')->assertSuccessful();
+    }
+
     /** وصورةٌ أعرضُ من ١٢٨٠ بقليل لا وسطى لها — تكاد تكون نسختَها */
     public function test_a_picture_just_above_the_middle_copy_gets_none(): void
     {

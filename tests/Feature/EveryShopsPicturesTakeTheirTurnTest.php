@@ -115,6 +115,19 @@ class EveryShopsPicturesTakeTheirTurnTest extends TestCase
         $this->assertSame([3, 2, 1], [$this->done($pa), $this->done($pb), $this->done($pc)]);
     }
 
+    /** ودفعةٌ أصغرُ من عدد المتاجر: التاليةُ تبدأ بمن لم يأخذ دوره — لا بأوّل المتاجر مرّةً أخرى */
+    public function test_the_next_batch_starts_after_the_last_shop_served(): void
+    {
+        [$a, $b, $c] = [$this->shop('أ'), $this->shop('ب'), $this->shop('ج')];
+        [$pa, $pb, $pc] = array_map(fn ($shop) => array_map(fn () => $this->picture($shop), range(1, 3)), [$a, $b, $c]);
+
+        $this->artisan('images:optimize', ['--apply' => true, '--limit' => 2])->assertSuccessful();
+        $this->assertSame([1, 1, 0], [$this->done($pa), $this->done($pb), $this->done($pc)]);
+
+        $this->artisan('images:optimize', ['--apply' => true, '--limit' => 2])->assertSuccessful();
+        $this->assertSame([2, 1, 1], [$this->done($pa), $this->done($pb), $this->done($pc)], 'بدأ الدورُ من أوّل المتاجر فانتظر ج');
+    }
+
     public function test_a_large_shop_does_not_hold_back_a_small_one_or_a_new_one(): void
     {
         $big = $this->shop('كبير');

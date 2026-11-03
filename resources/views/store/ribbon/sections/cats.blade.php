@@ -9,9 +9,11 @@
                         وصورةُ البطاقة ما رفعه صاحبُ المحلّ لهذا القسم — في `src` لا في
                         `background`: الرابطُ يُهرَّب في السمة ولا يُقرأ CSS. وبلاها الخطوط.
                         و`alt` فارغ: اسمُ القسم مكتوبٌ تحتها، فلا يُقرأ مرّتين.
+                        والمصغّرةُ في `src` لمتصفّحٍ لا يقرأ `srcset`؛ وأحجامُها وعرضُها
+                        المرسوم من `RibbonController::home` (`StoreMedia::cardSizes`).
                     --}}
                     @if (! empty($c['image']))
-                        <img src="{{ \App\Support\ImageVariants::link($c['image'], \App\Support\ImageVariants::THUMB) }}" alt="" loading="lazy" decoding="async" class="rb-pfit" style="display:block;width:100%;aspect-ratio:4/3" data-testid="rb-cat-image">
+                        <img src="{{ \App\Support\ImageVariants::link($c['image'], \App\Support\ImageVariants::THUMB) }}"@if ($c['srcset'] ?? null) srcset="{{ $c['srcset'] }}" sizes="{{ $c['sizes'] }}"@endif alt="" loading="lazy" decoding="async" class="rb-pfit" style="display:block;width:100%;aspect-ratio:4/3" data-testid="rb-cat-image">
                     @else
                         <div style="aspect-ratio:4/3;background:repeating-linear-gradient(135deg,{{ ['#f2d6dc','#d9e3e0','#e6dcc8','#e3d5e4'][$i % 4] }} 0 12px,#f3efe9 12px 24px)"></div>
                     @endif

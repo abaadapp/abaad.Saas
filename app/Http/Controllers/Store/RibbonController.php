@@ -454,14 +454,27 @@ class RibbonController extends Controller
         // عملةٌ واحدةٌ للرفّ كلِّه — انظر `card`
         $currency = Storefront::currency($business);
 
+        /*
+         * وبطاقاتُ «تسوّق حسب الفئة» بلا ما أخفاه صاحبُه — هنا وحدها.
+         *
+         * فالرفُّ ومرشِّحُه وروابطُ التذييل تقرأ `categories` كما هي:
+         * القسمُ المخفيُّ بطاقتُه يبقى يُختار وتُباع أصنافُه.
+         *
+         * وصورةُ البطاقة بأحجامها كلِّها: بطاقةٌ بعرض ١٦١ على شاشة 3x تحتاج
+         * ٤٨٣ بكسلًا، ومصغّرةُ الصورة الطوليّة عرضُها ٣٦٠ — فيختار المتصفّحُ
+         * بعرضها في شبكتها ونسبتها وطريقة عرضها (`StoreMedia::cardSizes`).
+         */
+        $cats = $this->categories($bid, $lang, $shown)->reject(fn ($c) => $c['hidden'])->values();
+        $fit = StoreMedia::fit(MarketingSettings::group($bid, 'website')['store_catalog_fit'] ?? null);
+        $cats = $cats->map(function ($c) use ($bid, $fit, $cats) {
+            $c['srcset'] = ImageVariants::srcset($c['image']);
+            $c['sizes'] = $c['srcset'] === null ? null : StoreMedia::cardSizes($cats->count(), StoreMedia::size($bid, (string) $c['image']), $fit);
+
+            return $c;
+        });
+
         return [
-            /*
-             * وبطاقاتُ «تسوّق حسب الفئة» بلا ما أخفاه صاحبُه — هنا وحدها.
-             *
-             * فالرفُّ ومرشِّحُه وروابطُ التذييل تقرأ `categories` كما هي:
-             * القسمُ المخفيُّ بطاقتُه يبقى يُختار وتُباع أصنافُه.
-             */
-            'categories' => $this->categories($bid, $lang, $shown)->reject(fn ($c) => $c['hidden'])->values(),
+            'categories' => $cats,
             'best' => $best->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             'new' => $new->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             /*

@@ -84,6 +84,45 @@ final class StoreMedia
         return null;
     }
 
+    /**
+     * `sizes` لصورة بطاقة القسم في رئيسيّة RIBBON — عرضُها المرسومُ في شبكتها.
+     *
+     * الشبكةُ في `sections/cats`: أعمدةٌ لا تقلّ عن ١٦٠ بفاصل ١٦، و`auto-fit`
+     * يطوي ما زاد من الأعمدة عن البطاقات — فالعرضُ بعدد البطاقات لا بعرض
+     * الشاشة وحده. وحولها `.rb-section` بعرض ١٢٨٠ وحاشيتين ٢٤، وحدُّ البطاقة
+     * بكسلٌ من كلّ جانب، والإطارُ ٤:٣.
+     *
+     * وما يُرسم من الصورة ليس عرضَ الإطار دائمًا: «ملء الإطار» يرسم الأعرضَ
+     * من ٤:٣ بارتفاعه فيفيض عرضُه، و«كاملة» ترسم الطوليّةَ أضيقَ منه. فيُضرب
+     * العرضُ في نسبة الصورة من أبعادها (`size`) — والطوليّةُ في «ملء الإطار»
+     * بعرضه نفسه، وعرضُها الحقيقيُّ في `srcset` (`ImageVariants::srcset`).
+     *
+     * ويُقرَّب لصالح الوضوح: نسبةُ vw إلى أعلى وما يُطرح إلى أسفل.
+     *
+     * @param  array{w: int, h: int}|null  $size
+     */
+    public static function cardSizes(int $cards, ?array $size, string $fit): string
+    {
+        [$min, $gap, $pad, $wide, $border] = [160, 16, 24, 1280, 2];
+        $ratio = $size === null ? 1.0 : $size['w'] / $size['h'] * 3 / 4;
+        $f = $fit === self::CONTAIN ? min(1.0, $ratio) : max(1.0, $ratio);
+        $most = min(max(1, $cards), intdiv($wide - 2 * $pad + $gap, $min + $gap));
+        $num = fn (float $n) => rtrim(rtrim(sprintf('%.2F', $n), '0'), '.');
+
+        // ‏عرضُ الصورة بـ k عمودًا: (الشاشة − الحاشيتين − الفواصل) ÷ k − الحدّ، مضروبًا في النسبة
+        $calc = fn (int $k) => 'calc('.$num(ceil(100 * $f / $k * 100) / 100).'vw - '
+            .$num(floor($f * ((2 * $pad + ($k - 1) * $gap) / $k + $border) * 100) / 100).'px)';
+        $out = ['(min-width: '.$wide.'px) '.$num(ceil($f * (($wide - 2 * $pad - ($most - 1) * $gap) / $most - $border))).'px'];
+
+        for ($k = $most; $k >= 2; $k--) {
+            $out[] = '(min-width: '.(($min + $gap) * $k - $gap + 2 * $pad).'px) '.$calc($k);
+        }
+
+        $out[] = $calc(1);
+
+        return implode(', ', $out);
+    }
+
     /** أهذا الرابطُ صورةٌ رفعها هذا المتجر؟ — والفراغُ «لا صورة» فيُقبل */
     public static function owned(int $businessId, string $url): bool
     {

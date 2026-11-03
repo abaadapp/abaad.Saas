@@ -96,12 +96,15 @@ class AMiddleCopyIsMadeOnlyWhereItHelpsTest extends TestCase
         return is_array($info) ? [$info[0], $info[1]] : null;
     }
 
-    /** الوسطى مقابل الأصل مصغّرًا إلى أبعادها — من الأصل صُنعت لا من نسخةٍ أصغر */
+    /**
+     * الوسطى مقابل الأصل مصغّرًا إلى أبعادها — من الأصل صُنعت لا من نسخةٍ أصغر.
+     * يُصغَّر الأصلُ بما تُصغَّر به النسخ (`imagecopyresampled`)، لا بـ`imagescale`
+     * الذي يختلف بين إصدارات GD فيُحسب اختلافُه على النسخة.
+     */
     private function psnr(string $copy, string $original): float
     {
         $a = imagecreatefromwebp(Storage::disk('public')->path($copy));
-        $o = imagecreatefromstring((string) Storage::disk('public')->get($original));
-        $b = imagescale($o, imagesx($a), imagesy($a), IMG_BICUBIC);
+        $b = $this->shrunk($original, imagesx($a), imagesy($a));
         $se = 0;
         $n = 0;
 
@@ -120,15 +123,30 @@ class AMiddleCopyIsMadeOnlyWhereItHelpsTest extends TestCase
         return $se === 0 ? 99.0 : 10 * log10(255 * 255 / ($se / $n));
     }
 
-    /** المصغّرةُ مكبّرةً إلى أبعاد الوسطى مقابل الأصل — ما كانت ستبدو لو صُنعت الوسطى منها */
-    private function psnrOfThumbAt(string $path, int $side): float
+    private function shrunk(string $original, int $w, int $h): \GdImage
+    {
+        $o = imagecreatefromstring((string) Storage::disk('public')->get($original));
+        $b = imagecreatetruecolor($w, $h);
+        imagecopyresampled($b, $o, 0, 0, 0, 0, $w, $h, imagesx($o), imagesy($o));
+
+        return $b;
+    }
+
+    /**
+     * ما كانت ستبدو الوسطى لو صُنعت من المصغّرة: الأصلُ مصغّرًا إلى أبعاد المصغّرة ثمّ مكبّرًا
+     * إلى أبعاد الوسطى، مقابل الأصل. من الأصل لا من مصغّرة الكود — فالمصغّرةُ تُصنع من الوسطى،
+     * وخطأٌ يُضعف الوسطى يُضعفها معها فلا يظهر الفرق. وتُضغط بجودة الوسطى (82) فيتساوى
+     * ما يأخذه الضغطُ منهما على كلّ مكتبة، ويبقى الفرقُ تفاصيلَ لا تحملها المصغّرة.
+     *
+     * @param  array{0: int, 1: int}  $thumb
+     */
+    private function psnrOfAnEnlargedThumb(string $path, array $thumb): float
     {
         $mid = imagecreatefromwebp(Storage::disk('public')->path(ImageVariants::path($path, ImageVariants::MID)));
-        $thumb = imagecreatefromwebp(Storage::disk('public')->path(ImageVariants::path($path, ImageVariants::THUMB)));
-        $up = imagescale($thumb, imagesx($mid), imagesy($mid), IMG_BICUBIC);
+        $up = imagescale($this->shrunk($path, $thumb[0], $thumb[1]), imagesx($mid), imagesy($mid), IMG_BICUBIC);
         $tmp = 'products/'.Str::random(20).'.tmp.webp';
         ob_start();
-        imagewebp($up, null, 100);
+        imagewebp($up, null, 82);
         Storage::disk('public')->put($tmp, (string) ob_get_clean());
 
         try {
@@ -162,7 +180,7 @@ class AMiddleCopyIsMadeOnlyWhereItHelpsTest extends TestCase
             // ‏من الأصل: أقربُ إليه بكثيرٍ من مصغّرةٍ مكبّرة إلى أبعادها
             $mid = $this->psnr(ImageVariants::path($path, ImageVariants::MID), $path);
             $this->assertGreaterThan(30.0, $mid, "{$w}×{$h}: الوسطى ليست الأصلَ مصغّرًا");
-            $this->assertGreaterThan($this->psnrOfThumbAt($path, $mid > 0 ? ImageVariants::MID : 0) + 3, $mid, "{$w}×{$h}: الوسطى بوضوح مصغّرةٍ مكبّرة");
+            $this->assertGreaterThan($this->psnrOfAnEnlargedThumb($path, $thumb) + 1.5, $mid, "{$w}×{$h}: الوسطى بوضوح مصغّرةٍ مكبّرة");
             $this->assertSame($before, md5((string) Storage::disk('public')->get($path)), 'تغيّر الأصل');
             $this->assertLessThan($r['display'], $r['mid'], "{$w}×{$h}: الوسطى ليست أخفَّ من نسخة العرض");
         }

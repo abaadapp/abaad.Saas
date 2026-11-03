@@ -62,6 +62,13 @@ final class ImageVariants
     public const MID = 1280;
 
     /**
+     * ولا وسطى لما يُعرض بأقلَّ من خُمسٍ فوقها (١٥٣٦): صورةٌ بعرض ١٣٢٠ وسطاها تكاد
+     * تكون نسختَها — والضغطُ وحده يُنقصها عُشرًا فتجتاز `WORTH` بلا فائدة. وصورُ
+     * المنتجات (١٦٠٠) وصورُ الموقع (٢٥٦٠) فوقه.
+     */
+    private const MID_FROM = 1536;
+
+    /**
      * ضلعُ نسخة العرض لكلّ مجلّد — الحدُّ نفسُه الذي تُرفع به صورُه اليوم.
      *
      * صورُ المنتجات في إطار صفحة الصنف (`ProductImages::MAX_SIDE`)، وصورُ
@@ -327,7 +334,7 @@ final class ImageVariants
         return [
             'display' => ($type !== IMAGETYPE_WEBP || $long > $side) && ! self::sound($disk->path((string) self::display($path))),
             // ‏وضلعُ ما يُعرض بعد نسخة العرض لا ضلعُ الأصل: صورةُ منتجٍ بأربعة آلاف تُعرض بألفٍ وستّمئة
-            'mid' => $listed && min($long, $side) > self::MID
+            'mid' => $listed && min($long, $side) >= self::MID_FROM
                 && ! self::sound($disk->path(self::path($path, self::MID))),
             'thumb' => $listed && $long > self::THUMB
                 && ! self::sound($disk->path(self::path($path, self::THUMB))),

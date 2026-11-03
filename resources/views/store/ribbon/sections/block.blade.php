@@ -20,7 +20,7 @@
         </div>
         @if ($block['image'])
             <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
-                <img src="{{ \App\Support\ImageVariants::link($block['image'], \App\Support\ImageVariants::DISPLAY) }}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:{{ $blockFit }};display:block" data-testid="rb-block-image" data-fit="{{ $blockFit }}">
+                <img src="{{ \App\Support\ImageVariants::link($block['image'], \App\Support\ImageVariants::DISPLAY) }}"{{ \App\Support\Store\StoreMedia::sized($business->id, $block['image'], \App\Support\Store\StoreMedia::BLOCK, $blockFit, 4 / 3) }} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:{{ $blockFit }};display:block" data-testid="rb-block-image" data-fit="{{ $blockFit }}">
             </div>
         @endif
     </div>

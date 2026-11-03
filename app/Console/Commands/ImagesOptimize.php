@@ -427,7 +427,7 @@ class ImagesOptimize extends Command
     {
         return match ($r['status']) {
             'made', 'ready' => $r['skips'] === [] ? null : ['status' => 'made', 'skips' => $r['skips']],
-            'skipped' => ['status' => 'skipped', 'reason' => $r['reason']],
+            'skipped' => ['status' => 'skipped', 'reason' => $r['reason']] + ($r['skips'] === [] ? [] : ['skips' => $r['skips']]),
             'failed' => ['status' => 'failed', 'reason' => $r['reason'], 'attempts' => (int) ($was['attempts'] ?? 0) + 1],
             default => null,
         };

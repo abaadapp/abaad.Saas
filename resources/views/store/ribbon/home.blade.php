@@ -60,7 +60,8 @@
             @endphp
             <div style="aspect-ratio:5/4;border-radius:var(--rb-r-lg);overflow:hidden;background:{{ $heroImage && $rbHeroFit === 'contain' ? 'var(--rb-cream)' : 'repeating-linear-gradient(135deg,#e6dcc8 0 14px,#f3efe9 14px 28px)' }};min-height:240px">
                 @if ($heroImage)
-                    <img src="{{ \App\Support\ImageVariants::link($heroImage, \App\Support\ImageVariants::DISPLAY) }}" alt="" fetchpriority="high" decoding="async" style="width:100%;height:100%;object-fit:{{ $rbHeroFit }};display:block" data-testid="rb-hero-image" data-fit="{{ $rbHeroFit }}">
+                    {{-- ‏وبأحجامها: الهاتفُ يأخذ الوسطى لا نسخةَ العرض، وصورةُ الصنف البديلة لا تُرى مصغّرةً في إطارٍ بعرض الصفحة --}}
+                    <img src="{{ \App\Support\ImageVariants::link($heroImage, \App\Support\ImageVariants::DISPLAY) }}"{{ $hero ? \App\Support\Store\StoreMedia::sized($business->id, $hero, \App\Support\Store\StoreMedia::HERO, $heroFit, 5 / 4) : '' }}@if (! $hero && ($best[0]['srcset'] ?? null)) srcset="{{ $best[0]['srcset'] }}" sizes="{{ \App\Support\Store\StoreMedia::sizes(\App\Support\Store\StoreMedia::HERO) }}"@endif alt="" fetchpriority="high" decoding="async" style="width:100%;height:100%;object-fit:{{ $rbHeroFit }};display:block" data-testid="rb-hero-image" data-fit="{{ $rbHeroFit }}">
                 @endif
             </div>
         </div>

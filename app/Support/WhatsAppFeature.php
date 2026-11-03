@@ -293,21 +293,34 @@ class WhatsAppFeature
          * ولا تُضاف إن لم تُجرَّب: متجرٌ لم يُرسل شيئًا بعد لا يُقال له «لا
          * تصل رسائلك» — لم تُرسَل رسالةٌ لتصل.
          */
-        $health = WhatsAppHealth::recent($business->id);
+        $delivery = WhatsAppHealth::delivery($business->id);
 
-        if ($health['attempts'] > 0) {
-            $alert = WhatsAppHealth::alert($business->id);
+        if ($delivery['state'] !== WhatsAppHealth::UNTESTED) {
+            $alert = WhatsAppHealth::alertFor($delivery);
 
+            /*
+             * والمرحلةُ تُطفأ حين لا يصل شيء — لا حين لا يستقبل رقمُ عميل.
+             *
+             * رسالتان لم تصلا عميلًا واحدًا (131026) وكلُّ رقمٍ آخر تصله
+             * رسائلُه: الربطُ يعمل، والعميلُ يُقال في قائمة التسليم تحتها
+             * (`WhatsAppHealth::delivery`). ورسائلُ خرجت ولم يؤكَّد تسليمُ
+             * شيءٍ منها لا تُقال «تصل»: القبولُ عند Meta ليس وصولًا.
+             */
             $steps[] = Integration::step(
                 'delivery',
                 'رسائلك تصل زبائنك',
-                $alert === null,
-                detail: $alert === null
-                    ? __('وصلت :n من :t في آخر يوم.', ['n' => $health['sent'], 't' => $health['attempts']])
-                    : null,
-                fix: $alert['text'] ?? null,
-                /* والعطبُ يُنسب إلى صاحبه: تطبيقٌ محجوبٌ ليس خطأ التاجر */
-                theirs: (bool) ($alert['ours'] ?? false),
+                in_array($delivery['state'], [WhatsAppHealth::OK, WhatsAppHealth::PARTIAL], true),
+                detail: match ($delivery['state']) {
+                    WhatsAppHealth::PARTIAL => __('واتساب يعمل — وصلت :n رسالة، ولم تصل :f رسالة إلى :c عميل. التفاصيل أدناه.', [
+                        'n' => $delivery['delivered'], 'f' => $delivery['failed'], 'c' => $delivery['customers'],
+                    ]),
+                    default => __('تأكّد وصول :n من :t في آخر يوم.', ['n' => $delivery['delivered'], 't' => $delivery['attempts']]),
+                },
+                fix: $delivery['state'] === WhatsAppHealth::UNCONFIRMED
+                    ? __('خرجت :n رسالة ولم يؤكّد واتساب تسليم أيٍّ منها بعد — لا تُعدّ واصلةً قبل تأكيده.', ['n' => $delivery['attempts']])
+                    : ($alert['text'] ?? null),
+                /* والعطبُ يُنسب إلى صاحبه: تطبيقٌ محجوبٌ ليس خطأ التاجر، وتأكيدٌ لم يصل انتظارٌ لا عطب */
+                theirs: $delivery['state'] === WhatsAppHealth::UNCONFIRMED || (bool) ($alert['ours'] ?? false),
             );
         }
 

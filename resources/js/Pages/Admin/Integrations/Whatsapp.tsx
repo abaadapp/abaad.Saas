@@ -14,6 +14,7 @@ import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Ad
 import WhatsappAutoReply, { type AutoReplySettings, type AutoReplyState } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
 import WhatsappGuidedOrders, { type GuidedOrdersView } from '@/Pages/Admin/Integrations/partials/WhatsappGuidedOrders';
 import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
+import WhatsappDelivery, { type Delivery } from '@/Pages/Admin/Integrations/partials/WhatsappDelivery';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import type { OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
 import type { PageProps } from '@/types';
@@ -21,6 +22,8 @@ import type { PageProps } from '@/types';
 /** ما يُعرض من حال الأتمتة — بلا رمزٍ ولا سرّ (انظر Admin\WhatsAppController::view) */
 export interface Automation {
     readiness: Readiness;
+    /** تسليمُ الرسائل في آخر يوم — مستقلٌّ عن المراحل (`WhatsAppHealth::view`) */
+    delivery?: Delivery;
     global_enabled: boolean;
     enabled: boolean;
     mode: string;
@@ -166,6 +169,8 @@ export default function IntegrationsWhatsapp() {
                     done={`${t('جاهز — تخرج الرسائل عبر')} ${t(automation.sending_via)}`}
                     waiting={t('لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه المراحل.')}
                 />
+
+                {automation.delivery && <WhatsappDelivery delivery={automation.delivery} />}
 
                 {/*
                     ═══ «ربط واتساب» أوّلًا — وهي أوّلُ ما يُفعل ═══

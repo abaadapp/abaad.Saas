@@ -196,7 +196,7 @@ final class WhatsAppLog
                 'read' => optional($m->read_at)->format('Y-m-d H:i'),
                 'failed' => optional($m->failed_at)->format('Y-m-d H:i'),
             ]),
-            'reason' => null,
+            'reason' => $failed && ! WhatsAppHealth::isOurs($m->error_code) ? WhatsAppHealth::explain($m->error_code) : null,
             'error' => $failed ? $m->error_message : null,
             'ours' => $failed ? WhatsAppHealth::isOurs($m->error_code) : null,
             'subject' => null,
@@ -257,7 +257,9 @@ final class WhatsAppLog
                 'read' => optional($m->read_at)->format('Y-m-d H:i'),
                 'failed' => optional($m->failed_at)->format('Y-m-d H:i'),
             ]),
-            'reason' => WhatsAppStatus::reason($m->error_code),
+            // وردُّ Meta يُشرح بالعربيّة حيث يُعرف معناه (131026) — وما عند أبعاد يقوله `ours`
+            'reason' => WhatsAppStatus::reason($m->error_code)
+                ?? ($failed && ! WhatsAppHealth::isOurs($m->error_code) ? WhatsAppHealth::explain($m->error_code) : null),
             'error' => $failed ? $m->error_message : null,
             'ours' => $failed ? WhatsAppHealth::isOurs($m->error_code) : null,
             'subject' => $subject,

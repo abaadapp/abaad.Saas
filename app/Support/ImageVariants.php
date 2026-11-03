@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Support\Store\StoreImageUpload;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -349,7 +350,8 @@ final class ImageVariants
      *  • `ready`: لا ينقصه شيء.
      *  • `skipped`: لا تُصنع له نسخة — GIF أو نوعٌ لا يُفكّ، أو نسخةٌ لا توفّر، أو
      *    أكبرُ من سقف البكسلات (`ImageMemory::maxPixels`).
-     *  • `deferred`: لا تتّسع ذاكرةُ الخادم المتاحة لفكّها الآن (`ImageMemory`) — تُعاد لاحقًا.
+     *  • `deferred`: لا تتّسع ذاكرةُ الخادم المتاحة لفكّها الآن (`ImageMemory`)، أو صورةٌ أخرى
+     *    تُفكّ وطال دورُها (`decode_busy`) — تُعاد لاحقًا، ولم يُفكّ شيء.
      *  • `failed`: تعذّر شيءٌ — ومُحي ما كُتب في هذه الجولة، فيُعاد لاحقًا.
      *  • `missing`: لا أصلَ على القرص — أو مُحي وهي تُصنع، فمُحي ما صُنع له.
      *  • `estimated`: `$write = false` — حُسب ولم يُكتب، لجردٍ يقدّر قبل أن يُصنع شيء.
@@ -448,7 +450,7 @@ final class ImageVariants
                 }
 
                 return $out;
-            });
+            }, fn () => ['status' => 'deferred', 'reason' => 'decode_busy'] + $out);
         } catch (\Throwable $e) {
             report($e);
             $out = ['status' => 'failed', 'reason' => mb_substr($e->getMessage(), 0, 160)] + $out;
@@ -553,19 +555,30 @@ final class ImageVariants
      * يأخذ ذاكرتَه كلَّها. فتنتظر الصورةُ دورَها — والقفلُ في القاعدة فيرى
      * كلُّ عاملٍ ما يحمله غيرُه.
      *
-     * ولا يُردّ رفعٌ لأنّ الدور طال: بعد خمس عشرة ثانيةً يُفكّ على أيّ حال.
+     * ودورٌ طال خمس عشرة ثانيةً لا يُفكّ بعده على أيّ حال — كان يُفكّ فتجتمع صورتان
+     * ثقيلتان في ذاكرةٍ لا تتّسع لهما. بل يُنادى `$busy` ولا يُفكّ شيء: نسخُ الصورة
+     * تُؤجَّل إلى قائمة الانتظار، والرفعُ يحفظ أصلَه كما رُفع — كما يفعل حين لا تكفي
+     * الذاكرة — وينجح.
      *
      * @template T
+     * @template B
      *
      * @param  callable(): T  $work
-     * @return T
+     * @param  callable(): B  $busy  ما يُردّ بدل الفكّ حين لا يُنال الدور
+     * @return T|B
      */
-    public static function exclusive(callable $work): mixed
+    public static function exclusive(callable $work, callable $busy): mixed
     {
         try {
             return Cache::lock('images:decode', 60)->block(15, $work);
         } catch (LockTimeoutException) {
-            return $work();
+            try {
+                Log::channel('images')->warning('images.decode_busy', ['waited_s' => 15]);
+            } catch (\Throwable) {
+                // ‏سطرُ السجلّ لا يستحقّ رفعًا مردودًا
+            }
+
+            return $busy();
         }
     }
 
@@ -599,6 +612,12 @@ final class ImageVariants
             }
         } catch (\Throwable $e) {
             report($e);
+
+            /*
+             * والأصلُ محفوظٌ قبل أن تُطلب نسخُه — فلا تضيع: تنتظر جولةً قصيرة، وهناك
+             * تُعدّ محاولاتُها فلا تُعاد بلا نهاية. و`wait` لا يرمي، وما لا يكتبه يُستدرك.
+             */
+            ImageState::wait($path, 'exception');
         }
     }
 

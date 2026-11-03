@@ -174,7 +174,8 @@ final class StoreImageUpload
     }
 
     /**
-     * المعالجةُ تحت قفل الفكّ — أو `null` فيُحفظ الأصل.
+     * المعالجةُ تحت قفل الفكّ — أو `null` فيُحفظ الأصل: لا تُفكّ، أو لا تتّسع الذاكرة، أو
+     * صورةٌ أخرى تُفكّ وطال الدور (لا تُفكّ صورتان معًا).
      *
      * وتُعاد الكتابةُ ولو لم تُصغَّر الصورة: هي التي تمحو من رأسها موقعَ
      * التصوير والجهاز (EXIF). وPNG قد يخرج أثقلَ قليلًا — ثمنٌ لا تُدفع به
@@ -184,7 +185,7 @@ final class StoreImageUpload
      */
     private static function kept(string $path, int $type, int $w, int $h, int $side): ?array
     {
-        return \App\Support\ImageVariants::exclusive(fn () => self::normalized($path, $type, $w, $h, $side));
+        return \App\Support\ImageVariants::exclusive(fn () => self::normalized($path, $type, $w, $h, $side), fn () => null);
     }
 
     /* ═══════════ المعالجة ═══════════ */

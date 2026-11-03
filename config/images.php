@@ -45,6 +45,9 @@ return [
 
     'backlog_batch' => (int) env('IMAGES_BACKLOG_BATCH', 10),
 
+    /** أطولُ قائمة انتظار — وما بعده لا يضيع: يُكتب أنّه فات ويُستدرك من القرص (`ImageState::missed`) */
+    'backlog_max' => (int) env('IMAGES_BACKLOG_MAX', 10000),
+
     /** استراحةٌ بين صورةٍ وأخرى في الجولة — يُترك فيها المعالجُ للبيع والدفع */
     'pause_ms' => (int) env('IMAGES_BACKFILL_PAUSE_MS', 150),
 

@@ -168,8 +168,9 @@ Schedule::command('images:optimize', ['--apply', '--limit='.(int) config('images
 
 /*
  * وما رُفع والخادمُ مشغول — حُفظ أصلُه وتنتظر نسخُه (`ImageState::waiting`): جولةٌ قصيرةٌ
- * كلَّ عشر دقائق بالحرّاس أنفسهم، لا تمسّ صورةً قديمة. ولا تبدأ إن لم تنتظر صورة.
+ * كلَّ عشر دقائق بالحرّاس أنفسهم، لا تمسّ صورةً قديمة. ولا تبدأ إن لم تنتظر صورة ولم
+ * يفت انتظارُ رفع (`ImageState::missed`) — وما فات تستدركه من القرص قبل أن تبدأ.
  */
 Schedule::command('images:optimize', ['--backlog', '--limit='.(int) config('images.backlog_batch', 10)])
     ->everyTenMinutes()->withoutOverlapping()->runInBackground()
-    ->when(fn () => (bool) config('images.backlog', true) && \App\Support\ImageState::waiting() !== []);
+    ->when(fn () => (bool) config('images.backlog', true) && (\App\Support\ImageState::waiting() !== [] || \App\Support\ImageState::missed() !== null));

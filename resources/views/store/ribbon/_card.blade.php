@@ -18,6 +18,10 @@
         @else
             <div class="rb-stripes" style="--tint: {{ $p['tint'] }}"></div>
         @endif
+        {{-- و«نفدت الكمية» بيد صاحبه: يبقى في القائمة بصورته وسعره، والشارةُ تقول إنّه لا يُطلب الآن --}}
+        @if ($p['sold_out'] ?? false)
+            <span class="rb-soldout-tag" data-testid="rb-soldout-tag">{{ $t['soldOutTag'] }}</span>
+        @endif
     </div>
     <div class="rb-name">{{ $p['name'] }}</div>
     <div class="rb-price">@if ($p['from'])<span style="font-size:12px;font-weight:400">{{ $t['from'] }}</span> @endif{{ $p['price_text'] }}</div>

@@ -84,6 +84,8 @@ final class ProductsList
             'stock_status' => $p->stock_status, 'active' => (bool) $p->active,
             // وقناتاه — وسمٌ تحت الحالة لمن يُباع في قناةٍ واحدة (`partials/channels.ts`)
             'pos_enabled' => (bool) ($p->pos_enabled ?? true), 'published' => (bool) ($p->published ?? true),
+            // و«نفدت الكمية» في الموقع — وسمٌ تحت الحالة (`WebsiteSoldOut`)
+            'website_sold_out' => (bool) $p->website_sold_out,
             'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
             'tracks_stock' => $p->tracksStock(),
             /*

@@ -1096,6 +1096,7 @@ final class WebCheckout
 
     /**
      * ما لا يُعرض للزبون لا يُباع له: `published` شرطُ الموقع فوق شرط الصندوق.
+     * وما علّمه صاحبُه «نفدت الكمية» يُعرض ولا يُباع (`website_sold_out`).
      *
      * إلّا دفعةً قُبضت (`$settling`): عُرض حين فُتح دفعُها — انظر `quote`.
      */
@@ -1109,6 +1110,22 @@ final class WebCheckout
 
         if ($hidden->isNotEmpty() || collect($lines)->contains(fn ($l) => ! $l['product'])) {
             throw ValidationException::withMessages(['items' => __('صنفٌ في سلّتك لم يعد متاحًا — أزله وأعد المحاولة.')]);
+        }
+
+        /*
+         * و«نفدت الكمية» بيد التاجر — يُرى الصنفُ ولا يُطلب (`WebsiteSoldOut`).
+         *
+         * من سلّةٍ قديمة، أو بطلبٍ يتجاوز الصفحة، أو قبل صفحة البنك: كلُّها
+         * تمرّ من هنا. ودفعةٌ قُبضت لا تُردّ به — كالمخفيّ فوقه سواء.
+         */
+        if (! $settling) {
+            $out = Product::where('business_id', $bid)->whereIn('id', $ids)->where('website_sold_out', true)->pluck('id')->all();
+
+            foreach ($lines as $l) {
+                if (in_array((int) $l['product']->id, $out, true)) {
+                    throw ValidationException::withMessages(['items' => __('«:name» نفدت كميته — أزله من سلّتك ثمّ أكمل الطلب.', ['name' => $l['name']])]);
+                }
+            }
         }
 
         /* وما نفد من الرفّ يُقال هنا قبل الإتمام — بقاعدة الموقع نفسِها */

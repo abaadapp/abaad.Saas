@@ -57,6 +57,7 @@ use App\Support\Store\StoreLegal;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\TermsChanged;
 use App\Support\Store\WebCheckout;
+use App\Support\Store\WebsiteSoldOut;
 use App\Support\Storefront;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Shelf;
@@ -307,7 +308,17 @@ class RibbonController extends Controller
         try {
             $q = WebCheckout::quote($business, $request->all());
         } catch (ValidationException $e) {
-            return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
+            /*
+             * وما نفدت كمّيّتُه في السلّة يُسمّى بمعرّفه — فتعرض السلّةُ زرًّا يُزيله.
+             *
+             * السلّةُ لا ترسم بنودَها حين يُردّ التسعير، فكان الزبونُ يُقال له
+             * «أزله» ولا يجد ما يضغطه.
+             */
+            return response()->json([
+                'ok' => false,
+                'errors' => $e->errors(),
+                'sold_out' => WebsiteSoldOut::inCart((int) $business->id, $request->input('items')),
+            ], 422);
         }
 
         return response()->json(['ok' => true] + $this->publicQuote($business, $q));
@@ -671,7 +682,13 @@ class RibbonController extends Controller
         ])->find($id);
         abort_if($p === null, 404);
 
-        $available = Shelf::availability($bid, [$p->id])[$p->id] ?? false;
+        /*
+         * ويُطلب ما على رفّه — وما لم يعلّمه صاحبُه «نفدت الكمية».
+         *
+         * فالعلَمُ يُغلق ولا يفتح: «متوفّر» لا يتجاوز رفًّا فارغًا، و«نفدت»
+         * تُغلق رفًّا عامرًا. والصفحةُ تبقى بصورتها وسعرها ووصفها.
+         */
+        $available = (Shelf::availability($bid, [$p->id])[$p->id] ?? false) && ! $p->website_sold_out;
         $currency = Storefront::currency($business);
         $giftCard = GiftCardProduct::is($bid, $p);
 
@@ -741,7 +758,8 @@ class RibbonController extends Controller
             'addons' => $available && ! $giftCard ? $this->addons($bid, $p, $lang, $currency) : [],
             // وصفحةُ الكرت نصُّه وحده — لا إضافاتٌ تُقترح معه
             'upsells' => $available && ! $giftCard
-                ? RibbonUpsells::for($bid, $p, $this->shown($bid))
+                // وما نفدت كمّيّتُه لا يُقترح إضافةً بضغطة — يُرى في رفّه ولا يُدفع إليه
+                ? RibbonUpsells::for($bid, $p, $this->shown($bid)->where('website_sold_out', false))
                     ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + [
                         'sizes' => $this->sizes($u, $lang, $currency),
                         // وكرتُ الهدية إضافةً تُفتح له خانةُ نصّه — الحكمُ نفسُه الذي يسعّره
@@ -1253,6 +1271,8 @@ class RibbonController extends Controller
             'price_text' => Money::format($price, $currency),
             'from' => $prices->count() > 1 && $prices->min() !== $prices->max(),
             'tint' => self::TINTS[$p->id % count(self::TINTS)],
+            // و«نفدت الكمية» بيد صاحبه — يبقى في القائمة بشارته (`WebsiteSoldOut`)
+            'sold_out' => (bool) $p->website_sold_out,
         ];
     }
 

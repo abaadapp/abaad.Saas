@@ -278,6 +278,12 @@ export default function ProductsIndex() {
                                 {t(CHANNEL_TAG[where])}
                             </span>
                         )}
+                        {/* ونفدت كمّيّتُه في الموقع — يُرى هناك بشارته ولا يُطلب */}
+                        {p.active && p.published !== false && p.website_sold_out && (
+                            <span className="text-[11px] font-medium text-[#b45309]" data-testid={`product-soldout-${p.id}`}>
+                                {t('نفدت الكمية في الموقع')}
+                            </span>
+                        )}
                     </div>
                 );
             },

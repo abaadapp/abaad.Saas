@@ -49,6 +49,7 @@ use App\Support\Store\StorePage;
 use App\Support\Storefront;
 use App\Support\Vat;
 use App\Support\Website\Commerce;
+use App\Support\Store\WebsiteSoldOut;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -90,6 +91,8 @@ class PageController extends Controller
             'composition' => ProductCompositionController::blank(
                 auth()->user()->business_id ?? Demo::bid(),
             ),
+            // وحالُه في الموقع بثلاثٍ — لمن يرسم موقعُه «نفدت الكمية» وحده (`WebsiteSoldOut`)
+            'websiteStatus' => WebsiteSoldOut::allowed(auth()->user()->business_id ?? Demo::bid()) ? WebsiteSoldOut::AVAILABLE : null,
             // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`
             'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
             'addonsDisplay' => $this->addonsDisplay(),
@@ -171,6 +174,12 @@ class PageController extends Controller
              */
             'description' => (string) ($model?->description ?? ''),
             'descriptionEn' => (string) ($model?->description_en ?? ''),
+            /*
+             * وحالُه في الموقع — متوفّر أو نفدت الكمية أو مخفيّ — من الصفّ نفسه،
+             * ولمن يرسم موقعُه الشارةَ وحده (`WebsiteSoldOut`). وغيرُه يبقى على
+             * مفتاح «متاح للبيع في المتجر الإلكتروني» كما كان.
+             */
+            'websiteStatus' => $model && WebsiteSoldOut::allowed((int) $model->business_id) ? WebsiteSoldOut::status($model) : null,
             'composition' => $model
                 ? ProductCompositionController::payload($model)
                 : null,

@@ -10460,5 +10460,16 @@
     "تفعيل إدارة التقييمات": "Enable review management",
     "واجهات Google": "Google APIs",
     "لم تُعتمد لأبعاد بعد": "Not approved for Abaad yet",
-    "Google لم تعتمد واجهات Business Profile لمشروع أبعاد — :n متجرًا ينتظر.": "Google hasn't approved the Business Profile APIs for Abaad's project — :n shops are waiting."
+    "Google لم تعتمد واجهات Business Profile لمشروع أبعاد — :n متجرًا ينتظر.": "Google hasn't approved the Business Profile APIs for Abaad's project — :n shops are waiting.",
+    "حالة المنتج في الموقع الإلكتروني": "Product status on the website",
+    "نفدت الكمية": "Sold out",
+    "مخفي من الموقع": "Hidden from the website",
+    "نفدت الكمية في الموقع": "Sold out on the website",
+    "يظهر في الموقع ويُطلب — والمخزون يحكم كما هو.": "Shown on the website and can be ordered — stock rules still apply.",
+    "يظهر بصورته وسعره مع شارة «نفدت الكمية» — ولا يُطلب حتى تعيده «متوفر».": "Shown with its photo and price and a “Sold out” badge — it can’t be ordered until you set it back to “In stock”.",
+    "لا يظهر في الموقع — ونقطة البيع كما اخترت لها.": "Not shown on the website — the POS stays as you set it.",
+    "تعذّر حفظ حالة المنتج — لم يتغيّر شيء.": "Couldn’t save the product status — nothing changed.",
+    "تعذّر الاتصال بالخادم — لم يتغيّر شيء.": "Couldn’t reach the server — nothing changed.",
+    "يُحفظ فور اختياره ويظهر في الموقع مباشرة — بلا تغيير في المخزون.": "Saved as soon as you choose it and shown on the website right away — stock isn’t changed.",
+    "«:name» نفدت كميته — أزله من سلّتك ثمّ أكمل الطلب.": "“:name” is sold out — remove it from your cart, then complete your order."
 }

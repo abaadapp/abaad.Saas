@@ -189,7 +189,7 @@
                     <button type="button" class="rb-btn" style="flex:1;min-width:200px;height:48px" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
                 </div>
             @else
-                <div style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">{{ $t['soldOut'] }}</div>
+                <div style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">@if ($product['sold_out'] ?? false)<strong data-testid="rb-soldout-manual">{{ $t['soldOutTag'] }}</strong> — {{ $t['notOrderable'] }}@else{{ $t['soldOut'] }}@endif</div>
             @endif
             {{--
                 ═══ تنبيهُ الصورة تحت زرّ الإضافة مباشرةً ═══

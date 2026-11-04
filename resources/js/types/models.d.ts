@@ -29,6 +29,8 @@ export interface Product {
     active: boolean;
     /** يُعرض في المتجر على الإنترنت — و`active` فوقه: الموقوفُ لا يُباع في أيّ قناة */
     published?: boolean;
+    /** «نفدت الكمية» في الموقع — يُعرض بشارته ولا يُطلب (`WebsiteSoldOut`) */
+    website_sold_out?: boolean;
     /** يُباع في نقطة البيع — نظيرُ `published` للصندوق، وغائبُه يُقرأ «نعم» */
     pos_enabled?: boolean;
     /** أين يُعرض الوصف — مستقلّان عن قناتَي البيع. انظر `ProductDescription` */

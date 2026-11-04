@@ -247,6 +247,7 @@ return [
         'description_en' => 'الوصف بالإنجليزية',
         'description_pos_enabled' => 'إظهار الوصف في نقطة البيع',
         'description_web_enabled' => 'إظهار الوصف في الموقع',
+        'website_sold_out' => 'نفدت الكمية في الموقع',
         'status' => 'الحالة',
         'type' => 'النوع',
         'kind' => 'النوع',

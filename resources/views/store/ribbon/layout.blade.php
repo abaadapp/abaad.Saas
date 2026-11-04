@@ -255,6 +255,8 @@
         .rb-card .rb-img { aspect-ratio: 1/1; border-radius: var(--rb-r-lg); overflow: hidden; background: var(--rb-soft); display: flex; align-items: center; justify-content: center; }
         .rb-card .rb-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
         .rb-card:hover .rb-img img { transform: scale(1.03); }
+        .rb-card .rb-img { position: relative; }
+        .rb-soldout-tag { position: absolute; top: 10px; inset-inline-start: 10px; background: rgba(17, 17, 17, .78); color: #fff; font-size: 12px; line-height: 1; padding: 6px 10px; border-radius: 999px; pointer-events: none; }
         /*
          * ═══ وصورُ المنتجات «كاملة» — لمن اختارها (`store_catalog_fit`) ═══
          *

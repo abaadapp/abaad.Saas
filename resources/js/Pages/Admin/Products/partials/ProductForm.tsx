@@ -55,6 +55,128 @@ interface Props {
     boutiqueParts?: BoutiquePartsData | null;
     /** أيُربط صنفُ بوتيكٍ بإضافة — لنافذة الإضافة. انظر `AddonController::boutiqueLinks` */
     addonBoutiqueLinks?: BoutiqueLinks;
+    /**
+     * حالُه في الموقع بثلاثٍ — لمن يرسم موقعُه «نفدت الكمية» (`WebsiteSoldOut`).
+     * وغيابُه يُبقي مفتاحَ «متاح للبيع في المتجر الإلكتروني» كما كان.
+     */
+    websiteStatus?: WebsiteStatus | null;
+}
+
+/** حالُ الصنف في الموقع — `WebsiteSoldOut::STATUSES` */
+export type WebsiteStatus = 'available' | 'sold_out' | 'hidden';
+
+const WEBSITE_STATUSES: { key: WebsiteStatus; label: string; says: string }[] = [
+    { key: 'available', label: 'متوفر', says: 'يظهر في الموقع ويُطلب — والمخزون يحكم كما هو.' },
+    { key: 'sold_out', label: 'نفدت الكمية', says: 'يظهر بصورته وسعره مع شارة «نفدت الكمية» — ولا يُطلب حتى تعيده «متوفر».' },
+    { key: 'hidden', label: 'مخفي من الموقع', says: 'لا يظهر في الموقع — ونقطة البيع كما اخترت لها.' },
+];
+
+/** الحالُ من العمودين — والمخفيُّ مخفيٌّ أيًّا كان علَمُه، كما يقرؤه الخادم */
+function websiteStatusOf(d: { published: boolean; website_sold_out: boolean }): WebsiteStatus {
+    if (! d.published) return 'hidden';
+
+    return d.website_sold_out ? 'sold_out' : 'available';
+}
+
+/**
+ * «حالة المنتج في الموقع الإلكتروني» — ثلاثُ خاناتٍ تُلمس بالإصبع.
+ *
+ * ═══ وفي التعديل تُحفظ فورًا — لا مع «حفظ» النموذج ═══
+ *
+ * حفظُ النموذج يكتب الكمّيّةَ مطلقةً (`ProductController::update`)، فمن علّم
+ * باقةً «نفدت» بعد أن باع الكاشير منها كان سيُعيد كمّيّتها. فتُرسل الحالُ
+ * وحدها (`admin.products.websiteStatus`)، ويُكتب ما ردّه الخادمُ في النموذج
+ * فلا يُعيدها حفظٌ بعده. وفي الإضافة تُرسل مع المنتج الجديد.
+ */
+function WebsiteStatusPicker({
+    productId,
+    value,
+    active,
+    onSaved,
+}: {
+    productId: number | null;
+    value: WebsiteStatus;
+    active: boolean;
+    onSaved: (cols: { published: boolean; website_sold_out: boolean }) => void;
+}) {
+    const t = useTranslate();
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const choose = async (next: WebsiteStatus) => {
+        if (next === value || busy) return;
+        setError(null);
+
+        if (productId === null) {
+            onSaved(next === 'hidden' ? { published: false, website_sold_out: false } : { published: true, website_sold_out: next === 'sold_out' });
+
+            return;
+        }
+
+        setBusy(true);
+        try {
+            const res = await fetch(route('admin.products.websiteStatus', productId), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                body: JSON.stringify({ status: next }),
+            });
+            const out = await res.json().catch(() => null);
+
+            if (! res.ok || ! out?.ok) {
+                setError(out?.errors?.status?.[0] ?? out?.message ?? t('تعذّر حفظ حالة المنتج — لم يتغيّر شيء.'));
+
+                return;
+            }
+
+            onSaved({ published: Boolean(out.published), website_sold_out: Boolean(out.website_sold_out) });
+        } catch {
+            setError(t('تعذّر الاتصال بالخادم — لم يتغيّر شيء.'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const says = WEBSITE_STATUSES.find((s) => s.key === value)!.says;
+
+    return (
+        <div className="pt-4" data-testid="product-website-status">
+            <p className="text-sm font-medium text-[#111]" id="product-website-status-label">{t('حالة المنتج في الموقع الإلكتروني')}</p>
+            <div role="radiogroup" aria-labelledby="product-website-status-label" className="mt-3 grid grid-cols-3 gap-2">
+                {WEBSITE_STATUSES.map((s) => (
+                    <button
+                        key={s.key}
+                        type="button"
+                        role="radio"
+                        aria-checked={value === s.key}
+                        disabled={busy}
+                        onClick={() => choose(s.key)}
+                        data-testid={`website-status-${s.key}`}
+                        className={cn(
+                            'min-h-11 rounded-[10px] px-2 py-2 text-[13px] font-medium ring-1 transition-colors disabled:opacity-60',
+                            value === s.key
+                                ? s.key === 'sold_out'
+                                    ? 'bg-[#fffbeb] text-[#92400e] ring-[#f59e0b]'
+                                    : 'bg-[#111] text-white ring-[#111]'
+                                : 'bg-white text-[#374151] ring-[var(--ui-border,#e8e8e8)]',
+                        )}
+                    >
+                        {t(s.label)}
+                    </button>
+                ))}
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="product-website-status-says">
+                {active ? t(says) : t('لن يُباع ما دام المنتج موقوفًا')}
+            </p>
+            {productId !== null && (
+                <p className="mt-0.5 text-[12px] text-[#9ca3af]">{t('يُحفظ فور اختياره ويظهر في الموقع مباشرة — بلا تغيير في المخزون.')}</p>
+            )}
+            {error && (
+                <p role="alert" className="mt-2 text-[12px] text-[#b91c1c]" data-testid="product-website-status-error">
+                    {error}
+                </p>
+            )}
+        </div>
+    );
 }
 
 const NAV = [
@@ -123,6 +245,7 @@ export default function ProductForm({
     boutiqueId = null,
     addonsDisplay,
     addonBoutiqueLinks,
+    websiteStatus = null,
 }: Props) {
     const t = useTranslate();
     const editing = !!product;
@@ -153,6 +276,8 @@ export default function ProductForm({
         tracks_stock: product ? product.tracks_stock !== false : true,
         active: product ? product.active : true,
         published: product?.published ?? true,
+        // و«نفدت الكمية» في الموقع — يُكتب لمن يرسمها موقعُه وحده (`WebsiteSoldOut`)
+        website_sold_out: websiteStatus === 'sold_out',
         // ويُباع في نقطة البيع افتراضًا — كما كان كلُّ صنفٍ نشط
         pos_enabled: product?.pos_enabled ?? true,
         /*
@@ -730,6 +855,18 @@ export default function ProductForm({
                                     />
                                 </div>
 
+                                {websiteStatus !== null ? (
+                                    <WebsiteStatusPicker
+                                        productId={product ? Number(product.id) : null}
+                                        value={websiteStatusOf(form.data)}
+                                        active={form.data.active}
+                                        onSaved={(cols) => {
+                                            form.setData((d) => ({ ...d, ...cols }));
+                                            // وما حُفظ لا يُعدّ تعديلًا معلّقًا — هو في القاعدة
+                                            if (product) form.setDefaults(cols);
+                                        }}
+                                    />
+                                ) : (
                                 <div className="flex items-center justify-between gap-3 pt-4">
                                     <div>
                                         <p className="text-sm font-medium text-[#111]">{t('متاح للبيع في المتجر الإلكتروني')}</p>
@@ -745,6 +882,7 @@ export default function ProductForm({
                                         label={t('متاح للبيع في المتجر الإلكتروني')}
                                     />
                                 </div>
+                                )}
                             </div>
 
                             <p

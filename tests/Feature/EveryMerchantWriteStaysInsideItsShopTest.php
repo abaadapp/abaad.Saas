@@ -54,6 +54,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
             'catalog' => [
                 ['المنتجات', 'put', 'admin.products.update', ['id' => 'product']],
                 ['المنتجات', 'patch', 'admin.products.quick', ['id' => 'product']],
+                ['المنتجات', 'patch', 'admin.products.websiteStatus', ['id' => 'product']],
                 ['المنتجات', 'post', 'admin.products.toggle', ['id' => 'product']],
                 ['المنتجات', 'post', 'admin.products.duplicate', ['id' => 'product']],
                 ['المنتجات', 'delete', 'admin.products.destroy', ['id' => 'product']],

@@ -44,7 +44,29 @@
         RB.quote().then(function (q) {
             var box = document.querySelector('[data-rb-lines]'), err = document.querySelector('[data-rb-errors]');
             err.textContent = '';
-            if (!q.ok) { err.textContent = Object.values(q.errors || {}).flat().join(' · '); box.innerHTML = ''; return; }
+            if (!q.ok) {
+                err.textContent = Object.values(q.errors || {}).flat().join(' · ');
+                box.innerHTML = '';
+                /*
+                    وما نفدت كمّيّتُه يُزال بضغطة — السلّةُ لا ترسم بنودَها هنا،
+                    فكان يُقال للزبون «أزله» ولا يجد ما يضغطه. والخادمُ يسمّيه
+                    بمعرّفه (`WebsiteSoldOut::inCart`)، وما سواه يبقى في السلّة.
+                */
+                var sold = (q.sold_out || []).map(Number);
+                if (sold.length) {
+                    var b = document.createElement('button');
+                    b.type = 'button'; b.className = 'rb-btn-ghost'; b.style.marginTop = '12px';
+                    b.setAttribute('data-testid', 'rb-remove-soldout');
+                    b.textContent = T.removeSoldOut;
+                    b.addEventListener('click', function () {
+                        RB.write(RB.read().filter(function (it) { return sold.indexOf(+it.id) < 0; }));
+                        render();
+                    });
+                    err.appendChild(document.createElement('br'));
+                    err.appendChild(b);
+                }
+                return;
+            }
             /*
                 والبندُ يُعرَف بإضافاته كذلك: تُرسم تحت اسمه بأسمائها وكمّيّاتها
                 ومجموعِ كلٍّ منها، و«إجماليُّ البند» إلى جانبه يحملها. والحذفُ

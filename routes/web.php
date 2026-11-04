@@ -806,6 +806,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»
     Route::post('/products/{id}/toggle', [ProductController::class, 'toggle'])->name('products.toggle');
     Route::patch('/products/{id}/quick', [ProductController::class, 'quickUpdate'])->name('products.quick');
+    // وحالُه في الموقع — متوفّر أو نفدت الكمية أو مخفيّ — بطلبٍ لا يمسّ المخزون (`WebsiteSoldOut`)
+    Route::patch('/products/{id}/website-status', [ProductController::class, 'websiteStatus'])->name('products.websiteStatus');
     Route::get('/products/{id}/edit', [PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');

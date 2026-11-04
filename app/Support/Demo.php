@@ -4411,11 +4411,13 @@ class Demo
          */
         $googleSettings = MarketingSettings::group($bid, 'google');
 
-        if (($googleSettings['gbp_alerts_enabled'] ?? '1') === '1') {
+        /* ولا يصل مديرَ المنصّة وهو داخلٌ باسم التاجر، والمقيَّدُ بفرعٍ يُنبَّه بفرعه */
+        if (($googleSettings['gbp_alerts_enabled'] ?? '1') === '1' && ! session()->has('impersonator_id')) {
             $threshold = (int) ($googleSettings['gbp_low_rating'] ?? 2);
 
             $fresh = GoogleBusinessReview::live()
-                ->whereIn('branch_id', Branch::where('business_id', $bid)->pluck('id'))
+                ->whereIn('branch_id', CostsAndLosses::allowedBranches($bid, auth()->user())
+                    ?? Branch::where('business_id', $bid)->pluck('id'))
                 ->where('first_seen_at', '>=', now()->subDays(14))
                 ->with('branch:id,name')
                 ->orderByDesc('reviewed_at')

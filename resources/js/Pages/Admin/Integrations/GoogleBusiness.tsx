@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Bell, Link2Off, MapPin, MessageSquare, RefreshCw, Star, Store } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Link2Off, MapPin, MessageSquare, RefreshCw, Star, Store } from 'lucide-react';
 import { GoogleMapsMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -24,6 +24,11 @@ interface BranchRow {
     location: string | null;
     linked: boolean;
     reviews: number;
+    /** معرّفُ الفرع على الخرائط — به يُعلَّم موقعُه في قائمة الاختيار */
+    placeId?: string | null;
+    syncedAt?: string | null;
+    /** سببُ تعثّر سحب هذا الفرع وحده */
+    syncError?: string | null;
 }
 
 interface ReviewRow {
@@ -45,10 +50,27 @@ interface LocationRow {
     address: string;
     account: string;
     accountTitle: string;
+    placeId?: string;
+}
+
+interface ReviewsPage {
+    current_page: number;
+    last_page: number;
+    total: number;
+    prev_page_url: string | null;
+    next_page_url: string | null;
+}
+
+interface ReviewFilters {
+    branch: number | null;
+    stars: number | null;
+    unanswered: boolean;
 }
 
 interface Props {
     configured: boolean;
+    /** الحالُ كما يقرؤها الخادم (`GoogleBusiness::state`) */
+    state?: string;
     connected: boolean;
     /** انقطع الإذنُ من جهة Google — يُعيده التاجر بنفسه */
     reconnect?: boolean;
@@ -62,6 +84,8 @@ interface Props {
     } | null;
     branches: BranchRow[];
     reviews: ReviewRow[];
+    pagination?: ReviewsPage;
+    filters?: ReviewFilters;
     alerts: { enabled: boolean; threshold: number };
 }
 
@@ -79,8 +103,19 @@ function Stars({ value }: { value: number }) {
 }
 
 export default function GoogleBusinessPage() {
-    const { configured, connected, reconnect = false, lastError = null, account, branches, reviews, alerts } =
-        usePage<PageProps<Props>>().props;
+    const {
+        configured,
+        state = 'ready',
+        connected,
+        reconnect = false,
+        lastError = null,
+        account,
+        branches,
+        reviews,
+        pagination,
+        filters = { branch: null, stars: null, unanswered: false },
+        alerts,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -92,6 +127,23 @@ export default function GoogleBusinessPage() {
         gbp_alerts_enabled: alerts.enabled,
         gbp_low_rating: alerts.threshold,
     });
+
+    const blocked = state === 'api_blocked';
+
+    /* والمرشِّحُ في الخادم: التقييماتُ صفحاتٌ، وما في الصفحة بعضُ ما عنده */
+    const filter = (next: Partial<ReviewFilters>) => {
+        const merged = { ...filters, ...next };
+
+        router.get(
+            route('admin.integrations.googleBusiness'),
+            {
+                ...(merged.branch ? { branch: merged.branch } : {}),
+                ...(merged.stars ? { stars: merged.stars } : {}),
+                ...(merged.unanswered ? { unanswered: 1 } : {}),
+            },
+            { preserveScroll: true, preserveState: true },
+        );
+    };
 
     /*
         بابٌ قبل الشاشة.
@@ -152,7 +204,7 @@ export default function GoogleBusinessPage() {
                     description={
                         reconnect
                             ? 'انتهى الإذن أو سُحب من حساب Google. أعِد الربط بحسابك لتعود قراءة التقييمات والرد عليها.'
-                            : 'ولا تُقرأ تقييمة واحدة قبله — الربط بإذنك على حسابك، ويُلغى متى شئت.'
+                            : 'مفتاح الخرائط لا يكفي: قراءة تقييماتك كلّها والرد عليها يحتاجان إذنك الصريح من حساب Google الذي يملك النشاط أو يديره، ويُلغى متى شئت.'
                     }
                     action={
                         <Button asChild size="lg">
@@ -173,10 +225,27 @@ export default function GoogleBusinessPage() {
             <PageHeader
                 title={t('تقييمات Google')}
                 subtitle={t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك')}
-                actions={<StatusPill state={account?.error ? 'error' : 'ready'} connected />}
+                actions={
+                    blocked
+                        ? <StatusPill state="progress" label="بانتظار اعتماد Google" />
+                        : <StatusPill state={account?.error ? 'error' : 'ready'} connected />
+                }
             />
 
             <SettingsPage width="wide">
+                {/*
+                    وعدمُ الاعتماد عند أبعاد لا عند التاجر: حسابُه مربوطٌ ولا شيء عليه،
+                    فلا يُعرض له «أعد الربط» ولا يُقال له راجع حسابك.
+                */}
+                {blocked && (
+                    <div
+                        data-testid="gbp-api-blocked"
+                        className="rounded-[12px] border border-[#fde68a] bg-[#fffbeb] p-4 text-[13px] leading-relaxed text-[#92400e]"
+                    >
+                        {t('حسابك مربوط، لكنّ Google لم تعتمد واجهات Business Profile لأبعاد بعد. ليس عليك شيء، ويعود العمل تلقائيًّا بعد اعتمادها.')}
+                    </div>
+                )}
+
                 {/* ═══════════ حال الربط ═══════════ */}
                 <SettingsSection
                     title="حساب Google المربوط"
@@ -220,7 +289,7 @@ export default function GoogleBusinessPage() {
                     </dl>
 
                     {/* وخطأُ Google الأخير يُقال بنصّه: «لم تُسحب» لا تقول ما يُصلَح */}
-                    {account?.error && (
+                    {account?.error && ! blocked && (
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[10px] bg-[#fef2f2] p-3">
                             <p className="text-[13px] text-[#b91c1c]">{account.error}</p>
                             {/* والإصلاحُ بيده: إعادةُ الإذن من حسابه هو */}
@@ -261,7 +330,19 @@ export default function GoogleBusinessPage() {
                                             {b.linked
                                                 ? t(':n تقييم', { n: b.reviews })
                                                 : t('غير مربوط')}
+                                            {b.syncedAt && (
+                                                <span className="ms-2 text-[#9ca3af]">
+                                                    {t('آخر سحب')}{' '}
+                                                    <span dir="ltr">{new Date(b.syncedAt).toLocaleString()}</span>
+                                                </span>
+                                            )}
                                         </p>
+                                        {/* وتعثُّرُ فرعٍ يُقال عليه وحده: جارُه سليم */}
+                                        {b.syncError && (
+                                            <p data-testid="gbp-branch-error" className="mt-1 text-[12px] text-[#b91c1c]">
+                                                {b.syncError}
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div className="flex shrink-0 flex-wrap gap-2">
@@ -357,13 +438,51 @@ export default function GoogleBusinessPage() {
                         icon={MessageSquare}
                         status={
                             <span className="text-[13px] font-medium tabular-nums text-[#6b7280]" dir="ltr">
-                                {reviews.length}
+                                {pagination?.total ?? reviews.length}
                             </span>
                         }
                     >
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                            {branches.length > 1 && (
+                                <select
+                                    aria-label={t('الفرع')}
+                                    value={filters.branch ?? ''}
+                                    onChange={(e) => filter({ branch: e.target.value ? Number(e.target.value) : null })}
+                                    className="rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-1.5 text-[13px]"
+                                >
+                                    <option value="">{t('كل الفروع')}</option>
+                                    {branches.map((b) => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </select>
+                            )}
+                            <select
+                                aria-label={t('التقييم')}
+                                value={filters.stars ?? ''}
+                                onChange={(e) => filter({ stars: e.target.value ? Number(e.target.value) : null })}
+                                className="rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-1.5 text-[13px]"
+                            >
+                                <option value="">{t('كل التقييمات')}</option>
+                                {[5, 4, 3, 2, 1].map((n) => (
+                                    <option key={n} value={n}>{t('⭐ :n', { n })}</option>
+                                ))}
+                            </select>
+                            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#111]">
+                                <input
+                                    type="checkbox"
+                                    checked={filters.unanswered}
+                                    onChange={(e) => filter({ unanswered: e.target.checked })}
+                                    className="size-4 rounded border-[#d1d5db] accent-[#111]"
+                                />
+                                {t('بلا ردّ فقط')}
+                            </label>
+                        </div>
+
                         {reviews.length === 0 ? (
                             <p className="rounded-[12px] bg-[#fafafa] p-4 text-[13px] text-[#6b7280]">
-                                {t('لا تقييمات مسحوبة بعد — اربط موقع الفرع ثم اضغط «سحب التقييمات».')}
+                                {filters.branch || filters.stars || filters.unanswered
+                                    ? t('لا تقييمات تطابق هذا الاختيار.')
+                                    : t('لا تقييمات مسحوبة بعد — اربط موقع الفرع ثم اضغط «سحب التقييمات».')}
                             </p>
                         ) : (
                             <ul className="space-y-3">
@@ -426,6 +545,32 @@ export default function GoogleBusinessPage() {
                                     </li>
                                 ))}
                             </ul>
+                        )}
+
+                        {pagination && pagination.last_page > 1 && (
+                            <div className="mt-4 flex items-center justify-between gap-3">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={! pagination.prev_page_url}
+                                    onClick={() => pagination.prev_page_url && router.get(pagination.prev_page_url, {}, { preserveScroll: true })}
+                                >
+                                    <ChevronRight className="rtl:rotate-0 ltr:rotate-180" />
+                                    {t('السابق')}
+                                </Button>
+                                <span className="text-[12px] text-[#6b7280]">
+                                    {t('صفحة :p من :l', { p: pagination.current_page, l: pagination.last_page })}
+                                </span>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={! pagination.next_page_url}
+                                    onClick={() => pagination.next_page_url && router.get(pagination.next_page_url, {}, { preserveScroll: true })}
+                                >
+                                    {t('التالي')}
+                                    <ChevronLeft className="rtl:rotate-0 ltr:rotate-180" />
+                                </Button>
+                            </div>
                         )}
                     </SettingsSection>
                 </>
@@ -513,11 +658,29 @@ function LocationDialog({ branch, onClose }: { branch: BranchRow; onClose: () =>
     const [error, setError] = useState<string | null>(null);
     const [locations, setLocations] = useState<LocationRow[]>([]);
     const [saving, setSaving] = useState<string | null>(null);
+    /* موقعٌ ليس مكانَ الفرع على الخرائط: يُسأل عنه قبل الربط */
+    const [confirming, setConfirming] = useState<string | null>(null);
+
+    const link = (l: LocationRow, confirmed: boolean) => {
+        setSaving(l.name);
+        router.post(
+            route('admin.integrations.googleBusiness.branch.link', branch.id),
+            { location: l.name, account: l.account, confirmed },
+            {
+                preserveScroll: true,
+                onSuccess: onClose,
+                onError: (e) => setError(e.location ?? null),
+                onFinish: () => setSaving(null),
+            },
+        );
+    };
 
     /*
         المواقعُ تُقرأ عند فتح النافذة لا في كلّ فتحةِ شاشة.
         نداءان لكلّ حسابٍ ولكلّ موقع، وهي لا تتبدّل في اليوم مرّتين.
     */
+    const same = (l: LocationRow) => !! branch.placeId && l.placeId === branch.placeId;
+
     const load = async () => {
         setState('loading');
         setError(null);
@@ -573,35 +736,53 @@ function LocationDialog({ branch, onClose }: { branch: BranchRow; onClose: () =>
                     )}
 
                     <ul className="mt-3 max-h-[46svh] space-y-2 overflow-y-auto">
-                        {locations.map((l) => (
-                            <li key={l.name} className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-3">
-                                <p className="font-medium text-[#111]">{l.title}</p>
-                                {l.address && <p className="mt-0.5 text-[12px] text-[#6b7280]">{l.address}</p>}
+                        {[...locations].sort((a, b) => Number(same(b)) - Number(same(a))).map((l) => {
+                            const differs = !! branch.placeId && !! l.placeId && branch.placeId !== l.placeId;
 
-                                <div className="mt-2 flex justify-end">
-                                    <Button
-                                        size="sm"
-                                        loading={saving === l.name}
-                                        disabled={saving !== null}
-                                        onClick={() => {
-                                            setSaving(l.name);
-                                            router.post(
-                                                route('admin.integrations.googleBusiness.branch.link', branch.id),
-                                                { location: l.name, account: l.account },
-                                                {
-                                                    preserveScroll: true,
-                                                    onSuccess: onClose,
-                                                    onError: (e) => setError(e.location ?? null),
-                                                    onFinish: () => setSaving(null),
-                                                },
-                                            );
-                                        }}
-                                    >
-                                        {t('اختيار هذا الموقع')}
-                                    </Button>
-                                </div>
-                            </li>
-                        ))}
+                            return (
+                                <li key={l.name} className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-3">
+                                    <p className="flex flex-wrap items-center gap-2 font-medium text-[#111]">
+                                        {l.title}
+                                        {same(l) && (
+                                            <span
+                                                data-testid="gbp-location-match"
+                                                className="rounded-full bg-[#f0fdf4] px-2 py-0.5 text-[11px] font-medium text-[#166534]"
+                                            >
+                                                {t('يطابق هذا الفرع على الخرائط')}
+                                            </span>
+                                        )}
+                                    </p>
+                                    {l.address && <p className="mt-0.5 text-[12px] text-[#6b7280]">{l.address}</p>}
+                                    {/* وحسابُ الموقع يُسمّى: قد تتفرّق الفروع بين أكثر من حساب */}
+                                    {l.accountTitle && <p className="mt-0.5 text-[12px] text-[#9ca3af]">{l.accountTitle}</p>}
+
+                                    {confirming === l.name && (
+                                        <p className="mt-2 rounded-[10px] bg-[#fffbeb] p-2.5 text-[12px] text-[#92400e]">
+                                            {t('هذا الموقع ليس مكان هذا الفرع على الخرائط. تأكّد منه قبل ربطه.')}
+                                        </p>
+                                    )}
+
+                                    <div className="mt-2 flex justify-end">
+                                        <Button
+                                            size="sm"
+                                            loading={saving === l.name}
+                                            disabled={saving !== null}
+                                            onClick={() => {
+                                                if (differs && confirming !== l.name) {
+                                                    setConfirming(l.name);
+
+                                                    return;
+                                                }
+
+                                                link(l, differs);
+                                            }}
+                                        >
+                                            {t(confirming === l.name ? 'ربطه رغم ذلك' : 'اختيار هذا الموقع')}
+                                        </Button>
+                                    </div>
+                                </li>
+                            );
+                        })}
                     </ul>
                 </div>
             </DialogContent>

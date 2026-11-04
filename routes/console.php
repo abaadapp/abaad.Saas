@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\GoogleBusiness;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -101,6 +102,15 @@ Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
  * أو تبدّلت) يُوقف الإرسال حتى يُراجَع جديد. قراءاتٌ لا غير.
  */
 Schedule::command('whatsapp:own-billing')->dailyAt('06:30')->withoutOverlapping();
+
+/*
+ * تقييماتُ Google لكلّ متجرٍ ربط ملفَّه — كلّ ساعة.
+ *
+ * بلا هذا لا يصل الجرسَ تقييمٌ منخفض إلّا إن ضغط التاجر «سحب التقييمات»: أي حين
+ * يكون قد عرف. وقراءةٌ لا غير — الردُّ لا يخرج إلّا بقرار التاجر من شاشته.
+ */
+Schedule::command('google:sync-reviews')->hourlyAt(25)->withoutOverlapping()->runInBackground()
+    ->when(fn () => GoogleBusiness::configured());
 
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();

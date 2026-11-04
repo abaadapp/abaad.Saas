@@ -23,6 +23,7 @@ class GoogleBusinessAccount extends Model
         'linked_at' => 'datetime',
         'revoked_at' => 'datetime',
         'synced_at' => 'datetime',
+        'api_blocked_at' => 'datetime',
     ];
 
     protected $hidden = ['access_token', 'refresh_token'];

@@ -9,6 +9,8 @@ export interface BusinessGoogle {
         configured: boolean;
         connected: boolean;
         reconnect: boolean;
+        /** مشروعُ أبعاد عند Google لم يُعتمد — حالٌ لا رمزَ فيها */
+        apiBlocked?: boolean;
         locations: number;
         syncedAt: string | null;
         error: boolean;
@@ -72,6 +74,7 @@ export default function GoogleCard({ data }: { data: BusinessGoogle }) {
                                 ? t('انقطع الربط')
                                 : t('غير مربوط'),
                     )}
+                    {gbp.apiBlocked && row('واجهات Google', false, t('لم تُعتمد لأبعاد بعد'))}
                     {row('المواقع المربوطة', gbp.locations > 0, String(gbp.locations))}
                     {row('آخر سحب', !gbp.error && gbp.syncedAt !== null, gbp.error ? t('تعثّر') : (gbp.syncedAt ?? '—'))}
                 </dl>

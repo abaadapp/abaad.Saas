@@ -688,7 +688,7 @@ class RibbonController extends Controller
          * فالعلَمُ يُغلق ولا يفتح: «متوفّر» لا يتجاوز رفًّا فارغًا، و«نفدت»
          * تُغلق رفًّا عامرًا. والصفحةُ تبقى بصورتها وسعرها ووصفها.
          */
-        $available = (Shelf::availability($bid, [$p->id])[$p->id] ?? false) && ! $p->website_sold_out;
+        $available = (Shelf::availability($bid, [$p->id])[$p->id] ?? false) && ! WebsiteSoldOut::of($p);
         $currency = Storefront::currency($business);
         $giftCard = GiftCardProduct::is($bid, $p);
 
@@ -759,7 +759,7 @@ class RibbonController extends Controller
             // وصفحةُ الكرت نصُّه وحده — لا إضافاتٌ تُقترح معه
             'upsells' => $available && ! $giftCard
                 // وما نفدت كمّيّتُه لا يُقترح إضافةً بضغطة — يُرى في رفّه ولا يُدفع إليه
-                ? RibbonUpsells::for($bid, $p, $this->shown($bid)->where('website_sold_out', false))
+                ? RibbonUpsells::for($bid, $p, $this->shown($bid)->when(WebsiteSoldOut::allowed($bid), fn ($q) => $q->where('website_sold_out', false)))
                     ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + [
                         'sizes' => $this->sizes($u, $lang, $currency),
                         // وكرتُ الهدية إضافةً تُفتح له خانةُ نصّه — الحكمُ نفسُه الذي يسعّره
@@ -1272,7 +1272,7 @@ class RibbonController extends Controller
             'from' => $prices->count() > 1 && $prices->min() !== $prices->max(),
             'tint' => self::TINTS[$p->id % count(self::TINTS)],
             // و«نفدت الكمية» بيد صاحبه — يبقى في القائمة بشارته (`WebsiteSoldOut`)
-            'sold_out' => (bool) $p->website_sold_out,
+            'sold_out' => WebsiteSoldOut::of($p),
         ];
     }
 

@@ -19,6 +19,8 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\WebCheckout;
+use App\Support\WhatsAppOrderCatalog;
+use App\Support\WhatsAppOrderCheckout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -29,7 +31,8 @@ use Tests\TestCase;
  * «نفدت الكمية» بيد التاجر — يُرى الصنفُ في الموقع بشارته ولا يُطلب.
  *
  * ولا يمسّ المخزونَ ولا الصندوقَ ولا الطلباتِ السابقة ولا بطاقاتِ الفئات، ولا
- * يردّ دفعةً قُبضت. والخانةُ لمن يرسم موقعُه الشارة (`WebsiteSoldOut`).
+ * يردّ دفعةً قُبضت، ولا يمنع طلبَ واتساب. والخانةُ لمن في
+ * `storefront.website_sold_out_businesses` وحده — لا لمن لبس واجهةً خاصّة.
  */
 class ASoldOutProductIsShownButNotSoldTest extends TestCase
 {
@@ -66,6 +69,7 @@ class ASoldOutProductIsShownButNotSoldTest extends TestCase
             'name' => 'RIBBON', 'type' => 'محل ورد', 'status' => 'نشط',
             'site_slug' => 'ribbon', 'tier' => 'gold', 'storefront_theme' => 'ribbon',
         ]);
+        config(['storefront.website_sold_out_businesses' => [$this->shop->id]]);
         Currency::create(['business_id' => $this->shop->id, 'code' => 'OMR', 'name' => 'ريال', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
         Ledger::seedChart($this->shop->id);
         $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'بوشر']);
@@ -331,7 +335,7 @@ class ASoldOutProductIsShownButNotSoldTest extends TestCase
         $this->assertFalse((bool) $theirs->fresh()->website_sold_out);
     }
 
-    public function test_a_new_product_can_be_born_sold_out_only_where_the_site_draws_it(): void
+    public function test_a_new_product_can_be_born_sold_out_only_in_a_listed_shop(): void
     {
         $this->actingAs($this->owner)->post('/admin/products', ['name' => 'باقة العيد', 'price' => 30, 'website_sold_out' => '1'])
             ->assertSessionHasNoErrors();
@@ -340,10 +344,12 @@ class ASoldOutProductIsShownButNotSoldTest extends TestCase
         $this->actingAs($this->owner)->post('/admin/products', ['name' => 'باقة عادية', 'price' => 30])->assertSessionHasNoErrors();
         $this->assertFalse((bool) Product::where('business_id', $this->shop->id)->where('name', 'باقة عادية')->sole()->website_sold_out);
 
-        $this->shop->update(['storefront_theme' => null]);
-        $this->actingAs($this->owner)->post('/admin/products', ['name' => 'باقة بلا واجهة', 'price' => 30, 'website_sold_out' => '1'])
+        // وواجهةُ RIBBON باقيةٌ عليه — والقائمةُ وحدها تفتحها
+        config(['storefront.website_sold_out_businesses' => []]);
+        $this->assertSame('ribbon', $this->shop->fresh()->storefrontTheme());
+        $this->actingAs($this->owner)->post('/admin/products', ['name' => 'باقة خارج القائمة', 'price' => 30, 'website_sold_out' => '1'])
             ->assertSessionHasNoErrors();
-        $this->assertFalse((bool) Product::where('business_id', $this->shop->id)->where('name', 'باقة بلا واجهة')->sole()->website_sold_out);
+        $this->assertFalse((bool) Product::where('business_id', $this->shop->id)->where('name', 'باقة خارج القائمة')->sole()->website_sold_out);
     }
 
     public function test_the_full_form_keeps_the_state_unless_it_sends_it(): void
@@ -414,5 +420,120 @@ class ASoldOutProductIsShownButNotSoldTest extends TestCase
         $this->quote([$this->line(variant: $small->id)])->assertStatus(422)->assertJsonValidationErrors('items');
         $this->get('/s/ribbon/p/'.$this->bouquet->id)->assertOk()->assertSee('data-testid="rb-soldout-manual"', false)
             ->assertDontSee('data-testid="rb-add"', false);
+    }
+
+    /* ------------------------------ ١١) واتساب يبيعه كما كان ------------------------------ */
+
+    public function test_whatsapp_still_lists_and_orders_it_by_its_old_rules(): void
+    {
+        Http::fake();
+        $this->mark($this->bouquet, 'sold_out')->assertOk();
+        $cart = [['product_id' => $this->bouquet->id, 'variant_id' => null, 'qty' => 2]];
+
+        // يُعرض في قائمة المحادثة ويُختار بمعرّفه
+        $this->assertContains($this->bouquet->id, array_column(WhatsAppOrderCatalog::products($this->shop->id, $this->bags->id, 'ar'), 'id'));
+        $this->assertSame(1, collect(WhatsAppOrderCatalog::categories($this->shop->id, 'ar'))->firstWhere('id', $this->bags->id)['count'] ?? 0);
+        $this->assertNotNull(WhatsAppOrderCatalog::product($this->shop->id, $this->bouquet->id));
+
+        // ويُسعَّر بقاعدة الموقع بلا علَمه — والموقعُ في اللحظة نفسها يردّه
+        $quote = WhatsAppOrderCheckout::quote($this->shop, $cart, ['fulfil' => 'pickup']);
+        $this->assertSame([$this->bouquet->id], array_map(fn ($l) => (int) $l['product']->id, $quote['_lines']));
+        $this->assertEqualsWithDelta(40.0, (float) $quote['subtotal'], 0.0001);
+        $this->quote([$this->line()])->assertStatus(422)->assertJsonPath('sold_out', [$this->bouquet->id]);
+
+        // وقواعدُه السابقة باقيةٌ عليه: الرفُّ الفارغ والمخفيُّ يُردّان
+        $this->bouquet->update(['quantity' => 0]);
+        $this->assertRefused(fn () => WhatsAppOrderCheckout::quote($this->shop, $cart, ['fulfil' => 'pickup']), 'نفد من المتجر');
+        $this->bouquet->update(['quantity' => 10]);
+        $this->mark($this->bouquet, 'hidden')->assertOk();
+        $this->assertRefused(fn () => WhatsAppOrderCheckout::quote($this->shop, $cart, ['fulfil' => 'pickup']), 'لم يعد متاحًا');
+        $this->assertNull(WhatsAppOrderCatalog::product($this->shop->id, $this->bouquet->id));
+
+        // ولا رسالةَ تُرسل، ولا مخزونَ يتحرّك
+        Http::assertNothingSent();
+        $this->assertSame(10, (int) $this->bouquet->fresh()->quantity);
+    }
+
+    public function test_the_site_cannot_borrow_the_whatsapp_door(): void
+    {
+        $this->mark($this->bouquet, 'sold_out')->assertOk();
+        $smuggled = ['fromWhatsApp' => true, 'channel' => 'whatsapp', 'source' => 'whatsapp', '_fromWhatsApp' => true, 'whatsapp' => 1];
+
+        $this->postJson('/s/ribbon/quote', ['items' => [$this->line()], 'fulfil' => 'pickup'] + $smuggled)
+            ->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->postJson('/s/ribbon/checkout', $this->form([$this->line()]) + $smuggled)
+            ->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertRefused(fn () => WebCheckout::quote($this->shop, ['items' => [$this->line()], 'fulfil' => 'pickup'] + $smuggled), 'نفدت كميته');
+
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
+    }
+
+    private function assertRefused(callable $run, string $says): void
+    {
+        try {
+            $run();
+            $this->fail('كان يجب أن يُردّ');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString($says, (string) collect($e->errors())->flatten()->first());
+        }
+    }
+
+    /* ------------------------------ ١٢) القائمةُ تفتحها لا الواجهة ------------------------------ */
+
+    public function test_a_private_theme_alone_does_not_open_the_three_states(): void
+    {
+        $twin = Business::create([
+            'name' => 'متجرٌ بواجهة RIBBON', 'type' => 'محل ورد', 'status' => 'نشط',
+            'site_slug' => 'ribbon-twin', 'tier' => 'gold', 'storefront_theme' => 'ribbon',
+        ]);
+        Currency::create(['business_id' => $twin->id, 'code' => 'OMR', 'name' => 'ريال', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
+        $twinOwner = User::create([
+            'business_id' => $twin->id, 'name' => 'مالك التوأم', 'email' => 'soldout-twin@abaad.test',
+            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+        $theirs = Product::create([
+            'business_id' => $twin->id, 'name' => 'ورد', 'price' => 5, 'cost' => 1, 'quantity' => 3, 'active' => true, 'published' => true,
+        ]);
+        $this->assertSame('ribbon', $twin->storefrontTheme());
+
+        $this->mark($theirs, 'sold_out', $twinOwner)->assertNotFound();
+        $this->actingAs($twinOwner)->get('/admin/products/'.$theirs->id.'/edit')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('websiteStatus', null));
+        $this->actingAs($twinOwner)->get('/admin/products/create')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('websiteStatus', null));
+        $this->actingAs($twinOwner)->put('/admin/products/'.$theirs->id, ['name' => 'ورد', 'price' => 5, 'website_sold_out' => '1'])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($twinOwner)->post('/admin/products', ['name' => 'ورد جديد', 'price' => 5, 'website_sold_out' => '1'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(0, Product::where('business_id', $twin->id)->where('website_sold_out', true)->count());
+
+        // ويُفتح له بكتابته في القائمة — لا بشيءٍ سواها
+        config(['storefront.website_sold_out_businesses' => [$this->shop->id, $twin->id]]);
+        $this->mark($theirs, 'sold_out', $twinOwner)->assertOk();
+        $this->assertTrue((bool) $theirs->fresh()->website_sold_out);
+    }
+
+    public function test_leaving_the_list_brings_the_site_back_as_it_was(): void
+    {
+        $tagged = fn (bool $on) => fn ($page) => $page->where('products', fn ($rows) => collect($rows)->firstWhere('id', $this->bouquet->id)['website_sold_out'] === $on);
+        $this->mark($this->bouquet, 'sold_out')->assertOk();
+        $this->actingAs($this->owner)->get('/admin/products')->assertOk()->assertInertia($tagged(true));
+        config(['storefront.website_sold_out_businesses' => []]);
+
+        // العلَمُ باقٍ في عموده لا يُمحى — وأثرُه كلُّه يُرفع
+        $this->assertTrue((bool) $this->bouquet->fresh()->website_sold_out);
+        $this->get('/s/ribbon/shop')->assertOk()->assertSee('باقة الصيف')->assertDontSee('data-testid="rb-soldout-tag"', false);
+        $this->get('/s/ribbon/p/'.$this->bouquet->id)->assertOk()->assertSee('data-testid="rb-add"', false)
+            ->assertDontSee('data-testid="rb-soldout-manual"', false);
+        $this->quote([$this->line()])->assertOk();
+        $this->actingAs($this->owner)->get('/admin/products')->assertOk()->assertInertia($tagged(false));
+        $this->actingAs($this->owner)->get('/admin/products/'.$this->bouquet->id.'/edit')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('websiteStatus', null));
+        $this->mark($this->bouquet, 'available')->assertNotFound();
+
+        // وبعودته إليها يعود كما تركه صاحبُه
+        config(['storefront.website_sold_out_businesses' => [$this->shop->id]]);
+        $this->get('/s/ribbon/shop')->assertOk()->assertSee('data-testid="rb-soldout-tag"', false);
+        $this->quote([$this->line()])->assertStatus(422);
     }
 }

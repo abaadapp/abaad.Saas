@@ -63,10 +63,15 @@ class WhatsAppOrderCheckout
         ];
     }
 
-    /** تسعيرُ الموقع للسلّة — يرمي ما يرميه هناك (نفد، أُوقف، إضافةٌ مغلقة) */
+    /**
+     * تسعيرُ الموقع للسلّة — يرمي ما يرميه هناك (نفد، أُوقف، إضافةٌ مغلقة).
+     *
+     * إلّا «نفدت الكمية» اليدويّة: قرارُ الموقع وحده (`WebsiteSoldOut`)،
+     * والمحادثةُ تعرض الصنفَ وتبيعه كما كانت.
+     */
     public static function quote(Business $business, array $cart, array $details): array
     {
-        return WebCheckout::quote($business, self::payload($cart, $details));
+        return WebCheckout::quote($business, self::payload($cart, $details), fromWhatsApp: true);
     }
 
     /**

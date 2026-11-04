@@ -262,10 +262,17 @@ final class WebCheckout
      * تُقرأ في صفحة السلّة وصفحة إتمام الطلب معًا، وتُعاد قراءتُها عند
      * الإتمام تحت قفل. والخطأُ يُقال بندًا بندًا كما يقوله الصندوق.
      *
+     * ═══ و«نفدت الكمية» اليدويّة للموقع وحده ═══
+     *
+     * محادثةُ واتساب تسعّر من هنا (`WhatsAppOrderCheckout::quote`) فتمرّ
+     * `fromWhatsApp: true` — ويبقى عليها ما سواه كلُّه: المنشور، والرفّ،
+     * والإضافات. والقناةُ وسيطٌ يكتبه المنادي لا حقلٌ في الحمولة: لا يبلغه
+     * متصفّح، وكلُّ بابٍ للموقع ينادي بلا هذا الوسيط فيبقى ممنوعًا.
+     *
      * @param  array<string, mixed>  $payload  حمولةُ المتصفّح كما وصلت — لا يُوثَق بشكلها
      * @return array{lines: list<array>, subtotal: float, discount: float, delivery: float, tax: float, total: float, coupon: ?string, promo_error: ?string, free_over: ?float}
      */
-    public static function quote(Business $business, array $payload, bool $lock = false, bool $settling = false): array
+    public static function quote(Business $business, array $payload, bool $lock = false, bool $settling = false, bool $fromWhatsApp = false): array
     {
         $bid = (int) $business->id;
         $items = self::items($payload['items'] ?? []);
@@ -282,7 +289,7 @@ final class WebCheckout
          * كما لا يردّه إغلاقُ الاستقبال (`accepts`). والرفُّ يُفحص كما كان.
          */
         $lines = $sale->priceItems($items, $lock, $settling ? SaleLines::SETTLING : SaleLines::WEBSITE);
-        self::assertPublished($bid, $lines, $settling);
+        self::assertPublished($bid, $lines, $settling, $fromWhatsApp);
 
         /*
          * ═══ وإضافةٌ نفد رفُّها تُقال قبل صفحة البنك ═══
@@ -1100,7 +1107,7 @@ final class WebCheckout
      *
      * إلّا دفعةً قُبضت (`$settling`): عُرض حين فُتح دفعُها — انظر `quote`.
      */
-    private static function assertPublished(int $bid, array $lines, bool $settling = false): void
+    private static function assertPublished(int $bid, array $lines, bool $settling = false, bool $fromWhatsApp = false): void
     {
         $ids = collect($lines)->map(fn ($l) => $l['product']?->id)->filter()->unique()->values();
         $shown = $settling
@@ -1117,8 +1124,11 @@ final class WebCheckout
          *
          * من سلّةٍ قديمة، أو بطلبٍ يتجاوز الصفحة، أو قبل صفحة البنك: كلُّها
          * تمرّ من هنا. ودفعةٌ قُبضت لا تُردّ به — كالمخفيّ فوقه سواء.
+         *
+         * وطلبُ واتساب لا يُردّ به: العلَمُ قرارُ الموقع، والمحادثةُ تبيع
+         * بقواعدها كما كانت — انظر `quote`.
          */
-        if (! $settling) {
+        if (! $settling && ! $fromWhatsApp && WebsiteSoldOut::allowed($bid)) {
             $out = Product::where('business_id', $bid)->whereIn('id', $ids)->where('website_sold_out', true)->pluck('id')->all();
 
             foreach ($lines as $l) {

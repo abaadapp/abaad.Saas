@@ -2,7 +2,6 @@
 
 namespace App\Support\Store;
 
-use App\Models\Business;
 use App\Models\Product;
 
 /**
@@ -12,15 +11,21 @@ use App\Models\Product;
  *  • `sold_out`  — «نفدت الكمية»: يُعرض بصورته وسعره وشارته، ولا يُطلب.
  *  • `hidden`    — لا يُعرض في الموقع: `published` نفسُه، بمعناه القائم.
  *
- * ═══ ولمَ الواجهةُ الخاصّة وحدها اليوم ═══
+ * ═══ ولمن تُفتح ═══
  *
- * RIBBON (`Store\RibbonController`) يُبقي الصنفَ في القوائم بشارته ويُغلق
- * زرَّ إضافته. والصفحةُ البسيطة والبانِي لا يعرفان الشارة بعد: صنفٌ يُرى
- * قابلًا للشراء ثمّ يُردّ عند الإتمام أسوأُ من خانةٍ لا تظهر. فتُفتح الخانةُ
- * لمن لبس واجهةً خاصّة، وتُفتح لغيره يوم يرسمها موقعُه — هنا لا في كلّ شاشة.
+ * لمن في `storefront.website_sold_out_businesses` وحده، بمعرّفه — متجرُ سعود
+ * (RIBBON، `businesses.id = 5`) اليوم. ولبسُ واجهةٍ خاصّة لا يفتحها: قرارٌ
+ * يُكتب هناك لا يُستنتج من القالب.
  *
- * والإتمامُ يُطيع العمودَ لكلّ متجر (`WebCheckout::assertPublished`): الحمايةُ
- * لا تُشترط بالواجهة، والخانةُ وحدها تُشترط.
+ * والقائمةُ تفتح الأثرَ كلَّه لا الخانةَ وحدها: الشارةُ في الموقع، والردُّ عند
+ * إتمامه، ووسمُ قائمة المنتجات. فمن خرج منها عاد موقعُه كما كان ولو بقي
+ * علَمٌ في عموده — لا صنفَ يُردّ بخانةٍ لا يجدها صاحبُه ليُعيده.
+ *
+ * ═══ والموقعُ وحده ═══
+ *
+ * واتساب يعرض الصنفَ ويبيعه كما كان (`WhatsAppOrderCatalog`
+ * و`WhatsAppOrderCheckout::quote`): يُسعَّر بقاعدة الموقع بلا هذا العلَم،
+ * ويبقى عليه الرفُّ والنشرُ والإضافات.
  *
  * ═══ ولا مخزونَ هنا ═══
  *
@@ -39,7 +44,13 @@ final class WebsiteSoldOut
 
     public static function allowed(int $businessId): bool
     {
-        return Business::find($businessId)?->storefrontTheme() !== null;
+        return in_array($businessId, array_map('intval', (array) config('storefront.website_sold_out_businesses', [])), true);
+    }
+
+    /** أنفدت كمّيّتُه في الموقع الآن؟ — علَمُه، في متجرٍ فُتحت له الخانة */
+    public static function of(Product $product): bool
+    {
+        return (bool) $product->website_sold_out && self::allowed((int) $product->business_id);
     }
 
     /**
@@ -53,7 +64,7 @@ final class WebsiteSoldOut
             ->map(fn ($i) => is_array($i) ? (int) ($i['id'] ?? 0) : 0)
             ->filter()->unique()->values()->all();
 
-        if ($ids === []) {
+        if ($ids === [] || ! self::allowed($businessId)) {
             return [];
         }
 

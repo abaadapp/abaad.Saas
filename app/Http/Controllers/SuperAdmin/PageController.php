@@ -665,6 +665,7 @@ class PageController extends Controller
                 'gbpConfigured' => GoogleBusiness::configured(),
                 'gbpConnected' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('refresh_token')->count(),
                 'gbpErrors' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('last_error')->count(),
+                'gbpBlocked' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('api_blocked_at')->count(),
             ],
             /*
              * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.

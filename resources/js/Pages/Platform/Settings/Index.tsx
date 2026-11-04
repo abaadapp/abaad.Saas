@@ -147,6 +147,7 @@ export default function PlatformSettings() {
                 gbpConfigured?: boolean;
                 gbpConnected?: number;
                 gbpErrors?: number;
+                gbpBlocked?: number;
             };
         }>>().props;
     const t = useTranslate();
@@ -1110,6 +1111,11 @@ export default function PlatformSettings() {
                                             : t('عميل OAuth للمنصة غير مهيّأ — اضبط GOOGLE_BUSINESS_CLIENT_ID وGOOGLE_BUSINESS_CLIENT_SECRET وGOOGLE_BUSINESS_REDIRECT على الخادم.')}
                                     </li>
                                     <li>{t(':n متجرًا ربط حسابه في Google.', { n: googleHealth.gbpConnected ?? 0 })}</li>
+                                    {(googleHealth.gbpBlocked ?? 0) > 0 && (
+                                        <li className="font-medium text-[#b91c1c]">
+                                            {t('Google لم تعتمد واجهات Business Profile لمشروع أبعاد — :n متجرًا ينتظر.', { n: googleHealth.gbpBlocked ?? 0 })}
+                                        </li>
+                                    )}
                                     {(googleHealth.gbpErrors ?? 0) > 0 && (
                                         <li className="text-[#b45309]">
                                             {t(':n متجرًا آخر سحبٍ له تعثّر.', { n: googleHealth.gbpErrors ?? 0 })}

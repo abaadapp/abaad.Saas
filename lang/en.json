@@ -10471,5 +10471,22 @@
     "تعذّر حفظ حالة المنتج — لم يتغيّر شيء.": "Couldn’t save the product status — nothing changed.",
     "تعذّر الاتصال بالخادم — لم يتغيّر شيء.": "Couldn’t reach the server — nothing changed.",
     "يُحفظ فور اختياره ويظهر في الموقع مباشرة — بلا تغيير في المخزون.": "Saved as soon as you choose it and shown on the website right away — stock isn’t changed.",
-    "«:name» نفدت كميته — أزله من سلّتك ثمّ أكمل الطلب.": "“:name” is sold out — remove it from your cart, then complete your order."
+    "«:name» نفدت كميته — أزله من سلّتك ثمّ أكمل الطلب.": "“:name” is sold out — remove it from your cart, then complete your order.",
+    "لوحة التحكم والتقارير": "Dashboard & reports",
+    "الفواتير والتحصيل": "Invoices & collections",
+    "الرواتب والموظفون": "Payroll & staff",
+    "التسويق والموقع الإلكتروني": "Marketing & website",
+    "الإعدادات والتطبيقات التكاملية": "Settings & integrations",
+    "تحويلات الفروع والتزويد": "Branch transfers & supply",
+    "المصاريف والعمليات المالية": "Expenses & finance",
+    "المختارة": "Selected",
+    "الحساسة": "Sensitive",
+    "ابحث عن صلاحية أو قسم": "Search a permission or section",
+    "تصفية الصلاحيات": "Filter permissions",
+    "المختارة :count من :total": "Selected :count of :total",
+    "الأفعال الحسّاسة تُمنح واحدًا واحدًا — لا يشملها «تحديد الكل».": "Sensitive actions are granted one by one — “Select all” never includes them.",
+    "لا صلاحية تطابق بحثك.": "No permission matches your search.",
+    "تحديد كل أقسام «:group»": "Select every section in “:group”",
+    "إلغاء تحديد أقسام «:group»": "Clear the sections in “:group”",
+    "صلاحيات «:group»": "Permissions in “:group”"
 }

@@ -12,6 +12,7 @@ import {
     Monitor,
     RefreshCw,
     Save,
+    Search,
     Smartphone,
     Tablet,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ import ShelfOrderPanel, { type ShelfOrderSeed } from './theme/ShelfOrderField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 import VisualBarField from './theme/VisualBarField';
+import { EDITOR_TABS, type EditorTabId, searchable, tabOf } from './theme/editorTabs';
 
 /** صفحةٌ من صفحات القالب الأربع — كما تقرؤها `StoreNav::rows` */
 export interface EditorPage {
@@ -277,6 +279,26 @@ export default function ThemeEditor({
         فتُفتح عليه: البندُ الذي قاد إلى هنا لا يقود إلى صفٍّ مخفيّ.
     */
     const [showAdvanced, setShowAdvanced] = useState(() => open !== null && rows.some((r) => r.key === open && r.group === 'advanced'));
+
+    /*
+        ═══ والشاشةُ المبسّطة بالتبويبات — لمتجرٍ في قائمة لوحتي الفئات وحده ═══
+
+        تُفتح لمن تصله لوحتا الفئات و«وصل حديثًا» (`catalogTools`، أي
+        `storefront.ribbon_catalog_editor_businesses`) — ومن سواه يرى القائمةَ
+        كما كانت حرفًا. والقائمةُ في الخادم لا في الشاشة: حمولةٌ لا تصل لا
+        يُرسم لها شيء. وليست حمايةً — كلُّ حفظٍ يمرّ بالباب نفسِه ومتجرِ صاحبه.
+
+        والتبويبُ يختار ما يُرسم ولا يمسّ النموذج: ما كُتب في تبويبٍ يبقى في
+        `form.data` حين يُفتح غيره، و«احفظ» في كلّ صفٍّ يحفظ مفاتيحَه وحدها.
+        ويُفتح على تبويب الصفّ الذي جاء به الرابط (`?row=cats`).
+    */
+    const simple = catalogTools !== null;
+    const [tab, setTab] = useState<EditorTabId>(() => {
+        const r = rows.find((x) => x.key === open);
+
+        return r ? tabOf(r) : 'home';
+    });
+    const [query, setQuery] = useState('');
     const [status, setStatus] = useState<Status>('clean');
     const [frame, setFrame] = useState(0);
 
@@ -1240,6 +1262,179 @@ export default function ThemeEditor({
     const head = advanced.find((r) => r.key === 'head');
     const tail = advanced.filter((r) => r.key !== 'head');
 
+    /*
+        ═══ الشاشةُ المبسّطة: تبويباتٌ وبطاقات — والصفُّ نفسُه (`row`) في كلّ بطاقة ═══
+
+        لا صفَّ يُرسم مرّتين ولا صفَّ يُسقط: الأقسامُ التي تُرتَّب في «الرئيسية»
+        بترتيبها (`movable`)، والثابتةُ في تبويباتها (`tabOf`)، والبحثُ يعرض
+        المطابِقَ مكانَ التبويب لا إلى جانبه.
+    */
+    const CARDS = 'space-y-3 [&>li]:overflow-hidden [&>li]:rounded-[14px] [&>li]:border [&>li]:border-[var(--ui-border,#e8e8e8)]';
+    const needle = searchable(query);
+    const found = needle
+        ? rows.filter((r) =>
+              searchable([t(r.label), t(r.hint), ...r.fields.flatMap((f) => [t(f.label), f.hint ? t(f.hint) : ''])].join(' ')).includes(needle),
+          )
+        : [];
+    const fixedIn = (id: EditorTabId) => rows.filter((r) => r.fixed && tabOf(r) === id);
+    const tabUnsaved = (id: EditorTabId) => rows.filter((r) => tabOf(r) === id && rowDirty(r)).length;
+    const doors = pages.filter((p) => p.key !== 'home' && p.on && p.blocked === null && PAGE_DOOR[p.key]);
+
+    const tabsBar = (
+        <div className="mb-4 space-y-3">
+            <div
+                role="tablist"
+                aria-label={t('أبواب محرّر الموقع')}
+                data-testid="editor-tabs"
+                className="flex gap-1 overflow-x-auto rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1"
+            >
+                {EDITOR_TABS.map((tb) => {
+                    const on = ! needle && tab === tb.id;
+                    const n = tabUnsaved(tb.id);
+
+                    return (
+                        <button
+                            key={tb.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={on}
+                            data-testid={`tab-${tb.id}`}
+                            onClick={() => {
+                                setTab(tb.id);
+                                setQuery('');
+                            }}
+                            className={cn(
+                                'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3 py-2 text-[13px] transition-colors',
+                                on ? 'bg-[#111] font-semibold text-white' : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111]',
+                            )}
+                        >
+                            {t(tb.label)}
+                            {/* وتبويبٌ فيه ما لم يُحفظ يقول ذلك قبل أن يُفتح */}
+                            {n > 0 && (
+                                <span
+                                    data-testid={`tab-${tb.id}-unsaved`}
+                                    title={t('غير محفوظ')}
+                                    className="size-2 shrink-0 rounded-full bg-[#f59e0b]"
+                                />
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+            <div className="relative w-full max-w-md">
+                <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-[#9ca3af]" />
+                <Input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={t('ابحث عن قسم أو حقل — مثل «التذييل» أو «واتساب»')}
+                    aria-label={t('ابحث في أقسام المحرّر')}
+                    data-testid="editor-search"
+                    className="ps-9"
+                />
+            </div>
+        </div>
+    );
+
+    const simpleColumn = (
+        <div className="xl:order-2" role="tabpanel" data-testid={`tabpanel-${needle ? 'search' : tab}`}>
+            {needle ? (
+                found.length === 0 ? (
+                    <p data-testid="editor-search-empty" className="rounded-[14px] border border-dashed border-[var(--ui-border,#e8e8e8)] px-4 py-6 text-center text-[13px] text-[#6b7280]">
+                        {t('لا قسمَ ولا حقلَ يطابق بحثك.')}
+                    </p>
+                ) : (
+                    EDITOR_TABS.map((tb) => {
+                        const hits = found.filter((r) => tabOf(r) === tb.id);
+
+                        return hits.length === 0 ? null : (
+                            <section key={tb.id} className="mb-4" data-testid={`search-group-${tb.id}`}>
+                                <h3 className="mb-2 text-[12px] font-semibold text-[#6b7280]">{t(tb.label)}</h3>
+                                <ul className={CARDS}>{hits.map(row)}</ul>
+                            </section>
+                        );
+                    })
+                )
+            ) : (
+                <>
+                    <p className="mb-3 text-[12px] leading-relaxed text-[#6b7280]">{t(EDITOR_TABS.find((x) => x.id === tab)!.hint)}</p>
+
+                    {fixedIn(tab).length > 0 && (
+                        <ul className={CARDS} data-testid={`rows-${tab}`}>
+                            {fixedIn(tab).map(row)}
+                        </ul>
+                    )}
+
+                    {tab === 'home' && (
+                        <>
+                            <h3 className="mb-1 mt-5 text-[13px] font-bold text-[#111]">{t('أقسام الصفحة الرئيسية')}</h3>
+                            <p className="mb-3 text-[12px] leading-relaxed text-[#6b7280]">{t('بترتيب ظهورها لزبونك — السهمان يرتّبان، والعين تُظهر القسم وتُخفيه.')}</p>
+                            <ul className={CARDS} data-testid="rows-sections">
+                                {movable.map((k) => {
+                                    const r = byKey.get(k);
+
+                                    return r ? row(r) : null;
+                                })}
+                            </ul>
+                            {last && (
+                                <p data-testid="last-section" className="mt-3 text-[12px] leading-relaxed text-[#6b7280]">
+                                    {t('لا تُطفأ كلُّها — صفحةٌ بلا قسمٍ واحد تعود إلى ترتيبها الأصليّ.')}
+                                </p>
+                            )}
+                        </>
+                    )}
+
+                    {/* والصفحاتُ الثابتة تُكتب في أبوابها — يُقال أين، ولا تُنسخ حقولُها إلى هنا */}
+                    {tab === 'pages' && doors.length > 0 && (
+                        <div data-testid="pages-doors" className="mt-4 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white px-4 py-3">
+                            <p className="text-[13px] font-semibold text-[#111]">{t('صفحات متجرك الثابتة')}</p>
+                            <ul className="mt-2 divide-y divide-[var(--ui-border,#e8e8e8)] text-[13px]">
+                                {doors.map((p) => (
+                                    <li key={p.key} className="flex items-center justify-between gap-3 py-2">
+                                        <span className="text-[#374151]">{t(PAGE_DOOR[p.key].label)}</span>
+                                        {p.key === 'about' && byKey.has('about') ? (
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 font-medium text-[#111] underline"
+                                                onClick={() => {
+                                                    setTab('home');
+                                                    setOpen('about');
+                                                }}
+                                            >
+                                                {t('نبذتُها في قسم «عنّا»')}
+                                                <ChevronLeft className="size-3.5" />
+                                            </button>
+                                        ) : (
+                                            <Link href={route(PAGE_DOOR[p.key].route)} className="inline-flex items-center gap-1 font-medium text-[#111] underline">
+                                                {t(p.key === 'shop' ? 'منتجاتك وفئاتك' : 'بيانات النشاط')}
+                                                <ChevronLeft className="size-3.5" />
+                                            </Link>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* ولا مقبضَ للشعار والألوان في النظام — يُقال، ولا يُخترع حقل */}
+                    {tab === 'identity' && (
+                        <p data-testid="identity-note" className="mt-4 rounded-[14px] bg-[#f9fafb] px-4 py-3 text-[12px] leading-relaxed text-[#6b7280] ring-1 ring-[var(--ui-border,#e8e8e8)]">
+                            {t('شعارُ :name وألوانُه وخطوطُه جزءٌ من قالب متجرك — ثابتةٌ لا تُعدَّل من هنا. وصورةُ الواجهة وصورةُ الشريط في «الرئيسية والأقسام»، كلٌّ في قسمها.', { name: shell.name })}
+                        </p>
+                    )}
+                </>
+            )}
+
+            <p className="mt-4 flex flex-wrap items-center gap-1.5 text-[13px] text-[#6b7280]">
+                {t('والدفعُ والتوصيلُ في')}
+                <Link href={route('admin.website.shop')} className="inline-flex items-center gap-1 font-medium text-[#111] underline">
+                    {t('المتجر والطلبات')}
+                    <ChevronLeft className="size-3.5" />
+                </Link>
+            </p>
+        </div>
+    );
+
     return (
         <AdminLayout title="الموقع الإلكتروني">
             {/*
@@ -1337,10 +1532,10 @@ export default function ThemeEditor({
                     className="flex overflow-hidden rounded-[8px] border border-[var(--ui-border,#e8e8e8)] sm:mx-auto"
                 >
                     {([
-                        ['desktop', Monitor, 'عرض الكمبيوتر'],
-                        ['tablet', Tablet, 'عرض التابلت'],
-                        ['phone', Smartphone, 'عرض الجوال'],
-                    ] as const).map(([key, Icon, label]) => (
+                        ['desktop', Monitor, 'عرض الكمبيوتر', 'كمبيوتر'],
+                        ['tablet', Tablet, 'عرض التابلت', 'تابلت'],
+                        ['phone', Smartphone, 'عرض الجوال', 'جوال'],
+                    ] as const).map(([key, Icon, label, short]) => (
                         <button
                             key={key}
                             type="button"
@@ -1349,11 +1544,13 @@ export default function ThemeEditor({
                             aria-label={t(label)}
                             data-testid={'preview-' + key}
                             className={cn(
-                                'px-2.5 py-1.5',
+                                'flex items-center gap-1.5 px-2.5 py-1.5',
                                 size === key ? 'bg-[#111] text-white' : 'text-[#6b7280]',
                             )}
                         >
                             <Icon className="size-3.5" />
+                            {/* وفي الشاشة المبسّطة اسمُ المقاس مكتوبٌ إلى جانب رمزه */}
+                            {simple && <span className="text-[12px]">{t(short)}</span>}
                         </button>
                     ))}
                 </div>
@@ -1393,7 +1590,10 @@ export default function ThemeEditor({
                 والعتبةُ `xl` لا `lg`: بين الألف والألفِ ومئتين لا يتّسع
                 الصفُّ لعمودَين، فتنزل اللوحةُ تحت المعاينة بعرضها كاملًا.
             */}
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            {simple && tabsBar}
+
+            <div className={cn('grid grid-cols-1 gap-5', simple ? 'xl:grid-cols-[minmax(0,1fr)_400px]' : 'xl:grid-cols-[minmax(0,1fr)_340px]')}>
+                {simple ? simpleColumn : (
                 <div className="xl:order-2">
                     <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]" data-testid="rows-main">
                         {main.map(row)}
@@ -1449,6 +1649,7 @@ export default function ThemeEditor({
                         </Link>
                     </p>
                 </div>
+                )}
 
                 {/* والمعاينةُ صفحتُه نفسُها في إطار — لا رسمٌ يشبهها */}
                 <div className="xl:order-1 xl:sticky xl:top-4 xl:self-start">

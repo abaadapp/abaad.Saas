@@ -307,4 +307,29 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
         config(['storefront.subdomain_redirect_status' => 301]);
         $this->get('https://app.abaadapp.om/s/bloom/shop')->assertOk();
     }
+
+    /**
+     * والتحويلُ على أبواب صفحات المتجر الأربعة وحدها، بـGET وHEAD وحدهما.
+     *
+     * فلا يقع على API ولا على إشعارات Paymob وواتساب ولا على POST — اليومَ ولا
+     * يوم يُضاف مسارٌ إلى المجموعة بغير قصد.
+     */
+    public function test_the_door_sits_on_the_four_store_pages_only_and_on_get_only(): void
+    {
+        $carrying = [];
+
+        foreach (Route::getRoutes()->getRoutes() as $route) {
+            if (in_array(StoreLivesOnItsSubdomain::class, $route->gatherMiddleware(), true)) {
+                $carrying[(string) $route->getName()] = $route->methods();
+            }
+        }
+
+        ksort($carrying);
+        $this->assertSame([
+            'store.show' => ['GET', 'HEAD'],
+            'store.show.page' => ['GET', 'HEAD'],
+            'store.show.sitemap' => ['GET', 'HEAD'],
+            'store.show.sitemap.part' => ['GET', 'HEAD'],
+        ], $carrying);
+    }
 }

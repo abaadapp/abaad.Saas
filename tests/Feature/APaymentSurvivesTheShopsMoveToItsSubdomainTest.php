@@ -150,6 +150,44 @@ class APaymentSurvivesTheShopsMoveToItsSubdomainTest extends TestCase
     }
 
     /**
+     * وصفحةُ الدفع نفسُها لا تتغيّر — ما يُرسَل إلى Paymob قبل النقل وبعده سواء
+     * إلّا عنوانَ العودة.
+     *
+     * صفحةُ Paymob المستضافة نفسُها، بالمفتاح العامّ نفسِه، وطرقُ الدفع نفسُها
+     * (البطاقة وOmanNet وApple Pay)، والإشعارُ إلى النظام نفسِه.
+     */
+    public function test_the_payment_page_and_all_sent_to_paymob_stay_the_same_except_the_return_address(): void
+    {
+        PaymentGateway::where('business_id', $this->ribbon->id)->update(['omannet_integration_id' => '5550001', 'apple_pay_integration_id' => '5550002']);
+
+        $page = fn (string $checkout) => (string) $this->postJson($checkout, [
+            'items' => [['id' => (int) Product::where('business_id', $this->ribbon->id)->value('id'), 'qty' => 1]],
+            'name' => 'زبون تجربة', 'phone' => '95259066', 'fulfil' => 'pickup', 'date' => '2027-02-12', 'pay' => 'card',
+        ])->assertOk()->json('redirect');
+        $sent = fn () => Http::recorded(fn (Sent $r) => str_contains($r->url(), '/v1/intention/'))->last()[0];
+
+        $beforePage = $page('https://app.abaadapp.om/s/ribbon/checkout');
+        $before = $sent()->data();
+        $beforeHeaders = $sent()->headers();
+
+        $this->move();
+
+        $afterPage = $page('https://ribbon.abaadapp.om/checkout');
+        $after = $sent()->data();
+
+        $this->assertSame('https://oman.paymob.com/unifiedcheckout/?publicKey=pk_test_ribbon&clientSecret=csk_x', $beforePage);
+        $this->assertSame($beforePage, $afterPage, 'تغيّرت صفحةُ الدفع');
+        $this->assertSame([4569876, 5550001, 5550002], $after['payment_methods']);
+        $this->assertSame($beforeHeaders['Authorization'], $sent()->headers()['Authorization']);
+
+        $this->assertStringStartsWith('https://app.abaadapp.om/s/ribbon/paying/web-', $before['redirection_url']);
+        $this->assertStringStartsWith('https://ribbon.abaadapp.om/paying/web-', $after['redirection_url']);
+
+        $same = fn (array $d) => array_diff_key($d, array_flip(['redirection_url', 'special_reference']));
+        $this->assertSame($same($before), $same($after), 'تغيّر ما يُرسَل إلى Paymob غيرَ عنوان العودة');
+    }
+
+    /**
      * دفعةٌ فُتحت قبل النشر، ونجحت، وعاد صاحبُها بعده.
      *
      * عنوانُ العودة كُتب لـPaymob على `/s/ribbon` لأنّ النقلَ لم يقع بعد. فيصل

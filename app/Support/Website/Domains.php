@@ -387,6 +387,49 @@ final class Domains
         return in_array($businessId, array_map('intval', (array) config('storefront.subdomain_businesses', [])), true);
     }
 
+    /**
+     * جسرُ السلّة القديمة — من أين تُقرأ، وإلى أين تُرسَل، وعنوانُ صفحتها.
+     *
+     * سلّةُ RIBBON في متصفّح الزبون (`localStorage`) وتخصّ العنوانَ الذي كُتبت
+     * عليه. فمن ملأها على `app.abaadapp.om/s/ribbon` ثمّ نُقل المتجرُ إلى نطاقه
+     * يجدها فارغةً هناك. فيفتح النطاقُ صفحةً صغيرةً مخفيّةً من العنوان القديم
+     * مرّةً واحدة، تقرأ السلّةَ وترسلها إليه وحده (`StoreOldCartBridgeController`).
+     *
+     * لمتجرٍ نُقل إلى نطاقه (`movedToSubdomain`) وحده، وأصلُه عنوانٌ آمن غيرُ
+     * عنوان النظام — وإلّا `null`.
+     *
+     * @return array{from: string, to: string, url: string}|null
+     */
+    public static function oldCartBridge(int $businessId, ?string $slug): ?array
+    {
+        $slug = Storefront::slug((string) $slug);
+
+        if ($slug === null || ! self::movedToSubdomain($businessId)) {
+            return null;
+        }
+
+        $to = self::origin((string) self::canonical($businessId, $slug));
+        $from = self::origin((string) config('app.url'));
+
+        if ($to === null || $from === null || $to === $from || ! str_starts_with($to, 'https://')) {
+            return null;
+        }
+
+        return ['from' => $from, 'to' => $to, 'url' => $from.'/storefront/cart-bridge/'.$businessId];
+    }
+
+    /** `https://host[:port]` من عنوانٍ كامل — أو `null` */
+    private static function origin(string $url): ?string
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            return null;
+        }
+
+        return strtolower($parts['scheme']).'://'.strtolower($parts['host']).(isset($parts['port']) ? ':'.$parts['port'] : '');
+    }
+
     /* ────────────────────────────── العنوان ────────────────────────────── */
 
     /**

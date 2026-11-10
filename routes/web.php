@@ -105,6 +105,7 @@ use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Admin\Finance\PaymentLinkController;
 use App\Http\Controllers\Store\SitemapController;
 use App\Http\Controllers\Store\StorefrontController;
+use App\Http\Controllers\Store\StoreOldCartBridgeController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\AddonController as SubscriptionAddonCatalogController;
 use App\Http\Controllers\SuperAdmin\BillingController;
@@ -2313,6 +2314,13 @@ Route::middleware(StoreLivesOnItsSubdomain::class)->group(function () {
         ->where('path', Storefront::PATH)->name('store.show.page');
 });
 // والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
+/*
+ * جسرُ السلّة القديمة — صفحةٌ مخفيّةٌ على عنوان النظام يؤطّرها نطاقُ متجرٍ نُقل إليه،
+ * فتقرأ سلّةَ زبونه القديمة وترسلها إليه مرّةً. انظر `Domains::oldCartBridge`.
+ */
+Route::get('/storefront/cart-bridge/{business}', StoreOldCartBridgeController::class)
+    ->whereNumber('business')->middleware('throttle:60,1')->name('store.cart-bridge');
+
 Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])
     ->middleware('throttle:60,1')->name('store.show.quote');
 Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])

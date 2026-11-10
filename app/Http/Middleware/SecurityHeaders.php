@@ -37,7 +37,16 @@ class SecurityHeaders
         $response = $next($request);
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+
+        /*
+         * إلّا صفحةً سمّت بنفسها من يؤطّرها (`frame-ancestors`) — وهي اليوم
+         * جسرُ السلّة وحده (`StoreOldCartBridgeController`)، يؤطّره نطاقُ
+         * متجرٍ واحد. وSAMEORIGIN معها يمنع ما أذنت به؛ والقاعدةُ أنّ
+         * `frame-ancestors` إذا حضر فهو الحاكم.
+         */
+        if (! str_contains((string) $response->headers->get('Content-Security-Policy'), 'frame-ancestors')) {
+            $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+        }
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
         if ($request->secure()) {

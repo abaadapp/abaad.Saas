@@ -215,7 +215,7 @@ describe('محرّر الواجهة بالتبويبات', () => {
                 for (const f of r.fields) fireEvent.change(screen.getByLabelText(f.label), { target: { value: `قيمة ${f.key}` } });
                 posted.mockClear();
                 fireEvent.click(screen.getByTestId(`row-${r.key}-save`));
-                out[r.key] = posted.mock.calls.map((c) => [c[0], c[1]]);
+                out[r.key] = posted.mock.calls.map((c: unknown[]) => [c[0], c[1]]);
                 expect(posted).toHaveBeenCalledTimes(1);
                 // والحفظُ لا يكتمل هنا (مُعترَض) — يُنهى كما ينتهي، فيُرسَل الصفُّ التالي وحده
                 const options = posted.mock.calls[0]?.[2] as { onFinish?: () => void } | undefined;

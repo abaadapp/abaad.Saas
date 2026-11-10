@@ -1319,7 +1319,7 @@ export default function ThemeEditor({
                 role="tablist"
                 aria-label={t('أبواب محرّر الموقع')}
                 data-testid="editor-tabs"
-                className="grid grid-cols-2 gap-1 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1 sm:grid-cols-3 xl:flex xl:overflow-x-auto"
+                className="no-scrollbar grid grid-cols-2 gap-1 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1 sm:grid-cols-3 xl:flex xl:overflow-x-auto"
             >
                 {EDITOR_TABS.map((tb) => {
                     const on = ! needle && tab === tb.id;

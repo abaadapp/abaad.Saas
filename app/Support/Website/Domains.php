@@ -360,9 +360,31 @@ final class Domains
             return null;
         }
 
-        return config('storefront.subdomains')
+        return self::subdomainServed($businessId)
             ? 'https://'.self::platformHost($slug)
             : Storefront::fallbackUrl($slug);
+    }
+
+    /**
+     * أيخدم الخادمُ نطاقَ هذا المتجر الفرعيَّ؟ — للجميع بالعلَم، أو له وحده بالقائمة.
+     *
+     * انظر `storefront.subdomain_businesses`: متجرٌ ضُبط له سجلُّ DNS وشهادةٌ
+     * قبل أن يُرفع العلَمُ للكلّ.
+     */
+    public static function subdomainServed(int $businessId): bool
+    {
+        return (bool) config('storefront.subdomains') || self::movedToSubdomain($businessId);
+    }
+
+    /**
+     * أنُقل هذا المتجرُ إلى نطاقه الفرعيّ فيُحوَّل إليه بابُه البديل؟ — بالقائمة وحدها.
+     *
+     * والعلَمُ العامّ (`storefront.subdomains`) لا يحوّل: يكتب `canonical` على
+     * النطاق ويُبقي `/s/اسمه` يخدم كما كان. والتحويلُ قرارٌ لكلّ متجرٍ باسمه.
+     */
+    public static function movedToSubdomain(int $businessId): bool
+    {
+        return in_array($businessId, array_map('intval', (array) config('storefront.subdomain_businesses', [])), true);
     }
 
     /* ────────────────────────────── العنوان ────────────────────────────── */

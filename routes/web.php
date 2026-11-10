@@ -129,6 +129,7 @@ use App\Http\Controllers\SupportAttachmentController;
 use App\Http\Controllers\WebsiteContactController;
 use App\Http\Controllers\WhatsApp\WebhookController;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\StoreLivesOnItsSubdomain;
 use App\Support\Permissions;
 use App\Support\Storefront;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -2298,12 +2299,19 @@ Route::domain('{slug}.'.config('storefront.domain'))
             ->middleware('throttle:20,1')->name('store.giftcard');
     });
 
-Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
-Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
-Route::get('/s/{slug}/sitemap-{part}.xml', [SitemapController::class, 'part'])
-    ->where('part', '[1-9][0-9]{0,4}')->name('store.show.sitemap.part');
-Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
-    ->where('path', Storefront::PATH)->name('store.show.page');
+/*
+ * ومتجرٌ يخدم الخادمُ نطاقَه الفرعيّ يُحوَّل إليه من هذا الباب (301، GET وHEAD
+ * وحدهما) — انظر `StoreLivesOnItsSubdomain` و`storefront.subdomain_businesses`.
+ * ومن سواه يمرّ كما كان.
+ */
+Route::middleware(StoreLivesOnItsSubdomain::class)->group(function () {
+    Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+    Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
+    Route::get('/s/{slug}/sitemap-{part}.xml', [SitemapController::class, 'part'])
+        ->where('part', '[1-9][0-9]{0,4}')->name('store.show.sitemap.part');
+    Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
+        ->where('path', Storefront::PATH)->name('store.show.page');
+});
 // والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
 Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])
     ->middleware('throttle:60,1')->name('store.show.quote');

@@ -277,6 +277,92 @@ class AShopAndItsStaffShareOneWhatsAppInboxTest extends TestCase
         $this->assertSame($quiet, $this->stamp($this->viewer));
     }
 
+    /**
+     * واسمُ الكاتب للشاشة وحدها: ما يصل الزبونَ نصُّ الردّ كما كُتب — لا «منى:»
+     * ولا «سعود» ولا توقيع. والاسمُ محفوظٌ على صفّ الردّ تقرؤه الإدارة.
+     */
+    public function test_the_customer_receives_the_reply_text_alone_never_the_writers_name(): void
+    {
+        $this->inbound('PN-A', 'wamid.N1', 'متى يصل؟');
+        $chat = $this->chatWith(self::CUSTOMER);
+
+        $this->reply($this->replier, $chat, 'خلال ساعة')->assertSessionHasNoErrors();
+        $this->reply($this->owner, $chat, 'وشكرًا لصبرك')->assertSessionHasNoErrors();
+
+        $texts = Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), '/PN-A/messages'))
+            ->map(fn (array $pair) => $pair[0]['text']['body'] ?? null)->values()->all();
+
+        $this->assertSame(['خلال ساعة', 'وشكرًا لصبرك'], $texts);
+        foreach (Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), '/messages')) as [$request]) {
+            $this->assertStringNotContainsString('منى', $request->body());
+            $this->assertStringNotContainsString('سعود', $request->body());
+        }
+
+        $this->assertSame(['منى', 'سعود'], WhatsAppChatMessage::where('chat_id', $chat->id)
+            ->where('direction', WhatsAppChatMessage::OUT)->orderBy('id')->pluck('sender_name')->all());
+    }
+
+    /**
+     * ومحادثةٌ طويلة — أطولُ من صفحتين — تُقرأ كلُّها: المفتوحُ وصفحاتُ «الأقدم»
+     * معًا هي المحادثةُ بعينها، كلُّ رسالةٍ مرّةً، بترتيب كتابتها، وكلُّ ردٍّ باسم
+     * كاتبه — زبونٌ وموظّفان وصاحبُ المتجر.
+     */
+    public function test_a_long_chat_reads_back_whole_in_order_with_nothing_twice_or_missing(): void
+    {
+        $writers = [null, 'منى', null, 'سعود', null, 'سهى'];
+        $total = WhatsAppInbox::THREAD_PAGE * 2 + 17;
+        $this->travel(-$total - 1)->minutes();
+
+        $this->inbound('PN-A', 'wamid.L0', 'السلام عليكم');
+        $chat = $this->chatWith(self::CUSTOMER);
+
+        for ($i = 1; $i < $total; $i++) {
+            $this->travel(1)->minutes();
+            $name = $writers[$i % count($writers)];
+            WhatsAppChatMessage::create([
+                'business_id' => $this->shop->id, 'chat_id' => $chat->id,
+                'direction' => $name === null ? WhatsAppChatMessage::IN : WhatsAppChatMessage::OUT,
+                'body' => 'رسالة '.$i, 'wamid' => 'wamid.L'.$i,
+                'whatsapp_connection_id' => $this->line->id, 'phone_number_id' => 'PN-A',
+                'sender_name' => $name,
+                'status' => $name === null ? WhatsAppChatMessage::RECEIVED : WhatsAppStatus::DELIVERED,
+                'received_at' => $name === null ? now() : null,
+            ]);
+            // وردّان في الثانية نفسِها — يفصلهما المعرّف
+            if ($i % 10 === 0) {
+                WhatsAppChatMessage::create([
+                    'business_id' => $this->shop->id, 'chat_id' => $chat->id, 'direction' => WhatsAppChatMessage::OUT,
+                    'body' => 'رسالة '.$i.'ب', 'wamid' => 'wamid.L'.$i.'b',
+                    'whatsapp_connection_id' => $this->line->id, 'phone_number_id' => 'PN-A',
+                    'sender_name' => 'منى', 'status' => WhatsAppStatus::SENT,
+                ]);
+            }
+        }
+        $this->travelBack();
+
+        $page = $this->screen($this->owner, ['c' => $chat->id])['thread'];
+        $read = $page['messages'];
+        $pages = 1;
+
+        while ($page['has_more']) {
+            $page = $this->actingAs($this->owner)
+                ->getJson(route('admin.whatsappInbox.older', ['chat' => $chat->id, 'before' => $page['before']]))->assertOk()->json();
+            $read = [...$page['messages'], ...$read];
+            $pages++;
+        }
+
+        $expected = WhatsAppChatMessage::where('chat_id', $chat->id)->orderBy('id')->get();
+
+        $this->assertSame(3, $pages);
+        $this->assertSame($expected->map(fn ($m) => 'm'.$m->id)->all(), array_column($read, 'key'), 'كلُّ رسالةٍ مرّةً وبترتيبها');
+        $this->assertSame($expected->pluck('body')->all(), array_column($read, 'body'));
+        $this->assertSame(
+            $expected->where('direction', WhatsAppChatMessage::OUT)->pluck('sender_name')->values()->all(),
+            collect($read)->where('kind', 'out')->pluck('sender')->values()->all(),
+        );
+        $this->assertSame(['منى', 'سعود', 'سهى'], collect($read)->where('kind', 'out')->pluck('sender')->unique()->values()->all());
+    }
+
     /* ============================== غيرُ المقروء ============================== */
 
     public function test_unread_belongs_to_each_reader_and_the_unread_filter_keeps_only_his(): void

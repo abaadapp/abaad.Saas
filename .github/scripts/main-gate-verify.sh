@@ -64,16 +64,58 @@ done
 pr_number=$(jq -r '.number' <<<"$pr_json")
 head_sha=$(jq -r '.head.sha' <<<"$pr_json")
 echo "PR #${pr_number} — head ${head_sha}"
+[[ "$pr_number" =~ ^[0-9]+$ && "$head_sha" =~ ^[0-9a-f]{40}$ ]] || fail "طلبٌ أو رأسٌ غيرُ مفهوم: #${pr_number} ${head_sha}"
 
 # ─── ٢) تشغيلاتُ CI الناجحة لرأس هذا الطلب ───
 #
 # بملفّ الـworkflow لا باسمه (`ci.yml`)، وبحدث `pull_request` وحده، والأحدثُ أوّلًا.
+#
+# والنجاحُ يُقرأ من التشغيل نفسِه (`status` و`conclusion` أدناه)، لا من مُرشِّح
+# `status=success` في السؤال: ذاك المرشِّحُ يسأل فهرسَ بحثٍ عند GitHub قد يتأخّر
+# ساعات. وقع فعلًا (#233، 2026-11-10): تشغيلٌ اكتمل ناجحًا في 11:55Z بقي في الفهرس
+# «in_progress» حتى 15:20Z — فرُفض نشرُ دمجٍ مختبَرٍ كاملًا. ورفعُه لا يُرخي شيئًا:
+# ما لم يكتمل ناجحًا، أو كان لرأسٍ آخر أو حدثٍ آخر أو ملفٍّ آخر، يُطرح هنا.
 runs=$(gh api -X GET "repos/${GH_REPO}/actions/workflows/ci.yml/runs" \
-    -f event=pull_request -f head_sha="$head_sha" -f status=success -f per_page=30 \
-    --jq '.workflow_runs | sort_by(.created_at) | reverse | .[] | select(.conclusion == "success") | .id') \
+    -f event=pull_request -f head_sha="$head_sha" -f per_page=30 \
+    --jq ".workflow_runs | sort_by(.created_at) | reverse | .[]
+          | select(.status == \"completed\" and .conclusion == \"success\"
+                   and .head_sha == \"${head_sha}\" and .event == \"pull_request\"
+                   and .path == \".github/workflows/ci.yml\")
+          | \"\(.id):\(.run_attempt)\"") \
     || fail "تعذّر سؤال GitHub عن تشغيلات CI للطلب #${pr_number}"
 
 [ -n "$runs" ] || fail "لا تشغيلَ CI ناجحًا (pull_request) لرأس الطلب #${pr_number} ${head_sha}"
+
+# ─── ووظائفُه كلُّها نجحت، والمطلوبةُ منها كلُّها حاضرة ───
+#
+# نجاحُ التشغيل وحده لا يكفي: يُسأل عن وظائف محاولته الأخيرة واحدةً واحدة.
+# كلُّ وظيفةٍ فيها مكتملةٌ ناجحة — لا فاشلةٌ ولا متخطّاةٌ ولا ملغاةٌ ولا جارية —
+# وكلُّ وظيفةٍ في القائمة أدناه موجودةٌ فيها بعينها. فتشغيلٌ نقصت منه وظيفةُ
+# اختبار (حُذفت، أو تخطّاها شرط) لا يُثبت شيئًا. والقائمةُ تطابق ما تعرّفه
+# `ci.yml` — يحرسها `TheGateReadsSuccessFromTheRunNotFromGitHubsIndexTest`.
+REQUIRED_JOBS=(
+    "الاختبارات (SQLite)"
+    "الاختبارات (PostgreSQL 0/3)"
+    "الاختبارات (PostgreSQL 1/3)"
+    "الاختبارات (PostgreSQL 2/3)"
+    "الواجهة (أنواع + اختبارات + بناء)"
+    "إثبات الشجرة المختبَرة"
+)
+
+jobs_passed() {
+    local run_id="$1" jobs bad name missing=()
+    jobs=$(gh api -X GET "repos/${GH_REPO}/actions/runs/${run_id}/jobs" -f filter=latest -f per_page=100 \
+        --jq '.jobs[] | "\(.status)|\(.conclusion)|\(.name)"') \
+        || { echo "تعذّر سؤال GitHub عن وظائفه"; return 1; }
+    [ -n "$jobs" ] || { echo "لا وظائفَ له"; return 1; }
+    bad=$(grep -v '^completed|success|' <<<"$jobs" || true)
+    [ -z "$bad" ] || { echo "وظائفُ لم تكتمل ناجحة: $(cut -d'|' -f1-3 <<<"$bad" | paste -sd ';' -)"; return 1; }
+    for name in "${REQUIRED_JOBS[@]}"; do
+        grep -qxF "completed|success|${name}" <<<"$jobs" || missing+=("$name")
+    done
+    [ "${#missing[@]}" -eq 0 ] || { echo "وظائفُ مطلوبة غائبة: ${missing[*]}"; return 1; }
+    echo "${#REQUIRED_JOBS[@]} وظائفَ مطلوبة ناجحة"
+}
 
 # ─── وثائقُ تخطيطٍ فقط بين المختبَر وmain؟ ───
 #
@@ -110,13 +152,22 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 reasons=()
 
-for run_id in $runs; do
+for entry in $runs; do
+    run_id="${entry%%:*}"
+    attempt="${entry##*:}"
+    [[ "$run_id" =~ ^[0-9]+$ && "$attempt" =~ ^[0-9]+$ ]] || { reasons+=("تشغيلٌ غيرُ مفهوم: ${entry}"); continue; }
+
+    if ! jobs_note=$(jobs_passed "$run_id"); then
+        reasons+=("التشغيل ${run_id}: ${jobs_note}"); continue
+    fi
+
+    # إثباتُ هذه المحاولة بعينها — التي سُئل عن وظائفها — لا محاولةٍ قبلها
     art=$(gh api "repos/${GH_REPO}/actions/runs/${run_id}/artifacts" \
-        --jq "[.artifacts[] | select(.expired == false and (.name | startswith(\"pr-proof-${pr_number}-${run_id}-\")))] | first // empty") \
+        --jq "[.artifacts[] | select(.expired == false and .name == \"pr-proof-${pr_number}-${run_id}-${attempt}\")] | first // empty") \
         || art=""
 
     if [ -z "$art" ]; then
-        reasons+=("التشغيل ${run_id}: لا إثباتَ مرفوعًا (أقدمُ من وظيفة pr-proof أو انتهت صلاحيته)")
+        reasons+=("التشغيل ${run_id}: لا إثباتَ مرفوعًا لمحاولته ${attempt} (أقدمُ من وظيفة pr-proof أو انتهت صلاحيته)")
         continue
     fi
 
@@ -133,6 +184,7 @@ for run_id in $runs; do
     p_pr=$(jq -r '.pr_number' "$proof")
     p_head=$(jq -r '.head_sha' "$proof")
     p_run=$(jq -r '.workflow_run_id' "$proof")
+    p_attempt=$(jq -r '.workflow_run_attempt' "$proof")
     p_tree=$(jq -r '.tested_tree_sha' "$proof")
 
     if [ "$p_pr" != "$pr_number" ]; then
@@ -144,6 +196,9 @@ for run_id in $runs; do
     if [ "$p_run" != "$run_id" ]; then
         reasons+=("التشغيل ${run_id}: الإثبات يذكر تشغيلًا آخر (${p_run})"); continue
     fi
+    if [ "$p_attempt" != "$attempt" ]; then
+        reasons+=("التشغيل ${run_id}: الإثبات لمحاولةٍ أخرى (${p_attempt} لا ${attempt})"); continue
+    fi
     note=""
     if [ "$p_tree" != "$main_tree" ]; then
         if ! docs_only_drift "$proof"; then
@@ -153,7 +208,7 @@ for run_id in $runs; do
         echo "$note"
     fi
 
-    echo "✓ شجرة main ${main_tree} هي ما اجتاز CI — PR #${pr_number}، التشغيل ${run_id}"
+    echo "✓ شجرة main ${main_tree} هي ما اجتاز CI — PR #${pr_number}، التشغيل ${run_id} (المحاولة ${attempt}؛ ${jobs_note})"
     {
         echo "### ✅ Main Gate"
         echo
@@ -161,7 +216,8 @@ for run_id in $runs; do
         echo "|---|---|"
         echo "| PR | #${pr_number} |"
         echo "| head | \`${head_sha}\` |"
-        echo "| CI run | ${run_id} |"
+        echo "| CI run | ${run_id} (attempt ${attempt}) |"
+        echo "| jobs | ${jobs_note} |"
         echo "| tree | \`${main_tree}\` |"
         [ -z "$note" ] || { echo; echo "ℹ️ ${note} (tested tree \`${p_tree}\`)"; }
     } >> "$SUMMARY"

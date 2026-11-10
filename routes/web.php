@@ -2300,8 +2300,8 @@ Route::domain('{slug}.'.config('storefront.domain'))
     });
 
 /*
- * ومتجرٌ يخدم الخادمُ نطاقَه الفرعيّ يُحوَّل إليه من هذا الباب (301، GET وHEAD
- * وحدهما) — انظر `StoreLivesOnItsSubdomain` و`storefront.subdomain_businesses`.
+ * ومتجرٌ يخدم الخادمُ نطاقَه الفرعيّ يُحوَّل إليه من هذا الباب (302 ثمّ 301،
+ * GET وHEAD وحدهما) — انظر `StoreLivesOnItsSubdomain` و`storefront.subdomain_businesses`.
  * ومن سواه يمرّ كما كان.
  */
 Route::middleware(StoreLivesOnItsSubdomain::class)->group(function () {

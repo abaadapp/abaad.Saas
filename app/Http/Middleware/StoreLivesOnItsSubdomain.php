@@ -22,9 +22,12 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * زيارةٌ بـGET أو HEAD لصفحةٍ من صفحات المتجر على `/s/اسمه` — على أيّ مضيف،
  * فـ`app.abaadapp.om/s/ribbon/shop` و`ribbon.abaadapp.om/s/ribbon/shop` كلاهما
- * إلى `https://ribbon.abaadapp.om/shop`. تحويلًا دائمًا (301) بمسارها
- * ومعلماتها كما وصلت حرفًا: رابطُ منتجٍ قديم يصل إلى المنتج نفسه، وعودةٌ من
- * بوابة الدفع تحمل مرجعها.
+ * إلى `https://ribbon.abaadapp.om/shop`. بمسارها ومعلماتها كما وصلت حرفًا:
+ * رابطُ منتجٍ قديم يصل إلى المنتج نفسه، وعودةٌ من بوابة الدفع تحمل مرجعها
+ * ومعلماتِ Paymob كما كتبتها.
+ *
+ * والتحويلُ مؤقّتٌ (302) حتى يثبت النقل، ثمّ دائمٌ (301) — يُقرأ من
+ * `storefront.subdomain_redirect_status`، ولا يُقبل منه غيرُ هذين.
  *
  * والوجهةُ جذرُ النطاق لا بابٌ تحته، فلا يعود التحويلُ إلى نفسه.
  *
@@ -59,7 +62,13 @@ class StoreLivesOnItsSubdomain
         $target = rtrim($root, '/').$this->rest($request);
         $query = (string) $request->server->get('QUERY_STRING', '');
 
-        return redirect()->away($query === '' ? $target : $target.'?'.$query, 301);
+        return redirect()->away($query === '' ? $target : $target.'?'.$query, self::status());
+    }
+
+    /** 302 ما لم يُكتب 301 صراحةً — فقيمةٌ خاطئةٌ لا تصير تحويلًا دائمًا يحفظه المتصفّح */
+    public static function status(): int
+    {
+        return (int) config('storefront.subdomain_redirect_status') === 301 ? 301 : 302;
     }
 
     /** المسارُ بعد `/s/اسمه` — والعربيُّ فيه مُرمَّزٌ كما يُرسَل في `Location` */

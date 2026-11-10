@@ -19,17 +19,19 @@ use Illuminate\Http\Client\Request as Sent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
  * متجرٌ يخدم الخادمُ نطاقَه الفرعيّ يُزار عليه — و`/s/اسمه` يحوّل إليه.
  *
  * قرارُ المالك (2026-11-10): RIBBON على `ribbon.abaadapp.om` وحده، والرابطُ
- * القديم `app.abaadapp.om/s/ribbon` يتحوّل إليه تحويلًا دائمًا.
+ * القديم `app.abaadapp.om/s/ribbon` يتحوّل إليه: مؤقّتًا (302) أوّلًا، ثمّ
+ * دائمًا (301) بإيداعٍ بعد أن يثبت النقل (`storefront.subdomain_redirect_status`).
  *
  * ═══ ما يُحرَس ═══
  *
- *   - الرابطُ القديم بـGET وHEAD → 301 إلى النطاق بمساره ومعلماته حرفًا، وعلى
+ *   - الرابطُ القديم بـGET وHEAD → 302 إلى النطاق بمساره ومعلماته حرفًا، وعلى
  *     النطاق نفسِه بابُ `/s/…` يحوّل إلى جذره — فلا نسختان ولا حلقة.
  *   - POST (إتمامُ الطلب، وسؤالُ السعر، وبطاقةُ الهدية) لا يُحوَّل.
  *   - `canonical` و`hreflang` وخريطةُ الموقع وعودةُ Paymob على النطاق، والإشعارُ على النظام.
@@ -90,6 +92,12 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
         return $shop;
     }
 
+    /** لا تحويلَ بأيّ نوع — لا 301 ولا 302 ولا أخواتهما */
+    private function assertNotRedirected(TestResponse $res, string $what): void
+    {
+        $this->assertNotContains($res->getStatusCode(), [301, 302, 303, 307, 308], $what);
+    }
+
     private function product(Business $shop): int
     {
         return (int) Product::where('business_id', $shop->id)->value('id');
@@ -104,7 +112,7 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
         ];
     }
 
-    public function test_the_old_address_moves_permanently_with_its_path_and_query_as_sent(): void
+    public function test_the_old_address_moves_with_its_path_and_query_as_sent(): void
     {
         $p = $this->product($this->ribbon);
 
@@ -123,12 +131,12 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
             '/s/ribbon/page/'.rawurlencode('خدماتنا') => '/page/'.rawurlencode('خدماتنا'),
         ] as $old => $new) {
             $this->get('https://app.abaadapp.om'.$old)
-                ->assertStatus(301)
+                ->assertStatus(302)
                 ->assertHeader('Location', 'https://ribbon.abaadapp.om'.$new);
         }
 
         $this->call('HEAD', 'https://app.abaadapp.om/s/ribbon/shop?lang=en')
-            ->assertStatus(301)
+            ->assertStatus(302)
             ->assertHeader('Location', 'https://ribbon.abaadapp.om/shop?lang=en');
     }
 
@@ -142,7 +150,7 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
 
         // والبابُ البديل على النطاق نفسِه نسخةٌ ثانية — يُحوَّل إلى جذره مرّةً ويقف
         $this->get('https://ribbon.abaadapp.om/s/ribbon/shop?lang=en')
-            ->assertStatus(301)
+            ->assertStatus(302)
             ->assertHeader('Location', 'https://ribbon.abaadapp.om/shop?lang=en');
         $this->get('https://ribbon.abaadapp.om/shop?lang=en')->assertOk();
     }
@@ -185,7 +193,7 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
         $this->assertStringStartsWith('/s/ribbon/done/', $done);
 
         // وصفحةُ التأكيد التي يُرسَل إليها تتحوّل بمرجعها وتُفتح على النطاق
-        $to = (string) $this->get('https://app.abaadapp.om'.$done)->assertStatus(301)->headers->get('Location');
+        $to = (string) $this->get('https://app.abaadapp.om'.$done)->assertStatus(302)->headers->get('Location');
         $this->assertSame('https://ribbon.abaadapp.om'.substr($done, strlen('/s/ribbon')), $to);
         $this->get($to)->assertOk();
 
@@ -194,7 +202,7 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
         $this->assertStringStartsWith('/done/', (string) $res->json('redirect'));
 
         foreach (['/s/ribbon/quote', '/s/ribbon/gift-card', '/s/ribbon/checkout'] as $path) {
-            $this->assertNotSame(301, $this->postJson('https://app.abaadapp.om'.$path, [])->getStatusCode(), $path);
+            $this->assertNotRedirected($this->postJson('https://app.abaadapp.om'.$path, []), $path);
         }
     }
 
@@ -266,9 +274,37 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
 
         // والمعاينةُ في اللوحة ليست من صفحات المتجر — لا تُحوَّل
         $owner = User::where('business_id', $this->ribbon->id)->firstOrFail();
-        $this->assertNotSame(301, $this->actingAs($owner)->get('https://app.abaadapp.om/store/preview')->getStatusCode());
+        $this->assertNotRedirected($this->actingAs($owner)->get('https://app.abaadapp.om/store/preview'), 'preview');
 
         // وإشعارُ Paymob على النظام كما كان
-        $this->assertNotSame(301, $this->postJson('https://app.abaadapp.om/webhooks/paymob', [])->getStatusCode());
+        $this->assertNotRedirected($this->postJson('https://app.abaadapp.om/webhooks/paymob', []), 'webhook');
+    }
+
+    /**
+     * مؤقّتٌ أوّلًا، ودائمٌ حين يُكتب 301 صراحةً — ولا ثالث.
+     *
+     * المتصفّحُ يحفظ 301 فلا يسأل الخادمَ بعده؛ فقيمةٌ خاطئةٌ في الإعداد تُقرأ
+     * 302 لا تحويلًا دائمًا. والمؤقّتُ لا يحمل مدّةَ حفظ.
+     */
+    public function test_the_move_is_temporary_until_301_is_written_and_nothing_else_is_accepted(): void
+    {
+        $res = $this->get('https://app.abaadapp.om/s/ribbon/shop?lang=en')
+            ->assertStatus(302)
+            ->assertHeader('Location', 'https://ribbon.abaadapp.om/shop?lang=en');
+        $this->assertStringNotContainsString('max-age', (string) $res->headers->get('Cache-Control'));
+
+        config(['storefront.subdomain_redirect_status' => 301]);
+        $this->get('https://app.abaadapp.om/s/ribbon/shop?lang=en')
+            ->assertStatus(301)
+            ->assertHeader('Location', 'https://ribbon.abaadapp.om/shop?lang=en');
+
+        foreach ([307, 308, 200, 0, null, 'permanent'] as $wrong) {
+            config(['storefront.subdomain_redirect_status' => $wrong]);
+            $this->get('https://app.abaadapp.om/s/ribbon/shop')->assertStatus(302);
+        }
+
+        // والمتجرُ خارج القائمة لا يُحوَّل بأيّ قيمة
+        config(['storefront.subdomain_redirect_status' => 301]);
+        $this->get('https://app.abaadapp.om/s/bloom/shop')->assertOk();
     }
 }

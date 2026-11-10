@@ -100,9 +100,16 @@ const draw = (catalogTools: CatalogTools | null = TOOLS) => {
     );
 };
 
-/** الصفوفُ المرسومةُ في اللوحة الظاهرة — بمفاتيحها */
+/** الصفوفُ الظاهرة — بمفاتيحها. والتبويباتُ كلُّها مرسومة، والمخفيُّ تحت `hidden` */
 const shownRows = () =>
-    [...document.querySelectorAll('[role="tabpanel"] li[data-testid^="row-"]')].map((li) => li.getAttribute('data-testid')!.slice('row-'.length));
+    [...document.querySelectorAll('[role="tabpanel"] li[data-testid^="row-"]')]
+        .filter((li) => li.closest('[hidden]') === null)
+        .map((li) => li.getAttribute('data-testid')!.slice('row-'.length));
+
+/** وكلُّ صفٍّ في الشاشة مرّةً واحدةً لا أكثر — ظاهرًا كان أو مخفيًّا */
+const eachRowOnce = () => {
+    for (const r of ROWS) expect(document.querySelectorAll(`li[data-testid="row-${r.key}"]`)).toHaveLength(1);
+};
 
 const openTab = (id: string) => fireEvent.click(screen.getByTestId(`tab-${id}`));
 const openRow = (label: string) => fireEvent.click(screen.getByText(label));
@@ -133,6 +140,7 @@ describe('محرّر الواجهة بالتبويبات', () => {
         const all = Object.values(seen).flat();
         expect(all.sort()).toEqual(ROWS.map((r) => r.key).sort());
         expect(new Set(all).size).toBe(all.length);
+        eachRowOnce();
 
         expect(seen.home).toEqual(['hero', 'cats', 'best', 'new', 'banner', 'block', 'picks', 'about', 'reviews']);
         expect(seen.pages).toEqual(['menu']);
@@ -162,30 +170,68 @@ describe('محرّر الواجهة بالتبويبات', () => {
         expect(screen.getByTestId('advanced-toggle')).toBeInTheDocument();
     });
 
-    it('وما كُتب يبقى حين يُبدَّل التبويب — ولا يُرسَل شيءٌ حتى «احفظ»', () => {
+    it('وما كُتب يبقى حين يُبدَّل التبويب — والصفُّ المفتوح باقٍ في الشاشة نفسِه، ولا يُرسَل شيءٌ حتى «احفظ»', () => {
         draw();
         openRow('الواجهة');
-        const title = screen.getByDisplayValue('ورودٌ لكلّ مناسبة');
+        const title = screen.getByDisplayValue('ورودٌ لكلّ مناسبة') as HTMLInputElement;
         fireEvent.change(title, { target: { value: 'هدايا الخريف' } });
         expect(screen.getByTestId('tab-home-unsaved')).toBeInTheDocument();
 
         openTab('contact');
+        // مخفيٌّ لا مُزال: الحقلُ نفسُه باقٍ بقيمته — فما يعيش في الحقل (صورةٌ تُرفع) لا يموت
+        expect(title.isConnected).toBe(true);
+        expect(title).not.toBeVisible();
         openRow('التذييل');
-        fireEvent.change(screen.getByLabelText('سطر التذييل'), { target: { value: 'سطرٌ جديد' } });
+        const tagline = screen.getByLabelText('سطر التذييل') as HTMLInputElement;
+        fireEvent.change(tagline, { target: { value: 'سطرٌ جديد' } });
+
         openTab('pages');
+        fireEvent.change(screen.getByTestId('editor-search'), { target: { value: 'أضف مع طلبك' } });
         openTab('home');
 
-        // صفٌّ واحدٌ مفتوحٌ في الشاشة كما كان — يُفتح ثانيةً فيجد ما كُتب فيه
-        openRow('الواجهة');
-        expect(screen.getByDisplayValue('هدايا الخريف')).toBeInTheDocument();
+        // وكلُّ تبويبٍ يُعاد إليه كما تُرك — صفُّه مفتوحٌ بما كُتب فيه، والعنصرُ نفسُه
+        expect(screen.getByDisplayValue('هدايا الخريف')).toBe(title);
+        expect(title).toBeVisible();
         openTab('contact');
-        openRow('التذييل');
-        expect(screen.getByDisplayValue('سطرٌ جديد')).toBeInTheDocument();
+        expect(screen.getByDisplayValue('سطرٌ جديد')).toBe(tagline);
+        expect(tagline).toBeVisible();
         expect(screen.getByTestId('tab-home-unsaved')).toBeInTheDocument();
         expect(screen.getByTestId('tab-contact-unsaved')).toBeInTheDocument();
+        eachRowOnce();
 
         expect(posted).not.toHaveBeenCalled();
         expect(router.post).not.toHaveBeenCalled();
+    });
+
+    it('و«احفظ» في كلّ صفٍّ يرسل ما كانت الشاشةُ القديمة ترسله — المفاتيحَ نفسَها بقيمها، صفًّا صفًّا', () => {
+        const sent = (tools: CatalogTools | null) => {
+            const view = draw(tools);
+            if (! tools) fireEvent.click(screen.getByTestId('advanced-toggle'));
+            const out: Record<string, unknown> = {};
+
+            for (const r of ROWS.filter((x) => x.fields.length > 0)) {
+                if (tools) openTab(tabOf(r));
+                fireEvent.click(within(screen.getByTestId(`row-${r.key}`)).getByText(r.label));
+                for (const f of r.fields) fireEvent.change(screen.getByLabelText(f.label), { target: { value: `قيمة ${f.key}` } });
+                posted.mockClear();
+                fireEvent.click(screen.getByTestId(`row-${r.key}-save`));
+                out[r.key] = posted.mock.calls.map((c) => [c[0], c[1]]);
+                expect(posted).toHaveBeenCalledTimes(1);
+                // والحفظُ لا يكتمل هنا (مُعترَض) — يُنهى كما ينتهي، فيُرسَل الصفُّ التالي وحده
+                const options = posted.mock.calls[0]?.[2] as { onFinish?: () => void } | undefined;
+                act(() => options?.onFinish?.());
+            }
+            act(() => view.unmount());
+
+            return out;
+        };
+
+        const classic = sent(null);
+        const tabbed = sent(TOOLS);
+        expect(Object.keys(classic)).toHaveLength(ROWS.filter((x) => x.fields.length > 0).length);
+        expect(tabbed).toEqual(classic);
+        // وواتسابُ التذييل — ممّا يسري حين يُحفظ لا حين يُنشر — يُرسَل بمفتاحه كما كان
+        expect(JSON.stringify(tabbed.foot)).toContain('store_whatsapp');
     });
 
     it('و«احفظ» في صفٍّ يحفظ مفاتيحَه وحدها — وما كُتب في غيره يبقى غيرَ محفوظ', () => {
@@ -227,8 +273,10 @@ describe('محرّر الواجهة بالتبويبات', () => {
         const search = screen.getByTestId('editor-search');
 
         fireEvent.change(search, { target: { value: 'التذييل' } });
-        expect(screen.getByTestId('tabpanel-search')).toBeInTheDocument();
+        expect(screen.getByTestId('search-group-contact')).toBeVisible();
+        expect(screen.getByTestId('tabpanel-home')).not.toBeVisible();
         expect(shownRows()).toEqual(['foot']);
+        eachRowOnce();
 
         fireEvent.change(search, { target: { value: 'واتساب' } });
         expect(shownRows()).toEqual(['foot']);
@@ -242,7 +290,7 @@ describe('محرّر الواجهة بالتبويبات', () => {
 
         openTab('home');
         expect((search as HTMLInputElement).value).toBe('');
-        expect(screen.getByTestId('tabpanel-home')).toBeInTheDocument();
+        expect(screen.getByTestId('tabpanel-home')).toBeVisible();
         openRow('الواجهة');
         expect(screen.getByDisplayValue('ورودٌ لكلّ مناسبة')).toBeInTheDocument();
         expect(posted).not.toHaveBeenCalled();

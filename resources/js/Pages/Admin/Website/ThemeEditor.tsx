@@ -41,7 +41,7 @@ import ShelfOrderPanel, { type ShelfOrderSeed } from './theme/ShelfOrderField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 import VisualBarField from './theme/VisualBarField';
-import { EDITOR_TABS, type EditorTabId, searchable, tabOf } from './theme/editorTabs';
+import { EDITOR_TABS, type EditorTab, type EditorTabId, searchable, tabOf } from './theme/editorTabs';
 
 /** صفحةٌ من صفحات القالب الأربع — كما تقرؤها `StoreNav::rows` */
 export interface EditorPage {
@@ -299,6 +299,19 @@ export default function ThemeEditor({
         return r ? tabOf(r) : 'home';
     });
     const [query, setQuery] = useState('');
+    /*
+        ولكلّ تبويبٍ صفُّه المفتوح — يُترك مفتوحًا ويُعاد إليه كما تُرك.
+
+        والتبويباتُ كلُّها مرسومةٌ والظاهرُ واحد (`hidden`): فالانتقالُ لا يُزيل
+        صفًّا من الشاشة. وصفٌّ يُزال تموت معه حالُه — صورةٌ تُرفع تُهمَل حين
+        تصل (`StoreImageField`: «حقلٌ أُزيل أثناء الرفع لا يُكتب فيه»)، واسمُ
+        عنصرٍ يُكتب في القائمة قبل «أضف» يُمحى. فلا يُزال إلّا بإغلاقه بيده.
+    */
+    const [openIn, setOpenIn] = useState<Partial<Record<EditorTabId, string>>>(() => {
+        const r = rows.find((x) => x.key === open);
+
+        return r ? { [tabOf(r)]: r.key } : {};
+    });
     const [status, setStatus] = useState<Status>('clean');
     const [frame, setFrame] = useState(0);
 
@@ -1074,8 +1087,27 @@ export default function ThemeEditor({
         );
     };
 
+    /*
+        والبحثُ يُخفي ما لا يطابق ولا يرسم نسخةً ثانية: الصفُّ في موضعه من
+        تبويبه أبدًا، فلا يُفتح صفٌّ في موضعين ولا يُزال بحرفٍ يُكتب.
+    */
+    const needle = searchable(query);
+    const found = new Set(
+        needle
+            ? rows
+                  .filter((r) =>
+                      searchable([t(r.label), t(r.hint), ...r.fields.flatMap((f) => [t(f.label), f.hint ? t(f.hint) : ''])].join(' ')).includes(needle),
+                  )
+                  .map((r) => r.key)
+            : [],
+    );
+
     const row = (r: EditorRow) => {
-        const expanded = open === r.key;
+        const expanded = simple ? openIn[tabOf(r)] === r.key : open === r.key;
+        const toggle = () =>
+            simple
+                ? setOpenIn((o) => ({ ...o, [tabOf(r)]: expanded ? undefined : r.key }))
+                : setOpen(expanded ? null : r.key);
         const i = chosen.indexOf(r.key);
         // ومفاتيحُ يرسمها حقلٌ آخرُ في مواضعها منه — القائمةُ صفحاتِها، والتذييلُ سطرَه
         const owned = new Set(r.fields.flatMap((f) => f.owns ?? []));
@@ -1105,7 +1137,7 @@ export default function ThemeEditor({
             ) : null;
 
         return (
-            <li key={r.key} className="bg-white" data-testid={`row-${r.key}`}>
+            <li key={r.key} className="bg-white" data-testid={`row-${r.key}`} hidden={simple && needle !== '' && ! found.has(r.key)}>
                 <div className="flex items-center gap-3 px-4 py-3">
                     {r.fixed ? (
                         /* والواجهةُ والتذييلُ هويّةُ الصفحة لا قسمًا يُطفأ — فلا مقبضَ لهما */
@@ -1136,7 +1168,8 @@ export default function ThemeEditor({
 
                     <button
                         type="button"
-                        onClick={() => setOpen(expanded ? null : r.key)}
+                        onClick={toggle}
+                        aria-expanded={simple ? expanded : undefined}
                         className="min-w-0 flex-1 text-start"
                     >
                         <span className={cn('flex items-center gap-1.5 truncate text-[13px] font-medium', r.on ? 'text-[#111]' : 'text-[#9ca3af]')}>
@@ -1266,27 +1299,27 @@ export default function ThemeEditor({
         ═══ الشاشةُ المبسّطة: تبويباتٌ وبطاقات — والصفُّ نفسُه (`row`) في كلّ بطاقة ═══
 
         لا صفَّ يُرسم مرّتين ولا صفَّ يُسقط: الأقسامُ التي تُرتَّب في «الرئيسية»
-        بترتيبها (`movable`)، والثابتةُ في تبويباتها (`tabOf`)، والبحثُ يعرض
-        المطابِقَ مكانَ التبويب لا إلى جانبه.
+        بترتيبها (`movable`)، والثابتةُ في تبويباتها (`tabOf`). والتبويباتُ الستّة
+        مرسومةٌ معًا والظاهرُ منها واحد؛ والبحثُ يُظهر كلَّ تبويبٍ فيه ما يطابق،
+        بعنوانه، ويُخفي ما سواه — والصفُّ في موضعه لا يُنقل ولا يُنسخ.
     */
-    const CARDS = 'space-y-3 [&>li]:overflow-hidden [&>li]:rounded-[14px] [&>li]:border [&>li]:border-[var(--ui-border,#e8e8e8)]';
-    const needle = searchable(query);
-    const found = needle
-        ? rows.filter((r) =>
-              searchable([t(r.label), t(r.hint), ...r.fields.flatMap((f) => [t(f.label), f.hint ? t(f.hint) : ''])].join(' ')).includes(needle),
-          )
-        : [];
+    const CARDS = 'flex flex-col gap-3 [&>li]:overflow-hidden [&>li]:rounded-[14px] [&>li]:border [&>li]:border-[var(--ui-border,#e8e8e8)]';
     const fixedIn = (id: EditorTabId) => rows.filter((r) => r.fixed && tabOf(r) === id);
+    const hitsIn = (id: EditorTabId) => rows.filter((r) => tabOf(r) === id && found.has(r.key)).length;
     const tabUnsaved = (id: EditorTabId) => rows.filter((r) => tabOf(r) === id && rowDirty(r)).length;
     const doors = pages.filter((p) => p.key !== 'home' && p.on && p.blocked === null && PAGE_DOOR[p.key]);
 
     const tabsBar = (
         <div className="mb-4 space-y-3">
+            {/*
+                وعلى الجوال عمودان تُرى فيهما الستّةُ كلُّها — لا شريطٌ يُقصّ آخرُه.
+                وعلى الشاشة العريضة صفٌّ واحد.
+            */}
             <div
                 role="tablist"
                 aria-label={t('أبواب محرّر الموقع')}
                 data-testid="editor-tabs"
-                className="flex gap-1 overflow-x-auto rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1"
+                className="grid grid-cols-2 gap-1 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-1 sm:grid-cols-3 xl:flex xl:overflow-x-auto"
             >
                 {EDITOR_TABS.map((tb) => {
                     const on = ! needle && tab === tb.id;
@@ -1297,6 +1330,8 @@ export default function ThemeEditor({
                             key={tb.id}
                             type="button"
                             role="tab"
+                            id={`editor-tab-${tb.id}`}
+                            aria-controls={`editor-panel-${tb.id}`}
                             aria-selected={on}
                             data-testid={`tab-${tb.id}`}
                             onClick={() => {
@@ -1304,7 +1339,7 @@ export default function ThemeEditor({
                                 setQuery('');
                             }}
                             className={cn(
-                                'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3 py-2 text-[13px] transition-colors',
+                                'flex min-w-0 items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-center text-[13px] leading-tight transition-colors xl:shrink-0 xl:whitespace-nowrap',
                                 on ? 'bg-[#111] font-semibold text-white' : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111]',
                             )}
                         >
@@ -1323,12 +1358,14 @@ export default function ThemeEditor({
             </div>
             <div className="relative w-full max-w-md">
                 <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-[#9ca3af]" />
+                {/* ونصُّه قصيرٌ يُقرأ كاملًا على الجوال — والأمثلةُ في وصفه للقارئ الصوتيّ */}
                 <Input
                     type="search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={t('ابحث عن قسم أو حقل — مثل «التذييل» أو «واتساب»')}
+                    placeholder={t('ابحث عن قسم أو حقل')}
                     aria-label={t('ابحث في أقسام المحرّر')}
+                    title={t('مثل «التذييل» أو «واتساب»')}
                     data-testid="editor-search"
                     className="ps-9"
                 />
@@ -1336,94 +1373,107 @@ export default function ThemeEditor({
         </div>
     );
 
-    const simpleColumn = (
-        <div className="xl:order-2" role="tabpanel" data-testid={`tabpanel-${needle ? 'search' : tab}`}>
-            {needle ? (
-                found.length === 0 ? (
-                    <p data-testid="editor-search-empty" className="rounded-[14px] border border-dashed border-[var(--ui-border,#e8e8e8)] px-4 py-6 text-center text-[13px] text-[#6b7280]">
-                        {t('لا قسمَ ولا حقلَ يطابق بحثك.')}
-                    </p>
+    const panel = (tb: EditorTab) => {
+        const fixed = fixedIn(tb.id);
+
+        return (
+            <section
+                key={tb.id}
+                role="tabpanel"
+                id={`editor-panel-${tb.id}`}
+                aria-labelledby={`editor-tab-${tb.id}`}
+                data-testid={`tabpanel-${tb.id}`}
+                hidden={needle ? hitsIn(tb.id) === 0 : tab !== tb.id}
+                className={needle ? 'mb-5' : undefined}
+            >
+                {needle ? (
+                    <h3 data-testid={`search-group-${tb.id}`} className="mb-2 text-[12px] font-semibold text-[#6b7280]">
+                        {t(tb.label)}
+                    </h3>
                 ) : (
-                    EDITOR_TABS.map((tb) => {
-                        const hits = found.filter((r) => tabOf(r) === tb.id);
+                    <p className="mb-3 text-[12px] leading-relaxed text-[#6b7280]">{t(tb.hint)}</p>
+                )}
 
-                        return hits.length === 0 ? null : (
-                            <section key={tb.id} className="mb-4" data-testid={`search-group-${tb.id}`}>
-                                <h3 className="mb-2 text-[12px] font-semibold text-[#6b7280]">{t(tb.label)}</h3>
-                                <ul className={CARDS}>{hits.map(row)}</ul>
-                            </section>
-                        );
-                    })
-                )
-            ) : (
-                <>
-                    <p className="mb-3 text-[12px] leading-relaxed text-[#6b7280]">{t(EDITOR_TABS.find((x) => x.id === tab)!.hint)}</p>
+                {fixed.length > 0 && (
+                    <ul className={CARDS} data-testid={`rows-${tb.id}`}>
+                        {fixed.map((r) => row(r))}
+                    </ul>
+                )}
 
-                    {fixedIn(tab).length > 0 && (
-                        <ul className={CARDS} data-testid={`rows-${tab}`}>
-                            {fixedIn(tab).map(row)}
+                {tb.id === 'home' && (
+                    <>
+                        {! needle && (
+                            <>
+                                <h3 className="mb-1 mt-5 text-[13px] font-bold text-[#111]">{t('أقسام الصفحة الرئيسية')}</h3>
+                                <p className="mb-3 text-[12px] leading-relaxed text-[#6b7280]">{t('بترتيب ظهورها لزبونك — السهمان يرتّبان، والعين تُظهر القسم وتُخفيه.')}</p>
+                            </>
+                        )}
+                        <ul className={cn(CARDS, needle && 'mt-3')} data-testid="rows-sections">
+                            {movable.map((k) => {
+                                const r = byKey.get(k);
+
+                                return r ? row(r) : null;
+                            })}
                         </ul>
-                    )}
+                        {last && ! needle && (
+                            <p data-testid="last-section" className="mt-3 text-[12px] leading-relaxed text-[#6b7280]">
+                                {t('لا تُطفأ كلُّها — صفحةٌ بلا قسمٍ واحد تعود إلى ترتيبها الأصليّ.')}
+                            </p>
+                        )}
+                    </>
+                )}
 
-                    {tab === 'home' && (
-                        <>
-                            <h3 className="mb-1 mt-5 text-[13px] font-bold text-[#111]">{t('أقسام الصفحة الرئيسية')}</h3>
-                            <p className="mb-3 text-[12px] leading-relaxed text-[#6b7280]">{t('بترتيب ظهورها لزبونك — السهمان يرتّبان، والعين تُظهر القسم وتُخفيه.')}</p>
-                            <ul className={CARDS} data-testid="rows-sections">
-                                {movable.map((k) => {
-                                    const r = byKey.get(k);
+                {/* والصفحاتُ الثابتة تُكتب في أبوابها — يُقال أين، ولا تُنسخ حقولُها إلى هنا */}
+                {tb.id === 'pages' && ! needle && doors.length > 0 && (
+                    <div data-testid="pages-doors" className="mt-4 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white px-4 py-3">
+                        <p className="text-[13px] font-semibold text-[#111]">{t('صفحات متجرك الثابتة')}</p>
+                        <ul className="mt-2 divide-y divide-[var(--ui-border,#e8e8e8)] text-[13px]">
+                            {doors.map((p) => (
+                                <li key={p.key} className="flex items-center justify-between gap-3 py-2">
+                                    <span className="text-[#374151]">{t(PAGE_DOOR[p.key].label)}</span>
+                                    {p.key === 'about' && byKey.has('about') ? (
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1 font-medium text-[#111] underline"
+                                            onClick={() => {
+                                                setTab('home');
+                                                setOpenIn((o) => ({ ...o, home: 'about' }));
+                                            }}
+                                        >
+                                            {t('نبذتُها في قسم «عنّا»')}
+                                            <ChevronLeft className="size-3.5" />
+                                        </button>
+                                    ) : (
+                                        <Link href={route(PAGE_DOOR[p.key].route)} className="inline-flex items-center gap-1 font-medium text-[#111] underline">
+                                            {t(p.key === 'shop' ? 'منتجاتك وفئاتك' : 'بيانات النشاط')}
+                                            <ChevronLeft className="size-3.5" />
+                                        </Link>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
 
-                                    return r ? row(r) : null;
-                                })}
-                            </ul>
-                            {last && (
-                                <p data-testid="last-section" className="mt-3 text-[12px] leading-relaxed text-[#6b7280]">
-                                    {t('لا تُطفأ كلُّها — صفحةٌ بلا قسمٍ واحد تعود إلى ترتيبها الأصليّ.')}
-                                </p>
-                            )}
-                        </>
-                    )}
+                {/* ولا مقبضَ للشعار والألوان في النظام — يُقال، ولا يُخترع حقل */}
+                {tb.id === 'identity' && ! needle && (
+                    <p data-testid="identity-note" className="mt-4 rounded-[14px] bg-[#f9fafb] px-4 py-3 text-[12px] leading-relaxed text-[#6b7280] ring-1 ring-[var(--ui-border,#e8e8e8)]">
+                        {t('شعارُ :name وألوانُه وخطوطُه جزءٌ من قالب متجرك — ثابتةٌ لا تُعدَّل من هنا. وصورةُ الواجهة وصورةُ الشريط في «الرئيسية والأقسام»، كلٌّ في قسمها.', { name: shell.name })}
+                    </p>
+                )}
+            </section>
+        );
+    };
 
-                    {/* والصفحاتُ الثابتة تُكتب في أبوابها — يُقال أين، ولا تُنسخ حقولُها إلى هنا */}
-                    {tab === 'pages' && doors.length > 0 && (
-                        <div data-testid="pages-doors" className="mt-4 rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white px-4 py-3">
-                            <p className="text-[13px] font-semibold text-[#111]">{t('صفحات متجرك الثابتة')}</p>
-                            <ul className="mt-2 divide-y divide-[var(--ui-border,#e8e8e8)] text-[13px]">
-                                {doors.map((p) => (
-                                    <li key={p.key} className="flex items-center justify-between gap-3 py-2">
-                                        <span className="text-[#374151]">{t(PAGE_DOOR[p.key].label)}</span>
-                                        {p.key === 'about' && byKey.has('about') ? (
-                                            <button
-                                                type="button"
-                                                className="inline-flex items-center gap-1 font-medium text-[#111] underline"
-                                                onClick={() => {
-                                                    setTab('home');
-                                                    setOpen('about');
-                                                }}
-                                            >
-                                                {t('نبذتُها في قسم «عنّا»')}
-                                                <ChevronLeft className="size-3.5" />
-                                            </button>
-                                        ) : (
-                                            <Link href={route(PAGE_DOOR[p.key].route)} className="inline-flex items-center gap-1 font-medium text-[#111] underline">
-                                                {t(p.key === 'shop' ? 'منتجاتك وفئاتك' : 'بيانات النشاط')}
-                                                <ChevronLeft className="size-3.5" />
-                                            </Link>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-
-                    {/* ولا مقبضَ للشعار والألوان في النظام — يُقال، ولا يُخترع حقل */}
-                    {tab === 'identity' && (
-                        <p data-testid="identity-note" className="mt-4 rounded-[14px] bg-[#f9fafb] px-4 py-3 text-[12px] leading-relaxed text-[#6b7280] ring-1 ring-[var(--ui-border,#e8e8e8)]">
-                            {t('شعارُ :name وألوانُه وخطوطُه جزءٌ من قالب متجرك — ثابتةٌ لا تُعدَّل من هنا. وصورةُ الواجهة وصورةُ الشريط في «الرئيسية والأقسام»، كلٌّ في قسمها.', { name: shell.name })}
-                        </p>
-                    )}
-                </>
+    const simpleColumn = (
+        <div className="xl:order-2">
+            {needle && found.size === 0 && (
+                <p data-testid="editor-search-empty" className="rounded-[14px] border border-dashed border-[var(--ui-border,#e8e8e8)] px-4 py-6 text-center text-[13px] text-[#6b7280]">
+                    {t('لا قسمَ ولا حقلَ يطابق بحثك.')}
+                </p>
             )}
+
+            {EDITOR_TABS.map(panel)}
 
             <p className="mt-4 flex flex-wrap items-center gap-1.5 text-[13px] text-[#6b7280]">
                 {t('والدفعُ والتوصيلُ في')}
@@ -1544,7 +1594,7 @@ export default function ThemeEditor({
                             aria-label={t(label)}
                             data-testid={'preview-' + key}
                             className={cn(
-                                'flex items-center gap-1.5 px-2.5 py-1.5',
+                                simple ? 'flex items-center gap-1.5 px-2.5 py-1.5' : 'px-2.5 py-1.5',
                                 size === key ? 'bg-[#111] text-white' : 'text-[#6b7280]',
                             )}
                         >

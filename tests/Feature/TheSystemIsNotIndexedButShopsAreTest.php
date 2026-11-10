@@ -196,6 +196,8 @@ class TheSystemIsNotIndexedButShopsAreTest extends TestCase
             'public/review' => 'own-noindex', 'public/verify' => 'own-noindex', 'public/sign' => 'own-noindex',
             // وصفحةُ «حدّث الصفحة» لتبويبٍ قديم طلب ملفًّا — داخليّةٌ برأسها هي (`TenantExportGuard`)
             'stale-export' => 'own-noindex',
+            // وجسرُ السلّة القديمة — يُؤطَّر مخفيًّا في نطاق متجرٍ نُقل إليه، ولا يقرؤه أحد (`StoreOldCartBridgeController`)
+            'store/cart-bridge' => 'own-noindex',
             // ليست صفحاتٍ على الويب: رسائلُ بريد، وصفحةٌ داخل ملفّ تصدير، وفهرسُ أرشيفٍ مضغوط
             'exports/pdf-too-large' => 'not-a-page', 'documents/archive/readme' => 'not-a-page',
         ];

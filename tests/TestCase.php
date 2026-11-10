@@ -28,6 +28,15 @@ abstract class TestCase extends BaseTestCase
          * بينها — فما قُرئ في اختبارٍ يُقرأ في الذي يليه وقد مُحيت قاعدتُه.
          */
         \App\Support\MarketingSettings::forget();
+
+        /*
+         * ومتجرُ النطاق الفرعيّ الحيّ يُذكر في اختباره وحده.
+         *
+         * `storefront.subdomain_businesses` معرّفٌ حرفيّ (5)، وفي قاعدةٍ لا
+         * تُصفِّر عدّادها بين اختبارين يصير خامسُ متجرٍ يُنشأ «RIBBON» —
+         * فتتحوّل صفحاتُه على `/s/…` إلى نطاقٍ فرعيّ لم يطلبه اختبارُه.
+         */
+        config(['storefront.subdomain_businesses' => []]);
     }
 
     /**

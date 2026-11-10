@@ -105,6 +105,7 @@ use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Admin\Finance\PaymentLinkController;
 use App\Http\Controllers\Store\SitemapController;
 use App\Http\Controllers\Store\StorefrontController;
+use App\Http\Controllers\Store\StoreOldCartBridgeController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\AddonController as SubscriptionAddonCatalogController;
 use App\Http\Controllers\SuperAdmin\BillingController;
@@ -129,6 +130,7 @@ use App\Http\Controllers\SupportAttachmentController;
 use App\Http\Controllers\WebsiteContactController;
 use App\Http\Controllers\WhatsApp\WebhookController;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\StoreLivesOnItsSubdomain;
 use App\Support\Permissions;
 use App\Support\Storefront;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -2298,13 +2300,33 @@ Route::domain('{slug}.'.config('storefront.domain'))
             ->middleware('throttle:20,1')->name('store.giftcard');
     });
 
-Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
-Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
-Route::get('/s/{slug}/sitemap-{part}.xml', [SitemapController::class, 'part'])
-    ->where('part', '[1-9][0-9]{0,4}')->name('store.show.sitemap.part');
-Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
-    ->where('path', Storefront::PATH)->name('store.show.page');
+/*
+ * ومتجرٌ يخدم الخادمُ نطاقَه الفرعيّ يُحوَّل إليه من هذا الباب (302 ثمّ 301،
+ * GET وHEAD وحدهما) — انظر `StoreLivesOnItsSubdomain` و`storefront.subdomain_businesses`.
+ * ومن سواه يمرّ كما كان.
+ */
+Route::middleware(StoreLivesOnItsSubdomain::class)->group(function () {
+    Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+    Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
+    Route::get('/s/{slug}/sitemap-{part}.xml', [SitemapController::class, 'part'])
+        ->where('part', '[1-9][0-9]{0,4}')->name('store.show.sitemap.part');
+    Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
+        ->where('path', Storefront::PATH)->name('store.show.page');
+});
 // والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
+/*
+ * جسرُ السلّة القديمة — صفحةٌ مخفيّةٌ على عنوان النظام يؤطّرها نطاقُ متجرٍ نُقل إليه،
+ * فتقرأ سلّةَ زبونه القديمة وترسلها إليه مرّةً. انظر `Domains::oldCartBridge`.
+ */
+/*
+ * والمعرّفُ رقمٌ بلا صفرٍ في أوّله وعشرُ خاناتٍ على الأكثر — فرقمٌ أطول من سعة
+ * العدد يُردّ 404 لا خطأَ خادم. ولعدّاده اسمُه (`cart-bridge`): بلا اسمٍ يتشارك
+ * العدّادُ مع كلّ مسارٍ محدودٍ بلا اسم على العنوان نفسه، ومنها إتمامُ الطلب
+ * لبقية المتاجر (`/s/{slug}/checkout`، عشرٌ في الدقيقة).
+ */
+Route::get('/storefront/cart-bridge/{business}', StoreOldCartBridgeController::class)
+    ->where('business', '[1-9][0-9]{0,9}')->middleware('throttle:60,1,cart-bridge')->name('store.cart-bridge');
+
 Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])
     ->middleware('throttle:60,1')->name('store.show.quote');
 Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])

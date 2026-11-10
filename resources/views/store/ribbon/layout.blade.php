@@ -705,6 +705,65 @@ window.RB = (function () {
     return { read: read, write: write, add: add, addMany: addMany, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE, limits: LIMITS };
 })();
 </script>
+@php($oldCart = $base === '' ? \App\Support\Website\Domains::oldCartBridge((int) $business->id) : null)
+@if ($oldCart !== null && request()->getSchemeAndHttpHost() === $oldCart['to'])
+<script>
+/*
+ * سلّةُ الزبون من العنوان القديم — تُنقل إلى هذا النطاق مرّةً.
+ *
+ * نُقل المتجرُ من `/s/اسمه` إلى نطاقه، والسلّةُ في المتصفّح تخصّ العنوانَ
+ * الذي كُتبت عليه. فتُفتح صفحةٌ مخفيّةٌ من العنوان القديم تقرؤها وترسلها
+ * إلى هنا (`StoreOldCartBridgeController`)، ويُقبل منها وحدها.
+ *
+ * وتدخل السلّةَ إن كانت هنا فارغة — لا تُخلط بما اختاره الزبونُ على النطاق.
+ * وتُمرَّر بحدّي السلّة (`RB.addMany`)، والأسعارُ من الخادم كعادتها. وتُحاوَل
+ * ثلاثَ مرّاتٍ على الأكثر ثمّ لا تعود — فلا إطارَ في كلّ صفحةٍ أبدًا.
+ */
+(function () {
+    var FROM = @json($oldCart['from']), SRC = @json($oldCart['url']);
+    var FLAG = 'ribbon-cart:{{ (int) $business->id }}:moved';
+    var tries;
+    try { tries = localStorage.getItem(FLAG); } catch (e) { return; }
+    if (tries === 'done' || (+tries || 0) >= 3) return;
+    try { localStorage.setItem(FLAG, String((+tries || 0) + 1)); } catch (e) { return; }
+
+    var frame = document.createElement('iframe');
+    function finish() {
+        window.removeEventListener('message', hear);
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+    }
+    function line(it) {
+        if (!it || typeof it !== 'object') return null;
+        var id = Number(it.id), qty = Number(it.qty), variant = it.variant_id == null ? null : Number(it.variant_id);
+        if (!Number.isInteger(id) || id < 1 || !Number.isInteger(qty) || qty < 1) return null;
+        if (variant !== null && (!Number.isInteger(variant) || variant < 1)) return null;
+        var l = { id: id, variant_id: variant, qty: qty };
+        if (typeof it.note === 'string' && it.note) l.note = it.note;
+        if (Array.isArray(it.addons) && it.addons.length) l.addons = it.addons;
+        return l;
+    }
+    function hear(e) {
+        if (e.origin !== FROM || e.source !== frame.contentWindow) return;
+        if (!e.data || e.data.type !== 'abaad-old-cart') return;
+        try { localStorage.setItem(FLAG, 'done'); } catch (x) {}
+        finish();
+        var lines = (Array.isArray(e.data.items) ? e.data.items : []).map(line).filter(Boolean);
+        if (!lines.length || RB.read().length) return;
+        // وصفحةُ السلّة رُسمت فارغةً قبل وصولها — فتُعاد مرّةً لتُرسم بها
+        if (RB.addMany(lines).ok && document.querySelector('[data-rb-empty]')) location.reload();
+    }
+    window.addEventListener('message', hear);
+    frame.hidden = true;
+    frame.tabIndex = -1;
+    frame.title = '';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.display = 'none';
+    frame.src = SRC;
+    setTimeout(finish, 8000);
+    document.body.appendChild(frame);
+})();
+</script>
+@endif
 <script>
 /*
  * ما لا يقدر عليه CSS وحده — سطران، وبلاهما تبقى الصفحةُ كما كانت.

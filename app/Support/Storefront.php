@@ -272,7 +272,15 @@ class Storefront
      */
     public static function open(string $slug): ?Business
     {
-        $business = Business::where('site_slug', $slug)->first();
+        /*
+         * ونطاقٌ ثُبّت لمتجرٍ بمعرّفه (`Domains::pinnedBusiness`) يُخدم صاحبَه وإن
+         * غيّر اسمَه — `ribbon.abaadapp.om` لـRIBBON أبدًا. وما سواه بالاسم كما كان،
+         * بلا استعلامٍ زائد.
+         */
+        $pinned = \App\Support\Website\Domains::pinnedBusiness($slug);
+        $business = $pinned !== null
+            ? Business::find($pinned)
+            : Business::where('site_slug', $slug)->first();
 
         return $business !== null && self::serving($business) ? $business : null;
     }

@@ -700,7 +700,17 @@ class MarketingController extends Controller
             ]);
         }
 
-        if ($slug !== null && Business::where('site_slug', $slug)->whereKeyNot($business->id)->exists()) {
+        /*
+         * ولا يتّخذ متجرٌ اسمَ نطاقٍ ثُبّت لغيره (`Domains::reservedFor`) — ولو
+         * تركه صاحبُه: `ribbon.abaadapp.om` لـRIBBON أبدًا، وروابطُه القديمة له.
+         */
+        // ويُسأل عند تغيير العنوان وحده: من يحفظ إعداداته بعنوانه الذي يحمله لا يُردّ
+        $reserved = $slug === null || $slug === $business->site_slug ? null : Domains::reservedFor($slug);
+
+        if ($slug !== null && (
+            Business::where('site_slug', $slug)->whereKeyNot($business->id)->exists()
+            || ($reserved !== null && $reserved !== (int) $business->id)
+        )) {
             throw ValidationException::withMessages([
                 'site_slug' => __('هذا العنوان محجوز لمتجرٍ آخر — اختر غيره.'),
             ]);

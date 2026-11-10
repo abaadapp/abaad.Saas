@@ -45,7 +45,7 @@ class AnOldCartFollowsTheShopToItsSubdomainTest extends TestCase
         $this->ribbon = $this->shop('RIBBON', 'ribbon', id: 301);
         $this->other = $this->shop('BLOOM', 'bloom', id: 302);
 
-        config(['storefront.subdomain_businesses' => [$this->ribbon->id]]);
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'ribbon']]);
     }
 
     private function shop(string $name, string $slug, int $id): Business
@@ -123,5 +123,52 @@ class AnOldCartFollowsTheShopToItsSubdomainTest extends TestCase
         // وبلا نقل: متجرُ سعود على بابه كما كان
         config(['storefront.subdomain_businesses' => []]);
         $this->assertStringNotContainsString('cart-bridge', (string) $this->get('https://app.abaadapp.om/s/ribbon/cart')->assertOk()->getContent());
+    }
+
+    /** ورقمٌ لا يصلح معرّفًا يُردّ 404 — لا خطأَ خادمٍ ولا سطرَ خطأ في السجلّ */
+    public function test_a_number_that_is_not_an_id_is_not_found_never_a_server_error(): void
+    {
+        foreach (['99999999999999999999', '9223372036854775808', '12345678901', '0', '007', '-5', '5.0', 'abc', '5%00'] as $id) {
+            $this->get('https://app.abaadapp.om/storefront/cart-bridge/'.$id)->assertNotFound();
+        }
+    }
+
+    /**
+     * ولعدّاد الجسر اسمُه: زياراتُه لا تُحسب على إتمام الطلب لبقية المتاجر.
+     *
+     * زبائنُ كثيرون خلف عنوان شبكةٍ واحد (شبكةُ الجوّال) يفتحون نطاقَ سعود فيطلب
+     * كلٌّ منهم الجسرَ مرّة — ولا يقترب أحدُهم بذلك من حدّ إتمام الطلب (عشرٌ في
+     * الدقيقة) في متجرٍ آخر.
+     */
+    public function test_the_bridge_counts_on_its_own_and_never_on_other_shops_checkout(): void
+    {
+        foreach (range(1, 15) as $_) {
+            $this->get('https://app.abaadapp.om/storefront/cart-bridge/'.$this->ribbon->id)->assertOk();
+        }
+
+        $this->assertNotSame(429, $this->postJson('https://app.abaadapp.om/s/bloom/checkout', [])->getStatusCode());
+        $this->assertNotSame(429, $this->postJson('https://app.abaadapp.om/s/bloom/quote', [])->getStatusCode());
+
+        // وحدُّه هو باقٍ: ستّون في الدقيقة
+        foreach (range(16, 60) as $_) {
+            $this->get('https://app.abaadapp.om/storefront/cart-bridge/'.$this->ribbon->id)->assertOk();
+        }
+        $this->get('https://app.abaadapp.om/storefront/cart-bridge/'.$this->ribbon->id)->assertStatus(429);
+
+        // وعدّادُه لا يأخذ من إتمام الطلب شيئًا ولو امتلأ
+        $this->assertNotSame(429, $this->postJson('https://app.abaadapp.om/s/bloom/checkout', [])->getStatusCode());
+    }
+
+    /** وغيّر سعودٌ اسمَه: يبقى نطاقُه وجسرُه — والسلّةُ القديمة تلحقه كما كانت */
+    public function test_a_renamed_shop_keeps_its_domain_and_its_bridge(): void
+    {
+        $this->ribbon->forceFill(['site_slug' => 'ribbon-flowers'])->save();
+
+        $res = $this->get('https://app.abaadapp.om/storefront/cart-bridge/'.$this->ribbon->id)->assertOk();
+        $this->assertSame('frame-ancestors https://ribbon.abaadapp.om', $res->headers->get('Content-Security-Policy'));
+        $this->assertStringContainsString(
+            json_encode('https://app.abaadapp.om/storefront/cart-bridge/'.$this->ribbon->id),
+            (string) $this->get('https://ribbon.abaadapp.om/cart')->assertOk()->getContent(),
+        );
     }
 }

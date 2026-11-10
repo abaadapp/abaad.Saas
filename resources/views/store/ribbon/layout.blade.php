@@ -705,7 +705,7 @@ window.RB = (function () {
     return { read: read, write: write, add: add, addMany: addMany, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE, limits: LIMITS };
 })();
 </script>
-@php($oldCart = $base === '' ? \App\Support\Website\Domains::oldCartBridge((int) $business->id, $business->site_slug) : null)
+@php($oldCart = $base === '' ? \App\Support\Website\Domains::oldCartBridge((int) $business->id) : null)
 @if ($oldCart !== null && request()->getSchemeAndHttpHost() === $oldCart['to'])
 <script>
 /*

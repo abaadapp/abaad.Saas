@@ -350,6 +350,11 @@ final class Domains
             return $custom->url();
         }
 
+        // ونطاقٌ ثُبّت لهذا المتجر بمعرّفه يبقى أصلَه وإن تغيّر اسمُه (`pinnedLabel`)
+        if (($pinned = self::pinnedLabel($businessId)) !== null) {
+            return 'https://'.self::platformHost($pinned);
+        }
+
         if ($slug === null) {
             $slug = Business::whereKey($businessId)->value('site_slug');
         }
@@ -360,7 +365,7 @@ final class Domains
             return null;
         }
 
-        return self::subdomainServed($businessId)
+        return (bool) config('storefront.subdomains')
             ? 'https://'.self::platformHost($slug)
             : Storefront::fallbackUrl($slug);
     }
@@ -377,14 +382,94 @@ final class Domains
     }
 
     /**
-     * أنُقل هذا المتجرُ إلى نطاقه الفرعيّ فيُحوَّل إليه بابُه البديل؟ — بالقائمة وحدها.
+     * أنُقل هذا المتجرُ إلى نطاقٍ ثُبّت له فيُحوَّل إليه بابُه البديل؟
      *
      * والعلَمُ العامّ (`storefront.subdomains`) لا يحوّل: يكتب `canonical` على
      * النطاق ويُبقي `/s/اسمه` يخدم كما كان. والتحويلُ قرارٌ لكلّ متجرٍ باسمه.
      */
     public static function movedToSubdomain(int $businessId): bool
     {
-        return in_array($businessId, array_map('intval', (array) config('storefront.subdomain_businesses', [])), true);
+        return self::pinnedLabel($businessId) !== null;
+    }
+
+    /**
+     * المتاجرُ المنقولة كما كُتبت: معرّفٌ ← اسمُ النطاق الذي ضُبط له.
+     *
+     * وما لم يكن معرّفًا موجبًا باسمٍ صالح يُهمَل — فقائمةٌ كُتبت بغير شكلها
+     * (`[5]` مثلًا) لا تنقل أحدًا، ولا تُرسل زبونًا إلى نطاقٍ لا يُعرف.
+     *
+     * @return array<int, string>
+     */
+    public static function movedShops(): array
+    {
+        $shops = [];
+
+        foreach ((array) config('storefront.subdomain_businesses', []) as $id => $slug) {
+            $clean = is_string($slug) ? Storefront::slug($slug) : null;
+
+            if (is_int($id) && $id > 0 && $clean !== null) {
+                $shops[$id] = $clean;
+            }
+        }
+
+        return $shops;
+    }
+
+    /**
+     * اسمُ النطاق المثبَّت لهذا المتجر — `ribbon` لـRIBBON — أو `null`.
+     *
+     * ═══ مثبَّتٌ بالمعرّف لا بالاسم ═══
+     *
+     * النطاقُ الذي ضُبط له DNS والشهادة يبقى لهذا المتجر وإن غيّر صاحبُه عنوانَ
+     * موقعه من إعداداته: `canonical` وعودةُ Paymob والروابطُ القديمة كلُّها إليه.
+     * ولا يأخذ الاسمَ متجرٌ آخر — تمنعه الإعدادات (`reservedFor`).
+     *
+     * ═══ ولا يُنتزع به عنوانُ أحد ═══
+     *
+     * فإن حمل الاسمَ في القاعدة متجرٌ غيرُه — ولا يقع ذلك من الإعدادات، بل من
+     * قائمةٍ كُتب فيها اسمُ غيره خطأً — لم يُعمل بالتثبيت: يبقى ذلك المتجرُ على
+     * عنوانه كما كان، ويبقى هذا على بابه `/s/اسمه`. خطأٌ في القائمة لا يحوّل
+     * زبائنَ تاجرٍ إلى متجرٍ آخر.
+     */
+    public static function pinnedLabel(int $businessId): ?string
+    {
+        $label = self::movedShops()[$businessId] ?? null;
+
+        return $label !== null && self::pinHolds($businessId, $label) ? $label : null;
+    }
+
+    /**
+     * صاحبُ هذا الاسم بالتثبيت — معرّفُه، أو `null`.
+     *
+     * ولا يُسأل الجدولُ إلّا عن اسمٍ في القائمة: بقيةُ المتاجر بلا استعلامٍ زائد.
+     */
+    public static function pinnedBusiness(?string $slug): ?int
+    {
+        $id = self::reservedFor($slug);
+
+        return $id !== null && self::pinHolds($id, (string) self::movedShops()[$id]) ? $id : null;
+    }
+
+    /**
+     * لمن حُجز هذا الاسم في القائمة — معرّفُه، أو `null`. بلا سؤال القاعدة.
+     *
+     * وبه تمنع الإعداداتُ متجرًا آخر أن يتّخذ اسمَ نطاقٍ ثُبّت لغيره.
+     */
+    public static function reservedFor(?string $slug): ?int
+    {
+        $label = Storefront::slug((string) $slug);
+        $id = $label === null ? false : array_search($label, self::movedShops(), true);
+
+        return $id === false ? null : (int) $id;
+    }
+
+    /** أيصحّ التثبيت؟ المتجرُ موجود، ولا يحمل الاسمَ في القاعدة متجرٌ غيرُه */
+    private static function pinHolds(int $businessId, string $label): bool
+    {
+        $ids = Business::query()->whereKey($businessId)->orWhere('site_slug', $label)
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return $ids === [$businessId];
     }
 
     /**
@@ -395,20 +480,18 @@ final class Domains
      * يجدها فارغةً هناك. فيفتح النطاقُ صفحةً صغيرةً مخفيّةً من العنوان القديم
      * مرّةً واحدة، تقرأ السلّةَ وترسلها إليه وحده (`StoreOldCartBridgeController`).
      *
-     * لمتجرٍ نُقل إلى نطاقه (`movedToSubdomain`) وحده، وأصلُه عنوانٌ آمن غيرُ
+     * لمتجرٍ نُقل إلى نطاقٍ ثُبّت له (`movedToSubdomain`) وحده، وأصلُه عنوانٌ آمن غيرُ
      * عنوان النظام — وإلّا `null`.
      *
      * @return array{from: string, to: string, url: string}|null
      */
-    public static function oldCartBridge(int $businessId, ?string $slug): ?array
+    public static function oldCartBridge(int $businessId): ?array
     {
-        $slug = Storefront::slug((string) $slug);
-
-        if ($slug === null || ! self::movedToSubdomain($businessId)) {
+        if (! self::movedToSubdomain($businessId)) {
             return null;
         }
 
-        $to = self::origin((string) self::canonical($businessId, $slug));
+        $to = self::origin((string) self::canonical($businessId));
         $from = self::origin((string) config('app.url'));
 
         if ($to === null || $from === null || $to === $from || ! str_starts_with($to, 'https://')) {
@@ -485,7 +568,8 @@ final class Domains
     public static function state(int $businessId): array
     {
         $slug = Business::whereKey($businessId)->value('site_slug');
-        $host = self::platformHost(is_string($slug) ? $slug : null);
+        // والمتجرُ المثبَّتُ نطاقُه يُعرض بنطاقه — لا باسمٍ جديد لا سجلَّ له
+        $host = self::platformHost(self::pinnedLabel($businessId) ?? (is_string($slug) ? $slug : null));
         $custom = self::custom($businessId);
 
         return [

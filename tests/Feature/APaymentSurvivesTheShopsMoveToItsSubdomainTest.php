@@ -101,7 +101,7 @@ class APaymentSurvivesTheShopsMoveToItsSubdomainTest extends TestCase
     /** النقلُ كما يقع بالنشر: المتجرُ يدخل القائمة */
     private function move(): void
     {
-        config(['storefront.subdomain_businesses' => [$this->ribbon->id]]);
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'ribbon']]);
     }
 
     /** دفعةٌ بالبطاقة تُفتح من صفحة الإتمام على هذا العنوان — ويُردّ ما كُتب لـPaymob */
@@ -354,5 +354,26 @@ class APaymentSurvivesTheShopsMoveToItsSubdomainTest extends TestCase
         foreach ($cookies as $cookie) {
             $this->assertNull($cookie->getDomain(), $cookie->getName().' كُتبت لنطاقٍ أوسع');
         }
+    }
+
+    /**
+     * وغيّر سعودٌ اسمَه بعد النقل: يعود زبونُه من Paymob إلى نطاقه المثبَّت —
+     * من الإتمام على النطاق، أو على بابه الجديد، أو من صفحةٍ قديمةٍ على `/s/ribbon`.
+     */
+    public function test_after_a_rename_paymob_still_returns_the_customer_to_the_pinned_domain(): void
+    {
+        $this->move();
+        $this->ribbon->forceFill(['site_slug' => 'ribbon-flowers'])->save();
+
+        foreach (['https://ribbon.abaadapp.om/checkout', 'https://app.abaadapp.om/s/ribbon-flowers/checkout', 'https://app.abaadapp.om/s/ribbon/checkout'] as $checkout) {
+            [$intent, $sent] = $this->pay($this->ribbon, $checkout);
+
+            $this->assertSame('https://ribbon.abaadapp.om/paying/'.$intent->reference, $sent['redirection_url'], $checkout);
+            $this->assertSame(rtrim(config('app.url'), '/').'/webhooks/paymob', $sent['notification_url']);
+            $this->get($sent['redirection_url'])->assertOk()->assertSee('rb-paying', false);
+        }
+
+        $this->fire($this->notice($intent, 7001), 'hmac-ribbon');
+        $this->get($sent['redirection_url'])->assertOk()->assertSee('rb-order-number', false);
     }
 }

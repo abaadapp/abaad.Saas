@@ -2318,8 +2318,14 @@ Route::middleware(StoreLivesOnItsSubdomain::class)->group(function () {
  * جسرُ السلّة القديمة — صفحةٌ مخفيّةٌ على عنوان النظام يؤطّرها نطاقُ متجرٍ نُقل إليه،
  * فتقرأ سلّةَ زبونه القديمة وترسلها إليه مرّةً. انظر `Domains::oldCartBridge`.
  */
+/*
+ * والمعرّفُ رقمٌ بلا صفرٍ في أوّله وعشرُ خاناتٍ على الأكثر — فرقمٌ أطول من سعة
+ * العدد يُردّ 404 لا خطأَ خادم. ولعدّاده اسمُه (`cart-bridge`): بلا اسمٍ يتشارك
+ * العدّادُ مع كلّ مسارٍ محدودٍ بلا اسم على العنوان نفسه، ومنها إتمامُ الطلب
+ * لبقية المتاجر (`/s/{slug}/checkout`، عشرٌ في الدقيقة).
+ */
 Route::get('/storefront/cart-bridge/{business}', StoreOldCartBridgeController::class)
-    ->whereNumber('business')->middleware('throttle:60,1')->name('store.cart-bridge');
+    ->where('business', '[1-9][0-9]{0,9}')->middleware('throttle:60,1,cart-bridge')->name('store.cart-bridge');
 
 Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])
     ->middleware('throttle:60,1')->name('store.show.quote');

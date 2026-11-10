@@ -17,6 +17,7 @@ use App\Support\Website\Domains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as Sent;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
@@ -62,7 +63,7 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
         $this->ribbon = $this->shop('RIBBON', 'ribbon', 'ribbon@shop.test', id: 301);
         $this->other = $this->shop('BLOOM', 'bloom', 'bloom@shop.test', id: 302);
 
-        config(['storefront.subdomain_businesses' => [$this->ribbon->id]]);
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'ribbon']]);
     }
 
     protected function tearDown(): void
@@ -331,5 +332,167 @@ class AStoreWithItsOwnSubdomainIsVisitedThereTest extends TestCase
             'store.show.sitemap' => ['GET', 'HEAD'],
             'store.show.sitemap.part' => ['GET', 'HEAD'],
         ], $carrying);
+    }
+
+    /** وقائمةٌ بغير شكلها (`معرّف => 'الاسم'`) لا تنقل أحدًا */
+    public function test_a_list_in_the_wrong_shape_moves_no_one(): void
+    {
+        foreach ([[$this->ribbon->id], [$this->ribbon->id => ''], [$this->ribbon->id => 'bloom'], ['ribbon' => 'ribbon'], [$this->ribbon->id => ['ribbon']]] as $wrong) {
+            config(['storefront.subdomain_businesses' => $wrong]);
+            $this->get('https://app.abaadapp.om/s/ribbon/shop')->assertOk();
+            $this->get('https://app.abaadapp.om/s/bloom/shop')->assertOk();
+        }
+
+        // والاسمُ يُقرأ كما يُقرأ في كلّ مكان — بحروفٍ صغيرة
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'RIBBON']]);
+        $this->get('https://app.abaadapp.om/s/ribbon/shop')->assertStatus(302);
+    }
+
+    /**
+     * ولا استعلامَ زائدًا لبقية التجّار — صفحةُ متجرٍ آخر تسأل الجدولَ كما كانت.
+     */
+    public function test_other_merchants_pages_cost_no_extra_query(): void
+    {
+        $count = function (): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->get('https://app.abaadapp.om/s/bloom/shop')->assertOk();
+            DB::disableQueryLog();
+
+            return count(DB::getQueryLog());
+        };
+
+        config(['storefront.subdomain_businesses' => []]);
+        $count();
+        $without = $count();
+
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'ribbon']]);
+        $with = $count();
+
+        $this->assertSame($without, $with, 'صفحةُ متجرٍ آخر صارت تسأل الجدولَ أكثر');
+    }
+
+    /**
+     * غيّر سعودٌ عنوانَ موقعه من إعداداته — فيبقى `ribbon.abaadapp.om` له.
+     *
+     * النطاقُ مثبَّتٌ بمعرّف المتجر: الأصلُ والروابطُ القديمة `/s/ribbon/…` كلُّها
+     * إليه، والنطاقُ يعرضه، ولا يظهر في أيّ مكانٍ نطاقٌ باسمٍ جديد لا سجلَّ له.
+     */
+    public function test_renaming_the_moved_shop_keeps_its_domain_and_its_old_links(): void
+    {
+        $p = $this->product($this->ribbon);
+        $this->ribbon->forceFill(['site_slug' => 'ribbon-flowers'])->save();
+
+        $this->assertSame('https://ribbon.abaadapp.om', Domains::canonical($this->ribbon->id, 'ribbon-flowers'));
+        $this->assertSame('https://ribbon.abaadapp.om', Domains::canonical($this->ribbon->id));
+        $this->assertSame('ribbon.abaadapp.om', Domains::state($this->ribbon->id)['platform']['host']);
+
+        // والنطاقُ يعرض متجرَ سعود — بمنتجه
+        foreach (['/', '/shop', "/p/{$p}", '/cart', '/sitemap.xml'] as $path) {
+            $this->assertSame(200, $this->get('https://ribbon.abaadapp.om'.$path)->getStatusCode(), $path);
+        }
+        $this->get('https://ribbon.abaadapp.om/')->assertSee('RIBBON');
+
+        // والروابطُ القديمة تصل إليه كما كانت
+        $this->get('https://app.abaadapp.om/s/ribbon/shop?lang=en')
+            ->assertStatus(302)
+            ->assertHeader('Location', 'https://ribbon.abaadapp.om/shop?lang=en');
+
+        // وبابُه الجديد يعمل، وأصلُه النطاقُ لا اسمٌ جديد
+        $html = (string) $this->get('https://app.abaadapp.om/s/ribbon-flowers')->assertOk()->getContent();
+        $this->assertStringContainsString('<link rel="canonical" href="https://ribbon.abaadapp.om"', $html);
+        $this->assertStringNotContainsString('ribbon-flowers.abaadapp.om', $html);
+    }
+
+    /**
+     * ولا يتّخذ تاجرٌ آخر اسمَ النطاق من إعداداته — ولو تركه سعود.
+     *
+     * وهو البابُ الوحيد الذي يكتب به التاجرُ عنوانَه، فلا يستحوذ أحدٌ على
+     * `ribbon.abaadapp.om` ولا على روابط سعود القديمة. وسعودٌ نفسُه يعود إليه متى شاء.
+     */
+    public function test_no_other_merchant_can_take_the_pinned_name(): void
+    {
+        $owner = User::where('business_id', $this->other->id)->firstOrFail();
+
+        // وهو لسعود
+        $this->actingAs($owner)->post(route('admin.marketing.store.save'), ['site_slug' => 'ribbon'])
+            ->assertSessionHasErrors('site_slug');
+
+        // وبعد أن تركه سعود — بالحروف الكبيرة أيضًا
+        $this->ribbon->forceFill(['site_slug' => 'ribbon-flowers'])->save();
+        foreach (['ribbon', 'RIBBON', ' ribbon '] as $try) {
+            $this->actingAs($owner)->post(route('admin.marketing.store.save'), ['site_slug' => $try])
+                ->assertSessionHasErrors('site_slug');
+        }
+        $this->assertSame('bloom', $this->other->refresh()->site_slug);
+        // والنطاقُ ما زال يعرض متجرَ سعود لا متجرَ من حاول
+        $this->get('https://ribbon.abaadapp.om/')->assertOk()->assertSee('RIBBON')->assertDontSee('BLOOM');
+
+        // وسعودٌ يعود إلى اسمه
+        $saud = User::where('business_id', $this->ribbon->id)->firstOrFail();
+        $this->actingAs($saud)->post(route('admin.marketing.store.save'), ['site_slug' => 'ribbon'])
+            ->assertSessionDoesntHaveErrors('site_slug');
+        $this->assertSame('ribbon', $this->ribbon->refresh()->site_slug);
+    }
+
+    /**
+     * وقائمةٌ كُتب فيها اسمُ متجرٍ آخر خطأً لا تنتزع عنوانَه.
+     *
+     * لا يقع هذا من الإعدادات (يمنعه الحجز)، بل من خطأٍ في كتابة القائمة. فيبقى
+     * ذلك المتجرُ على عنوانه بلا تحويل، ويبقى سعودٌ على بابه.
+     */
+    public function test_a_list_naming_another_shops_name_takes_nothing_from_it(): void
+    {
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'bloom']]);
+
+        foreach (['/s/bloom', '/s/bloom/shop', '/s/ribbon/shop'] as $path) {
+            $this->get('https://app.abaadapp.om'.$path)->assertOk();
+        }
+        $this->assertSame(url('/s/bloom'), Domains::canonical($this->other->id, 'bloom'));
+        $this->assertSame(url('/s/ribbon'), Domains::canonical($this->ribbon->id, 'ribbon'));
+        $this->assertNull(Domains::pinnedBusiness('bloom'));
+        $this->get('https://bloom.abaadapp.om/')->assertOk()->assertSee('BLOOM');
+    }
+
+    /**
+     * وإن وُجد الاسمُ عند غير صاحبه في القاعدة (كتابةٌ يدويّةٌ لا تأتي من الإعدادات):
+     * لا يُرسل زبونُ أحدٍ إلى متجر غيره — سعودٌ على بابه، والآخرُ على عنوانه.
+     */
+    public function test_a_name_held_by_someone_else_in_the_database_sends_no_one_anywhere(): void
+    {
+        $this->ribbon->forceFill(['site_slug' => 'ribbon-flowers'])->save();
+        $this->other->forceFill(['site_slug' => 'ribbon'])->save();
+
+        $this->assertSame(url('/s/ribbon-flowers'), Domains::canonical($this->ribbon->id, 'ribbon-flowers'));
+        $this->assertNull(Domains::pinnedLabel($this->ribbon->id));
+        $this->assertNotRedirected($this->get('https://app.abaadapp.om/s/ribbon/shop'), 'held elsewhere');
+        $this->get('https://app.abaadapp.om/s/ribbon-flowers/shop')->assertOk();
+    }
+
+    /**
+     * والحجزُ يُسأل عند تغيير العنوان وحده — فلا يُردّ من يحفظ إعداداته بعنوانه.
+     *
+     * قائمةٌ كُتب فيها اسمُ متجرٍ آخر خطأً، أو بيئةُ تجربةٍ فيها متجرٌ باسم `ribbon`
+     * ليس رقمُه ٥: صاحبُ الاسم يحفظ إعداداتِ متجره كما كان، ولا يأخذ اسمَه أحد.
+     */
+    public function test_the_shop_holding_a_listed_name_still_saves_its_settings(): void
+    {
+        $bloomOwner = User::where('business_id', $this->other->id)->firstOrFail();
+        $saud = User::where('business_id', $this->ribbon->id)->firstOrFail();
+
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'bloom']]);
+        $this->actingAs($bloomOwner)->post(route('admin.marketing.store.save'), ['site_slug' => 'bloom', 'store_on' => true])
+            ->assertSessionDoesntHaveErrors('site_slug');
+        $this->assertSame('bloom', $this->other->refresh()->site_slug);
+
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id + 1000 => 'ribbon']]);
+        $this->actingAs($saud)->post(route('admin.marketing.store.save'), ['site_slug' => 'ribbon', 'store_on' => true])
+            ->assertSessionDoesntHaveErrors('site_slug');
+
+        // والحجزُ ما زال يمنع من يغيّر عنوانَه إلى اسمٍ محجوزٍ لغيره
+        config(['storefront.subdomain_businesses' => [$this->ribbon->id => 'ribbon']]);
+        $this->ribbon->forceFill(['site_slug' => 'ribbon-flowers'])->save();
+        $this->actingAs($bloomOwner)->post(route('admin.marketing.store.save'), ['site_slug' => 'ribbon'])
+            ->assertSessionHasErrors('site_slug');
     }
 }

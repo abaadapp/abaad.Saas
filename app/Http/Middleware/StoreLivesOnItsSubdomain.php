@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Business;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use Closure;
@@ -14,7 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * ═══ لمن ═══
  *
- * لمتجرٍ في `storefront.subdomain_businesses` بمعرّفه (`Domains::movedToSubdomain`).
+ * لمتجرٍ ثُبّت له نطاقُه في `storefront.subdomain_businesses` (`Domains::pinnedBusiness`).
  * والعلَمُ العامّ `storefront.subdomains` لا يحوّل أحدًا: يكتب `canonical` على
  * النطاق ويُبقي البابين يخدمان. ومن سواه يمرّ كما كان حرفًا.
  *
@@ -45,10 +44,15 @@ class StoreLivesOnItsSubdomain
             return $next($request);
         }
 
+        /*
+         * الاسمُ المثبَّت لمتجرٍ في القائمة (`Domains::pinnedBusiness`) — ولا يُسأل
+         * الجدولُ عن غيره، فبقيةُ التجّار كما كانوا حرفًا. والروابطُ القديمة
+         * `/s/ribbon/…` تبقى تصل إلى RIBBON وإن غيّر اسمَه.
+         */
         $slug = Storefront::slug((string) $request->route('slug'));
-        $id = $slug === null ? null : Business::query()->where('site_slug', $slug)->value('id');
+        $id = $slug === null ? null : Domains::pinnedBusiness($slug);
 
-        if ($id === null || ! Domains::movedToSubdomain((int) $id)) {
+        if ($id === null) {
             return $next($request);
         }
 

@@ -37,7 +37,7 @@ class StoreOldCartBridgeController extends Controller
     public function __invoke(Request $request, int $business): Response
     {
         $shop = Business::query()->select(['id', 'site_slug'])->find($business);
-        $bridge = $shop === null ? null : Domains::oldCartBridge((int) $shop->id, $shop->site_slug);
+        $bridge = $shop === null ? null : Domains::oldCartBridge((int) $shop->id);
 
         abort_if($bridge === null || $request->getSchemeAndHttpHost() !== $bridge['from'], 404);
 

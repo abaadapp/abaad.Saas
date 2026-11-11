@@ -770,6 +770,109 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(500 + 498, (int) $this->customer->fresh()->points);
     }
 
+    /* ═══════════════════ الدفعُ: ملغى ومتأخّرٌ ومكرّر ═══════════════════ */
+
+    /** رابطُ Paymob حيٌّ على فاتورةٍ صرفت نقاطًا — بلا اتّصالٍ بالبوّابة (`Http::fake`) */
+    private function liveLink(CustomerInvoice $invoice): CustomerPaymentLink
+    {
+        PaymentGateway::create([
+            'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
+            'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
+            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
+        ]);
+        Http::fake([
+            'oman.paymob.com/api/auth/tokens' => Http::response(['token' => 'tok']),
+            'oman.paymob.com/api/ecommerce/payment-links/cancel' => Http::response(['success' => true]),
+            'oman.paymob.com/api/ecommerce/payment-links' => Http::response([
+                'id' => 580090, 'amount_cents' => 0, 'shorten_url' => 'https://paymob.link/z',
+                'client_url' => 'https://oman.paymob.com/z', 'created_at' => '2026-11-11T10:00:00',
+                'expires_at' => '2026-11-18T23:59:00', 'state' => 'created', 'order' => 616057590,
+            ]),
+        ]);
+
+        $link = PaymentLinks::create($this->shop->id, $this->customer, $invoice->fresh(), null, null, $this->owner->id);
+        $link->forceFill(['provider_order_id' => (string) (++$this->order)])->save();
+
+        return $link->fresh();
+    }
+
+    /** إشعارُ Paymob موقَّعٌ بسرّ المتجر — نجاحٌ بمبلغ الرابط ما لم يُقل غيرُه */
+    private function paidNotice(CustomerPaymentLink $link, int $tx, bool $success = true): void
+    {
+        $obj = [
+            'amount_cents' => Amount::toMinor((float) $link->amount, (string) $link->currency),
+            'created_at' => '2026-11-11T10:05:00.000000', 'currency' => $link->currency,
+            'error_occured' => ! $success, 'has_parent_transaction' => false, 'id' => $tx,
+            'integration_id' => 111, 'is_3d_secure' => true, 'is_auth' => false, 'is_capture' => false,
+            'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
+            'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
+            'owner' => 1, 'pending' => false,
+            'source_data' => ['pan' => '2346', 'sub_type' => 'Visa', 'type' => 'card'],
+            'success' => $success, 'is_live' => true,
+        ];
+        $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac-shop'), ['type' => 'TRANSACTION', 'obj' => $obj])->assertOk();
+    }
+
+    /**
+     * رابطٌ أُلغي ثمّ وصل دفعُه متأخّرًا (دفع العميلُ قبل أن يصل الإلغاءُ إلى Paymob).
+     *
+     * المالُ دخل فعلًا فيُسجَّل كما يسجّله النظامُ اليوم — والفاتورةُ صادرةٌ
+     * فيُخصَّص لها. وما يخصّ النقاط: لا صرفَ ثانيًا، والخصمُ والإجماليُّ كما
+     * كُتبا، واكتسابٌ واحدٌ على ما دُفع — ولو تكرّر الإشعار.
+     */
+    public function test_a_late_payment_on_a_cancelled_link_spends_nothing_twice(): void
+    {
+        $invoice = $this->invoice(500); // ٩٩٫٧٥ — خمسمئةٌ صُرفت
+        $before = $invoice->fresh()->only(['total', 'discount_total', 'tax_total', 'loyalty_points', 'loyalty_discount']);
+        $link = $this->liveLink($invoice);
+        PaymentLinks::cancel($link, $this->owner->id);
+        $this->assertSame(CustomerPaymentLink::CANCELLED, $link->fresh()->status);
+
+        $tx = ++$this->tx;
+        foreach (range(1, 2) as $_) {
+            $this->paidNotice($link->fresh(), $tx);
+        }
+
+        $invoice = $invoice->fresh();
+        $this->assertSame($before, $invoice->only(array_keys($before)), 'الدفعُ المتأخّر لا يعيد حسابَ الورقة');
+        $this->assertSame(1, CustomerPayment::count(), 'المالُ الذي دخل يُسجَّل مرّةً');
+        $this->assertSame(1, $this->redeems(), 'لا صرفَ ثانيًا');
+        $this->assertSame(0, $this->returned($invoice));
+        $this->assertSame(1, PointTransaction::where('business_id', $this->shop->id)->where('type', 'earn')->count(), 'اكتسابٌ واحد');
+        $this->assertSame(500 + 498, (int) $this->customer->fresh()->points);
+    }
+
+    /**
+     * فاتورةٌ أُلغيت فعادت نقاطُها، ثمّ وصل دفعُ رابطها متأخّرًا.
+     *
+     * يبقى المالُ رصيدًا للعميل كما يفعل النظامُ اليوم (لا تخصيصَ لملغاة —
+     * `CustomerPayments::record`). وما يخصّ النقاط: لا تُعاد مرّتين، ولا
+     * تُصرف من جديد، ولا اكتسابَ على فاتورةٍ ملغاة، ولا رصيدَ سالب.
+     */
+    public function test_a_payment_arriving_after_the_invoice_was_cancelled_moves_no_points(): void
+    {
+        $invoice = $this->invoice(500);
+        $link = $this->liveLink($invoice);
+        PaymentLinks::cancel($link, $this->owner->id);
+        CustomerInvoices::cancel($invoice->fresh(), 'أُلغيت قبل الدفع');
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+
+        $tx = ++$this->tx;
+        foreach (range(1, 3) as $_) {
+            $this->paidNotice($link->fresh(), $tx);
+        }
+
+        $invoice = $invoice->fresh();
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->status);
+        $this->assertEqualsWithDelta(99.75, (float) $invoice->total, 0.0001, 'لا يُعاد حسابُ الملغاة');
+        $this->assertSame(1, CustomerPayment::count(), 'المالُ الذي دخل يُسجَّل مرّةً');
+        $this->assertEqualsWithDelta(0.0, (float) \Illuminate\Support\Facades\DB::table('customer_payment_allocations')->where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001, 'لا يُخصَّص لملغاة');
+        $this->assertSame(1, $this->redeems());
+        $this->assertSame(500, $this->returned($invoice), 'لا تُعاد مرّتين');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points, 'لا صرفَ ولا اكتسابَ على ملغاة');
+    }
+
     /* ═══════════════════ العزلُ والباقات ═══════════════════ */
 
     /** عميلُ متجرٍ آخر لا يُعرض رصيدُه ولا يُصرف — وإعداداتُ الجار لا تُقرأ هنا */

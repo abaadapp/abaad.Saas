@@ -868,10 +868,11 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(500, $this->returned($invoice));
         $this->assertSame(1000, (int) $this->customer->fresh()->points);
 
-        // وإشعارٌ فوق الإجماليّ يردّه بابُ الإشعار نفسُه — ولا نقطةَ زائدة
+        // وإشعارٌ فوق الإجماليّ يردّه بابُ الإشعار نفسُه — ولا نقطةَ زائدة (والرفضُ تحقّقٌ بعد #202)
         try {
             $this->credit($invoice, 1);
-        } catch (\RuntimeException) {
+            $this->fail('صدر إشعارٌ فوق إجماليّ الفاتورة');
+        } catch (\RuntimeException|ValidationException) {
         }
         $this->assertSame(500, $this->returned($invoice));
         $this->assertSame(1000, (int) $this->customer->fresh()->points);

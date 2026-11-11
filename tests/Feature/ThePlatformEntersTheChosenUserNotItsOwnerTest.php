@@ -6,12 +6,14 @@ use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -113,6 +115,25 @@ class ThePlatformEntersTheChosenUserNotItsOwnerTest extends TestCase
         $this->assertSame(['customers', 'dashboard'], $abilities, 'الواجهةُ تعرض أقسامًا ليست للموظّفة');
     }
 
+    public function test_an_owner_can_be_entered_through_the_user_door_with_the_owners_reach(): void
+    {
+        $this->enter($this->ownerA)->assertRedirect();
+
+        $this->assertSame($this->ownerA->id, auth()->id());
+        $this->get(route('admin.employees.index'))->assertOk();
+    }
+
+    public function test_returning_leaves_none_of_the_users_reach_behind(): void
+    {
+        $this->enter($this->clerkA);
+        $this->post(route('impersonate.stop'));
+
+        $this->get(route('admin.customers.index'))->assertRedirect();
+        $props = $this->page(route('super-admin.users.index'))['props']['auth'];
+        $this->assertFalse($props['impersonating']);
+        $this->assertSame($this->super->id, $props['user']['id']);
+    }
+
     public function test_the_owner_door_still_sees_what_the_clerk_cannot(): void
     {
         // الفرقُ نفسُه هو سببُ الباب: المالك يرى الموظّفين والموظّفةُ لا
@@ -209,16 +230,20 @@ class ThePlatformEntersTheChosenUserNotItsOwnerTest extends TestCase
         $this->enter($this->clerkA);
         $this->post(route('impersonate.stop'));
 
+        $who = 'منى الموظّفة #'.$this->clerkA->id.' — متجر A #'.$this->a->id;
+
         $in = ActivityLog::where('action', 'login')->where('subject_type', 'user')->latest('id')->firstOrFail();
         $this->assertSame($this->super->id, $in->user_id, 'الدخولُ لم يُنسب إلى مدير المنصّة');
+        $this->assertSame('المنصّة', $in->user_name);
         $this->assertSame($this->clerkA->id, (int) $in->subject_id, 'الدخولُ لا يقول أيَّ حسابٍ دُخل');
-        $this->assertStringContainsString('منى الموظّفة', $in->description);
-        $this->assertStringContainsString('متجر A', $in->description);
+        $this->assertSame('دخل كمستخدم: '.$who, $in->description, 'الدخولُ لا يقول الحسابَ ومتجرَه بمعرّفيهما');
+        $this->assertNotNull($in->created_at, 'وقتُ البدء');
 
         $out = ActivityLog::where('action', 'logout')->latest('id')->firstOrFail();
         $this->assertSame($this->super->id, $out->user_id, 'الخروجُ لم يُنسب إلى مدير المنصّة');
         $this->assertSame($this->clerkA->id, (int) $out->subject_id, 'الخروجُ لا يقول من أيّ حسابٍ خرج');
-        $this->assertSame('خرج من حساب: منى الموظّفة', $out->description);
+        $this->assertSame('خرج من حساب: '.$who, $out->description);
+        $this->assertGreaterThan($in->id, $out->id, 'الخروجُ بعد الدخول');
     }
 
     public function test_what_is_done_inside_is_logged_with_the_platform_admin_behind_it(): void
@@ -229,6 +254,116 @@ class ThePlatformEntersTheChosenUserNotItsOwnerTest extends TestCase
         $row = ActivityLog::where('description', 'فعلٌ داخل الحساب')->firstOrFail();
         $this->assertSame($this->clerkA->id, $row->user_id);
         $this->assertSame($this->super->id, $row->impersonator_id, 'ما فُعل باسم الموظّفة لا يقول من فعله حقًّا');
+        $this->assertSame('المنصّة', $row->impersonator_name);
+    }
+
+    public function test_every_write_inside_is_traced_to_the_platform_admin_without_its_content(): void
+    {
+        $this->enter($this->clerkA);
+
+        $this->post(route('admin.customers.store'), ['name' => 'CONTENT-NEVER-LOGGED', 'phone' => '93333333', 'language' => 'ar'])->assertRedirect();
+        $this->assertDatabaseHas('customers', ['business_id' => $this->a->id, 'name' => 'CONTENT-NEVER-LOGGED']);
+
+        $trace = ActivityLog::where('action', 'support')->latest('id')->firstOrFail();
+        $this->assertSame($this->clerkA->id, $trace->user_id, 'الطلبُ لم يُنسب إلى الحساب المدخول');
+        $this->assertSame($this->super->id, $trace->impersonator_id, 'الطلبُ لا يقول إنّ مدير المنصّة هو من فعله');
+        $this->assertSame($this->a->id, (int) $trace->business_id);
+        $this->assertStringContainsString('POST admin.customers.store /admin/customers', $trace->description);
+        $this->assertStringNotContainsString('CONTENT-NEVER-LOGGED', $trace->description, 'محتوى النموذج دخل السجلّ');
+        $this->assertStringNotContainsString('93333333', $trace->description);
+    }
+
+    public function test_reading_inside_writes_no_trace_line(): void
+    {
+        $this->enter($this->clerkA);
+        $this->get(route('admin.customers.index'))->assertOk();
+
+        $this->assertSame(0, ActivityLog::where('action', 'support')->count(), 'كلُّ قراءةٍ تملأ السجلّ');
+    }
+
+    public function test_the_employee_working_in_their_own_session_is_not_marked_as_support(): void
+    {
+        $this->actingAs($this->clerkA)->post(route('admin.customers.store'), ['name' => 'عميل من منى', 'phone' => '94444444', 'language' => 'ar'])->assertRedirect();
+        $this->assertDatabaseHas('customers', ['name' => 'عميل من منى']);
+
+        $this->assertSame(0, ActivityLog::where('action', 'support')->count());
+        $this->assertSame(0, ActivityLog::whereNotNull('impersonator_id')->count(), 'عملُ الموظّفة نفسِها نُسب إلى الدعم');
+    }
+
+    /* ══════════════ ٥ب · الجلسة ══════════════ */
+
+    public function test_the_session_id_changes_on_entering_and_on_leaving(): void
+    {
+        $this->actingAs($this->super)->get(route('super-admin.users.index'))->assertOk();
+        $first = session()->getId();
+
+        $this->post(route('super-admin.users.impersonate', $this->clerkA->id));
+        $inside = session()->getId();
+        $this->assertNotSame($first, $inside, 'معرّفُ الجلسة لم يتجدّد عند الدخول');
+
+        $this->post(route('impersonate.stop'));
+        $this->assertNotSame($inside, session()->getId(), 'معرّفُ الجلسة لم يتجدّد عند العودة');
+    }
+
+    public function test_entering_does_not_pretend_the_user_logged_in(): void
+    {
+        $this->clerkA->forceFill(['last_login_at' => null])->save();
+
+        $this->enter($this->clerkA);
+
+        $this->assertNull($this->clerkA->fresh()->last_login_at, 'دخولُ الدعم سُجّل «آخرَ دخولٍ» للموظّفة');
+    }
+
+    public function test_logging_out_inside_ends_the_whole_session_and_says_who(): void
+    {
+        $this->enter($this->clerkA);
+
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        $this->assertGuest();
+        $this->assertFalse(session()->has('impersonator_id'));
+
+        $row = ActivityLog::where('action', 'logout')->latest('id')->firstOrFail();
+        $this->assertSame($this->clerkA->id, $row->user_id);
+        $this->assertSame($this->super->id, $row->impersonator_id, 'الخروجُ من الداخل لا يقول إنّ الدعم هو من خرج');
+
+        $this->get(route('super-admin.users.index'))->assertRedirect(route('login'));
+    }
+
+    public function test_an_expired_session_inside_leaves_nothing_but_the_login_page(): void
+    {
+        $this->enter($this->clerkA);
+
+        // انتهاءُ الجلسة: لا شيء في المخزن — لا هويّة ولا مُنتحِل
+        auth()->guard('web')->logout();
+        session()->flush();
+
+        $this->get(route('admin.customers.index'))->assertRedirect(route('login'));
+        $this->get(route('super-admin.users.index'))->assertRedirect(route('login'));
+        $this->post(route('impersonate.stop'))->assertRedirect(route('login'));
+        $this->assertGuest();
+    }
+
+    public function test_the_profile_cannot_be_rewritten_from_inside(): void
+    {
+        $this->enter($this->clerkA);
+
+        $this->put(route('profile.update'), [
+            'name' => 'منى', 'email' => 'attacker@evil.example',
+            'password' => 'Sup3rSecret99', 'password_confirmation' => 'Sup3rSecret99',
+        ])->assertRedirect()->assertSessionHas('toast');
+
+        $this->assertSame('clerk-a@abaad.om', $this->clerkA->fresh()->email, 'بريدُ الموظّفة تبدّل من جلسة دعم');
+        $row = ActivityLog::where('action', 'support')->latest('id')->firstOrFail();
+        $this->assertSame($this->super->id, $row->impersonator_id);
+        $this->assertStringNotContainsString('Sup3rSecret99', $row->description, 'كلمةُ المرور دخلت السجلّ');
+        $this->assertStringNotContainsString('attacker@evil.example', $row->description);
+    }
+
+    public function test_the_employee_can_still_edit_their_own_profile_themselves(): void
+    {
+        $this->actingAs($this->clerkA)->put(route('profile.update'), ['name' => 'منى ع', 'email' => 'clerk-a@abaad.om'])->assertRedirect();
+
+        $this->assertSame('منى ع', $this->clerkA->fresh()->name);
     }
 
     /* ══════════════ ٦ · من لا يُدخل باسمه ══════════════ */
@@ -288,6 +423,71 @@ class ThePlatformEntersTheChosenUserNotItsOwnerTest extends TestCase
 
         $this->enter($this->clerkA)->assertRedirect();
         $this->assertSame($this->clerkA->id, auth()->id());
+    }
+
+    /* ══════════════ ٦ب · المتجرُ الممنوع: يُقرأ ولا يُكتب فيه ══════════════ */
+
+    /** @return array<string, array{0: \Closure}> */
+    public static function blockedShops(): array
+    {
+        return [
+            'معطَّل' => [fn (Business $b) => $b->forceFill(['status' => 'معطل'])->save()],
+            'بانتظار السداد' => [fn (Business $b) => $b->forceFill(['status' => Business::AWAITING_PAYMENT])->save()],
+            'اشتراكٌ منتهٍ' => [fn (Business $b) => $b->forceFill(['ends_at' => now()->subDays(120)])->save()],
+            'الصيانة' => [fn () => Setting::updateOrCreate(['business_id' => null, 'key' => 'maintenance_mode'], ['value' => '1'])],
+        ];
+    }
+
+    #[DataProvider('blockedShops')]
+    public function test_inside_a_blocked_shop_support_reads_but_writes_nothing(\Closure $block): void
+    {
+        $block($this->a);
+        $before = Business::whereKey($this->a->id)->first(['status', 'ends_at'])->toArray();
+
+        $this->enter($this->clerkA);
+
+        $this->get(route('admin.customers.index'))->assertOk();
+        $this->assertNotNull($this->page(route('admin.customers.index'))['props']['auth']['impersonationLimit'], 'الشريطُ لا يقول إنّه للعرض فقط');
+
+        $this->post(route('admin.customers.store'), ['name' => 'BLOCKED-WRITE', 'phone' => '95555555', 'language' => 'ar'])
+            ->assertRedirect()->assertSessionHas('toast');
+        $this->postJson(route('admin.customers.store'), ['name' => 'BLOCKED-WRITE', 'phone' => '95555555', 'language' => 'ar'])
+            ->assertForbidden()->assertJsonPath('blocked', 'support_view_only');
+
+        $this->assertDatabaseMissing('customers', ['name' => 'BLOCKED-WRITE']);
+        $this->assertSame($before, Business::whereKey($this->a->id)->first(['status', 'ends_at'])->toArray(), 'المتجرُ عاد إلى العمل من جلسة دعم');
+        $this->assertSame(2, ActivityLog::where('action', 'support')->where('impersonator_id', $this->super->id)
+            ->where('description', 'like', '%مرفوض%')->count(), 'المحاولةُ المرفوضة لم تُقيَّد');
+
+        // والعودةُ تعمل منه — الخروجُ ليس كتابةً في المتجر
+        $this->post(route('impersonate.stop'))->assertRedirect();
+        $this->assertSame($this->super->id, auth()->id());
+    }
+
+    public function test_an_active_shop_is_not_view_only(): void
+    {
+        $this->enter($this->clerkA);
+
+        $this->assertNull($this->page(route('admin.customers.index'))['props']['auth']['impersonationLimit']);
+    }
+
+    public function test_the_merchant_door_into_a_disabled_shop_is_view_only_too(): void
+    {
+        $this->a->forceFill(['status' => 'معطل'])->save();
+        $this->actingAs($this->super)->post(route('super-admin.businesses.impersonate', $this->a->id));
+
+        $this->get(route('admin.dashboard'))->assertOk();
+        $this->postJson(route('admin.customers.store'), ['name' => 'OWNER-DOOR-WRITE', 'phone' => '96666666', 'language' => 'ar'])->assertForbidden();
+        $this->assertDatabaseMissing('customers', ['name' => 'OWNER-DOOR-WRITE']);
+    }
+
+    public function test_the_owner_of_a_disabled_shop_is_still_shut_out_on_their_own(): void
+    {
+        // الحارسُ لم يُليَّن لغير الدعم: صاحبُ المعطَّل يُطرد كما كان
+        $this->a->forceFill(['status' => 'معطل'])->save();
+
+        $this->actingAs($this->ownerA)->get(route('admin.customers.index'))->assertRedirect(route('login'));
+        $this->assertGuest();
     }
 
     /* ══════════════ ٧ · البابُ لمدير المنصّة وحده — على الخادم ══════════════ */

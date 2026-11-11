@@ -63,8 +63,17 @@ export default function ImpersonationBar() {
                           business: context.businessName,
                       })
                     : t('تدخل الآن باسم :name', { name: auth.user.name })}{' '}
-                — {t('كل ما تفعله يُنسب إليه')}
+                — {t('كل ما تفعله يُسجَّل باسمه وباسمك معًا')}
             </span>
+            {/*
+                والحسابُ الممنوع على صاحبه (متجرٌ معطَّل، اشتراكٌ منتهٍ أو بانتظار السداد)
+                يُدخَل للعرض وحده — يُقال قبل أن يُضغط «حفظ» ويُردّ (`Tenancy::supportViewOnly`).
+            */}
+            {auth.impersonationLimit && (
+                <span data-testid="impersonation-limit" className="rounded-[6px] bg-white/20 px-2 py-0.5">
+                    {t('للعرض فقط — :reason', { reason: auth.impersonationLimit })}
+                </span>
+            )}
             <button
                 type="button"
                 onClick={() => router.post(route('impersonate.stop'))}

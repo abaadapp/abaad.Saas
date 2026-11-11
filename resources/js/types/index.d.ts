@@ -165,6 +165,8 @@ export interface SharedProps {
         isEmployee: boolean;
         /** جلسة انتحالٍ من لوحة المنصة — تُعلَن في كل صفحة */
         impersonating: boolean;
+        /** لماذا جلسةُ الدعم هنا للعرض وحده (متجرٌ معطَّل، اشتراكٌ منتهٍ…) — null إن كانت تكتب (`Tenancy::supportViewOnly`) */
+        impersonationLimit?: string | null;
     } | null;
     context: {
         businessName: string;

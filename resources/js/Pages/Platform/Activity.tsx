@@ -11,6 +11,7 @@ import {
     Plus,
     RefreshCw,
     Settings,
+    ShieldAlert,
     ShoppingCart,
     Timer,
     Trash2,
@@ -58,6 +59,7 @@ const ACTION_LABEL: Record<string, string> = {
     settings: 'إعدادات',
     hold: 'تعليق',
     shift: 'وردية',
+    support: 'طلب عبر الدعم',
 };
 
 /** خريطة صريحة — الاستيراد الشامل من lucide يضخّ المكتبة كاملة في الحزمة */
@@ -73,6 +75,7 @@ const ICONS: Record<string, LucideIcon> = {
     pause: Pause,
     timer: Timer,
     history: History,
+    'shield-alert': ShieldAlert,
 };
 
 const TONE: Record<string, string> = {
@@ -140,6 +143,8 @@ export default function Activity() {
                                 { label: 'تغيير حالة', value: 'status' },
                                 { label: 'دخول', value: 'login' },
                                 { label: 'إعدادات', value: 'settings' },
+                                // ما طُلب أثناء دخول الدعم باسم غيره — يُصفّى وحده للمراجعة
+                                { label: 'طلب عبر الدعم', value: 'support' },
                             ]}
                         />
                     </Field>

@@ -85,7 +85,12 @@ class ImpersonationController extends Controller
             return back()->with('toast', ['msg' => $reason, 'type' => 'warning']);
         }
 
-        return $this->enter($request, $target, 'دخل كمستخدم: '.$target->name.' — '.$target->business->name, [
+        /*
+         * والسطرُ يحمل الطرفين بأسمائهما ومعرّفاتهما: الفاعلُ مديرُ المنصّة
+         * (`user_id`/`user_name` — يُكتب قبل الدخول)، والمستهدَفُ في `subject_id`
+         * ونصِّ السطر مع متجره (#معرّفه) — فالاسمُ يتبدّل يومًا والرقمُ لا.
+         */
+        return $this->enter($request, $target, self::who('دخل كمستخدم', $target), [
             'business_id' => null,
             'subject_type' => 'user',
             'subject_id' => $target->id,
@@ -123,6 +128,15 @@ class ImpersonationController extends Controller
         }
 
         return null;
+    }
+
+    /** «دخل كمستخدم: منى #7 — متجر الورد #3» — الاسمُ للقارئ، والرقمُ لما بعد تبدّل الاسم */
+    private static function who(string $verb, User $user): string
+    {
+        $shop = $user->business;
+
+        return $verb.': '.$user->name.' #'.$user->id
+            .($shop ? ' — '.$shop->name.' #'.$shop->id : '');
     }
 
     /**
@@ -186,7 +200,7 @@ class ImpersonationController extends Controller
          * يُعرف أيُّهما انتهى. والفاعلُ هنا مديرُ المنصّة (عاد إلى حسابه)،
          * والحسابُ الذي خرج منه في `subject_id`.
          */
-        Activity::log('logout', $was ? 'خرج من حساب: '.$was->name : 'خرج من حساب التاجر', $was ? [
+        Activity::log('logout', $was ? self::who('خرج من حساب', $was) : 'خرج من حساب التاجر', $was ? [
             'business_id' => null,
             'subject_type' => 'user',
             'subject_id' => $was->id,

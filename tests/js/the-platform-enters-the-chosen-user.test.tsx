@@ -41,8 +41,22 @@ describe('الشريط الأحمر أثناء الدخول', () => {
         render(<ImpersonationBar />);
 
         expect(screen.getByTestId('impersonation-who').textContent).toContain('تدخل الآن باسم منى (مبيعات) في متجر A');
+        expect(screen.getByTestId('impersonation-who').textContent).toContain('يُسجَّل باسمه وباسمك معًا');
+        // متجرٌ عاملٌ: لا شارةَ «للعرض فقط»
+        expect(screen.queryByTestId('impersonation-limit')).toBeNull();
         await userEvent.click(screen.getByRole('button', { name: /عُد إلى لوحة المنصة/ }));
         expect(router.post).toHaveBeenCalledWith('/impersonate.stop');
+    });
+
+    it('يقول «للعرض فقط» وسببه في المتجر الممنوع على صاحبه', async () => {
+        Object.assign(pageProps, {
+            auth: { ...base.auth, impersonating: true, impersonationLimit: 'المتجر معطَّل', user: { name: 'منى', roleLabel: 'مبيعات' } },
+            context: { ...base.context, businessName: 'متجر A' },
+        });
+        const { default: ImpersonationBar } = await import('@/Components/ImpersonationBar');
+        render(<ImpersonationBar />);
+
+        expect(screen.getByTestId('impersonation-limit').textContent).toBe('للعرض فقط — المتجر معطَّل');
     });
 
     it('لا يُرسم خارج الانتحال', async () => {

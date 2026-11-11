@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Permissions;
+use App\Support\PosTerminal;
 use App\Support\Tenancy;
 use App\Support\TenantSwitch;
 use Illuminate\Http\RedirectResponse;
@@ -136,6 +138,17 @@ class ImpersonationController extends Controller
          */
         if (Permissions::homeFor($target) === route('login')) {
             return __('حساب بلا صلاحية تفتح له شاشة — صاحبه نفسه لا يرى شيئًا بعد دخوله. أعطه صلاحية أولًا.');
+        }
+
+        /*
+         * ولا كاشيرٌ لا فرعَ له في متجره: صفحتُه الصندوق، وهو مقيَّدٌ بفرعٍ زال
+         * فلا يعمل في فرعٍ حتى يُسنَد (`User::worksAt`). وفتحُ صندوقِ فرعٍ آخر له
+         * في الدعم صلاحيةٌ لا يملكها — انظر `BindPosBranch`.
+         */
+        if (Permissions::homeFor($target) === route('pos.index')
+            && PosTerminal::supportBranchId($target) === null
+            && Branch::where('business_id', $target->business_id)->exists()) {
+            return __('حساب غير مُسنَد إلى أي فرع في متجره — أسنده إلى فرع أولًا.');
         }
 
         return null;

@@ -14,6 +14,7 @@ use App\Support\Permissions;
 use App\Support\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -158,6 +159,36 @@ class SupportEntersTheChosenTillNotTheBrowsersTest extends TestCase
         // صندوقُ «زهرة مسقط» لم يُمسّ: لا آخرَ ظهور، ولا كوكي تُكتب أو تُمحى
         $this->assertNull($this->zahraTill->fresh()->last_seen_at, 'خُتم صندوقُ متجرٍ آخر بزيارة الدعم');
         $res->assertCookieMissing(PosTerminal::COOKIE);
+    }
+
+    public function test_the_registered_tills_and_the_chosen_user_are_left_exactly_as_they_were(): void
+    {
+        $tills = PosDevice::orderBy('id')->get()->map->getAttributes()->all();
+        $target = fn () => [
+            User::whereKey($this->richard->id)->first(['business_id', 'role', 'job_title', 'status', 'permissions'])->getAttributes(),
+            $this->richard->fresh()->branches()->withTrashed()->pluck('branches.id')->all(),
+        ];
+        $before = $target();
+
+        $this->onZahrasTill()->enter($this->richard);
+        $this->till();
+        $this->till();
+        $this->post(route('impersonate.stop'));
+
+        $this->assertSame($tills, PosDevice::orderBy('id')->get()->map->getAttributes()->all(), 'تغيّر صفُّ صندوقٍ مسجَّل أو أُنشئ أو حُذف');
+        $this->assertSame($before, $target(), 'تغيّر متجرُ المستخدم أو فرعُه أو دورُه أو صلاحيّاتُه');
+    }
+
+    public function test_a_reload_keeps_the_chosen_user_and_the_support_session(): void
+    {
+        $this->onZahrasTill()->enter($this->richard);
+
+        foreach (range(1, 3) as $_) {
+            [, $page] = $this->till();
+            $this->assertSame($this->richard->id, auth()->id());
+            $this->assertSame($this->super->id, session('impersonator_id'));
+            $this->assertSame($this->ribbonBranch->id, $page['props']['context']['branchId']);
+        }
     }
 
     public function test_outside_support_the_same_cashier_on_that_browser_is_still_put_out(): void
@@ -326,5 +357,80 @@ class SupportEntersTheChosenTillNotTheBrowsersTest extends TestCase
         $users = collect($this->get(route('super-admin.users.index', ['per_page' => 50]))->viewData('page')['props']['users'])->keyBy('id');
         $this->assertFalse($users[$empty->id]['can_enter']);
         $this->assertTrue($users[$this->richard->id]['can_enter']);
+    }
+
+    /* ══════════════ ٧ · المرفوضون يُرفضون ولو حمل المتصفّحُ صندوقًا ══════════════ */
+
+    public static function refused(): array
+    {
+        return [
+            'موقوف' => [fn (self $t) => $t->cashier($t->ribbon, 'موقوف', 'stopped@abaad.om')->forceFill(['status' => 'موقوف'])->save()],
+            'محذوف' => [fn (self $t) => $t->cashier($t->ribbon, 'محذوف', 'gone@abaad.om')->delete()],
+            'مدير منصّة' => [fn (self $t) => User::create(['business_id' => null, 'name' => 'منصّة أخرى', 'email' => 'super2@abaad.om',
+                'password' => bcrypt('password12345'), 'role' => 'super_admin', 'status' => 'نشط'])],
+            'بلا متجر' => [fn (self $t) => User::create(['business_id' => null, 'name' => 'بلا متجر', 'email' => 'nobiz@abaad.om',
+                'password' => bcrypt('password12345'), 'role' => 'sales', 'status' => 'نشط', 'permissions' => ['dashboard']])],
+        ];
+    }
+
+    #[DataProvider('refused')]
+    public function test_a_refused_account_stays_refused_on_a_browser_that_is_a_till(\Closure $make): void
+    {
+        $make($this);
+        $target = User::withTrashed()->orderByDesc('id')->firstOrFail();
+
+        $this->onZahrasTill()->actingAs($this->super)->post(route('super-admin.users.impersonate', $target->id));
+
+        $this->assertSame($this->super->id, auth()->id(), 'دخل حسابًا مرفوضًا');
+        $this->assertFalse(session()->has('impersonator_id'));
+    }
+
+    public function test_a_cashier_whose_only_branch_is_gone_is_refused_and_never_given_another_branch(): void
+    {
+        $cashier = $this->cashier($this->multi, 'كاشير الخوير', 'khuwair@abaad.om', [$this->khuwair->id]);
+        $this->khuwair->delete();
+
+        $this->onZahrasTill()->enter($cashier)->assertRedirect()->assertSessionHas('toast');
+        $this->assertSame($this->super->id, auth()->id(), 'فُتح صندوقٌ لكاشيرٍ لا فرعَ له');
+
+        $users = collect($this->get(route('super-admin.users.index', ['per_page' => 50]))->viewData('page')['props']['users'])->keyBy('id');
+        $this->assertFalse($users[$cashier->id]['can_enter']);
+    }
+
+    public function test_a_branch_removed_during_the_session_ends_it_safely_instead_of_opening_another(): void
+    {
+        $cashier = $this->cashier($this->multi, 'كاشير السيب', 'seeb@abaad.om', [$this->seeb->id]);
+        $this->onZahrasTill()->enter($cashier);
+        $this->till();
+
+        $this->seeb->delete();
+
+        $this->get(route('pos.index'))->assertRedirect()->assertSessionHas('toast');
+        $this->assertSame($this->super->id, auth()->id(), 'بقي في صندوقٍ لا فرعَ له أو خرج إلى شاشة الدخول');
+        $this->assertNull(session('impersonator_id'));
+        $this->get(route('super-admin.users.index'))->assertOk();
+    }
+
+    /* ══════════════ ٨ · لا تجاوزَ خارج جلسة الدعم ══════════════ */
+
+    public function test_a_merchant_cannot_open_the_door_nor_borrow_the_support_rule(): void
+    {
+        $this->onZahrasTill()->actingAs($this->ownerRibbon)
+            ->post(route('super-admin.users.impersonate', $this->richard->id))->assertForbidden();
+        $this->assertSame($this->ownerRibbon->id, auth()->id());
+        $this->assertFalse(session()->has('impersonator_id'));
+
+        // وعلى صندوق متجرٍ آخر يُعامَل كما كان: لوحتُه بجلسته، ونقطةُ البيع تُرفض بتنبيه
+        $this->get(route('pos.index'))->assertRedirect(Permissions::homeFor($this->ownerRibbon))->assertSessionHas('toast');
+        $this->assertSame(0, PosDevice::where('business_id', $this->ribbon->id)->count());
+    }
+
+    public function test_the_sign_out_inside_support_is_unchanged(): void
+    {
+        $this->enter($this->richard);
+        $this->till();
+
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        $this->assertGuest();
     }
 }

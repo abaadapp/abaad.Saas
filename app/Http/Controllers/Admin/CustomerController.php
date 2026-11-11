@@ -4,9 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Support\Lists\CustomersList;
 use App\Http\Controllers\Controller;
+use App\Models\Business;
 use App\Models\Customer;
+use App\Models\PointTransaction;
+use App\Support\Activity;
+use App\Support\Permissions;
+use App\Support\PlanFeatures;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
@@ -237,34 +244,80 @@ class CustomerController extends Controller
         return back()->with('toast', ['msg' => __('تم حفظ الملاحظة'), 'type' => 'success']);
     }
 
-    public function redeem(Request $request, $id)
+    /**
+     * تصحيحُ رصيد نقاط العميل — عمليّةٌ إداريّةٌ مستقلّة، لا استبدال.
+     *
+     * ═══ وما كان ═══
+     *
+     * «صرف النقاط» من ملف العميل كان يُنقص الرصيدَ كلَّه بضغطةٍ ويقول «خصم
+     * كذا» — ولا خصمَ يقع في أيّ ورقة، ولا سببَ يُكتب، ولا صلاحيّةَ غيرُ فتح
+     * قسم العملاء، ولا يحترم إطفاءَ الاستبدال ولا حدودَه.
+     *
+     * ═══ وما صار ═══
+     *
+     * الاستبدالُ مقابل خصمٍ بابُه الصندوقُ وفاتورةُ العميل وحدهما، بقواعد
+     * التاجر. وهذا البابُ يصحّح الرصيدَ فقط: زيادةً أو نقصًا، بفعلٍ مسمًّى
+     * (`Permissions::CUSTOMER_POINTS_ADJUST`)، وبسببٍ إلزاميّ يُكتب في حركة
+     * النقاط وفي سجلّ النشاط. ولا يُنتج مالًا ولا خصمًا، ولا ينزل بالرصيد
+     * تحت الصفر.
+     */
+    public function adjustPoints(Request $request, $id)
     {
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_POINTS_ADJUST), 403);
+
         $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
-        $points = (int) $request->input('points', $customer->points);
-        $points = max(0, min($points, (int) $customer->points));
-        if ($points <= 0) {
-            return back()->with('toast', ['msg' => __('لا توجد نقاط كافية للصرف'), 'type' => 'warning']);
-        }
-        /*
-         * الخصم شرطيّ — والشرط في الجملة نفسها لا قبلها.
-         *
-         * كان يُقرأ الرصيد ثمّ يُخصم في خطوتين: ضغطتان متتاليتان على الزرّ
-         * تقرآن مئةً كلتاهما فتخصمان مئتين، والعمود لا يقبل سالبًا فتنكسر
-         * الثانية بخطأ قاعدةٍ صريح — أو تدور تحته إلى رقمٍ هائل. والصرف
-         * يخصم من فاتورةٍ حقيقية، فالنقطة المصروفة مرّتين مالٌ خرج مرّتين.
-         */
-        $done = Customer::whereKey($customer->id)->where('points', '>=', $points)
-            ->update(['points' => \DB::raw('points - '.$points)]);
 
-        if (! $done) {
-            return back()->with('toast', ['msg' => __('لا توجد نقاط كافية للصرف'), 'type' => 'warning']);
-        }
+        // والتصحيحُ لمن تشمله باقتُه الولاء — كالاكتساب والاستبدال
+        PlanFeatures::enforce(Business::find($this->bid()), 'loyalty');
 
-        $customer->refresh();
-        \App\Models\PointTransaction::record($customer, 'redeem', $points, (int) $customer->points, null, 'صرف يدوي من ملف العميل');
-        \App\Support\Activity::log('updated', "صرف {$points} نقطة للعميل: {$customer->name}", ['subject_id' => $customer->id]);
+        $data = $request->validate([
+            'direction' => ['required', Rule::in(['add', 'deduct'])],
+            'points' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'reason' => ['required', 'string', 'min:3', 'max:200'],
+        ]);
 
-        return back()->with('toast', ['msg' => __('تم صرف :points نقطة (خصم :amount)', ['points' => $points, 'amount' => Demo::money($points / 100)]), 'type' => 'success']);
+        $points = (int) $data['points'];
+        $reason = trim($data['reason']);
+
+        DB::transaction(function () use ($customer, $data, $points, $reason) {
+            if ($data['direction'] === 'deduct') {
+                // بشرطٍ في جملة التحديث: لا ينزل الرصيدُ تحت الصفر ولو تزامن تصحيحان
+                $done = Customer::whereKey($customer->id)->where('business_id', $customer->business_id)
+                    ->where('points', '>=', $points)
+                    ->update(['points' => DB::raw('points - '.$points), 'updated_at' => now()]);
+
+                if (! $done) {
+                    throw ValidationException::withMessages([
+                        'points' => __('الرصيد لا يكفي لهذا النقص — رصيد العميل :n نقطة.', ['n' => (int) $customer->fresh()->points]),
+                    ]);
+                }
+            } else {
+                Customer::whereKey($customer->id)->where('business_id', $customer->business_id)
+                    ->update(['points' => DB::raw('points + '.$points), 'updated_at' => now()]);
+            }
+
+            $customer->refresh();
+            $signed = $data['direction'] === 'deduct' ? -$points : $points;
+            $by = auth()->user()?->name ?? '—';
+
+            PointTransaction::create([
+                'business_id' => (int) $customer->business_id,
+                'customer_id' => $customer->id,
+                'type' => PointTransaction::ADJUST,
+                'points' => $signed,
+                'balance_after' => (int) $customer->points,
+                'note' => mb_substr('تصحيح إداري بيد '.$by.' — '.$reason, 0, 250),
+            ]);
+
+            Activity::log('updated', 'صحّح رصيد نقاط العميل '.$customer->name.' ('.($signed > 0 ? '+' : '').$signed.') — '.$reason, [
+                'subject_id' => $customer->id,
+            ]);
+        });
+
+        return back()->with('toast', [
+            'msg' => __('صُحّح رصيد النقاط — الرصيد الآن :n نقطة', ['n' => (int) $customer->points]),
+            'type' => 'success',
+        ]);
     }
 
     /* ------------------------- عناوين العميل ------------------------- */

@@ -17,6 +17,8 @@ class Order extends Model
         'subtotal' => 'decimal:3', 'discount' => 'decimal:3', 'tax' => 'decimal:3',
         'delivery_fee' => 'decimal:3', 'total' => 'decimal:3', 'is_held' => 'boolean',
         'coupon_discount' => 'decimal:3',
+        // بيعةٌ وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة — `PosController::reviewRedemption`
+        'loyalty_review' => 'array',
         'ordered_at' => 'datetime',
         'scheduled_for' => 'datetime',
         'hide_sender' => 'boolean',
@@ -104,6 +106,23 @@ class Order extends Model
     public function scopeSold($query)
     {
         return $query->where('is_held', false)->where('status', '!=', self::CANCELLED);
+    }
+
+    /**
+     * كم من خصم البيعة نقاطُ ولاء — ليُطبع سطرًا مستقلًّا بعدده.
+     *
+     * خصمُ الصندوق كوبونٌ ونقاطٌ معًا ولا ثالثَ لهما (`PosController::completeSale`)،
+     * والتصحيحُ يحصر الكوبونَ بالخصم (`OrderCorrection`). فما فوق الكوبون
+     * نقاط — ما دامت البيعةُ استبدلت نقاطًا. ولا يغيّر هذا رقمًا: «الخصم»
+     * و«خصم نقاط الولاء» مجموعُهما خصمُ البيعة كما هو.
+     */
+    public function loyaltyDiscount(): float
+    {
+        if ((int) $this->redeemed_points <= 0) {
+            return 0.0;
+        }
+
+        return round(max(0, (float) $this->discount - (float) $this->coupon_discount), 3);
     }
 
     /**

@@ -2,14 +2,12 @@
 
 namespace App\Support;
 
-use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\CustomerPaymentLink;
 use App\Models\PointTransaction;
-use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -68,14 +66,13 @@ class InvoiceLoyalty
     /** هل الولاءُ عاملٌ في المتجر الآن — مفتاحُ التاجر وباقتُه، كـ`PosController::loyaltyOn` */
     public static function on(int $businessId): bool
     {
-        $enabled = (string) (Setting::where('business_id', $businessId)->where('key', 'loyalty_enabled')->value('value') ?? '1') !== '0';
-
-        return $enabled && PlanFeatures::allows(Business::find($businessId), 'loyalty');
+        return Loyalty::on($businessId);
     }
 
+    // ونسبةُ الاكتساب من البابِ نفسِه الذي يقرؤه الصندوق (`Loyalty::rules`)
     public static function rate(int $businessId): float
     {
-        return (float) (Setting::where('business_id', $businessId)->where('key', 'loyalty_earn_rate')->value('value') ?? 5);
+        return Loyalty::rules($businessId)['earn_rate'];
     }
 
     /**
@@ -332,6 +329,8 @@ class InvoiceLoyalty
      */
     public static function rows(CustomerInvoice $invoice): array
     {
+        $redeem = CustomerInvoices::redeemKey($invoice);
+
         return PointTransaction::where('business_id', $invoice->business_id)
             ->where('customer_invoice_id', $invoice->id)
             ->with('payment:id,number')
@@ -339,6 +338,21 @@ class InvoiceLoyalty
             ->map(fn (PointTransaction $t) => [
                 'id' => $t->id,
                 'type' => $t->type,
+                /*
+                 * وكلُّ حركةٍ باسمها — من مفتاحها لا من إشارتها.
+                 *
+                 * كانت كلُّ حركةٍ سالبةٍ على الورقة عكسَ تحصيلٍ أُلغي، فتُقرأ
+                 * «عكس تحصيلٍ ملغى». والاستبدالُ على فاتورة العميل
+                 * (`CustomerInvoices::spendPoints`) جعل للسالبة معنًى آخر،
+                 * ولإعادتها بإشعارٍ أو بإلغاءٍ معنيين آخرين.
+                 */
+                'kind' => match (true) {
+                    $t->source_key === $redeem => 'spent',
+                    str_starts_with((string) $t->source_key, $redeem.':cn:') => 'returned_credit',
+                    $t->source_key === $redeem.':reverse' => 'returned_cancel',
+                    $t->type === 'redeem' => 'reversal',
+                    default => 'earned',
+                },
                 'points' => (int) $t->points,
                 'balance_after' => (int) $t->balance_after,
                 'payment' => $t->payment?->number,

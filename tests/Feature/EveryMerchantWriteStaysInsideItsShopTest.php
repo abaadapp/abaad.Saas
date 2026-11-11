@@ -119,7 +119,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['العملاء', 'post', 'admin.customers.internal', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.language', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.note', ['id' => 'customer']],
-                ['العملاء', 'post', 'admin.customers.redeem', ['id' => 'customer']],
+                // وتصحيحُ رصيد النقاط — لعميلٍ من المتجر نفسِه وحده (`CustomerController::adjustPoints`)
+                ['العملاء', 'post', 'admin.customers.points.adjust', ['id' => 'customer']],
                 // وطلبُ دفعةٍ برابط — لعميلٍ من المتجر نفسِه وحده (`PaymentRequestController`)
                 ['العملاء', 'post', 'admin.customers.paymentLink', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.save', ['id' => 'customer']],

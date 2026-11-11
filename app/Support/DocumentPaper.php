@@ -148,8 +148,13 @@ class DocumentPaper
 
         $totals = [['label' => 'المجموع الفرعي', 'value' => self::money($order->subtotal, $cur)]];
 
-        if ((float) $order->discount > 0) {
-            $totals[] = ['label' => 'الخصم', 'value' => '− '.self::money($order->discount, $cur)];
+        // وخصمُ النقاط سطرٌ وحده بعدده — والسطران مجموعُهما خصمُ البيعة (`Order::loyaltyDiscount`)
+        $loyalty = $order->loyaltyDiscount();
+        if (round((float) $order->discount - $loyalty, 3) > 0) {
+            $totals[] = ['label' => 'الخصم', 'value' => '− '.self::money((float) $order->discount - $loyalty, $cur)];
+        }
+        if ($loyalty > 0) {
+            $totals[] = ['label' => 'خصم نقاط الولاء', 'value' => '− '.self::money($loyalty, $cur), 'hint' => (int) $order->redeemed_points.' '.__('نقطة')];
         }
 
         /*

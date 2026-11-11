@@ -25,7 +25,7 @@ export interface PermissionGroupDef {
 
 export const PERMISSION_GROUPS: PermissionGroupDef[] = [
     { id: 'overview', title: 'لوحة التحكم والتقارير', keys: ['dashboard', 'reports'] },
-    { id: 'customers', title: 'العملاء', keys: ['customers', 'credit.override', 'customer.block_override'] },
+    { id: 'customers', title: 'العملاء', keys: ['customers', 'credit.override', 'customer.block_override', 'customerPoints.adjust'] },
     { id: 'stock', title: 'المنتجات والمخزون', keys: ['products', 'inventory'] },
     { id: 'sales', title: 'المبيعات ونقطة البيع', keys: ['orders', 'pos', 'order.edit', 'pos.movement'] },
     {

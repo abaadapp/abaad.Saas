@@ -1078,6 +1078,18 @@ class MarketingController extends Controller
 
     public function saveLoyalty(Request $request)
     {
+        /*
+         * وقيمةُ النقاط يحدّدها التاجر — وما لم يُرسَل منها يبقى كما حُفظ.
+         *
+         * تبويبٌ قديمٌ مفتوح لا يعرف الحقولَ الجديدة: لو صارت مطلوبةً لرُدّ
+         * حفظُه برسالةٍ عن حقولٍ لا يراها. فتُقرأ القيمةُ المحفوظة لما غاب،
+         * وبها يُقاس سقفُ الاكتساب.
+         */
+        $current = Loyalty::rules($this->bid());
+        $points = (int) ($request->input('loyalty_redeem_points') ?: $current['points']);
+        $value = (float) ($request->input('loyalty_redeem_value') ?: $current['value']);
+        $maxRate = Loyalty::maxEarnRate(max(1, $points), max(0.001, $value));
+
         $data = $request->validate([
             'loyalty_enabled' => ['nullable', 'boolean'],
             /*
@@ -1086,9 +1098,16 @@ class MarketingController extends Controller
              * كان السقف ألفًا، والاستبدال مئةُ نقطةٍ للريال: فمنحُ ألف نقطةٍ
              * لكلّ ريالٍ يعيد إلى الزبون عشرة ريالاتٍ عن كلّ ريالٍ يدفعه.
              * وهذا ليس سخاءً يُترك لصاحبه — هو حلقةٌ لا تُغلق: يشتري بنقاطٍ
-             * يكسب منها نقاطًا أكثر.
+             * يكسب منها نقاطًا. والسقفُ يتبع قيمةَ النقاط التي اختارها.
              */
-            'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:'.Loyalty::maxEarnRate()],
+            'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:'.$maxRate],
+            // الاستبدالُ مقبضٌ مستقلّ: يُطفأ وتبقى النقاطُ تُكتسب وتتراكم
+            'loyalty_redeem_enabled' => ['sometimes', 'boolean'],
+            // كم نقطةً تساوي كم من عملة المتجر — عددٌ صحيحٌ وقيمةٌ موجبة
+            'loyalty_redeem_points' => ['sometimes', 'required', 'integer', 'min:1', 'max:1000000'],
+            'loyalty_redeem_value' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:100000'],
+            // ما دونه من فاتورةٍ لا يُستبدل عليه — صفرٌ يعني كلَّ فاتورة
+            'loyalty_redeem_min_invoice' => ['sometimes', 'required', 'numeric', 'min:0', 'max:10000000'],
             /*
              * سقف الاستبدال نسبةٌ من الفاتورة لا أكثر من مئة.
              *
@@ -1099,11 +1118,12 @@ class MarketingController extends Controller
             'loyalty_redeem_min' => ['required', 'integer', 'min:0'],
         ], [
             'loyalty_earn_rate.max' => __(
-                'كلّ :unit نقطة تساوي وحدةَ عملةٍ عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
+                'كلّ :unit نقطة تساوي :value عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
                 [
-                    'unit' => Loyalty::POINTS_PER_UNIT,
+                    'unit' => $points,
+                    'value' => rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.'),
                     'rate' => (string) $request->input('loyalty_earn_rate'),
-                    'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate')),
+                    'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate'), max(1, $points), $value),
                 ],
             ),
         ]);

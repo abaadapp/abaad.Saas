@@ -275,23 +275,33 @@ class CustomerSectionAuditTest extends TestCase
 
     /* ------------------- النقاط ------------------- */
 
-    public function test_points_cannot_be_spent_twice(): void
+    /**
+     * تصحيحُ الرصيد لا يُنزله تحت الصفر — والتصحيحُ الثاني يُردّ بسببه.
+     *
+     * كان «صرف النقاط» يُحصر بالرصيد في صمت؛ وصار تصحيحًا إداريًّا بسببٍ
+     * مكتوب، والنقصُ فوق الرصيد يُردّ ولا يُحصر (انظر
+     * `LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest` لبقيّة حرّاسه).
+     */
+    public function test_points_cannot_be_taken_twice(): void
     {
         $c = $this->customer(['points' => 100]);
+        $fix = ['direction' => 'deduct', 'points' => 100, 'reason' => 'نقاط مكرّرة'];
 
-        $this->post(route('admin.customers.redeem', $c->id), ['points' => 100]);
-        $this->post(route('admin.customers.redeem', $c->id), ['points' => 100]);
+        $this->post(route('admin.customers.points.adjust', $c->id), $fix)->assertSessionHasNoErrors();
+        $this->post(route('admin.customers.points.adjust', $c->id), $fix)->assertSessionHasErrors('points');
 
         $this->assertSame(0, (int) $c->fresh()->points);
     }
 
-    public function test_more_points_than_held_are_clamped_not_refused_silently(): void
+    public function test_more_points_than_held_are_refused_not_clamped(): void
     {
         $c = $this->customer(['points' => 40]);
 
-        $this->post(route('admin.customers.redeem', $c->id), ['points' => 999]);
+        $this->post(route('admin.customers.points.adjust', $c->id), [
+            'direction' => 'deduct', 'points' => 999, 'reason' => 'تصحيح',
+        ])->assertSessionHasErrors('points');
 
-        $this->assertSame(0, (int) $c->fresh()->points);
+        $this->assertSame(40, (int) $c->fresh()->points);
     }
 
     /* ------------------- حدّ المتجر ------------------- */
@@ -305,7 +315,7 @@ class CustomerSectionAuditTest extends TestCase
         $this->put(route('admin.customers.update', $theirs->id), ['language' => 'ar', 'name' => 'مسروق'])->assertNotFound();
         $this->delete(route('admin.customers.destroy', $theirs->id))->assertNotFound();
         $this->get(route('admin.customers.statement', $theirs->id))->assertNotFound();
-        $this->post(route('admin.customers.redeem', $theirs->id))->assertNotFound();
+        $this->post(route('admin.customers.points.adjust', $theirs->id), ['direction' => 'add', 'points' => 1, 'reason' => 'تجربة'])->assertNotFound();
         $this->post(route('admin.customers.addresses.save', $theirs->id), [
             'label' => 'المنزل', 'city' => 'مسقط',
         ])->assertNotFound();

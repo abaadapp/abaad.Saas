@@ -317,6 +317,11 @@ class CustomerInvoiceController extends Controller
                 // ومنه خصمُ نقاط الولاء — لقطةٌ كُتبت مع الورقة لا تُعاد
                 'loyalty_points' => (int) $invoice->loyalty_points,
                 'loyalty_discount' => (float) $invoice->loyalty_discount,
+                // مسودّةٌ تحمل الخصمَ ولم تُصرف نقاطُها بعد — تُصرف عند الإصدار
+                'loyalty_pending' => (int) $invoice->loyalty_points > 0
+                    && $invoice->status === CustomerInvoice::DRAFT
+                    && CustomerInvoices::pointsSpent($invoice) === 0,
+                'loyalty_returned' => (int) $invoice->loyalty_points > 0 ? CustomerInvoices::pointsReturned($invoice) : 0,
                 'tax_total' => (float) $invoice->tax_total,
                 // ملاحظةُ العميل تُطبع، والداخليّةُ لا تخرج من هذه الشاشة
                 'notes' => $invoice->notes,

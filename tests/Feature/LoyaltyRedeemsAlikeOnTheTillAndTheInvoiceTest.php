@@ -124,18 +124,20 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         return Order::latest('id')->firstOrFail();
     }
 
-    /** فاتورةُ عميلٍ ببندين بمئة — وبضريبةٍ خمسةٍ بالمئة غير مشمولة */
-    private function invoice(int $redeem = 0, ?Customer $customer = null): CustomerInvoice
+    /** فاتورةُ عميلٍ ببندين بمئة — وبضريبةٍ خمسةٍ بالمئة غير مشمولة. تُصدَر ما لم يُطلب غيرُ ذلك */
+    private function invoice(int $redeem = 0, ?Customer $customer = null, bool $issue = true, array $lines = []): CustomerInvoice
     {
         $this->set('vat_enabled', '1');
         $this->set('vat_rate', '5');
 
-        return CustomerInvoices::create($this->shop->id, $customer ?? $this->customer, [
+        $draft = CustomerInvoices::create($this->shop->id, $customer ?? $this->customer, [
             'issued_at' => '2026-11-11',
             'redeem_points' => $redeem,
-        ], [
+        ], $lines ?: [
             ['description' => 'باقة ورد أبيض', 'quantity' => 2, 'unit_price' => 50],
         ], $this->owner->id);
+
+        return $issue ? CustomerInvoices::issue($draft, $this->owner->id)->fresh('items') : $draft;
     }
 
     private function redeems(): int
@@ -317,7 +319,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
     /** والقيدُ عند الإصدار متوازنٌ بالخصم: مدينُ الذمّة = دائنُ المبيعات بعد الخصم + الضريبة */
     public function test_the_issued_entry_balances_with_the_points_discount(): void
     {
-        $invoice = CustomerInvoices::issue($this->invoice(500));
+        $invoice = $this->invoice(500);
 
         $entry = JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->sole();
         $lines = $entry->lines()->with('account')->get();
@@ -394,7 +396,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
 
     public function test_cancelling_returns_the_points_once(): void
     {
-        $invoice = CustomerInvoices::issue($this->invoice(500));
+        $invoice = $this->invoice(500);
         $this->assertSame(500, (int) $this->customer->fresh()->points);
 
         CustomerInvoices::cancel($invoice, 'طلب العميل');
@@ -407,15 +409,117 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(1, PointTransaction::where('source_key', CustomerInvoices::redeemKey($invoice).':reverse')->count());
     }
 
-    /** ومسودّةٌ تُلغى تعيد ما صُرف عليها كذلك */
-    public function test_a_cancelled_draft_returns_its_points(): void
+    /* ═══════════════════ القرار ٢: المسودّةُ لا تحجز ═══════════════════ */
+
+    /** المسودّةُ تحمل الخصمَ في مبلغها ولا تمسّ الرصيد — والإصدارُ يصرف مرّةً */
+    public function test_a_draft_holds_no_points_and_issuing_spends_them_once(): void
     {
-        $draft = $this->invoice(300);
-        $this->assertSame(700, (int) $this->customer->fresh()->points);
+        $draft = $this->invoice(500, issue: false);
+
+        $this->assertSame(CustomerInvoice::DRAFT, $draft->status);
+        $this->assertEqualsWithDelta(99.75, (float) $draft->total, 0.0001, 'المسودّةُ تُكتب بمبلغها بعد الخصم');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points, 'المسودّةُ لا تحبس نقاط العميل');
+        $this->assertSame(0, $this->redeems());
+
+        $issued = CustomerInvoices::issue($draft);
+        $this->assertSame(500, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
+        $this->assertEqualsWithDelta(99.75, (float) $issued->total, 0.0001, 'والإصدارُ لا يغيّر المبلغ');
+
+        // إصدارٌ ثانٍ لا يصرف ثانيةً
+        CustomerInvoices::issue($issued->fresh());
+        $this->assertSame(500, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
+    }
+
+    /** مسودّةٌ تُلغى لم تُصرف عليها نقطة — فلا يُعاد شيء */
+    public function test_a_cancelled_draft_neither_spent_nor_returns_anything(): void
+    {
+        $draft = $this->invoice(300, issue: false);
 
         CustomerInvoices::cancel($draft, 'لم تُكمل');
 
         $this->assertSame(1000, (int) $this->customer->fresh()->points);
+        $this->assertSame(0, PointTransaction::where('customer_invoice_id', $draft->id)->count());
+    }
+
+    /**
+     * مسودّتان تَعِدان بالنقاط نفسِها: الأولى تُصدَر، والثانيةُ تُردّ عند إصدارها.
+     *
+     * والثانيةُ تبقى مسودّةً بمبلغها كما كُتب — لا يُصدَر لها مبلغٌ غيرُ الذي
+     * وافق عليه التاجر، ولا ينزل الرصيدُ تحت الصفر.
+     */
+    public function test_two_drafts_cannot_spend_the_same_points(): void
+    {
+        $this->customer->update(['points' => 500]);
+        $first = $this->invoice(500, issue: false);
+        $second = $this->invoice(500, issue: false);
+
+        CustomerInvoices::issue($first);
+
+        try {
+            CustomerInvoices::issue($second);
+            $this->fail('صُرفت النقاطُ نفسُها مرّتين');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('ألغِ المسودّة', $e->getMessage());
+        }
+
+        $second = $second->fresh();
+        $this->assertSame(CustomerInvoice::DRAFT, $second->status);
+        $this->assertEqualsWithDelta(99.75, (float) $second->total, 0.0001);
+        $this->assertSame(0, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
+        $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $second->id)->count(), 'لا قيدَ لورقةٍ لم تُصدَر');
+    }
+
+    /** قواعدُ تغيّرت بين المسودّة والإصدار — يُردّ الإصدارُ ولا يُعدَّل المبلغ في صمت */
+    public function test_rules_changed_before_issuing_refuse_without_touching_the_amount(): void
+    {
+        $draft = $this->invoice(500, issue: false);
+
+        $this->set('loyalty_redeem_value', '2'); // صارت مئةُ نقطةٍ بريالين
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            CustomerInvoices::issue($draft);
+        } finally {
+            $this->assertEqualsWithDelta(99.75, (float) $draft->fresh()->total, 0.0001);
+            $this->assertSame(1000, (int) $this->customer->fresh()->points);
+            $this->assertSame(0, $this->redeems());
+        }
+    }
+
+    /** واستبدالٌ أُطفئ بعد كتابة المسودّة يُردّ إصدارَها كذلك */
+    public function test_redemption_switched_off_before_issuing_refuses(): void
+    {
+        $draft = $this->invoice(500, issue: false);
+        $this->set('loyalty_redeem_enabled', '0');
+
+        $this->expectException(\RuntimeException::class);
+        CustomerInvoices::issue($draft);
+    }
+
+    /**
+     * والتزامن: نسخةٌ قديمةٌ من العميل قُرئت قبل أن يُصرف رصيدُه لا تصرفه ثانيةً.
+     *
+     * طلبان في اللحظة نفسها لا يُصنعان في اختبار — فيُصنع أثرُهما: كلاهما قرأ
+     * الرصيدَ نفسَه، والأوّلُ صرفه. والثاني يُردّ بالشرط في جملة التحديث.
+     */
+    public function test_a_stale_read_cannot_spend_points_already_spent(): void
+    {
+        $this->customer->update(['points' => 500]);
+        $stale = Customer::find($this->customer->id); // قرأ خمسمئة
+
+        Loyalty::spend(Customer::find($this->customer->id), 500, 'الأوّل');
+
+        try {
+            Loyalty::spend($stale, 500, 'الثاني بنسخته القديمة');
+            $this->fail('صُرف رصيدٌ مصروف');
+        } catch (ValidationException) {
+        }
+
+        $this->assertSame(0, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
     }
 
     /** والفاتورةُ بلا طلبٍ للنقاط لا تُخصم منها نقطة — التنبيهُ لا يُطبَّق وحده */
@@ -517,7 +621,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
             ]),
         ]);
 
-        $invoice = CustomerInvoices::issue($this->invoice(500));
+        $invoice = $this->invoice(500);
         CustomerInvoicePreparations::save($invoice, [
             'enabled' => true, 'fulfillment_type' => 'delivery', 'branch_id' => $this->branch->id,
             'scheduled_for' => '2026-11-12 16:00', 'recipient_name' => 'مريم', 'recipient_phone' => '99887766',
@@ -628,5 +732,209 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(0, (int) $again->loyalty_points);
         $this->assertSame(1, $this->redeems());
         $this->assertSame($points, (int) $this->customer->fresh()->points);
+    }
+
+    /* ═══════════════════ القرار ١: الإشعاراتُ الدائنة ═══════════════════ */
+
+    private function credit(CustomerInvoice $invoice, float $amount): void
+    {
+        CustomerInvoices::creditNote($invoice->fresh(), $amount, 0.0, 'إرجاع', $this->owner->id);
+    }
+
+    private function returned(CustomerInvoice $invoice): int
+    {
+        return CustomerInvoices::pointsReturned($invoice->fresh());
+    }
+
+    /** إشعارٌ بنصف الورقة يعيد نصفَ النقاط، والثاني بالباقي يعيد الباقي — ولا أكثر */
+    public function test_credit_notes_return_points_in_proportion_and_never_more(): void
+    {
+        $invoice = $this->invoice(500); // ٩٩٫٧٥
+
+        $this->credit($invoice, 49.875);
+        $this->assertSame(250, $this->returned($invoice));
+        $this->assertSame(750, (int) $this->customer->fresh()->points);
+
+        $this->credit($invoice, 49.875);
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+
+        // وإشعارٌ فوق الإجماليّ يردّه بابُ الإشعار نفسُه — ولا نقطةَ زائدة
+        try {
+            $this->credit($invoice, 1);
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** ثلاثةُ أثلاث: التراكمُ لا يأكل نقطةً في التقريب، والمجموعُ ما صُرف بالضبط */
+    public function test_repeated_partial_credits_add_up_to_exactly_what_was_spent(): void
+    {
+        $invoice = $this->invoice(500); // ٩٩٫٧٥
+
+        $this->credit($invoice, 33.25);
+        $this->assertSame(166, $this->returned($invoice));
+
+        $this->credit($invoice, 33.25);
+        $this->assertSame(333, $this->returned($invoice));
+
+        $this->credit($invoice, 33.25);
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(3, PointTransaction::where('customer_invoice_id', $invoice->id)->where('source_key', 'like', '%:cn:%')->count());
+    }
+
+    /** إلغاءٌ بعد إشعارٍ جزئيّ يعيد الباقي وحده — مرّةً */
+    public function test_cancelling_after_a_partial_credit_returns_only_the_rest(): void
+    {
+        $invoice = $this->invoice(500);
+        $this->credit($invoice, 39.9); // ٤٠٪
+        $this->assertSame(200, $this->returned($invoice));
+
+        CustomerInvoices::cancel($invoice->fresh(), 'أُلغيت');
+        CustomerInvoices::returnPoints($invoice->fresh());
+
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** والقاعدةُ تردّ إعادةً ثانيةً للإشعار نفسِه */
+    public function test_the_database_refuses_a_second_return_for_one_credit_note(): void
+    {
+        $invoice = $this->invoice(500);
+        $this->credit($invoice, 49.875);
+        $key = PointTransaction::where('customer_invoice_id', $invoice->id)->where('source_key', 'like', '%:cn:%')->value('source_key');
+
+        $this->expectException(QueryException::class);
+        PointTransaction::create([
+            'business_id' => $this->shop->id, 'customer_id' => $this->customer->id,
+            'customer_invoice_id' => $invoice->id, 'type' => 'earn', 'points' => 250,
+            'balance_after' => 0, 'source_key' => $key,
+        ]);
+    }
+
+    /** وفاتورةٌ بلا نقاط لا يكتب إشعارُها حركةَ نقاط */
+    public function test_a_credit_on_an_invoice_without_points_moves_no_points(): void
+    {
+        $invoice = $this->invoice(0);
+        $this->credit($invoice, 50);
+
+        $this->assertSame(0, PointTransaction::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** السياسةُ مكتوبةٌ في دالّةٍ واحدة: تراكميّة، تُقصّ، ومحصورةٌ بالمصروف */
+    public function test_the_return_policy_is_one_documented_function(): void
+    {
+        $this->assertSame(0, CustomerInvoices::pointsDueBack(500, 0, 100));
+        $this->assertSame(250, CustomerInvoices::pointsDueBack(500, 50, 100));
+        $this->assertSame(166, CustomerInvoices::pointsDueBack(500, 33.3333, 100));
+        $this->assertSame(500, CustomerInvoices::pointsDueBack(500, 100, 100));
+        $this->assertSame(500, CustomerInvoices::pointsDueBack(500, 150, 100), 'لا يتجاوز ما صُرف');
+    }
+
+    /* ═══════════════════ القرار ٣: الورقةُ المطبوعة ═══════════════════ */
+
+    /** الورقةُ تطبع «خصم نقاط الولاء» سطرًا مستقلًّا بعدده وقيمته — و«الخصم» ما سواه */
+    public function test_the_printed_invoice_shows_the_points_discount_on_its_own_line(): void
+    {
+        $invoice = $this->invoice(500, lines: [
+            ['description' => 'باقة ورد أبيض', 'quantity' => 2, 'unit_price' => 50, 'discount' => 2],
+        ]);
+
+        // خصمُ البند اثنان، والنقاطُ خمسة: الخصمُ كلُّه سبعة، يُطبع سطرين
+        $this->assertEqualsWithDelta(7.0, (float) $invoice->discount_total, 0.0001);
+        $this->assertEqualsWithDelta(5.0, (float) $invoice->items->sum('loyalty_discount'), 0.0001);
+
+        $html = \App\Http\Controllers\PdfController::customerInvoiceHtml($this->shop->id, $invoice->fresh());
+
+        $this->assertStringContainsString('خصم نقاط الولاء', $html);
+        $this->assertStringContainsString('500 نقطة', $html);
+        $this->assertStringContainsString('5.000', $html);
+        $this->assertStringContainsString('2.000', $html, 'وخصمُ البند وحده في سطر «الخصم»');
+        $this->assertStringNotContainsString('7.000', $html, 'ولا يُطبع الخصمُ مجموعًا فوق سطر النقاط');
+    }
+
+    /** وورقةُ التجهيز الحراريّة كذلك — وخصمُ البند فيها بلا نصيب النقاط */
+    public function test_the_thermal_paper_shows_the_points_line_once(): void
+    {
+        $this->shop->forceFill(['customer_invoice_preparation_enabled' => true])->save();
+        $invoice = $this->invoice(500);
+        $prep = CustomerInvoicePreparations::save($invoice, [
+            'enabled' => true, 'fulfillment_type' => 'pickup', 'branch_id' => $this->branch->id,
+            'scheduled_for' => '2026-11-12 16:00', 'recipient_name' => 'مريم', 'recipient_phone' => '99887766',
+            'delivery_address' => null, 'delivery_notes' => null, 'internal_notes' => null,
+        ], $this->owner->id);
+
+        $paper = CustomerInvoicePreparations::internalPaper($prep ?? $invoice->fresh()->preparation, $invoice->fresh('items'));
+
+        $this->assertNull($paper['totals']['discount'], 'لا خصمَ بنودٍ — النقاطُ وحدها');
+        $this->assertSame(500, $paper['totals']['loyalty']['points']);
+        foreach ($paper['items'] as $item) {
+            $this->assertNull($item['discount'], 'نصيبُ النقاط لا يُطبع خصمًا على البند');
+        }
+
+        $html = \App\Support\DocumentRenderer::customerInvoiceStrip($this->shop->id, $paper, 80);
+        $this->assertSame(1, substr_count($html, 'data-loyalty'));
+    }
+
+    /* ═══════════════════ القرار ٤: التصحيحُ الإداريّ ═══════════════════ */
+
+    private function adjust(array $data): \Illuminate\Testing\TestResponse
+    {
+        return $this->post(route('admin.customers.points.adjust', $this->customer->id), $data);
+    }
+
+    /** التصحيحُ بسببٍ مكتوب يُسجَّل حركةً وسجلَّ نشاط — ولا يُنتج مالًا ولا خصمًا */
+    public function test_an_adjustment_needs_a_reason_and_leaves_an_audit_trail_without_money(): void
+    {
+        $this->adjust(['direction' => 'deduct', 'points' => 100])->assertSessionHasErrors('reason');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+
+        $entries = JournalEntry::count();
+        $this->adjust(['direction' => 'deduct', 'points' => 100, 'reason' => 'نقاط مُنحت بالخطأ'])->assertSessionHasNoErrors();
+        $this->adjust(['direction' => 'add', 'points' => 30, 'reason' => 'تعويض عن تأخير'])->assertSessionHasNoErrors();
+
+        $this->assertSame(930, (int) $this->customer->fresh()->points);
+        $rows = PointTransaction::where('customer_id', $this->customer->id)->where('type', 'adjust')->orderBy('id')->get();
+        $this->assertSame([-100, 30], $rows->pluck('points')->map(fn ($p) => (int) $p)->all());
+        $this->assertStringContainsString('نقاط مُنحت بالخطأ', $rows[0]->note);
+        $this->assertStringContainsString($this->owner->name, $rows[0]->note);
+        $this->assertSame(2, \App\Models\ActivityLog::where('description', 'like', 'صحّح رصيد نقاط العميل%')->count());
+
+        $this->assertSame($entries, JournalEntry::count(), 'لا قيدَ ماليّ');
+        $this->assertSame(0, $this->redeems(), 'ولا استبدال');
+    }
+
+    /** والنقصُ فوق الرصيد يُردّ — لا يُحصر ولا ينزل تحت الصفر */
+    public function test_an_adjustment_never_goes_below_zero(): void
+    {
+        $this->adjust(['direction' => 'deduct', 'points' => 1001, 'reason' => 'تصحيح'])->assertSessionHasErrors('points');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** ولمن مُنح الفعلَ باسمه وحده — مديرٌ يفتح العملاءَ لا يصحّح الرصيد */
+    public function test_only_who_holds_the_action_may_adjust(): void
+    {
+        $manager = User::create([
+            'business_id' => $this->shop->id, 'name' => 'المدير', 'email' => 'manager@loyalty.test',
+            'password' => bcrypt('x'), 'role' => 'manager', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($manager);
+        // يفتح ملفَّ العميل — فالرفضُ من الفعل لا من القسم
+        $this->get(route('admin.customers.show', $this->customer->id))->assertOk();
+        $this->adjust(['direction' => 'add', 'points' => 10, 'reason' => 'محاولة'])->assertForbidden();
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** ومتجرٌ لا تشمل باقتُه الولاء لا يصحّح رصيدًا */
+    public function test_a_shop_without_loyalty_cannot_adjust(): void
+    {
+        $plan = Plan::create(['name' => 'بلا ولاء ٢', 'monthly_price' => 9, 'yearly_price' => 90, 'capabilities' => ['website']]);
+        $this->shop->forceFill(['plan_id' => $plan->id])->save();
+
+        $this->adjust(['direction' => 'add', 'points' => 10, 'reason' => 'محاولة'])->assertForbidden();
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
     }
 }

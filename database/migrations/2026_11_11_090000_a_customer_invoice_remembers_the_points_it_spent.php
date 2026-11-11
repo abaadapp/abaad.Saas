@@ -25,6 +25,17 @@ return new class extends Migration
             $table->unsignedInteger('loyalty_points')->default(0);
             $table->decimal('loyalty_discount', 12, 3)->default(0);
         });
+
+        /*
+         * ونصيبُ كلّ بندٍ من خصم النقاط — داخلَ خصمه لا فوقه.
+         *
+         * `discount` يبقى مجموعَ خصم البند (يدويًّا ونقاطًا) فتُحسب منه
+         * الضريبةُ والإجماليّ كما كانت. وهذا العمودُ يقول كم منه نقاط: فتطبع
+         * الورقةُ خصمَ البند وخصمَ النقاط سطرين، ولا يُعدّ أحدُهما مرّتين.
+         */
+        Schema::table('customer_invoice_items', function (Blueprint $table) {
+            $table->decimal('loyalty_discount', 12, 3)->default(0);
+        });
     }
 
     public function down(): void
@@ -36,6 +47,10 @@ return new class extends Migration
         if (DB::table('customer_invoices')->where('loyalty_points', '>', 0)->exists()) {
             throw new RuntimeException('نقاط الولاء على فواتير العملاء: في القاعدة فواتيرُ صُرفت عليها نقاط — لا تُسقط العمودين. أرجِع الكود وحده.');
         }
+
+        Schema::table('customer_invoice_items', function (Blueprint $table) {
+            $table->dropColumn('loyalty_discount');
+        });
 
         Schema::table('customer_invoices', function (Blueprint $table) {
             $table->dropColumn(['loyalty_points', 'loyalty_discount']);

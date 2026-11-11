@@ -612,6 +612,7 @@ return [
         'loyalty_redeem_min' => 'أدنى رصيد للاستبدال',
         'loyalty_redeem_enabled' => 'تفعيل الاستبدال',
         'redeem_points' => 'نقاط الاستبدال',
+        'direction' => 'نوع التصحيح',
         'loyalty_redeem_points' => 'عدد النقاط',
         'loyalty_redeem_value' => 'قيمة الخصم مقابل النقاط',
         'loyalty_redeem_min_invoice' => 'الحد الأدنى لقيمة الفاتورة',

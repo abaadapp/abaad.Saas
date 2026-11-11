@@ -1264,10 +1264,10 @@ export default function CustomerInvoiceCreate({
                                 يَعِد بحقلٍ لا وجود له يجعل من يبحث عنه يظنّ
                                 الشاشةَ ناقصة.
                             */}
-                            <Row label={t('الخصم')} value={m(shown.discount)} />
+                            <Row label={t('الخصم')} value={m(shown.discount - shown.loyalty_discount)} />
                             {shown.loyalty_discount > 0 && (
                                 <Row
-                                    label={`${t('منه خصم نقاط الولاء')} (${shown.loyalty_points} ${t('نقطة')})`}
+                                    label={`${t('خصم نقاط الولاء')} (${shown.loyalty_points} ${t('نقطة')})`}
                                     value={m(shown.loyalty_discount)}
                                 />
                             )}
@@ -2114,7 +2114,7 @@ export function LoyaltyPrompt({
             ) : (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-[#be185d]">
                     <span data-testid="invoice-loyalty-choice">
-                        {choice === 'use' ? t('سيُخصم مع حفظ الفاتورة') : t('بدون خصم')}
+                        {choice === 'use' ? t('يُخصم من رصيده عند إصدار الفاتورة') : t('بدون خصم')}
                     </span>
                     <button type="button" className="font-medium underline" onClick={() => onChoose(choice === 'use' ? 'skip' : 'use')}>
                         {choice === 'use' ? t('إلغاء') : t('استخدام النقاط')}

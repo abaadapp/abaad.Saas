@@ -68,7 +68,7 @@ interface Props {
 
 interface PointRow {
     id: number;
-    type: 'earn' | 'redeem';
+    type: 'earn' | 'redeem' | 'adjust';
     points: number;
     balance_after: number;
     note: string | null;
@@ -112,6 +112,8 @@ export default function CustomerShow() {
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
+    const mayAdjustPoints = (auth?.mayActions ?? []).includes('customerPoints.adjust');
+    const adjust = useForm({ direction: 'deduct' as 'add' | 'deduct', points: '', reason: '' });
     const [editingProfile, setEditingProfile] = useState(false);
 
     /*
@@ -213,9 +215,14 @@ export default function CustomerShow() {
                                 <Receipt />{t('كشف حساب')}
                             </a>
                         </Button>
-                        {customer.points > 0 && (
-                            <Button onClick={() => setRedeeming(true)}>
-                                <Award />{t('صرف النقاط')}
+                        {/*
+                            تصحيحُ الرصيد لا «صرفُ النقاط»: الصرفُ مقابل خصمٍ
+                            بابُه الصندوقُ وفاتورةُ العميل بقواعد التاجر. وهذا
+                            لمن مُنح فعلَه باسمه، وبسببٍ مكتوب.
+                        */}
+                        {mayAdjustPoints && (
+                            <Button variant="outline" onClick={() => setRedeeming(true)}>
+                                <Award />{t('تصحيح رصيد النقاط')}
                             </Button>
                         )}
                         {/*
@@ -568,19 +575,59 @@ export default function CustomerShow() {
 
             <Dialog open={redeeming} onOpenChange={setRedeeming}>
                 <DialogContent className="max-w-sm">
-                    <DialogHeader><DialogTitle>{t('صرف النقاط')}</DialogTitle></DialogHeader>
-                    <div className="px-5 pb-5">
+                    <DialogHeader><DialogTitle>{t('تصحيح رصيد النقاط')}</DialogTitle></DialogHeader>
+                    <form
+                        data-testid="points-adjust"
+                        className="space-y-3 px-5 pb-5"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            adjust.post(route('admin.customers.points.adjust', customer.id), {
+                                preserveScroll: true,
+                                onSuccess: () => {
+                                    adjust.reset();
+                                    setRedeeming(false);
+                                },
+                            });
+                        }}
+                    >
                         <p className="text-sm text-[#4b4b4b]">
-                            {t('سيتم صرف')} {number(customer.points)} {t('نقطة')} ({m(customer.points / 100)}).
+                            {t('الرصيد الحالي:')} {number(customer.points)} {t('نقطة')}
                         </p>
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setRedeeming(false)}>{t('إلغاء')}</Button>
-                            <Button onClick={() => router.post(route('admin.customers.redeem', customer.id),
-                                { points: customer.points }, { onFinish: () => setRedeeming(false) })}>
-                                {t('صرف')}
-                            </Button>
+                        <p className="text-[12px] text-[#6b7280]">
+                            {t('تصحيحٌ إداريّ للرصيد — لا يُنتج خصمًا ولا مالًا. الاستبدال مقابل خصم يتمّ من الصندوق أو فاتورة العميل.')}
+                        </p>
+                        <Field label="نوع التصحيح" error={adjust.errors.direction}>
+                            <Select
+                                value={adjust.data.direction}
+                                options={[
+                                    { value: 'deduct', label: t('إنقاص') },
+                                    { value: 'add', label: t('زيادة') },
+                                ]}
+                                onChange={(e) => adjust.setData('direction', e.target.value as 'add' | 'deduct')}
+                            />
+                        </Field>
+                        <Field label="عدد النقاط" error={adjust.errors.points}>
+                            <Input
+                                type="number"
+                                min="1"
+                                step="1"
+                                dir="ltr"
+                                value={adjust.data.points}
+                                onChange={(e) => adjust.setData('points', e.target.value)}
+                            />
+                        </Field>
+                        <Field label="السبب" error={adjust.errors.reason}>
+                            <Input
+                                value={adjust.data.reason}
+                                onChange={(e) => adjust.setData('reason', e.target.value)}
+                                placeholder={t('مثال: نقاط مُنحت بالخطأ في الفاتورة ٣٢')}
+                            />
+                        </Field>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="outline" onClick={() => setRedeeming(false)}>{t('إلغاء')}</Button>
+                            <Button type="submit" loading={adjust.processing}>{t('حفظ التصحيح')}</Button>
                         </div>
-                    </div>
+                    </form>
                 </DialogContent>
             </Dialog>
 

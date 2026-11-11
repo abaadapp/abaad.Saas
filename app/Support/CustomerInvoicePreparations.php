@@ -894,13 +894,18 @@ final class CustomerInvoicePreparations
                 'included' => $row['included'],
                 'qty' => DocumentPaper::qty($row['item']->quantity),
                 'price' => $money($row['item']->unit_price),
-                'discount' => (float) $row['item']->discount > 0 ? $money($row['item']->discount) : null,
+                // خصمُ البند وحده — ونصيبُه من النقاط يُطبع مرّةً في سطرها تحت المجموع
+                'discount' => ($own = round((float) $row['item']->discount - (float) $row['item']->loyalty_discount, 3)) > 0 ? $money($own) : null,
                 'total' => $money($row['item']->line_total),
             ], InvoiceLineDetails::rows($invoice->items, InvoiceLineDetails::STAFF)),
             'pieces' => DocumentPaper::qty($invoice->items->sum('quantity')),
             'totals' => [
                 'subtotal' => $money($invoice->subtotal),
-                'discount' => (float) $invoice->discount_total > 0 ? $money($invoice->discount_total) : null,
+                'discount' => ($own = round((float) $invoice->discount_total - (float) $invoice->loyalty_discount, 3)) > 0 ? $money($own) : null,
+                // وخصمُ النقاط سطرٌ مستقلّ بعددها وقيمتها — جزءٌ من الخصم لا فوقه
+                'loyalty' => (float) $invoice->loyalty_discount > 0
+                    ? ['value' => $money($invoice->loyalty_discount), 'points' => (int) $invoice->loyalty_points]
+                    : null,
                 'tax' => (float) $invoice->tax_total > 0 ? $money($invoice->tax_total) : null,
                 'total' => $money($invoice->total),
             ],

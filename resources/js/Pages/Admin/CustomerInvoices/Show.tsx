@@ -43,6 +43,8 @@ interface Invoice {
     discount_total: number;
     loyalty_points?: number;
     loyalty_discount?: number;
+    loyalty_pending?: boolean;
+    loyalty_returned?: number;
     tax_total: number;
     notes: string | null;
     /** لا تُطبع ولا تخرج من هذه الشاشة */
@@ -323,14 +325,28 @@ export default function CustomerInvoiceShow() {
                         {/* و«الباقي» أقوى ما في الكتلة — هو ما يُبحث عنه على فاتورةٍ صادرة */}
                         <dl className="mt-4 ms-auto max-w-xs space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-4 text-[13px]">
                             <Row label={t('المجموع الفرعي')} value={m(invoice.subtotal)} />
-                            {invoice.discount_total > 0 && (
-                                <Row label={t('الخصم')} value={m(invoice.discount_total)} />
+                            {/*
+                                خصمُ البنود وخصمُ النقاط سطران — مجموعُهما خصمُ
+                                الورقة كلُّه، ولا يُعدّ أحدُهما مرّتين.
+                            */}
+                            {invoice.discount_total - (invoice.loyalty_discount ?? 0) > 0.0005 && (
+                                <Row label={t('الخصم')} value={m(invoice.discount_total - (invoice.loyalty_discount ?? 0))} />
                             )}
                             {(invoice.loyalty_discount ?? 0) > 0 && (
                                 <Row
-                                    label={`${t('منه خصم نقاط الولاء')} (${invoice.loyalty_points} ${t('نقطة')})`}
+                                    label={`${t('خصم نقاط الولاء')} (${invoice.loyalty_points} ${t('نقطة')})`}
                                     value={m(invoice.loyalty_discount ?? 0)}
                                 />
+                            )}
+                            {invoice.loyalty_pending && (
+                                <p data-testid="loyalty-pending" className="text-[11px] text-[#be185d]">
+                                    {t('تُخصم النقاط من رصيد العميل عند إصدار الفاتورة.')}
+                                </p>
+                            )}
+                            {(invoice.loyalty_returned ?? 0) > 0 && (
+                                <p data-testid="loyalty-returned" className="text-[11px] text-[#6b7280]">
+                                    {t('أُعيد إلى العميل')} {invoice.loyalty_returned} {t('نقطة')}
+                                </p>
                             )}
                             {invoice.tax_total > 0 && <Row label={t('الضريبة')} value={m(invoice.tax_total)} />}
                             <Row label={t('الإجمالي')} value={m(invoice.total)} strong />

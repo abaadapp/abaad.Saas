@@ -997,7 +997,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->defaults('type', 'customer')->name('customers.restore');
     Route::delete('/customers/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'customer')->name('customers.purge');
-    Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
+    /*
+     * تصحيحُ رصيد النقاط — فعلٌ إداريٌّ بسببٍ مكتوب، لا استبدالٌ بخصم.
+     * والاستبدالُ مقابل خصمٍ بابُه الصندوقُ وفاتورةُ العميل وحدهما.
+     */
+    Route::post('/customers/{id}/points-adjust', [CustomerController::class, 'adjustPoints'])->name('customers.points.adjust');
     // وطلبُ دفعةٍ من العميل برابط — من صفحته، بفعل الطلب وحده (`PaymentRequestController`)
     Route::post('/customers/{id}/payment-link', [PaymentRequestController::class, 'forCustomer'])
         ->whereNumber('id')->name('customers.paymentLink');

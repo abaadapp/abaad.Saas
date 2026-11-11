@@ -46,7 +46,7 @@ describe('تنبيهُ النقاط في فاتورة العميل', () => {
         const onChoose = vi.fn();
         await show({ choice: 'use', onChoose });
 
-        expect(screen.getByTestId('invoice-loyalty-choice')).toHaveTextContent('سيُخصم مع حفظ الفاتورة');
+        expect(screen.getByTestId('invoice-loyalty-choice')).toHaveTextContent('يُخصم من رصيده عند إصدار الفاتورة');
         fireEvent.click(screen.getByRole('button', { name: 'إلغاء' }));
         expect(onChoose).toHaveBeenLastCalledWith('skip');
     });

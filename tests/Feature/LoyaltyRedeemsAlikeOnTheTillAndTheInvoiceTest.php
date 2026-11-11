@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\PdfController;
+use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
@@ -19,17 +22,25 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
+use App\Support\CustomerPayments;
+use App\Support\Demo;
+use App\Support\DocumentRenderer;
+use App\Support\InvoiceLoyalty;
 use App\Support\Ledger;
 use App\Support\Loyalty;
 use App\Support\Money;
+use App\Support\OrderCorrection;
 use App\Support\PaymentLinks;
 use App\Support\Paymob\Amount;
 use App\Support\Store\Paymob;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
+use Tests\Support\ReturnNote;
 use Tests\TestCase;
 
 /**
@@ -126,7 +137,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
     }
 
     /** طلبُ الصندوق كما يُرسل — بلا افتراض نجاحه */
-    private function till(array $extra = []): \Illuminate\Testing\TestResponse
+    private function till(array $extra = []): TestResponse
     {
         return $this->withSession(['current_branch' => $this->branch->id])
             ->postJson(route('pos.checkout'), array_merge([
@@ -867,7 +878,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(CustomerInvoice::CANCELLED, $invoice->status);
         $this->assertEqualsWithDelta(99.75, (float) $invoice->total, 0.0001, 'لا يُعاد حسابُ الملغاة');
         $this->assertSame(1, CustomerPayment::count(), 'المالُ الذي دخل يُسجَّل مرّةً');
-        $this->assertEqualsWithDelta(0.0, (float) \Illuminate\Support\Facades\DB::table('customer_payment_allocations')->where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001, 'لا يُخصَّص لملغاة');
+        $this->assertEqualsWithDelta(0.0, (float) DB::table('customer_payment_allocations')->where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001, 'لا يُخصَّص لملغاة');
         $this->assertSame(1, $this->redeems());
         $this->assertSame(500, $this->returned($invoice), 'لا تُعاد مرّتين');
         $this->assertSame(1000, (int) $this->customer->fresh()->points, 'لا صرفَ ولا اكتسابَ على ملغاة');
@@ -950,7 +961,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
 
     private function credit(CustomerInvoice $invoice, float $amount): void
     {
-        \Tests\Support\ReturnNote::issue($invoice->fresh(), $amount, $this->owner->id);
+        ReturnNote::issue($invoice->fresh(), $amount, $this->owner->id);
     }
 
     private function returned(CustomerInvoice $invoice): int
@@ -1059,7 +1070,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertEqualsWithDelta(7.0, (float) $invoice->discount_total, 0.0001);
         $this->assertEqualsWithDelta(5.0, (float) $invoice->items->sum('loyalty_discount'), 0.0001);
 
-        $html = \App\Http\Controllers\PdfController::customerInvoiceHtml($this->shop->id, $invoice->fresh());
+        $html = PdfController::customerInvoiceHtml($this->shop->id, $invoice->fresh());
 
         $this->assertStringContainsString('خصم نقاط الولاء', $html);
         $this->assertStringContainsString('500 نقطة', $html);
@@ -1087,7 +1098,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
             $this->assertNull($item['discount'], 'نصيبُ النقاط لا يُطبع خصمًا على البند');
         }
 
-        $html = \App\Support\DocumentRenderer::customerInvoiceStrip($this->shop->id, $paper, 80);
+        $html = DocumentRenderer::customerInvoiceStrip($this->shop->id, $paper, 80);
         $this->assertSame(1, substr_count($html, 'data-loyalty'));
     }
 
@@ -1100,12 +1111,12 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $order = $this->sell(['redeem_points' => 500, 'redeem_discount' => 5]);
         $this->assertEqualsWithDelta(5.0, $order->loyaltyDiscount(), 0.0001);
 
-        $strip = \App\Http\Controllers\PdfController::saleHtml($this->shop->id, $order->fresh('items'), true)['html'];
+        $strip = PdfController::saleHtml($this->shop->id, $order->fresh('items'), true)['html'];
         $this->assertSame(1, substr_count($strip, 'data-loyalty'));
         $this->assertStringContainsString('خصم نقاط الولاء', $strip);
         $this->assertStringContainsString('500', $strip);
 
-        $sheet = \App\Http\Controllers\PdfController::saleHtml($this->shop->id, $order->fresh('items'), false)['html'];
+        $sheet = PdfController::saleHtml($this->shop->id, $order->fresh('items'), false)['html'];
         $this->assertStringContainsString('خصم نقاط الولاء', $sheet);
         $this->assertStringContainsString('500 نقطة', $sheet);
 
@@ -1126,7 +1137,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
     public function test_a_paid_invoice_cannot_be_credited_past_its_total(): void
     {
         $invoice = $this->invoice(500); // ٩٩٫٧٥
-        \App\Support\CustomerPayments::record($this->shop->id, $this->customer, 99.75, ['method' => 'نقدي', 'occurred_at' => '2026-11-11'], [$invoice->id => 99.75]);
+        CustomerPayments::record($this->shop->id, $this->customer, 99.75, ['method' => 'نقدي', 'occurred_at' => '2026-11-11'], [$invoice->id => 99.75]);
 
         $this->credit($invoice, 99.75);
         $this->assertSame(500, $this->returned($invoice));
@@ -1134,11 +1145,11 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         try {
             $this->credit($invoice, 99.75);
             $this->fail('أُصدر إشعارٌ ثانٍ بكامل فاتورةٍ رُدّت كلُّها');
-        } catch (\RuntimeException|\Illuminate\Validation\ValidationException) {
+        } catch (\RuntimeException|ValidationException) {
             // والنصُّ يختلف بعد #202 («رُدّت الفاتورة كلها…») — والمقياسُ ما في القاعدة تحته
         }
 
-        $this->assertEqualsWithDelta(99.75, (float) \App\Models\CustomerCreditNote::where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001);
+        $this->assertEqualsWithDelta(99.75, (float) CustomerCreditNote::where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001);
         $this->assertSame(500, $this->returned($invoice));
         $this->assertSame(1000, (int) $this->customer->fresh()->points);
     }
@@ -1209,7 +1220,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->credit($invoice, 39.9);
         CustomerInvoices::cancel($invoice->fresh(), 'أُلغيت');
 
-        $kinds = array_column(\App\Support\InvoiceLoyalty::rows($invoice->fresh()), 'kind');
+        $kinds = array_column(InvoiceLoyalty::rows($invoice->fresh()), 'kind');
 
         $this->assertSame(['spent', 'returned_credit', 'returned_cancel'], $kinds);
     }
@@ -1238,7 +1249,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
 
     /* ═══════════════════ القرار ٤: التصحيحُ الإداريّ ═══════════════════ */
 
-    private function adjust(array $data): \Illuminate\Testing\TestResponse
+    private function adjust(array $data): TestResponse
     {
         return $this->post(route('admin.customers.points.adjust', $this->customer->id), $data);
     }
@@ -1258,7 +1269,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame([-100, 30], $rows->pluck('points')->map(fn ($p) => (int) $p)->all());
         $this->assertStringContainsString('نقاط مُنحت بالخطأ', $rows[0]->note);
         $this->assertStringContainsString($this->owner->name, $rows[0]->note);
-        $this->assertSame(2, \App\Models\ActivityLog::where('description', 'like', 'صحّح رصيد نقاط العميل%')->count());
+        $this->assertSame(2, ActivityLog::where('description', 'like', 'صحّح رصيد نقاط العميل%')->count());
 
         $this->assertSame($entries, JournalEntry::count(), 'لا قيدَ ماليّ');
         $this->assertSame(0, $this->redeems(), 'ولا استبدال');
@@ -1368,10 +1379,10 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertEqualsWithDelta(4.0, $review['covered'], 0.0001);
         $this->assertEqualsWithDelta(6.0, $review['gap'], 0.0001);
 
-        $bell = collect(\App\Support\Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id);
+        $bell = collect(Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id);
         $this->assertNotNull($bell, 'صاحبُ المحلّ لا يُبلَّغ');
         $this->assertStringContainsString($order->number, $bell['text']);
-        $this->assertTrue(\App\Models\ActivityLog::where('description', 'like', '%'.$order->number.'%تحتاج مراجعة%')->exists());
+        $this->assertTrue(ActivityLog::where('description', 'like', '%'.$order->number.'%تحتاج مراجعة%')->exists());
 
         // وجارٌ لا يرى جرسَ هذا المتجر
         $neighbour = User::create([
@@ -1379,7 +1390,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
         $this->actingAs($neighbour);
-        $this->assertNull(collect(\App\Support\Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id));
+        $this->assertNull(collect(Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id));
     }
 
     /** والبيعةُ نفسُها تصل مرّتين من الطابور: طلبٌ واحد، وصرفٌ واحد، ومراجعةٌ واحدة */
@@ -1439,10 +1450,10 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->customer->update(['points' => 400]);
         $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10, 'replay' => true]);
 
-        \App\Support\OrderCorrection::cancel($order->fresh(), 'أُلغيت');
+        OrderCorrection::cancel($order->fresh(), 'أُلغيت');
 
         $this->assertSame(400, (int) $this->customer->fresh()->points, 'عاد ما صُرف — لا الألف');
-        $this->assertNull(collect(\App\Support\Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id));
+        $this->assertNull(collect(Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id));
     }
 
     /**

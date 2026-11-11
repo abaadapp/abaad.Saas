@@ -94,6 +94,18 @@ final class TillActivation
      */
     public static function run(Branch $branch, string $name, User $by, array $choice): array
     {
+        /*
+         * ولا صندوقَ يُفعَّل من جلسة دعم: المتصفّحُ متصفّحُ مدير المنصّة، وتفعيلُه
+         * يكتب صفًّا في المتجر ويربطه به سنتين — فيُردّ عند دخوله التالي إلى
+         * متجرٍ آخر بـ«جهازُ متجرٍ آخر» (`PosTerminal::supporting`). هنا البابُ
+         * الوحيد الذي يكتب الصفّ، فالمنعُ هنا لا في كلّ شاشة.
+         */
+        if (PosTerminal::supporting()) {
+            throw ValidationException::withMessages([
+                'branch_id' => __('لا يُفعَّل جهاز نقطة بيع أثناء الدعم — هذا المتصفّح متصفّحك لا صندوق المتجر.'),
+            ]);
+        }
+
         $mode = $choice['mode'] ?? null;
 
         return DB::transaction(function () use ($branch, $name, $by, $choice, $mode) {

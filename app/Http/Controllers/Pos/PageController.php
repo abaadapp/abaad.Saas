@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Models\Branch;
 use App\Models\CustomOrderTemplate;
 use App\Models\Order;
@@ -97,7 +98,13 @@ class PageController extends Controller
          *
          * ولا يُطبَّق على متجرٍ بلا فروع: لا فرع يُختار، ولا سبب للحجز.
          */
-        if (! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
+        /*
+         * وجلسةُ الدعم لا تُفعّل جهازًا ولا تُحال إلى شاشة التفعيل: المتصفّحُ
+         * متصفّحُ مدير المنصّة، والفتحُ هنا كان يكتب صندوقًا في المتجر ويربط
+         * المتصفّحَ به سنتين — فيُردّ عند الدخول التالي إلى متجرٍ آخر. والفرعُ
+         * فرعُ المستخدم المختار (`BindPosBranch`).
+         */
+        if (! PosTerminal::supporting() && ! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
             /*
              * ═══ ومتجرُ الفرع الواحد يُربط وحدَه ═══
              *
@@ -381,6 +388,17 @@ class PageController extends Controller
      */
     public function lock(Request $request): RedirectResponse
     {
+        /*
+         * وقفلُ الشاشة في جلسة الدعم عودةٌ إلى لوحة المنصّة، لا خروجٌ من كلّ شيء.
+         *
+         * القفلُ تبديلُ كاشيرٍ على صندوقه: يُنهي الجلسةَ ويقف على شاشة الدخول.
+         * وفي جلسة الدعم تلك الجلسةُ جلسةُ مدير المنصّة نفسِه — فكان يُخرج منها
+         * ويُطلب منه بريدُه وكلمتُه. فيُعاد إلى حسابه كما يُعيده زرُّ الشريط.
+         */
+        if ($request->session()->has('impersonator_id')) {
+            return app(ImpersonationController::class)->stop($request);
+        }
+
         Activity::log('logout', 'قفل شاشة نقطة البيع');
         PosCashier::forget();
 

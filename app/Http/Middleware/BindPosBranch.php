@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\SuperAdmin\ImpersonationController;
+use App\Models\Branch;
 use App\Support\Demo;
 use App\Support\Permissions;
 use App\Support\PosTerminal;
@@ -36,6 +38,45 @@ class BindPosBranch
 {
     public function handle(Request $request, Closure $next)
     {
+        /*
+         * ═══ وجلسةُ الدعم لا تُردّ عند هذا الباب ═══
+         *
+         * المتصفّحُ فيها متصفّحُ مدير المنصّة، وكوكي صندوقه بقيّةُ متجرٍ آخر.
+         * فكان الكاشيرُ المختار يُردّ «جهازُ متجرٍ آخر» وتُهدَم الجلسةُ كلُّها —
+         * ومعها حسابُ مدير المنصّة — فيقف على شاشة الدخول (`PosTerminal::supporting`).
+         *
+         * فالصندوقُ هنا صندوقُ المستخدم المختار في فرعه، كما يراه هو على جهاز
+         * فرعه. ولا يُختم «آخر ظهور» على جهازٍ لم يُفتح.
+         */
+        if (PosTerminal::supporting()) {
+            $user = Auth::user();
+            $branch = PosTerminal::supportBranchId($user);
+
+            /*
+             * ═══ ولا صندوقَ لمن لا فرعَ له في متجره ═══
+             *
+             * كاشيرٌ قُيِّد بفرعٍ زال لا يعمل في فرعٍ حتى يُسنَد من جديد
+             * (`User::worksAt`)، وصاحبُه نفسُه يُردّ عن كلّ صندوق. فلو فُتح له
+             * في الدعم صندوقُ أوّلِ فرعٍ لَأُعطي ما لا يملك. فيُردّ كما يُردّ
+             * هو: من له لوحةٌ إلى لوحته، ومن لا بابَ له سوى الصندوق تنتهي
+             * جلسةُ الدعم ويعود مديرُ المنصّة إلى لوحته — لا شاشةَ دخول.
+             */
+            if ($branch === null && Branch::where('business_id', $user?->business_id)->exists()) {
+                $toast = ['msg' => __('هذا الحساب غير مُسنَد إلى أي فرع في متجره — لا صندوق له.'), 'type' => 'warning'];
+                $home = Permissions::homeFor($user);
+
+                return $home !== route('pos.index')
+                    ? redirect($home)->with('toast', $toast)
+                    : app(ImpersonationController::class)->stop($request)->with('toast', $toast);
+            }
+
+            if ($branch) {
+                Demo::bindTillBranch($branch);
+            }
+
+            return $next($request);
+        }
+
         $branchId = PosTerminal::branchId();
 
         if (! $branchId) {

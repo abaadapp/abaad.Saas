@@ -10528,5 +10528,9 @@
     "لا يُعدَّل الملف الشخصي (الاسم والبريد وكلمة المرور) أثناء الدخول باسم غيرك.": "The profile (name, email and password) cannot be changed while signed in as someone else.",
     "كل ما تفعله يُسجَّل باسمه وباسمك معًا": "Everything you do is recorded under their name and yours",
     "للعرض فقط — :reason": "View only — :reason",
-    "طلب عبر الدعم": "Request via support"
+    "طلب عبر الدعم": "Request via support",
+    "لا يُفعَّل جهاز نقطة بيع أثناء الدعم — هذا المتصفّح متصفّحك لا صندوق المتجر.": "A POS device is not activated during support — this browser is yours, not the shop's till.",
+    "حساب بلا صلاحية تفتح له شاشة — صاحبه نفسه لا يرى شيئًا بعد دخوله. أعطه صلاحية أولًا.": "This account has no permission that opens a screen — its owner sees nothing after signing in. Grant a permission first.",
+    "هذا الحساب غير مُسنَد إلى أي فرع في متجره — لا صندوق له.": "This account is not assigned to any branch of its shop — it has no till.",
+    "حساب غير مُسنَد إلى أي فرع في متجره — أسنده إلى فرع أولًا.": "This account is not assigned to any branch of its shop — assign a branch first."
 }

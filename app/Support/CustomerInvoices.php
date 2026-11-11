@@ -1416,10 +1416,25 @@ final class CustomerInvoices
 
         $base = 0.0;
         $other = 0.0;
+        $shares = 0.0;
         foreach ($invoice->items()->get() as $item) {
             $gross = round((float) $item->quantity * (float) $item->unit_price, 3);
             $base = round($base + $gross, 3);
             $other = round($other + (float) $item->discount - (float) $item->loyalty_discount, 3);
+            $shares = round($shares + (float) $item->loyalty_discount, 3);
+        }
+
+        /*
+         * والبنودُ ما زالت تحمل خصمَ النقاط كما كُتب.
+         *
+         * الخصمُ موزَّعٌ على البنود داخلَ خصمها (`withLoyalty`)، ومنها يُحسب
+         * الإجماليُّ وتُطبع الورقة. وبابٌ يعيد كتابةَ البنود ولا يعرف النقاط
+         * (تعديلُ المسودّات في #195) يُسقط حصّتَها: فيُصرف الرصيدُ على ورقةٍ
+         * إجماليُّها بلا خصمه، أو يُطبع الخصمُ مرّتين. فلا يُصدَر ما لا تتّفق
+         * بنودُه وصفُّه — ولا يُصلَح هنا: من وافق على مبلغٍ لا يُصدَر له غيرُه.
+         */
+        if (abs($shares - (float) $invoice->loyalty_discount) > 0.0005) {
+            throw new RuntimeException(__('تغيّرت بنود المسودّة بعد اختيار النقاط فلم تعد تحمل خصمها — ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
         }
 
         $rules = Loyalty::rules((int) $invoice->business_id);

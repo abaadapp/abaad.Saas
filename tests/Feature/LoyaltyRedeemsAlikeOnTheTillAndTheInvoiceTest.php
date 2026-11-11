@@ -9,6 +9,7 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerInvoiceItem;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
 use App\Models\JobTitle;
@@ -779,6 +780,79 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $earn = PointTransaction::where('business_id', $this->shop->id)->where('type', 'earn')->sole();
         $this->assertSame(498, (int) $earn->points);
         $this->assertSame(500 + 498, (int) $this->customer->fresh()->points);
+    }
+
+    /* ═══════════════════ حارسا المسودّة لكلّ بابٍ يعدّلها (#195) ═══════════════════ */
+
+    /**
+     * مسودّةٌ عليها نقاطٌ لا يتبدّل عميلُها — فلا يُصرف من رصيد غيره خصمٌ لم يُعرض عليه.
+     *
+     * ولا بابَ اليوم يبدّله؛ والحارسُ لما يأتي (تعديلُ المسودّات). والمسودّةُ
+     * بلا نقاطٍ يتبدّل عميلُها كما كان.
+     */
+    public function test_a_draft_carrying_points_keeps_its_customer(): void
+    {
+        $draft = $this->invoice(500, issue: false);
+        $stranger = Customer::create([
+            'business_id' => $this->shop->id, 'name' => 'سالم', 'phone' => '92222222', 'points' => 5000, 'language' => 'ar',
+        ]);
+
+        try {
+            $draft->update(['customer_id' => $stranger->id]);
+            $this->fail('تبدّل عميلُ مسودّةٍ عليها نقاط');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('لا يُغيَّر عميلُها', $e->getMessage());
+        }
+        $this->assertSame($this->customer->id, (int) $draft->fresh()->customer_id);
+
+        // والإصدارُ بعدها يصرف من رصيد عميلها وحده
+        CustomerInvoices::issue($draft->fresh());
+        $this->assertSame(500, (int) $this->customer->fresh()->points);
+        $this->assertSame(5000, (int) $stranger->fresh()->points);
+
+        // ومسودّةٌ بلا نقاطٍ يتبدّل عميلُها كما كان
+        $plain = $this->invoice(0, issue: false);
+        $plain->update(['customer_id' => $stranger->id]);
+        $this->assertSame($stranger->id, (int) $plain->fresh()->customer_id);
+    }
+
+    /**
+     * بنودٌ أُعيدت كتابتُها بلا حصّتها من خصم النقاط — لا تُصدَر، ولا تُصرف نقطة.
+     *
+     * كما يفعل بابٌ يعيد حسابَ البنود ولا يعرف النقاط: يمحو الحصّةَ ويُنزل
+     * الإجماليَّ بلا الخصم. ولو صدرت لدفع العميلُ كاملًا وخسر نقاطَه معًا.
+     */
+    public function test_a_draft_whose_items_lost_their_points_share_is_not_issued(): void
+    {
+        $draft = $this->invoice(500, issue: false);
+        CustomerInvoiceItem::where('customer_invoice_id', $draft->id)->update(['discount' => 0, 'loyalty_discount' => 0]);
+        $draft->forceFill(['discount_total' => 0, 'total' => 105])->save();
+
+        try {
+            CustomerInvoices::issue($draft->fresh());
+            $this->fail('صدرت مسودّةٌ لا تحمل بنودُها خصمَ نقاطها');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('تغيّرت بنود المسودّة', $e->getMessage());
+        }
+
+        $this->assertSame(CustomerInvoice::DRAFT, $draft->fresh()->status);
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+        $this->assertSame(0, $this->redeems());
+    }
+
+    /** والحارسُ لا يردّ ورقةً سليمة: بنودٌ بقسمةٍ لا تنتهي تحمل الخصمَ كلَّه بلا فلسٍ زائدٍ أو ناقص */
+    public function test_an_awkward_split_still_issues_and_spends_once(): void
+    {
+        $invoice = $this->invoice(700, lines: [
+            ['description' => 'أ', 'quantity' => 1, 'unit_price' => 33.333],
+            ['description' => 'ب', 'quantity' => 3, 'unit_price' => 17.77],
+            ['description' => 'ج', 'quantity' => 7, 'unit_price' => 9.99, 'discount' => 1.5],
+        ]);
+
+        $this->assertSame(CustomerInvoice::ISSUED, $invoice->status);
+        $this->assertEqualsWithDelta((float) $invoice->loyalty_discount, (float) $invoice->items->sum('loyalty_discount'), 0.0001);
+        $this->assertSame(1, $this->redeems());
+        $this->assertSame(300, (int) $this->customer->fresh()->points);
     }
 
     /* ═══════════════════ الدفعُ: ملغى ومتأخّرٌ ومكرّر ═══════════════════ */

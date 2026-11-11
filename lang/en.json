@@ -10560,6 +10560,8 @@
     "تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن :balance نقطة، والخصم المتاح الآن :discount مقابل :points نقطة. ألغِ المسودّة وأنشئ فاتورةً جديدة.": "The customer's points balance or the redemption rules changed since the draft was written — the balance is now :balance points, and the discount available now is :discount for :points points. Cancel the draft and create a new invoice.",
     "تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط عليها الآن. ألغِ المسودّة وأنشئ فاتورةً جديدة.": "The customer's points balance or the redemption rules changed since the draft was written — the balance is now :balance points, and no points discount applies to it now. Cancel the draft and create a new invoice.",
     "تغيّر ما يُخصم بالنقاط — راجع العرض واختر من جديد.": "The points discount changed — review the offer and choose again.",
+    "على المسودّة نقاطُ ولاءٍ اختيرت من رصيد عميلها — لا يُغيَّر عميلُها. ألغِ المسودّة وأنشئ فاتورةً جديدة.": "This draft carries loyalty points chosen from its customer's balance — its customer can't be changed. Cancel the draft and create a new invoice.",
+    "تغيّرت بنود المسودّة بعد اختيار النقاط فلم تعد تحمل خصمها — ألغِ المسودّة وأنشئ فاتورةً جديدة.": "The draft's items changed after the points were chosen and no longer carry their discount — cancel the draft and create a new invoice.",
     "دخول كمستخدم": "Sign in as user",
     "تدخل الآن باسم :name (:role) في :business": "You are signed in as :name (:role) at :business",
     "حساب محذوف — يُستعاد أولًا ثم يُدخل إليه.": "Deleted account — restore it first, then sign in as it.",

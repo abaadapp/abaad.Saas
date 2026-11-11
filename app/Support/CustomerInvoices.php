@@ -800,11 +800,31 @@ final class CustomerInvoices
         if ($amount <= 0) {
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
-        if ($amount > $invoice->outstanding() + $invoice->paidTotal()) {
-            throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
-        }
 
         return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId) {
+            /*
+             * والحدُّ يُقرأ تحت قفل المتجر، من الورقة كما هي الآن.
+             *
+             * كان يُقرأ قبل المعاملة: إشعاران معًا يقرآن «الباقي» نفسَه فيمرّان،
+             * ومجموعُهما فوق الفاتورة. والقفلُ نفسُه يأخذه الترقيمُ بعد سطرين.
+             *
+             * والإشعارُ اليدويّ لا يتجاوز «الإجماليّ − ما رُدّ» ولو سُدّدت
+             * الورقة: `outstanding` تُحصر عند الصفر، فكان «الباقي + المسدَّد»
+             * يسمح لفاتورةٍ مدفوعةٍ بإشعارٍ كاملٍ بعد إشعارٍ كامل. وإشعارُ
+             * إلغاء الطلب حدُّه كما كان (`onOrderCancelled`) — ولا نقاطَ على
+             * ورقةٍ تجمع طلبات. يحرسه `TwoHandsOnOneCustomersPointsAtOnceTest`.
+             */
+            Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+            $invoice = CustomerInvoice::where('business_id', $invoice->business_id)->findOrFail($invoice->id);
+
+            $room = $invoice->outstanding() + $invoice->paidTotal();
+            if ($source === self::NOTE_MANUAL) {
+                $room = min($room, (float) $invoice->total - $invoice->creditedTotal());
+            }
+            if ($amount > round($room, 3)) {
+                throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
             $note = CustomerCreditNote::create([
                 'business_id' => $invoice->business_id,
                 'customer_invoice_id' => $invoice->id,
@@ -1353,6 +1373,17 @@ final class CustomerInvoices
         if ($points <= 0 || self::pointsSpent($invoice) > 0) {
             return;
         }
+
+        /*
+         * والمتجرُ قبل العميل — ترتيبُ الأقفال الذي يأخذه الصندوق.
+         *
+         * بيعةُ الصندوق تُمسك صفَّ المتجر من أوّل صفٍّ تكتبه (مفتاحُه الأجنبيّ)،
+         * ثمّ صفَّ العميل حين تكتب طلبَه. والإصدارُ كان يُمسك العميلَ هنا ثمّ
+         * يطلب المتجرَ للترقيم والقيد — فينتظر كلٌّ منهما الآخر، وتُسقط
+         * PostgreSQL البيعةَ بـ deadlock. والقفلُ مأخوذٌ بعد سطورٍ على أيّ حال،
+         * فأخذُه هنا لا يزيد شيئًا. يحرسه `TwoHandsOnOneCustomersPointsAtOnceTest`.
+         */
+        Business::whereKey($invoice->business_id)->lockForUpdate()->first();
 
         $customer = Customer::where('business_id', $invoice->business_id)
             ->whereKey($invoice->customer_id)->lockForUpdate()->first();

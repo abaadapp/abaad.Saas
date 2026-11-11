@@ -107,6 +107,23 @@ class Order extends Model
     }
 
     /**
+     * كم من خصم البيعة نقاطُ ولاء — ليُطبع سطرًا مستقلًّا بعدده.
+     *
+     * خصمُ الصندوق كوبونٌ ونقاطٌ معًا ولا ثالثَ لهما (`PosController::completeSale`)،
+     * والتصحيحُ يحصر الكوبونَ بالخصم (`OrderCorrection`). فما فوق الكوبون
+     * نقاط — ما دامت البيعةُ استبدلت نقاطًا. ولا يغيّر هذا رقمًا: «الخصم»
+     * و«خصم نقاط الولاء» مجموعُهما خصمُ البيعة كما هو.
+     */
+    public function loyaltyDiscount(): float
+    {
+        if ((int) $this->redeemed_points <= 0) {
+            return 0.0;
+        }
+
+        return round(max(0, (float) $this->discount - (float) $this->coupon_discount), 3);
+    }
+
+    /**
      * أفات موعدُ هذا الطلب وهو حيّ؟
      *
      * والقاعدة هي قاعدةُ مُرشِّح «متأخّر» في `ListFilters::orders` نفسِها:

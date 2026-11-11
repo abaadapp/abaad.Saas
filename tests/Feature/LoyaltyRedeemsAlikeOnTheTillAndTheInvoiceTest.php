@@ -878,6 +878,135 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(1, substr_count($html, 'data-loyalty'));
     }
 
+    /**
+     * وإيصالُ الصندوق كذلك — شريطًا وA4: «الخصم» للكوبون، و«خصم نقاط الولاء»
+     * بعدده، ومجموعُهما خصمُ البيعة كما هو.
+     */
+    public function test_the_till_receipt_prints_the_points_discount_on_its_own_line(): void
+    {
+        $order = $this->sell(['redeem_points' => 500]);
+        $this->assertEqualsWithDelta(5.0, $order->loyaltyDiscount(), 0.0001);
+
+        $strip = \App\Http\Controllers\PdfController::saleHtml($this->shop->id, $order->fresh('items'), true)['html'];
+        $this->assertSame(1, substr_count($strip, 'data-loyalty'));
+        $this->assertStringContainsString('خصم نقاط الولاء', $strip);
+        $this->assertStringContainsString('500', $strip);
+
+        $sheet = \App\Http\Controllers\PdfController::saleHtml($this->shop->id, $order->fresh('items'), false)['html'];
+        $this->assertStringContainsString('خصم نقاط الولاء', $sheet);
+        $this->assertStringContainsString('500 نقطة', $sheet);
+
+        // وكوبونٌ مع النقاط: السطران مجموعُهما الخصم، ولا يُطبع الخصمُ كلُّه مرّتين
+        $mixed = new Order(['discount' => 8, 'coupon_discount' => 3, 'redeemed_points' => 500]);
+        $this->assertEqualsWithDelta(5.0, $mixed->loyaltyDiscount(), 0.0001);
+        $this->assertEqualsWithDelta(0.0, (new Order(['discount' => 8, 'coupon_discount' => 3, 'redeemed_points' => 0]))->loyaltyDiscount(), 0.0001, 'بيعةٌ بلا نقاط لا سطرَ نقاطٍ لها');
+    }
+
+    /* ═══════════════════ المراجعةُ النهائيّة: الحدودُ والإعادة ═══════════════════ */
+
+    /**
+     * فاتورةٌ مدفوعة رُدّت كلُّها لا تُردّ ثانيةً — لا مالًا ولا نقاطًا.
+     *
+     * `outstanding` تُحصر عند الصفر، فكان حدُّ «الباقي + المسدَّد» يقبل إشعارًا
+     * كاملًا بعد إشعارٍ كامل: ١٩٩٫٥ مردودةً على فاتورةٍ بـ٩٩٫٧٥.
+     */
+    public function test_a_paid_invoice_cannot_be_credited_past_its_total(): void
+    {
+        $invoice = $this->invoice(500); // ٩٩٫٧٥
+        \App\Support\CustomerPayments::record($this->shop->id, $this->customer, 99.75, ['method' => 'نقدي', 'occurred_at' => '2026-11-11'], [$invoice->id => 99.75]);
+
+        $this->credit($invoice, 99.75);
+        $this->assertSame(500, $this->returned($invoice));
+
+        try {
+            $this->credit($invoice, 99.75);
+            $this->fail('أُصدر إشعارٌ ثانٍ بكامل فاتورةٍ رُدّت كلُّها');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('لا يتجاوز', $e->getMessage());
+        }
+
+        $this->assertEqualsWithDelta(99.75, (float) \App\Models\CustomerCreditNote::where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001);
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /**
+     * دفعٌ بالبطاقة فشل: الورقةُ الصادرة بخصمها كما هي، والنقاطُ مصروفةٌ عليها،
+     * ولا تحصيلَ ولا اكتساب. والإلغاءُ — ولو تكرّر — يعيدها مرّةً.
+     */
+    public function test_a_failed_card_payment_leaves_the_issued_invoice_and_its_points_as_they_were(): void
+    {
+        PaymentGateway::create([
+            'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
+            'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
+            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
+        ]);
+        Http::fake([
+            'oman.paymob.com/api/auth/tokens' => Http::response(['token' => 'tok']),
+            'oman.paymob.com/api/ecommerce/payment-links' => Http::response([
+                'id' => 580012, 'amount_cents' => 0, 'shorten_url' => 'https://paymob.link/f',
+                'client_url' => 'https://oman.paymob.com/f', 'created_at' => '2026-11-11T10:00:00',
+                'expires_at' => '2026-11-18T23:59:00', 'state' => 'created', 'order' => 616057560,
+            ]),
+        ]);
+
+        $invoice = $this->invoice(500);
+        $before = $invoice->fresh()->only(['total', 'discount_total', 'loyalty_points', 'loyalty_discount']);
+        $link = PaymentLinks::create($this->shop->id, $this->customer, $invoice->fresh(), null, null, $this->owner->id);
+        $link->forceFill(['provider_order_id' => (string) (++$this->order)])->save();
+
+        $obj = [
+            'amount_cents' => Amount::toMinor((float) $link->amount, (string) $link->currency),
+            'created_at' => '2026-11-11T10:05:00.000000', 'currency' => $link->currency,
+            'error_occured' => true, 'has_parent_transaction' => false, 'id' => ++$this->tx,
+            'integration_id' => 111, 'is_3d_secure' => true, 'is_auth' => false, 'is_capture' => false,
+            'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
+            'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
+            'owner' => 1, 'pending' => false,
+            'source_data' => ['pan' => '2346', 'sub_type' => 'Visa', 'type' => 'card'],
+            'success' => false, 'is_live' => true,
+            'data' => ['message' => 'Insufficient funds'],
+        ];
+        foreach (range(1, 2) as $_) {
+            $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac-shop'), ['type' => 'TRANSACTION', 'obj' => $obj])->assertOk();
+        }
+
+        $invoice = $invoice->fresh();
+        $this->assertSame(0, CustomerPayment::count(), 'تحصيلٌ لدفعٍ فشل');
+        $this->assertNotSame(CustomerPaymentLink::PAID, $link->fresh()->status);
+        $this->assertSame($before, $invoice->only(array_keys($before)), 'الفشلُ لا يغيّر الورقة');
+        $this->assertEqualsWithDelta(99.75, $invoice->outstanding(), 0.0001);
+        $this->assertSame(500, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
+        $this->assertSame(0, PointTransaction::where('business_id', $this->shop->id)->where('type', 'earn')->count(), 'ولا اكتسابَ بلا دفع');
+
+        CustomerInvoices::cancel($invoice, 'لم يُدفع');
+        CustomerInvoices::cancel($invoice->fresh(), 'لم يُدفع');
+        $this->assertSame(500, $this->returned($invoice));
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** البيعةُ نفسُها تُرسل مرّتين (انقطاعٌ ثمّ إعادة): طلبٌ واحد وخصمٌ واحد */
+    public function test_the_same_till_sale_sent_twice_spends_points_once(): void
+    {
+        $payload = [
+            'items' => [['id' => $this->product->id, 'name' => $this->product->name, 'qty' => 1]],
+            'payment_method' => 'نقدي',
+            'customer_id' => $this->customer->id,
+            'client_uuid' => 'same-sale-twice',
+            'redeem_points' => 500,
+        ];
+
+        $first = $this->withSession(['current_branch' => $this->branch->id])->postJson(route('pos.checkout'), $payload)->assertOk();
+        $this->withSession(['current_branch' => $this->branch->id])->postJson(route('pos.checkout'), $payload)
+            ->assertOk()->assertJson(['duplicate' => true, 'invoice' => $first->json('invoice')]);
+
+        $this->assertSame(1, Order::where('business_id', $this->shop->id)->count());
+        $this->assertSame(1, $this->redeems());
+        $order = Order::where('business_id', $this->shop->id)->sole();
+        $this->assertSame(1000 - 500 + (int) $order->points_earned, (int) $this->customer->fresh()->points);
+    }
+
     /* ═══════════════════ القرار ٤: التصحيحُ الإداريّ ═══════════════════ */
 
     private function adjust(array $data): \Illuminate\Testing\TestResponse

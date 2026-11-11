@@ -17,6 +17,8 @@ class Order extends Model
         'subtotal' => 'decimal:3', 'discount' => 'decimal:3', 'tax' => 'decimal:3',
         'delivery_fee' => 'decimal:3', 'total' => 'decimal:3', 'is_held' => 'boolean',
         'coupon_discount' => 'decimal:3',
+        // بيعةٌ وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة — `PosController::reviewRedemption`
+        'loyalty_review' => 'array',
         'ordered_at' => 'datetime',
         'scheduled_for' => 'datetime',
         'hide_sender' => 'boolean',

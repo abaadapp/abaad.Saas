@@ -240,6 +240,13 @@ export interface CheckoutResult {
      * الخصمُ صفرًا — فيُقرأ «١٠٥» على بيعةٍ قُبض فيها ٩٤٫٥.
      */
     total?: number | null;
+    /**
+     * رُدّت البيعةُ لأنّ عرضَ النقاط تغيّر — والصندوقُ كتب العرضَ الجديد.
+     *
+     * لا تُغلق ورقةُ الدفع على «تمّ»: البيعةُ لم تُكتب، والكاشيرُ يعود إلى
+     * السلّة ليرى الرصيدَ والخصمَ الصحيحين ويختار من جديد.
+     */
+    loyaltyChanged?: boolean;
     /** رفضه الخادم (مخزون غير كافٍ أو صنف غير معروف) — لا يُعاد إلى الطابور */
     rejected?: boolean;
 }
@@ -456,24 +463,36 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     /** معرّفات البيوع الجارية الآن — يتخطّاها النبض فلا يعيد إرسالها */
     const inFlight = useRef(new Set<string>());
 
-    const redeemMaxPct = Math.min(100, Math.max(0, Number(loyalty.redeemMaxPct) || 0));
-    const earnRate = Math.max(0, Number(loyalty.earnRate) || 0);
-    const redeemMin = Math.max(0, Number(loyalty.redeemMin) || 0);
+    /*
+     * ═══ وقواعدُ ردّها الخادمُ تعلو ما قرأته الشاشةُ عند فتحها ═══
+     *
+     * صاحبُ المحلّ قد يغيّر القيمةَ أو يُطفئ الاستبدال والصندوقُ مفتوح. فإذا
+     * رُدّت بيعةٌ بـ«تغيّر العرض» حملت القواعدَ الجديدة (`Loyalty::tillSettings`)
+     * فتُكتب هنا، وتحسب المرآةُ بها ما يحسبه الخادم.
+     */
+    const [liveLoyalty, setLiveLoyalty] = useState<LoyaltySettings | null>(null);
+    const program = liveLoyalty ?? loyalty;
+    /** نصُّ الخادم حين ردّ عرضًا تغيّر — يبقى أمام الكاشير حتّى يختار من جديد */
+    const [redeemNotice, setRedeemNotice] = useState('');
+
+    const redeemMaxPct = Math.min(100, Math.max(0, Number(program.redeemMaxPct) || 0));
+    const earnRate = Math.max(0, Number(program.earnRate) || 0);
+    const redeemMin = Math.max(0, Number(program.redeemMin) || 0);
 
     /** قواعدُ المتجر كما يقرؤها الخادم (`Loyalty::rules`) — بافتراضات الصرف القديم */
     const loyaltyRules: LoyaltyRules = useMemo(() => {
-        const value = loyalty.redeemValue === undefined ? 1 : Math.max(0, Number(loyalty.redeemValue) || 0);
-        const on = loyalty.loyaltyEnabled !== false;
+        const value = program.redeemValue === undefined ? 1 : Math.max(0, Number(program.redeemValue) || 0);
+        const on = program.loyaltyEnabled !== false;
         return {
             on,
-            redeem: on && loyalty.redeemEnabled !== false && value > 0,
+            redeem: on && program.redeemEnabled !== false && value > 0,
             min_points: redeemMin,
-            points: Math.max(1, Math.trunc(Number(loyalty.redeemPoints) || 100)),
+            points: Math.max(1, Math.trunc(Number(program.redeemPoints) || 100)),
             value,
-            min_invoice: Math.max(0, Number(loyalty.redeemMinInvoice) || 0),
+            min_invoice: Math.max(0, Number(program.redeemMinInvoice) || 0),
             max_pct: redeemMaxPct,
         };
-    }, [loyalty.loyaltyEnabled, loyalty.redeemEnabled, loyalty.redeemPoints, loyalty.redeemValue, loyalty.redeemMinInvoice, redeemMin, redeemMaxPct]);
+    }, [program.loyaltyEnabled, program.redeemEnabled, program.redeemPoints, program.redeemValue, program.redeemMinInvoice, redeemMin, redeemMaxPct]);
 
     /* ----------------------------- الحسابات ----------------------------- */
 
@@ -526,7 +545,15 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         () => loyaltyQuote(loyaltyRules, selectedPoints, subtotal, couponDiscount, null),
         [loyaltyRules, selectedPoints, subtotal, couponDiscount],
     );
-    const canRedeem = redeemQuote.eligible;
+    /*
+     * ═══ ولا استبدالَ بلا اتصال ═══
+     *
+     * بيعةٌ بلا اتصال تُحفظ في الطابور وتُرسل بعد ساعة، والرصيدُ الذي تُخصم
+     * منه قد يُصرف في الأثناء. فلا يُعرض الاستبدالُ حتّى يعود الاتصال، ويكمل
+     * البيعُ العاديّ بلا خصم (`redeemOffline` يقول ذلك للكاشير).
+     */
+    const canRedeem = redeemQuote.eligible && online;
+    const redeemOffline = redeemQuote.eligible && !online;
     const pointsToThreshold = Math.max(0, redeemMin - selectedPoints);
     /** قيمةُ عددٍ من النقاط بعملة المتجر — للعرض بجانب الرصيد */
     const pointsWorth = useCallback((points: number) => loyaltyWorth(loyaltyRules, points), [loyaltyRules]);
@@ -542,16 +569,26 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const redeemDiscount = redeemOn ? redeemQuote.max_discount : 0;
     const redeemPointsUsed = redeemOn ? redeemQuote.max_points : 0;
 
-    // وعميلٌ آخر يُسأل عنه من جديد — ولا يرث خصمَ من قبله
+    // وعميلٌ آخر يُسأل عنه من جديد — ولا يرث خصمَ من قبله ولا رسالتَه
     useEffect(() => {
         setRedeemActive(false);
         setRedeemDecided(false);
+        setRedeemNotice('');
     }, [selectedCustomer?.id]);
+
+    // وانقطاعٌ يُسقط الاختيار: لا يعود الخصمُ وحده حين يعود الاتصال — يُسأل من جديد
+    useEffect(() => {
+        if (!online) {
+            setRedeemActive(false);
+            setRedeemDecided(false);
+        }
+    }, [online]);
 
     /** جوابُ التنبيه: «استخدام النقاط» أو «بدون خصم» */
     const chooseRedeem = useCallback((use: boolean) => {
         setRedeemActive(use);
         setRedeemDecided(true);
+        setRedeemNotice('');
     }, []);
 
     // `round(min($couponDiscount + $redeem, $subtotal), 3)` كما في الدفع
@@ -1040,6 +1077,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const sendOne = useCallback(
         async (
             payload: Record<string, unknown>,
+            /** بيعةٌ اكتملت عند الصندوق وتُرسل من الطابور — لا تُردّ لأجل النقاط */
+            replay = false,
         ): Promise<{
             ok: boolean;
             drop?: boolean;
@@ -1051,6 +1090,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             /** إجماليُّ البيعة كما كتبه الخادم */
             total?: number;
             error?: string;
+            /** عرضُ النقاط الصحيح حين رُدّت البيعةُ لأنّه تغيّر (`RedemptionChanged`) */
+            loyalty?: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings };
         }> => {
             try {
                 const res = await fetch('/pos/checkout', {
@@ -1060,7 +1101,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                         ...csrfHeaders(),
                         Accept: 'application/json',
                     },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(replay ? { ...payload, replay: true } : payload),
                 });
                 if (res.ok) {
                     const d = await res.json();
@@ -1087,13 +1128,15 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 // تُسقَط برسالتها كي يفتح الكاشير الوردية ثم يعيد البيع
                 if (res.status === 422 || res.status === 419 || res.status === 409) {
                     let error = '';
+                    let loyalty: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings } | undefined;
                     try {
                         const d = await res.json();
                         error = Object.values(d?.errors ?? {}).flat().join(' · ') || d?.message || '';
+                        loyalty = d?.loyalty ?? undefined;
                     } catch {
                         /* رد بلا JSON — نكتفي برسالة عامة */
                     }
-                    return { ok: false, drop: true, error: error || t('تعذّر إتمام البيع') };
+                    return { ok: false, drop: true, error: error || t('تعذّر إتمام البيع'), loyalty };
                 }
                 return { ok: false };
             } catch {
@@ -1116,7 +1159,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         try {
             let remaining = readOutbox();
             for (const entry of queue) {
-                const res = await sendOne(entry.payload);
+                // من الطابور: بيعةٌ اكتملت ودُفع ثمنُها — يكتبها الخادمُ كما قُبضت (`replay`)
+                const res = await sendOne(entry.payload, true);
                 if (res.ok || res.drop) {
                     remaining = remaining.filter((x) => x.uuid !== entry.uuid);
                     savePending(remaining);
@@ -1207,6 +1251,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 // الكودُ الذي يخصم على الشاشة وحدَه — وما نزلت السلّةُ تحت حدّه لا يُرسل
                 coupon_code: activeCoupon?.code ?? null,
                 redeem_points: redeemPointsUsed,
+                // وما عُرض على الكاشير خصمًا لها — فإن حسب الخادمُ غيرَه ردّها ومعها العرضُ الصحيح
+                redeem_discount: redeemPointsUsed > 0 ? redeemDiscount : null,
                 ...(details ?? {}),
             };
 
@@ -1246,8 +1292,25 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
                 onSynced?.();
             }
+            /*
+             * ═══ وعرضُ نقاطٍ تغيّر: يُكتب الجديدُ ويُسأل الكاشيرُ من جديد ═══
+             *
+             * الخادمُ لم يكتب شيئًا. فيُكتب الرصيدُ والقواعدُ كما ردّها، ويعود
+             * التنبيهُ بزرّيه بالأرقام الصحيحة — ولا خصمَ حتّى يختار.
+             */
+            const changed = !!(res.drop && res.loyalty);
+            if (changed && res.loyalty) {
+                const offer = res.loyalty;
+                if (customerId !== null) {
+                    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, points: offer.balance } : c)));
+                }
+                setLiveLoyalty(offer.settings);
+                setRedeemActive(false);
+                setRedeemDecided(false);
+                setRedeemNotice(res.error ?? '');
+            }
             if (res.drop && res.error) {
-                onToast(res.error, 'danger');
+                onToast(res.error, changed ? 'warning' : 'danger');
             }
             setOnline(navigator.onLine);
 
@@ -1259,9 +1322,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 balance: res.balance ?? null,
                 total: res.total ?? null,
                 rejected: !!res.drop,
+                loyaltyChanged: changed,
             };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -1314,7 +1378,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
         selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage, blocked, blockOverrideReason,
         redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
-        redeemQuote, redeemDecided, chooseRedeem, pointsWorth,
+        redeemQuote, redeemDecided, chooseRedeem, pointsWorth, redeemOffline, redeemNotice,
+        // البرنامجُ عاملٌ — بما ردّه الخادمُ آخرَ مرّة إن ردّ
+        loyaltyOn: program.loyaltyEnabled !== false,
         pointsToEarn, hasStockWarning, filteredCustomers,
         // الأفعال
         add, inc, dec, remove, setNote, clear,

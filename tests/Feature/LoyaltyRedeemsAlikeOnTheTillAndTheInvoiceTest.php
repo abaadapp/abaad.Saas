@@ -124,6 +124,18 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         return Order::latest('id')->firstOrFail();
     }
 
+    /** طلبُ الصندوق كما يُرسل — بلا افتراض نجاحه */
+    private function till(array $extra = []): \Illuminate\Testing\TestResponse
+    {
+        return $this->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), array_merge([
+                'items' => [['id' => $this->product->id, 'name' => $this->product->name, 'qty' => 1]],
+                'payment_method' => 'نقدي',
+                'customer_id' => $this->customer->id,
+                'client_uuid' => uniqid('t', true),
+            ], $extra));
+    }
+
     /** فاتورةُ عميلٍ ببندين بمئة — وبضريبةٍ خمسةٍ بالمئة غير مشمولة. تُصدَر ما لم يُطلب غيرُ ذلك */
     private function invoice(int $redeem = 0, ?Customer $customer = null, bool $issue = true, array $lines = []): CustomerInvoice
     {
@@ -177,7 +189,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(99.9, Loyalty::maxEarnRate());
 
         // وبيعةٌ بمئة وألفِ نقطة: عشرةُ ريالاتٍ كما كانت
-        $order = $this->sell(['redeem_points' => 1000]);
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10]);
         $this->assertSame(1000, (int) $order->redeemed_points);
         $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
     }
@@ -265,7 +277,13 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->set('loyalty_redeem_min', '10');
         $this->customer->update(['points' => 400]);
 
-        $order = $this->sell(['redeem_points' => 999999]);
+        // وطلبُ أكثر ممّا يجوز يُردّ ومعه العرضُ الصحيح — لا يُنقص صامتًا
+        $this->till(['redeem_points' => 999999, 'redeem_discount' => 50])
+            ->assertStatus(422)->assertJsonValidationErrors('redeem_points')
+            ->assertJsonPath('loyalty.points', 400)->assertJsonPath('loyalty.discount', 20);
+        $this->assertSame(0, Order::count());
+
+        $order = $this->sell(['redeem_points' => 400, 'redeem_discount' => 20]);
 
         // أربعمئة نقطةٍ بنصف ريالٍ لكلّ عشر = عشرون، دون سقف الخمسين
         $this->assertSame(400, (int) $order->redeemed_points);
@@ -278,7 +296,13 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
     {
         $this->set('loyalty_redeem_enabled', '0');
 
-        $order = $this->sell(['redeem_points' => 500]);
+        // صندوقٌ يحسب بقواعد الأمس يُردّ ومعه القواعدُ الجديدة
+        $this->till(['redeem_points' => 500, 'redeem_discount' => 5])
+            ->assertStatus(422)->assertJsonValidationErrors('redeem_points')
+            ->assertJsonPath('loyalty.points', 0)->assertJsonPath('loyalty.reason', Loyalty::REDEEM_OFF)
+            ->assertJsonPath('loyalty.settings.redeemEnabled', false);
+
+        $order = $this->sell();
 
         $this->assertSame(0, (int) $order->redeemed_points);
         $this->assertEqualsWithDelta(0.0, (float) $order->discount, 0.0001);
@@ -290,9 +314,10 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
     {
         $this->set('loyalty_redeem_min_invoice', '150');
 
-        $order = $this->sell(['redeem_points' => 500]);
+        $this->till(['redeem_points' => 500, 'redeem_discount' => 5])
+            ->assertStatus(422)->assertJsonPath('loyalty.reason', Loyalty::BELOW_MIN_INVOICE);
 
-        $this->assertSame(0, (int) $order->redeemed_points);
+        $this->assertSame(0, Order::count());
         $this->assertSame(0, $this->redeems());
     }
 
@@ -302,7 +327,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->set('vat_enabled', '1');
         $this->set('vat_rate', '5');
 
-        $order = $this->sell(['redeem_points' => 1000]);
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10]);
 
         $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
         $this->assertEqualsWithDelta(4.5, (float) $order->tax, 0.0001);
@@ -397,10 +422,12 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->customer->update(['points' => 500]);
         $this->invoice(500);
 
-        $order = $this->sell(['redeem_points' => 500]);
+        // الشاشةُ رأت خمسمئة، والفاتورةُ صرفتها: يُردّ الصندوقُ بالرصيد الصحيح ولا يُكتب شيء
+        $this->till(['redeem_points' => 500, 'redeem_discount' => 5])
+            ->assertStatus(422)->assertJsonPath('loyalty.balance', 0);
 
-        $this->assertSame(0, (int) $order->redeemed_points);
-        $this->assertGreaterThanOrEqual(0, (int) $this->customer->fresh()->points);
+        $this->assertSame(0, Order::count());
+        $this->assertSame(0, (int) $this->customer->fresh()->points);
     }
 
     /** والمفتاحُ الفريد خلف ذلك كلِّه: حركةُ استبدالٍ ثانيةٌ للورقة نفسِها تردّها القاعدة */
@@ -739,7 +766,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
      */
     public function test_a_till_sale_billed_on_credit_never_redeems_twice(): void
     {
-        $order = $this->sell(['credit' => true, 'paid_now' => 0, 'redeem_points' => 500]);
+        $order = $this->sell(['credit' => true, 'paid_now' => 0, 'redeem_points' => 500, 'redeem_discount' => 5]);
         $this->assertSame(500, (int) $order->redeemed_points);
 
         $invoice = CustomerInvoice::whereHas('orders', fn ($q) => $q->whereKey($order->id))->sole();
@@ -906,7 +933,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
      */
     public function test_the_till_receipt_prints_the_points_discount_on_its_own_line(): void
     {
-        $order = $this->sell(['redeem_points' => 500]);
+        $order = $this->sell(['redeem_points' => 500, 'redeem_discount' => 5]);
         $this->assertEqualsWithDelta(5.0, $order->loyaltyDiscount(), 0.0001);
 
         $strip = \App\Http\Controllers\PdfController::saleHtml($this->shop->id, $order->fresh('items'), true)['html'];
@@ -1029,6 +1056,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
             'customer_id' => $this->customer->id,
             'client_uuid' => 'same-sale-twice',
             'redeem_points' => 500,
+            'redeem_discount' => 5,
         ];
 
         $first = $this->withSession(['current_branch' => $this->branch->id])->postJson(route('pos.checkout'), $payload)->assertOk();
@@ -1099,5 +1127,171 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
 
         $this->adjust(['direction' => 'add', 'points' => 10, 'reason' => 'محاولة'])->assertForbidden();
         $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /* ═══════════════════ قرارُ البند الثاني: الصندوقُ المتّصل، والانقطاع ═══════════════════ */
+
+    /**
+     * رصيدٌ تغيّر بين العرض والدفع: لا يُكتب شيء، ويُردّ العرضُ الصحيح.
+     *
+     * الشاشةُ رأت ألفَ نقطة، وصُرف منها سبعمئة في مكانٍ آخر قبل الدفع. كان
+     * الخادمُ يُنقص الخصمَ صامتًا فيُكتب غيرُ ما قُبض؛ والآن يُردّ ومعه الرصيدُ
+     * والخصمُ المتاح، ويؤكّد الكاشيرُ من جديد — فتمضي مرّةً بالأرقام الصحيحة.
+     */
+    public function test_a_live_sale_whose_balance_changed_is_refused_with_the_right_offer(): void
+    {
+        $this->customer->update(['points' => 300]);
+
+        $refused = $this->till(['redeem_points' => 1000, 'redeem_discount' => 10])
+            ->assertStatus(422)->assertJsonValidationErrors('redeem_points')
+            ->assertJsonPath('loyalty.balance', 300)
+            ->assertJsonPath('loyalty.points', 300)
+            ->assertJsonPath('loyalty.discount', 3)
+            ->assertJsonPath('loyalty.settings.redeemPoints', 100);
+        $this->assertStringContainsString('300', $refused->json('errors.redeem_points.0'));
+
+        $this->assertSame(0, Order::count(), 'لا بيعةَ بخصمٍ لم يُؤكَّد');
+        $this->assertSame(0, PointTransaction::count());
+        $this->assertSame(300, (int) $this->customer->fresh()->points);
+
+        $order = $this->sell(['redeem_points' => 300, 'redeem_discount' => 3]);
+
+        $this->assertSame(300, (int) $order->redeemed_points);
+        $this->assertEqualsWithDelta(3.0, (float) $order->discount, 0.0001);
+        $this->assertSame(1, $this->redeems());
+        $this->assertNull($order->loyalty_review);
+    }
+
+    /** وقواعدُ تغيّرت بعد فتح الشاشة: يُردّ ومعه القواعدُ الجديدة، فتحسب الشاشةُ ما يحسبه الخادم */
+    public function test_a_live_sale_whose_rules_changed_is_refused_with_the_new_rules(): void
+    {
+        $this->set('loyalty_redeem_value', '2'); // مئةُ نقطةٍ صارت بريالين
+
+        $this->till(['redeem_points' => 500, 'redeem_discount' => 5])
+            ->assertStatus(422)
+            ->assertJsonPath('loyalty.settings.redeemValue', 2)
+            ->assertJsonPath('loyalty.points', 1000)
+            ->assertJsonPath('loyalty.discount', 20);
+
+        $this->assertSame(0, Order::count());
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /**
+     * ═══ وبيعةٌ اكتملت بلا اتصال: لا تُردّ ولا يتغيّر مبلغُها ═══
+     *
+     * باعها الصندوقُ على ألف نقطة وقبض تسعين، ووصلت وقد صُرف من الرصيد
+     * ستّمئة. فتُكتب بالخصم الذي قُبض عليه، ويُصرف من الرصيد ما وُجد لا أكثر،
+     * والفرقُ للمراجعة — جرسٌ لصاحب المحلّ وسطرٌ في سجلّ النشاط.
+     */
+    public function test_a_completed_offline_sale_is_neither_refused_nor_repriced(): void
+    {
+        $this->customer->update(['points' => 400]);
+
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10, 'replay' => true]);
+
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001, 'الخصمُ كما قُبض');
+        $this->assertEqualsWithDelta(90.0, (float) $order->total, 0.0001, 'والمبلغُ المدفوع لم يتغيّر');
+        $this->assertSame(400, (int) $order->redeemed_points, 'صُرف ما وُجد لا أكثر');
+        $this->assertSame((int) $order->points_earned, (int) $this->customer->fresh()->points, 'ولا رصيدَ سالب');
+
+        $review = $order->loyalty_review;
+        $this->assertSame(1000, $review['requested_points']);
+        $this->assertSame(400, $review['spent_points']);
+        $this->assertEqualsWithDelta(4.0, $review['covered'], 0.0001);
+        $this->assertEqualsWithDelta(6.0, $review['gap'], 0.0001);
+
+        $bell = collect(\App\Support\Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id);
+        $this->assertNotNull($bell, 'صاحبُ المحلّ لا يُبلَّغ');
+        $this->assertStringContainsString($order->number, $bell['text']);
+        $this->assertTrue(\App\Models\ActivityLog::where('description', 'like', '%'.$order->number.'%تحتاج مراجعة%')->exists());
+
+        // وجارٌ لا يرى جرسَ هذا المتجر
+        $neighbour = User::create([
+            'business_id' => $this->other->id, 'name' => 'الجار', 'email' => 'neighbour@loyalty.test',
+            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+        $this->actingAs($neighbour);
+        $this->assertNull(collect(\App\Support\Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id));
+    }
+
+    /** والبيعةُ نفسُها تصل مرّتين من الطابور: طلبٌ واحد، وصرفٌ واحد، ومراجعةٌ واحدة */
+    public function test_a_replayed_sale_is_recorded_and_spent_once(): void
+    {
+        $this->customer->update(['points' => 400]);
+        $payload = ['client_uuid' => 'offline-sale-1', 'redeem_points' => 1000, 'redeem_discount' => 10, 'replay' => true];
+
+        $this->till($payload)->assertOk();
+        $this->till($payload)->assertOk()->assertJson(['duplicate' => true]);
+
+        $this->assertSame(1, Order::count());
+        $this->assertSame(1, $this->redeems());
+        $this->assertSame(1, Order::whereNotNull('loyalty_review')->count());
+    }
+
+    /** ولا يُزاد خصمٌ لم يعطه الصندوق: قواعدُ صارت أسخى بعد البيعة لا ترفع خصمَها */
+    public function test_a_replay_never_adds_a_discount_the_till_did_not_give(): void
+    {
+        $this->set('loyalty_redeem_value', '2');
+
+        $order = $this->sell(['redeem_points' => 300, 'redeem_discount' => 3, 'replay' => true]);
+
+        $this->assertEqualsWithDelta(3.0, (float) $order->discount, 0.0001, 'ثلاثةٌ كما قُبض — لا ستّة');
+        $this->assertSame(300, (int) $order->redeemed_points);
+        $this->assertNull($order->loyalty_review, 'نقاطُه تغطّي ما خُصم — لا مراجعة');
+    }
+
+    /** وخصمٌ قُبض فوق قيمة نقاطه يُكتب كما قُبض — والفرقُ للمراجعة لا لإعادة التسعير */
+    public function test_a_replayed_discount_beyond_its_points_is_flagged_not_repriced(): void
+    {
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 30, 'replay' => true]);
+
+        $this->assertEqualsWithDelta(30.0, (float) $order->discount, 0.0001);
+        $this->assertSame(1000, (int) $order->redeemed_points);
+        $this->assertEqualsWithDelta(20.0, $order->loyalty_review['gap'], 0.0001, 'ألفُ نقطةٍ تغطّي عشرة');
+    }
+
+    /** واستبدالٌ أُطفئ بعد البيعة: لا تُصرف نقطة، والخصمُ كما قُبض، والقرارُ لصاحب المحلّ */
+    public function test_a_replay_after_redemption_was_switched_off_spends_nothing_and_asks(): void
+    {
+        $this->set('loyalty_redeem_enabled', '0');
+
+        $order = $this->sell(['redeem_points' => 500, 'redeem_discount' => 5, 'replay' => true]);
+
+        $this->assertEqualsWithDelta(5.0, (float) $order->discount, 0.0001);
+        $this->assertSame(0, (int) $order->redeemed_points);
+        $this->assertSame(0, $this->redeems());
+        $this->assertSame(1000 + (int) $order->points_earned, (int) $this->customer->fresh()->points);
+        $this->assertFalse($order->loyalty_review['program_on']);
+        $this->assertEqualsWithDelta(5.0, $order->loyalty_review['gap'], 0.0001);
+    }
+
+    /** وإلغاءُ بيعةٍ صُرف لها أقلُّ ممّا طُلب يُعيد ما صُرف — لا ما طُلب — ويُطفئ جرسَها */
+    public function test_cancelling_a_short_replayed_sale_returns_only_what_was_spent(): void
+    {
+        $this->customer->update(['points' => 400]);
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10, 'replay' => true]);
+
+        \App\Support\OrderCorrection::cancel($order->fresh(), 'أُلغيت');
+
+        $this->assertSame(400, (int) $this->customer->fresh()->points, 'عاد ما صُرف — لا الألف');
+        $this->assertNull(collect(\App\Support\Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id));
+    }
+
+    /**
+     * وشاشةٌ أقدم من هذا لا تقول ما خصمت — فلا يُعرف أكانت البيعةُ قد اكتملت.
+     *
+     * فلا تُردّ (ردُّها يُسقطها من طابورها)، ويُقدَّر خصمُها بقيمة نقاطها بقواعد
+     * اليوم، ويُصرف ما وُجد، والفرقُ للمراجعة.
+     */
+    public function test_an_older_screen_without_the_agreed_discount_is_not_refused(): void
+    {
+        $this->customer->update(['points' => 400]);
+
+        $order = $this->sell(['redeem_points' => 1000]);
+
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
+        $this->assertSame(400, (int) $order->redeemed_points);
+        $this->assertNotNull($order->loyalty_review);
     }
 }

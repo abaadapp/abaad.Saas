@@ -4827,6 +4827,38 @@ class Demo
         }
 
         /*
+         * ═══ وبيعةٌ وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة ═══
+         *
+         * اكتملت عند الصندوق بخصم نقاط، ثمّ وجدت حين وصلت رصيدًا لا يغطّيه —
+         * صُرف في صندوقٍ آخر، أو تغيّرت القواعد، أو أُطفئ البرنامج. فلم تُردّ
+         * ولم يُغيَّر مبلغُها، وصُرف من الرصيد ما وُجد فيه لا أكثر. والقرارُ
+         * لصاحب المحلّ: يقبل الفرقَ أو يتحدّث إلى الزبون.
+         */
+        $reviews = Order::where('business_id', $bid)
+            ->whereNotNull('loyalty_review')
+            // وبيعةٌ أُلغيت عادت نقاطُها المصروفة وانتهت مسألتُها (`OrderCorrection::reverseLoyalty`)
+            ->where('status', '!=', OrderStatus::CANCELLED)
+            ->orderByDesc('id')->limit($limit)->get(['id', 'number', 'loyalty_review', 'ordered_at', 'created_at']);
+
+        foreach ($reviews as $o) {
+            $r = (array) $o->loyalty_review;
+
+            $add('loyalty-review-'.$o->id, [
+                'text' => __('بيعة :number وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة', ['number' => $o->number]),
+                'hint' => __('طُلبت :requested نقطة وصُرفت :spent — خصمٌ بقيمة :gap لم تغطّه نقاط العميل. لم يُغيَّر المبلغ المدفوع.', [
+                    'requested' => (int) ($r['requested_points'] ?? 0),
+                    'spent' => (int) ($r['spent_points'] ?? 0),
+                    'gap' => self::money((float) ($r['gap'] ?? 0)),
+                ]),
+                'time' => optional($o->ordered_at ?? $o->created_at)->format('Y-m-d H:i'),
+                'section' => 'orders',
+                'icon' => 'star',
+                'color' => 'warning',
+                'url' => route('admin.orders.show', $o->number),
+            ]);
+        }
+
+        /*
          * ═══ ورابطُ دفعٍ دُفع ═══
          *
          * العميلُ يدفع من هاتفه، وإشعارُ Paymob يسجّل التحصيلَ ويُقفل الفاتورة

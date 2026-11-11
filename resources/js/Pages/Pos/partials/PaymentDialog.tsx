@@ -326,6 +326,22 @@ export default function PaymentDialog({
             // ما قُبض يُثبَّت الآن — السلّةُ تُحسب من جديد بعد البيعة (`CheckoutResult.total`)
             const charged = total;
             const res = await onCheckout(method, details);
+
+            /*
+             * ═══ وبيعةٌ رُدّت لا تُعرض «تمّ الدفع» ═══
+             *
+             * كانت ورقةُ النجاح تُفتح لكلّ ردّ، فيقرأ الكاشيرُ «حُفظ البيع
+             * وسيُرسَل» عن بيعةٍ أسقطها الخادم. يبقى على ورقة الدفع ورسالةُ
+             * السبب أمامه. وعرضُ نقاطٍ تغيّر يُعيده إلى السلّة: هناك الرصيدُ
+             * والخصمُ الجديدان، ويختار من جديد قبل أن يدفع.
+             */
+            if (res.rejected) {
+                if (res.loyaltyChanged) {
+                    onOpenChange(false);
+                }
+                return;
+            }
+
             setResult({ ...res, total: res.total ?? charged });
             setStep('success');
 

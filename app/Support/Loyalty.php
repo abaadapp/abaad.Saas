@@ -208,6 +208,78 @@ class Loyalty
     }
 
     /**
+     * قواعدُ الاستبدال كما تقرؤها شاشةُ الصندوق — الأرقامُ التي يحسب بها الخادم.
+     *
+     * بابٌ واحد لصفحة الصندوق (`Pos\PageController`) ولردّ «تغيّر العرض»
+     * (`PosController::redemptionChanged`): قواعدُ تبدّلت بعد فتح الشاشة تُردّ
+     * إليها بالشكل نفسِه، فتحسب مرآتُها (`lib/loyalty.ts`) ما يحسبه الخادم.
+     *
+     * @return array{loyaltyEnabled: bool, redeemEnabled: bool, redeemMaxPct: float, earnRate: float, redeemMin: int, redeemPoints: int, redeemValue: float, redeemMinInvoice: float}
+     */
+    public static function tillSettings(int $businessId): array
+    {
+        $rules = self::rules($businessId);
+
+        return [
+            'loyaltyEnabled' => $rules['on'],
+            'redeemEnabled' => $rules['redeem'],
+            'redeemMaxPct' => $rules['max_pct'],
+            'earnRate' => $rules['earn_rate'],
+            'redeemMin' => $rules['min_points'],
+            'redeemPoints' => $rules['points'],
+            'redeemValue' => $rules['value'],
+            'redeemMinInvoice' => $rules['min_invoice'],
+        ];
+    }
+
+    /**
+     * يصرف ما وُجد من الرصيد حتّى `$points` — ولا ينزل به تحت الصفر.
+     *
+     * لبيعةٍ اكتملت عند الصندوق ثمّ وصلت بعد انقطاع: الزبونُ دفع وانصرف،
+     * فلا تُردّ ولا يُغيَّر مبلغُها. فيُصرف من رصيده ما بقي فيه لا أكثر،
+     * والفرقُ يُكتب للمراجعة (`PosController::recordLoyalty`).
+     *
+     * وبلا قفلٍ على صفّ العميل: الشرطُ في جملة التحديث، فإن سبقنا صرفٌ آخر
+     * بين القراءة والتحديث أُعيدت القراءة. وقفلُ `FOR UPDATE` هنا يعاكس قفلَ
+     * المفتاح الأجنبيّ الذي تأخذه البيعةُ نفسُها على صفّ العميل.
+     *
+     * @return int ما صُرف فعلًا
+     */
+    public static function spendUpTo(Customer $customer, int $points, string $note, array $columns = []): int
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $have = (int) Customer::whereKey($customer->id)->where('business_id', $customer->business_id)->value('points');
+            $take = max(0, min($points, $have));
+
+            if ($take === 0) {
+                return 0;
+            }
+
+            $taken = Customer::whereKey($customer->id)
+                ->where('business_id', $customer->business_id)
+                ->where('points', '>=', $take)
+                ->update(['points' => DB::raw('points - '.$take), 'updated_at' => now()]);
+
+            if ($taken) {
+                $customer->refresh();
+
+                PointTransaction::create([
+                    'business_id' => (int) $customer->business_id,
+                    'customer_id' => $customer->id,
+                    'type' => 'redeem',
+                    'points' => -$take,
+                    'balance_after' => (int) $customer->points,
+                    'note' => mb_substr($note, 0, 250),
+                ] + $columns);
+
+                return $take;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
      * يُخصم من الرصيد بشرطه لا بطرحٍ أعمى — ومعه حركتُه.
      *
      * القراءةُ قبل الخصم، وبينهما بيعةٌ أو فاتورةٌ أخرى للزبون نفسه: كلتاهما

@@ -10549,5 +10549,10 @@
     "استبدال على هذه الفاتورة": "Redeemed on this invoice",
     "إعادة بإشعار دائن": "Returned by a credit note",
     "إعادة بإلغاء الفاتورة": "Returned by cancelling the invoice",
-    "اختر: زيادة أم إنقاص": "Choose: add or deduct"
+    "اختر: زيادة أم إنقاص": "Choose: add or deduct",
+    "لا اتصال — لا يُستبدل رصيد النقاط حتى يعود الاتصال. أكمل البيع بلا خصم.": "Offline — points can't be redeemed until the connection is back. Complete the sale without the discount.",
+    "بيعة :number وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة": "Sale :number arrived after an outage and its points discount needs review",
+    "طُلبت :requested نقطة وصُرفت :spent — خصمٌ بقيمة :gap لم تغطّه نقاط العميل. لم يُغيَّر المبلغ المدفوع.": ":requested points were requested and :spent spent — a :gap discount isn't covered by the customer's points. The amount paid was not changed.",
+    "تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، والخصم المتاح :discount مقابل :points نقطة. أكّد من جديد قبل الدفع.": "The customer's points balance or the redemption rules changed — the balance is now :balance points, and the available discount is :discount for :points points. Confirm again before paying.",
+    "تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط على هذه الفاتورة. أكمل البيع بلا خصم.": "The customer's points balance or the redemption rules changed — the balance is now :balance points, and no points discount applies to this invoice. Complete the sale without it."
 }

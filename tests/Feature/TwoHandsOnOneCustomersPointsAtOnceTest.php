@@ -178,7 +178,8 @@ PHP);
         return [$outs, $result];
     }
 
-    private function sell(int $redeem): TestResponse
+    /** بيعةُ صندوقٍ بما عرضته الشاشة: مئةُ نقطةٍ بريال — و`$replay` بيعةٌ اكتملت ووصلت من الطابور */
+    private function sell(int $redeem, bool $replay = false): TestResponse
     {
         return $this->actingAs($this->owner)->withSession(['current_branch' => $this->branch->id])
             ->postJson(route('pos.checkout'), [
@@ -187,7 +188,8 @@ PHP);
                 'customer_id' => $this->customer->id,
                 'client_uuid' => uniqid('race', true),
                 'redeem_points' => $redeem,
-            ]);
+                'redeem_discount' => round($redeem / 100, 3),
+            ] + ($replay ? ['replay' => true] : []));
     }
 
     private function points(): int
@@ -306,7 +308,8 @@ PHP;
         [$outs, $sale] = $this->race([sprintf(self::ISSUE, $draft->id)], [], fn () => $this->sell(300));
 
         $this->assertSame(['issued'], $outs, 'الإصدارُ أمسك الرصيدَ أوّلًا');
-        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points');
+        // ويُردّ الصندوقُ ومعه الرصيدُ الصحيح — فيسأل الكاشيرُ من جديد
+        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points')->assertJsonPath('loyalty.balance', 0);
         $this->assertSame(0, $this->points());
         $this->assertSame(1, $this->spends());
         $this->assertSame(0, Order::where('business_id', $this->shop->id)->count(), 'ولا بيعةَ بخصمٍ لا رصيدَ له');
@@ -359,5 +362,55 @@ PHP;
         $this->assertSame(500, $this->points());
         $this->assertSame(1, PointTransaction::where('customer_invoice_id', $invoice->id)->where('type', 'earn')->count());
         $this->assertSame(1, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->whereNotNull('reversed_at')->count());
+    }
+
+    private const OTHER_TILL = <<<'PHP'
+// صندوقٌ آخر يصرف أربعمئة من الخمسمئة ويُمسك الصفَّ برهةً قبل أن يُودع
+Illuminate\Support\Facades\DB::transaction(function () use ($ids) {
+    App\Support\Loyalty::spend(App\Models\Customer::findOrFail($ids['customer']), 400, 'صندوقٌ آخر');
+    usleep(1500000);
+});
+echo 'spent';
+PHP;
+
+    /**
+     * صندوقان يصرفان الرصيدَ نفسَه معًا — والثاني بيعةٌ تُرسل الآن.
+     *
+     * الأوّلُ يأخذ أربعمئة. والثاني رأى خمسمئةً وعرض ثلاثمئة: يُردّ بلا كتابة،
+     * ومعه الرصيدُ الصحيح (مئة) والخصمُ المتاح الآن — ولا رصيدَ سالب.
+     */
+    public function test_two_tills_spending_one_balance_at_once_refuse_the_live_one_with_the_right_offer(): void
+    {
+        [$outs, $sale] = $this->race([self::OTHER_TILL], ['customer' => $this->customer->id], fn () => $this->sell(300));
+
+        $this->assertSame(['spent'], $outs);
+        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points')
+            ->assertJsonPath('loyalty.balance', 100)
+            ->assertJsonPath('loyalty.points', 100)
+            ->assertJsonPath('loyalty.discount', 1);
+        $this->assertSame(100, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count(), 'لا بيعةَ بخصمٍ لم يُؤكَّد');
+    }
+
+    /**
+     * والثاني بيعةٌ اكتملت بلا اتصال ووصلت في اللحظة نفسها.
+     *
+     * لا تُردّ ولا يتغيّر مبلغُها: تُكتب بخصمها (ثلاثة)، ويُصرف ما بقي (مئة)
+     * لا أكثر، والفرقُ للمراجعة. والرصيدُ صفرٌ لا سالب.
+     */
+    public function test_a_replayed_sale_racing_another_till_spends_only_what_is_left(): void
+    {
+        [$outs, $sale] = $this->race([self::OTHER_TILL], ['customer' => $this->customer->id], fn () => $this->sell(300, replay: true));
+
+        $this->assertSame(['spent'], $outs);
+        $sale->assertOk();
+        $order = Order::where('business_id', $this->shop->id)->sole();
+        $this->assertEqualsWithDelta(3.0, (float) $order->discount, 0.0001, 'الخصمُ كما قُبض');
+        $this->assertEqualsWithDelta(97.0, (float) $order->total, 0.0001, 'والمبلغُ المدفوع لم يتغيّر');
+        $this->assertSame(100, (int) $order->redeemed_points);
+        $this->assertSame(0, $this->points(), 'ولا رصيدَ سالب');
+        $this->assertSame(2, $this->spends());
+        $this->assertEqualsWithDelta(2.0, $order->loyalty_review['gap'], 0.0001);
     }
 }

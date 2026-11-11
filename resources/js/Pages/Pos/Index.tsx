@@ -23,6 +23,7 @@ import {
     TrendingUp,
     User,
     UserPlus,
+    WifiOff,
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -301,7 +302,8 @@ export default function PosIndex() {
         });
     }, [products, cat, q, season, seasonIds]);
 
-    const loyaltyOn = settings.loyaltyEnabled !== false;
+    // والبرنامجُ كما ردّه الخادمُ آخرَ مرّة — أُطفئ والصندوقُ مفتوح فيختفي سطرُه
+    const loyaltyOn = cart.loyaltyOn;
 
     return (
         <PosLayout title={t('نقطة البيع')} fill>
@@ -939,6 +941,19 @@ export default function PosIndex() {
                                 </div>
 
                                 {/*
+                                    ═══ وعرضٌ تغيّر فرُدّت البيعة ═══
+
+                                    الخادمُ لم يكتب شيئًا، وردّ الرصيدَ والخصمَ
+                                    الصحيحين. فيُقال للكاشير لمَ عاد، والتنبيهُ
+                                    تحته بالأرقام الجديدة يسأل من جديد.
+                                */}
+                                {cart.redeemNotice && (
+                                    <p data-testid="redeem-changed" role="alert" className="mt-2 rounded-lg border border-[#f59e0b]/40 bg-[#fffbeb] p-2 text-[11px] font-semibold text-[#92400e]">
+                                        {cart.redeemNotice}
+                                    </p>
+                                )}
+
+                                {/*
                                     ═══ التنبيه يُسأل ولا يُطبَّق ═══
 
                                     عميلٌ مؤهَّل يُعرض رصيدُه وما يستطيع خصمَه
@@ -979,6 +994,11 @@ export default function PosIndex() {
                                                 : t('بدون خصم — اضغط «استخدام النقاط» لخصمها من الفاتورة')}
                                         </p>
                                     )
+                                ) : cart.redeemOffline ? (
+                                    <p data-testid="redeem-offline" className="mt-1.5 flex items-center gap-1 text-[11px] text-[#92400e]">
+                                        <WifiOff className="size-3.5 shrink-0" />
+                                        {t('لا اتصال — لا يُستبدل رصيد النقاط حتى يعود الاتصال. أكمل البيع بلا خصم.')}
+                                    </p>
                                 ) : cart.redeemQuote.reason === 'below_min_points' ? (
                                     <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
                                         <TrendingUp className="size-3.5 shrink-0" />

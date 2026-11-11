@@ -37,7 +37,6 @@ class PageController extends Controller
     private function loyaltySettings(): array
     {
         $s = Demo::businessSettings();
-        $loyalty = Loyalty::rules(Demo::bid());
 
         return [
             /*
@@ -51,14 +50,7 @@ class PageController extends Controller
              * والأرقامُ كلُّها من `Loyalty::rules` — البابِ الذي يحسب به الخادمُ
              * عند الدفع. فمرآةُ الشاشة (`lib/loyalty.ts`) تحسب بالأرقام نفسِها.
              */
-            'loyaltyEnabled' => $loyalty['on'],
-            'redeemEnabled' => $loyalty['redeem'],
-            'redeemMaxPct' => $loyalty['max_pct'],
-            'earnRate' => $loyalty['earn_rate'],
-            'redeemMin' => $loyalty['min_points'],
-            'redeemPoints' => $loyalty['points'],
-            'redeemValue' => $loyalty['value'],
-            'redeemMinInvoice' => $loyalty['min_invoice'],
+            ...Loyalty::tillSettings(Demo::bid()),
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
             'paymentMethods' => PaymentMethods::enabled($s),

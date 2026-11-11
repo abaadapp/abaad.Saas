@@ -18,6 +18,8 @@ class Activity
         // اسمٍ لها تُعرض في شاشة النشاط بمفتاحها اللاتينيّ
         'shift' => 'clock', 'report' => 'file-text', 'backup' => 'database-backup', 'restore' => 'database',
         'return' => 'undo-2',
+        // طلبُ كتابةٍ جرى أثناء دخول الدعم باسم غيره — انظر `CheckTenantStatus::support`
+        'support' => 'shield-alert',
     ];
 
     private const COLORS = [
@@ -25,7 +27,7 @@ class Activity
         'login' => 'primary', 'logout' => 'gray', 'checkout' => 'success',
         'status' => 'warning', 'settings' => 'primary', 'hold' => 'warning',
         'shift' => 'info', 'report' => 'info', 'backup' => 'primary', 'restore' => 'warning',
-        'return' => 'danger',
+        'return' => 'danger', 'support' => 'warning',
     ];
 
     public static function log(string $action, string $description, array $opts = []): void

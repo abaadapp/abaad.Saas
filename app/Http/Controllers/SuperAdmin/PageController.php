@@ -517,6 +517,8 @@ class PageController extends Controller
                 'role_key' => $model->role,
                 // كانت «الباقة الاحترافية» نصًّا ثابتًا تحت اسم الشركة
                 'business_plan' => $model->business?->plan?->name,
+                // «دخول كمستخدم» يُرسم لمن يُدخل فعلًا — والقاعدةُ قاعدةُ الخادم نفسُها
+                'can_enter' => ImpersonationController::refusal($model) === null,
             ],
             'activities' => Demo::userActivities($model->id),
             'roles' => $this->roleOptions(),

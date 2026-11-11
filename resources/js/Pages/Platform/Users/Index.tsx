@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, MoreVertical, RotateCcw, Trash2, UserPlus } from 'lucide-react';
+import { AlertTriangle, LogIn, MoreVertical, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -32,6 +32,8 @@ interface PlatformUser {
     deleted: boolean;
     /** ما يمنع الحساب من العمل فعلًا — null إن كان سليمًا */
     blocked: string | null;
+    /** هل يُدخل باسمه؟ — من قاعدة الخادم (`ImpersonationController::refusal`) لا من تخمين هنا */
+    can_enter: boolean;
 }
 
 interface Props {
@@ -142,6 +144,18 @@ export default function UsersIndex() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                                {/*
+                                    الحسابُ نفسُه بصلاحياته — لا صاحبُ متجره. شكوى الكاشير لا تُرى
+                                    من حساب المالك. ويُرسم لمن يُدخل فعلًا وحده (`can_enter`).
+                                */}
+                                {u.can_enter && (
+                                    <DropdownMenuItem
+                                        onSelect={() => router.post(route('super-admin.users.impersonate', u.id))}
+                                    >
+                                        <LogIn />
+                                        {t('دخول كمستخدم')}
+                                    </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                     destructive
                                     onSelect={() => {

@@ -12,7 +12,7 @@ import type { PageProps } from '@/types';
  * كل صفحة، وفيه اسمُ من ندخل باسمه وزرُّ العودة — لا في قائمةٍ منسدلة.
  */
 export default function ImpersonationBar() {
-    const { auth } = usePage<PageProps>().props;
+    const { auth, context } = usePage<PageProps>().props;
     const t = useTranslate();
 
     /*
@@ -51,9 +51,29 @@ export default function ImpersonationBar() {
             className="sticky top-0 z-50 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-[#b91c1c] px-4 py-2 text-[13px] font-medium text-white"
         >
             <ShieldAlert className="size-4 shrink-0" />
-            <span>
-                {t('تدخل الآن باسم :name', { name: auth.user.name })} — {t('كل ما تفعله يُنسب إليه')}
+            {/*
+                ومن أيّ حسابٍ بالضبط: «دخول كمستخدم» قد يضع الدعمَ في حساب كاشيرٍ
+                لا مالك — فالدورُ والمتجرُ في الشريط نفسِه، لا يُستنتجان من الشاشة.
+            */}
+            <span data-testid="impersonation-who">
+                {context?.businessName
+                    ? t('تدخل الآن باسم :name (:role) في :business', {
+                          name: auth.user.name,
+                          role: auth.user.roleLabel || auth.user.role,
+                          business: context.businessName,
+                      })
+                    : t('تدخل الآن باسم :name', { name: auth.user.name })}{' '}
+                — {t('كل ما تفعله يُسجَّل باسمه وباسمك معًا')}
             </span>
+            {/*
+                والحسابُ الممنوع على صاحبه (متجرٌ معطَّل، اشتراكٌ منتهٍ أو بانتظار السداد)
+                يُدخَل للعرض وحده — يُقال قبل أن يُضغط «حفظ» ويُردّ (`Tenancy::supportViewOnly`).
+            */}
+            {auth.impersonationLimit && (
+                <span data-testid="impersonation-limit" className="rounded-[6px] bg-white/20 px-2 py-0.5">
+                    {t('للعرض فقط — :reason', { reason: auth.impersonationLimit })}
+                </span>
+            )}
             <button
                 type="button"
                 onClick={() => router.post(route('impersonate.stop'))}

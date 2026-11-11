@@ -75,6 +75,8 @@ class HandleInertiaRequests extends Middleware
                  * غيره يعدّل بيانات تاجرٍ ظنًّا أنها بياناته.
                  */
                 'impersonating' => $request->session()->has('impersonator_id'),
+                // وإن كان الحسابُ ممنوعًا على صاحبه فالدعمُ فيه للعرض وحده — والسببُ من قاعدة الحارس نفسِها
+                'impersonationLimit' => $request->session()->has('impersonator_id') ? \App\Support\Tenancy::supportViewOnly($user) : null,
                 // الأقسام المسموح بها — الواجهة تخفي ما لا يُسمح به بدل تخمينه
                 'abilities' => collect(Permissions::sections())
                     ->filter(fn ($section) => $user->allows($section))

@@ -233,17 +233,20 @@ describe('صفحةُ برنامج الولاء — طريقةُ الاستبدا
 describe('تنبيهُ الفاتورة — نقاطٌ تغطّيها كلَّها', () => {
     beforeEach(() => reset());
 
-    it('يقول السببَ ولا يعرض «استخدام النقاط»', async () => {
+    it('يُعرض الخصمُ كاملًا ويُختار — الفاتورةُ تُصدَر بصفر (`CustomerInvoices::coveredByPoints`)', async () => {
         const { LoyaltyPrompt } = await import('@/Pages/Admin/CustomerInvoices/Create');
+        const chose: string[] = [];
         render(
             <LoyaltyPrompt
-                offer={{ eligible: false, reason: 'covers_whole_invoice', balance: 20000, points: 0, discount: 0, percent: null }}
+                offer={{ eligible: true, reason: null, balance: 20000, points: 10000, discount: 100, percent: null }}
                 choice="ask"
-                onChoose={() => {}}
+                onChoose={(c) => chose.push(c)}
             />,
         );
 
-        expect(screen.getByTestId('invoice-loyalty-reason')).toHaveTextContent('تغطّي الفاتورة كلّها');
-        expect(screen.queryByRole('button', { name: 'استخدام النقاط' })).toBeNull();
+        expect(screen.getByTestId('invoice-loyalty')).toHaveTextContent(/100[.,]000/);
+        expect(screen.getByTestId('invoice-loyalty')).toHaveTextContent('10000 نقطة');
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
+        expect(chose).toEqual(['use']);
     });
 });

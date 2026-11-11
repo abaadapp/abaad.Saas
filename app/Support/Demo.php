@@ -3834,10 +3834,16 @@ class Demo
         $period->bound(
             CustomerInvoice::where('business_id', $bid)->where('status', CustomerInvoice::ISSUED)
                 // «يدويّة» = رحّلت قيدَها بنفسها (`CustomerInvoices::post`) — لا ما بقي بلا طلبٍ مربوط
-                ->whereExists(fn ($q) => $q->selectRaw('1')->from('journal_entries')
+                ->where(fn ($q) => $q->whereExists(fn ($q) => $q->selectRaw('1')->from('journal_entries')
                     ->whereColumn('journal_entries.sourceable_id', 'customer_invoices.id')
                     ->where('journal_entries.sourceable_type', CustomerInvoice::class)
-                    ->where('journal_entries.source', CustomerInvoices::SOURCE)),
+                    ->where('journal_entries.source', CustomerInvoices::SOURCE))
+                    /*
+                     * أو غطّتها نقاطُ العميل كلُّها: إجماليُّها صفرٌ فلا قيدَ لها، وهي
+                     * شراءٌ يُعدّ كما تُعدّ بيعةُ الصندوق الصفريّة. والفاتورةُ من طلبٍ
+                     * لا تحمل نقاطًا (`fromOrder` يُسقطها)، فلا تُعدّ مرّتين.
+                     */
+                    ->orWhere(fn ($q) => $q->where('loyalty_points', '>', 0)->where('total', '<=', 0))),
             'issued_at',
             date: true,
         )->get(['id', 'customer_id', 'customer_name', 'total'])

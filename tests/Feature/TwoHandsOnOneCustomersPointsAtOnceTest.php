@@ -392,6 +392,83 @@ PHP;
         $this->assertSame(1, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->whereNotNull('reversed_at')->count());
     }
 
+    /*
+     * ═══ وفاتورةٌ تغطّيها النقاطُ كلُّها — إجماليٌّ صفر ═══
+     *
+     * سقوفٌ تركها صاحبُ النشاط فارغة: خمسُمئة نقطةٍ تغطّي ورقةً بخمسة. ولا قيدَ
+     * لها، فالقفلُ والمفتاحُ الفريد وحدهما يمنعان الصرفَ والإعادةَ مرّتين.
+     */
+    private function wholeDraft(): CustomerInvoice
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'loyalty_redeem_max_pct'], ['value' => '']);
+
+        return CustomerInvoices::create($this->shop->id, $this->customer, [
+            'issued_at' => now()->toDateString(), 'redeem_points' => 500,
+        ], [['description' => 'وردة', 'quantity' => 1, 'unit_price' => 5]], $this->owner->id);
+    }
+
+    public function test_two_whole_points_drafts_issued_at_once_spend_the_balance_once(): void
+    {
+        $a = $this->wholeDraft();
+        $b = $this->wholeDraft();
+        $this->assertEqualsWithDelta(0.0, (float) $a->total, 0.0001);
+
+        [$outs] = $this->race([sprintf(self::ISSUE, $a->id), sprintf(self::ISSUE, $b->id)], []);
+
+        sort($outs);
+        $this->assertSame(['issued', 'refused'], $outs);
+        $this->assertSame(0, $this->points(), 'ولا رصيدَ سالب');
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->whereIn('sourceable_id', [$a->id, $b->id])->count());
+        $this->assertEqualsCanonicalizing([CustomerInvoice::DRAFT, CustomerInvoice::ISSUED], CustomerInvoice::whereIn('id', [$a->id, $b->id])->pluck('status')->all());
+    }
+
+    public function test_the_same_whole_points_draft_issued_twice_at_once_spends_and_numbers_once(): void
+    {
+        $draft = $this->wholeDraft();
+        $body = sprintf(self::ISSUE, $draft->id);
+
+        [$outs] = $this->race([$body, $body], []);
+
+        $this->assertSame(['issued', 'issued'], $outs);
+        $this->assertSame(0, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertNotNull($draft->fresh()->number);
+        $this->assertSame(1, CustomerInvoice::where('business_id', $this->shop->id)->where('number', $draft->fresh()->number)->count());
+        $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $draft->id)->count());
+    }
+
+    public function test_two_cancels_of_a_whole_points_invoice_at_once_return_the_points_once(): void
+    {
+        $invoice = CustomerInvoices::issue($this->wholeDraft(), $this->owner->id)->fresh();
+        $this->assertSame(0, $this->points());
+        $cancel = <<<'PHP'
+App\Models\PointTransaction::created(function () { usleep(800000); });
+App\Support\CustomerInvoices::cancel(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 'أُلغيت');
+echo 'cancelled';
+PHP;
+
+        $this->race([$cancel, $cancel], ['invoice' => $invoice->id]);
+
+        $this->assertSame(500, $this->points());
+        $this->assertSame(1, PointTransaction::where('customer_invoice_id', $invoice->id)->where('type', 'earn')->count());
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+    }
+
+    /** إصدارُ ورقةٍ صفريّة وبيعةُ صندوقٍ على الرصيد نفسِه معًا: يسبق أحدُهما، ويُردّ الآخر */
+    public function test_a_whole_points_issue_and_a_till_sale_at_once_spend_the_balance_once(): void
+    {
+        $draft = $this->wholeDraft();
+
+        [$outs, $sale] = $this->race([sprintf(self::ISSUE, $draft->id)], [], fn () => $this->sell(300));
+
+        $this->assertSame(['issued'], $outs);
+        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points')->assertJsonPath('loyalty.balance', 0);
+        $this->assertSame(0, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
+    }
+
     private const OTHER_TILL = <<<'PHP'
 // صندوقٌ آخر يصرف أربعمئة من الخمسمئة ويُمسك الصفَّ برهةً قبل أن يُودع
 Illuminate\Support\Facades\DB::transaction(function () use ($ids) {

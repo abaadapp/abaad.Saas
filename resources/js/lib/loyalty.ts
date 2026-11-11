@@ -27,14 +27,7 @@ export interface LoyaltyRules {
     max_amount?: number | null;
 }
 
-/** و`covers_whole_invoice` من عرض فاتورة العميل وحدها (`CustomerInvoices::COVERS_WHOLE_INVOICE`) */
-export type LoyaltyReason =
-    | 'off'
-    | 'redeem_off'
-    | 'below_min_points'
-    | 'below_min_invoice'
-    | 'nothing_to_discount'
-    | 'covers_whole_invoice';
+export type LoyaltyReason = 'off' | 'redeem_off' | 'below_min_points' | 'below_min_invoice' | 'nothing_to_discount';
 
 export interface LoyaltyQuote {
     eligible: boolean;
@@ -193,8 +186,6 @@ export function loyaltyReasonText(reason: LoyaltyReason | null, t: (s: string) =
             return t('قيمة الفاتورة دون الحدّ الأدنى للاستبدال.');
         case 'nothing_to_discount':
             return t('لا يبقى في الفاتورة ما يُخصم بالنقاط.');
-        case 'covers_whole_invoice':
-            return t('النقاط تغطّي الفاتورة كلّها، والفاتورة لا تُصدَر بلا مبلغ — حدّد سقفًا للاستبدال في برنامج الولاء أو أصدرها بلا خصم.');
         default:
             return null;
     }

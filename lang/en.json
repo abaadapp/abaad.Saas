@@ -10601,6 +10601,5 @@
     "أقصى مبلغ خصم بالنقاط — اختياري": "Maximum points discount amount — optional",
     "بعملة النشاط لكل فاتورة. اتركه فارغًا: بلا حدّ": "In the shop's currency, per invoice. Leave empty for no limit",
     "أُعيد احتساب خصم النقاط على المبلغ أو الرصيد الجديد — راجعه قبل الحفظ.": "The points discount was recalculated for the new amount or balance — review it before saving.",
-    "نقاط العميل تغطّي الفاتورة كلّها، والفاتورة لا تُصدَر بلا مبلغ — أصدرها بلا خصم النقاط، أو حدّد سقفًا للاستبدال في برنامج الولاء.": "The customer's points cover the whole invoice, and an invoice cannot be issued without an amount — issue it without the points discount, or set a redemption cap in the loyalty programme.",
-    "النقاط تغطّي الفاتورة كلّها، والفاتورة لا تُصدَر بلا مبلغ — حدّد سقفًا للاستبدال في برنامج الولاء أو أصدرها بلا خصم.": "The points cover the whole invoice, and an invoice cannot be issued without an amount — set a redemption cap in the loyalty programme or issue it without the discount."
+    "أُصدرت الفاتورة :n مسدَّدةً بالكامل بنقاط الولاء — لا يُطلب لها رابط دفع.": "Invoice :n was issued fully settled with loyalty points — no payment link is requested for it."
 }

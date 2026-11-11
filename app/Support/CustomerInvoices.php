@@ -580,20 +580,6 @@ final class CustomerInvoices
 
             $totals = self::compute($businessId, $lines);
 
-            /*
-             * ═══ ونقاطٌ تغطّي الورقةَ كلَّها لا تُكتب عليها ═══
-             *
-             * الصندوقُ يبيع بلا مبلغٍ حين يرفع صاحبُ النشاط السقوف، والفاتورةُ لا
-             * تُصدَر بلا مبلغ (`issue`): لا ذمّةَ تُقيَّد ولا رابطَ يُدفع. فمسودّةٌ
-             * تُكتب بهذا تبقى مسودّةً لا تُصدَر. فتُردّ هنا قبل أن يُكتب صفّ، ويُقال
-             * السببُ على حقل النقاط — والشاشةُ لا تعرضها أصلًا (`coversWholeInvoice`).
-             */
-            if ($loyalty['points'] > 0 && (float) $totals['total'] <= 0) {
-                throw ValidationException::withMessages([
-                    'redeem_points' => __('نقاط العميل تغطّي الفاتورة كلّها، والفاتورة لا تُصدَر بلا مبلغ — أصدرها بلا خصم النقاط، أو حدّد سقفًا للاستبدال في برنامج الولاء.'),
-                ]);
-            }
-
             $invoice = CustomerInvoice::create(
                 self::attributes($businessId, $customer, $data, $totals) + [
                     'created_by' => $userId,
@@ -658,7 +644,15 @@ final class CustomerInvoices
             if ($locked->status === CustomerInvoice::ISSUED) {
                 return $locked;
             }
-            if ((float) $locked->total <= 0) {
+            /*
+             * ولا تُصدَر ورقةٌ بلا مبلغ — إلّا ما غطّته نقاطُ العميل كلَّه.
+             *
+             * سقوفُ الاستبدال لصاحب النشاط، فقد يجعلها تغطّي الفاتورةَ كلَّها
+             * كما يبيع الصندوقُ بلا مبلغ. فتُصدَر بصفر: تُصرف نقاطُها هنا مرّةً،
+             * ولا قيدَ لها (`post`)، وتُقرأ مسدَّدةً لأنّ باقيها صفر، ولا يُطلب لها
+             * رابطُ دفع (`PaymentLinks`). وما عداها من صفرٍ يُردّ كما كان.
+             */
+            if ((float) $locked->total <= 0 && ! self::coveredByPoints($locked)) {
                 throw new RuntimeException(__('لا تُصدَر فاتورةٌ بلا مبلغ.'));
             }
 
@@ -712,6 +706,19 @@ final class CustomerInvoices
 
         $net = round((float) $invoice->subtotal - (float) $invoice->discount_total, 3);
         $tax = round((float) $invoice->tax_total, 3);
+
+        /*
+         * ═══ وورقةٌ غطّتها النقاطُ كلُّها لا قيدَ لها ═══
+         *
+         * خصمُ النقاط يُنقص الإيرادَ في البنود (لا حسابَ له في الدليل)، فيُقيَّد
+         * ما بقي: ذمّةٌ وإيرادٌ وضريبة. وحين لا يبقى شيء فكلُّها أصفار، والقيدُ
+         * لا يُكتب بسطرٍ واحدٍ صفريّ (`Ledger::post`). وهي قاعدةُ الصندوق نفسُها
+         * في بيعةٍ إجماليُّها صفر (`Books::recordSale`). والإلغاءُ لا يجد قيدًا
+         * يعكسه فلا يعكس شيئًا، ويعيد النقاطَ وحدها.
+         */
+        if (round((float) $invoice->total, 3) <= 0 && $net <= 0 && $tax <= 0) {
+            return;
+        }
 
         $lines = [['account' => 'receivable', 'debit' => round((float) $invoice->total, 3)]];
 
@@ -1307,20 +1314,18 @@ final class CustomerInvoices
         return [$base, $other];
     }
 
-    /** سببُ عدم الأهليّة في الفاتورة وحدها: النقاطُ تغطّيها كلَّها، ولا تُصدَر بلا مبلغ */
-    public const COVERS_WHOLE_INVOICE = 'covers_whole_invoice';
-
     /**
-     * هل يمحو أقصى خصمٍ بالنقاط الورقةَ كلَّها؟ الضريبةُ على ما بقي، فما لا
-     * يبقى منه شيءٌ إجماليُّه صفر.
+     * ورقةٌ غطّت نقاطُ العميل إجماليَّها كلَّه — صفرٌ مستحقّ، وهو ما اختاره التاجرُ بسقوفه.
      *
-     * @param  array<int, array<string, mixed>>  $lines
+     * المالُ هنا كلُّه خصمُ نقاط: البنودُ تحمل حصصَها حتّى صافيها، فلا إيرادَ
+     * ولا ضريبة (`withLoyalty` ثمّ `compute`)، ولا باقيَ يُطلب. وصفرٌ لغير
+     * النقاط (بنودٌ بلا قيمة، خصمٌ يدويٌّ كامل) يبقى مردودًا كما كان.
      */
-    public static function coversWholeInvoice(array $lines, array $quote): bool
+    public static function coveredByPoints(CustomerInvoice $invoice): bool
     {
-        [$base, $other] = self::loyaltyBase($lines);
-
-        return $quote['eligible'] && $quote['max_discount'] + 0.0005 >= round($base - $other, 3);
+        return (int) $invoice->loyalty_points > 0
+            && (float) $invoice->loyalty_discount > 0
+            && abs(round((float) $invoice->total, 3)) < 0.0005;
     }
 
     /**

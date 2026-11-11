@@ -779,18 +779,6 @@ class CustomerInvoiceController extends Controller
     {
         $quote = CustomerInvoices::loyaltyQuote($bid, $customer, $items);
 
-        // نقاطٌ تغطّي الورقةَ كلَّها لا تُعرض: لا تُصدَر فاتورةٌ بلا مبلغ — ويُقال السبب
-        if (CustomerInvoices::coversWholeInvoice($items, $quote)) {
-            return [
-                'eligible' => false,
-                'reason' => CustomerInvoices::COVERS_WHOLE_INVOICE,
-                'balance' => $quote['balance'],
-                'points' => 0,
-                'discount' => 0.0,
-                'percent' => null,
-            ];
-        }
-
         return [
             'eligible' => $quote['eligible'],
             'reason' => $quote['reason'],
@@ -1555,6 +1543,17 @@ class CustomerInvoiceController extends Controller
          * آجلةً كما يجب، بلا تحصيلٍ مزعوم، وتُعاد المحاولةُ من صفحتها على
          * الفاتورة نفسِها — لا فاتورةٌ ثانية.
          */
+        /*
+         * ولا يُطلب رابطُ دفعٍ لورقةٍ لا باقيَ لها — غطّتها النقاطُ كلُّها. لا
+         * يُفتح طلبٌ عند Paymob بصفر، ويُقال للتاجر لمَ لم يُنشأ رابط.
+         */
+        if ($wantsLink && $invoice->status === CustomerInvoice::ISSUED && $invoice->outstanding() <= 0) {
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                'msg' => __('أُصدرت الفاتورة :n مسدَّدةً بالكامل بنقاط الولاء — لا يُطلب لها رابط دفع.', ['n' => $invoice->number]),
+                'type' => 'success',
+            ]);
+        }
+
         if ($wantsLink) {
             try {
                 [$link] = PaymentLinks::forInvoice($invoice, auth()->id());
@@ -1618,6 +1617,15 @@ class CustomerInvoiceController extends Controller
     {
         $total = round((float) $invoice->total, 3);
         $amount = isset($data['paid_amount']) ? round((float) $data['paid_amount'], 3) : $total;
+
+        /*
+         * وورقةٌ غطّتها النقاطُ كلُّها لا يُقبض عليها شيء: لا إيصالَ بصفر (يردّه
+         * `CustomerPayments::record`)، وهي مسدَّدةٌ بباقيها الصفريّ. ومبلغٌ كُتب
+         * فوق الصفر يُردّ بسطره أدناه كما يُردّ على أيّ ورقة.
+         */
+        if ($total <= 0 && ! isset($data['paid_amount'])) {
+            return;
+        }
 
         if ($amount > $total) {
             throw ValidationException::withMessages([

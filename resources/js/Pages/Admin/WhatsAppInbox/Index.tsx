@@ -63,6 +63,54 @@ export interface Item {
     event?: string;
     summary?: string | null;
     subject?: { label: string; url: string } | null;
+    /** ترتيبُ الخادم (`WhatsAppInbox::thread`): الختم، ثمّ الإشعارُ قبل الرسالة، ثمّ المعرّف */
+    ts?: number;
+    order?: number;
+    id?: number;
+}
+
+/** ما على الشاشة من المحادثة: رسائلُها، وأين يبدأ «الأقدم» */
+export interface ShownThread {
+    items: Item[];
+    before: number | null;
+    more: boolean;
+}
+
+/** معرّفُ صفّ المحادثة (`m…`) — والإشعارُ ليس منها */
+const rowId = (m: Item): number | null => (m.key.startsWith('m') ? Number(m.key.slice(1)) : null);
+
+const serverOrder = (a: Item, b: Item) =>
+    (a.ts ?? 0) - (b.ts ?? 0) || (a.order ?? 0) - (b.order ?? 0) || (a.id ?? 0) - (b.id ?? 0);
+
+/**
+ * المحادثةُ كما أعادها الخادم بعد جديدٍ وصل — مضمومةً إلى ما على الشاشة.
+ *
+ * الخادمُ يعيد آخرَ خمسين؛ ومن قرأ «الأقدم» كان يراها تُمحى من أمامه مع كلّ
+ * ردٍّ يصل. فيُضمّ الجديدُ إلى المعروض: كلُّ رسالةٍ مرّةً بمفتاحها، وبحالها كما
+ * قاله الخادمُ الآن (وصلت/قُرئت)، وبترتيب الخادم نفسِه.
+ *
+ * والضمُّ حين يتّصلان وحده: أحدثُ ما عُرض بلغ أقدمَ ما وصل. وإلّا فبينهما
+ * ما لم يُحمَّل — فيُستبدل بالواصل كما كان، لا يُلصق فوق فجوةٍ صامتة.
+ */
+export function keepShown(held: ShownThread, fresh: ShownThread): ShownThread {
+    const heldRows = held.items.map(rowId).filter((n): n is number => n !== null);
+    const freshRows = fresh.items.map(rowId).filter((n): n is number => n !== null);
+
+    // الواصلُ فيه المحادثةُ كلُّها، أو لا صلةَ تُثبت الاتّصال
+    if (!fresh.more || heldRows.length === 0 || freshRows.length === 0) return fresh;
+    if (Math.max(...heldRows) < Math.min(...freshRows)) return fresh;
+
+    const byKey = new Map<string, Item>();
+    for (const m of held.items) byKey.set(m.key, m);
+    for (const m of fresh.items) byKey.set(m.key, m);
+
+    const olderShown = Math.min(...heldRows) < Math.min(...freshRows);
+
+    return {
+        items: [...byKey.values()].sort(serverOrder),
+        before: olderShown ? held.before : fresh.before,
+        more: olderShown ? held.more : fresh.more,
+    };
 }
 
 /** طلبٌ أو فاتورةٌ في تفاصيل العميل — لمن يملك قسمَهما وحده */
@@ -460,9 +508,8 @@ export function ThreadView({
     onDetails: () => void;
 }) {
     const t = useTranslate();
-    const [items, setItems] = useState<Item[]>(thread.messages);
-    const [before, setBefore] = useState<number | null>(thread.before);
-    const [more, setMore] = useState(thread.has_more);
+    const [view, setView] = useState<ShownThread>({ items: thread.messages, before: thread.before, more: thread.has_more });
+    const { items, before, more } = view;
     const [loading, setLoading] = useState(false);
     const today = ymd(new Date());
     const yesterday = ymd(new Date(Date.now() - 86_400_000));
@@ -473,26 +520,28 @@ export function ThreadView({
         return word.charAt(0).toUpperCase() + word.slice(1);
     };
 
-    /* والجديدُ يصل بتحديث الصفحة — فيُستبدل الخيطُ بما وصل لا يُضاف إليه */
+    /* والجديدُ يصل بتحديث الصفحة — فيُضمّ إلى ما على الشاشة ولا يمحوه (`keepShown`) */
     useEffect(() => {
-        setItems(thread.messages);
-        setBefore(thread.before);
-        setMore(thread.has_more);
+        setView((held) => keepShown(held, { items: thread.messages, before: thread.before, more: thread.has_more }));
     }, [thread.messages, thread.before, thread.has_more]);
 
     const loadOlder = async () => {
         if (!before || loading) return;
+        const cursor = before;
         setLoading(true);
         try {
-            const res = await fetch(route('admin.whatsappInbox.older', { chat: thread.id, before }), {
+            const res = await fetch(route('admin.whatsappInbox.older', { chat: thread.id, before: cursor }), {
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
             });
             if (res.ok) {
                 const data = (await res.json()) as { messages: Item[]; has_more: boolean; before: number | null };
-                setItems((m) => [...data.messages, ...m]);
-                setBefore(data.before);
-                setMore(data.has_more);
+                // وإن تبدّل أوّلُ المعروض أثناء الطلب (جديدٌ لا يتّصل استُبدل به) فهذه الصفحةُ لم تعد تليه
+                setView((v) => (v.before !== cursor ? v : {
+                    items: [...data.messages.filter((m) => !v.items.some((s) => s.key === m.key)), ...v.items],
+                    before: data.before,
+                    more: data.has_more,
+                }));
             }
         } finally {
             setLoading(false);

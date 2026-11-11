@@ -34,6 +34,36 @@ describe('نقاطُ الولاء في الفاتورة', () => {
         expect(screen.queryByText(/متوقّف/)).toBeNull();
     });
 
+    /**
+     * والاستبدالُ على الورقة وإعادتُه يُسمَّيان باسميهما — لا «عكس تحصيل».
+     *
+     * كانت كلُّ حركةٍ سالبةٍ تُقرأ «عكس تحصيلٍ ملغى»، فخصمُ ألف نقطةٍ على
+     * فاتورةٍ لم يُلغَ فيها تحصيلٌ قطّ يُقال عنه ما لم يقع.
+     */
+    it('والاستبدالُ على الورقة وإعادتُه بأسمائهما', () => {
+        render(
+            <InvoiceLoyaltyPanel
+                loyalty={{
+                    on: true,
+                    waiting: false,
+                    rows: [
+                        row({ id: 1, type: 'redeem', kind: 'spent', points: -1000, balance_after: 0, payment: null }),
+                        row({ id: 2, type: 'earn', kind: 'returned_credit', points: 500, balance_after: 500, payment: null }),
+                        row({ id: 3, type: 'earn', kind: 'returned_cancel', points: 500, balance_after: 1000, payment: null }),
+                        row({ id: 4, type: 'redeem', kind: 'reversal', points: -50, balance_after: 950 }),
+                    ],
+                }}
+            />,
+        );
+
+        const rows = screen.getAllByTestId('invoice-loyalty-row');
+        expect(rows[0].textContent).toContain('استبدال على هذه الفاتورة');
+        expect(rows[0].textContent).not.toContain('عكس تحصيل');
+        expect(rows[1].textContent).toContain('إعادة بإشعار دائن');
+        expect(rows[2].textContent).toContain('إعادة بإلغاء الفاتورة');
+        expect(rows[3].textContent).toContain('عكس تحصيلٍ ملغى');
+    });
+
     it('قبل الحسم: تُحسب خلال دقائق — وبلا رابطٍ مدفوع: متى تُكسب', () => {
         const { unmount } = render(<InvoiceLoyaltyPanel loyalty={{ on: true, waiting: true, rows: [] }} />);
         expect(screen.getByTestId('invoice-loyalty').textContent).toContain('تُحسب النقاط خلال دقائق');

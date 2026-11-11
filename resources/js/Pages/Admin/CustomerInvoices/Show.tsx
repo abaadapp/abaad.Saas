@@ -190,7 +190,7 @@ export default function CustomerInvoiceShow() {
                                     الورقة كلِّها — وورقةٌ سُلّمت لا تُلغى لأنّ
                                     عشرةً منها رُدّت.
                                 */}
-                                {may.credit_note && invoice.outstanding + invoice.paid > 0 && (
+                                {may.credit_note && creditRoom(invoice) > 0 && (
                                     <Button variant="outline" onClick={() => setCrediting((v) => !v)}>
                                         <Undo2 />
                                         {t('إشعار دائن')}
@@ -713,7 +713,7 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
     const m = (v: number) => money(v, context!.currency);
 
     /* ولا يتجاوز الإشعارُ ما بقي من قيمة الورقة بعد إشعاراتٍ سبقته */
-    const cap = round3(invoice.outstanding + invoice.paid);
+    const cap = creditRoom(invoice);
     const share = invoice.total > 0 ? invoice.tax_total / invoice.total : 0;
 
     const form = useForm({
@@ -776,6 +776,19 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
             </Button>
         </Card>
     );
+}
+
+/**
+ * ما يسعه إشعارٌ دائنٌ جديد — حدُّ الخادم نفسُه (`CustomerInvoices::creditNote`).
+ *
+ * «الباقي + المسدَّد» وحده يُبقي فاتورةً مدفوعةً رُدّت كلُّها قابلةً لإشعارٍ
+ * كاملٍ آخر في الشاشة (`outstanding` تُحصر عند الصفر) — والخادمُ يرفضه.
+ * فيُحصر بالإجماليّ ناقصًا ما رُدّ.
+ */
+function creditRoom(invoice: Invoice): number {
+    const credited = invoice.credit_notes.reduce((sum, n) => sum + n.amount, 0);
+
+    return Math.max(0, round3(Math.min(invoice.outstanding + invoice.paid, invoice.total - credited)));
 }
 
 /** ثلاثُ خاناتٍ — كما يُخزَّن المال في هذا النظام */

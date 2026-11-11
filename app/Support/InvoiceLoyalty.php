@@ -329,6 +329,8 @@ class InvoiceLoyalty
      */
     public static function rows(CustomerInvoice $invoice): array
     {
+        $redeem = CustomerInvoices::redeemKey($invoice);
+
         return PointTransaction::where('business_id', $invoice->business_id)
             ->where('customer_invoice_id', $invoice->id)
             ->with('payment:id,number')
@@ -336,6 +338,21 @@ class InvoiceLoyalty
             ->map(fn (PointTransaction $t) => [
                 'id' => $t->id,
                 'type' => $t->type,
+                /*
+                 * وكلُّ حركةٍ باسمها — من مفتاحها لا من إشارتها.
+                 *
+                 * كانت كلُّ حركةٍ سالبةٍ على الورقة عكسَ تحصيلٍ أُلغي، فتُقرأ
+                 * «عكس تحصيلٍ ملغى». والاستبدالُ على فاتورة العميل
+                 * (`CustomerInvoices::spendPoints`) جعل للسالبة معنًى آخر،
+                 * ولإعادتها بإشعارٍ أو بإلغاءٍ معنيين آخرين.
+                 */
+                'kind' => match (true) {
+                    $t->source_key === $redeem => 'spent',
+                    str_starts_with((string) $t->source_key, $redeem.':cn:') => 'returned_credit',
+                    $t->source_key === $redeem.':reverse' => 'returned_cancel',
+                    $t->type === 'redeem' => 'reversal',
+                    default => 'earned',
+                },
                 'points' => (int) $t->points,
                 'balance_after' => (int) $t->balance_after,
                 'payment' => $t->payment?->number,

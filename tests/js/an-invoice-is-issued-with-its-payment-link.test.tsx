@@ -237,6 +237,28 @@ describe('صفحةُ الفاتورة نفسُها', () => {
         render(<Show />);
     };
 
+    /**
+     * وحدُّ الإشعار الدائن حدُّ الخادم: الإجماليُّ ناقصًا ما رُدّ.
+     *
+     * «الباقي + المسدَّد» وحده كان يُبقي فاتورةً مدفوعةً رُدّت كلُّها قابلةً
+     * لإشعارٍ كاملٍ آخر — زرٌّ وحدٌّ أعلى يرفضهما الخادم.
+     */
+    it('لا «إشعار دائن» على مدفوعةٍ رُدّت كلُّها', () => {
+        showPage({ invoice: { ...invoice, paid: 105, outstanding: 0, credit_notes: [{ id: 1, number: 'CN-1', amount: 105, reason: 'رُدّت', at: '2026-10-20' }] } });
+
+        expect(screen.queryByRole('button', { name: /إشعار دائن/ })).toBeNull();
+    });
+
+    it('ومدفوعةٌ رُدّ بعضُها: الحدُّ الأعلى ما بقي من إجماليّها', async () => {
+        showPage({ invoice: { ...invoice, paid: 105, outstanding: 0, credit_notes: [{ id: 1, number: 'CN-1', amount: 40, reason: 'رُدّت', at: '2026-10-20' }] } });
+
+        await userEvent.setup().click(screen.getByRole('button', { name: /إشعار دائن/ }));
+
+        const cap = screen.getByText(/الحدّ الأعلى/);
+        expect(cap).toHaveTextContent('65');
+        expect(cap).not.toHaveTextContent('105');
+    });
+
     it('بعد «إصدار الفاتورة وإنشاء رابط دفع»: الرابطُ بارزًا بعنوانه', () => {
         showPage({ flash: { toast: null, status: null, paymentLink: row(), paymentLinkIssued: true } });
 

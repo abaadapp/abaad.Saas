@@ -48,6 +48,9 @@ describe('تصحيحُ رصيد النقاط من ملف العميل', () => {
         const form = screen.getByTestId('points-adjust');
         expect(form).toHaveTextContent('لا يُنتج خصمًا ولا مالًا');
         expect(form).toHaveTextContent('نوع التصحيح');
+        // ولا نوعَ مختارًا سلفًا — «إنقاص» افتراضًا كان يُنقص رصيدَ من أُريد تعويضُه
+        expect(form).toHaveTextContent('اختر: زيادة أم إنقاص');
+        expect(form).not.toHaveTextContent(/نوع التصحيح\s*إنقاص/);
         expect(form).toHaveTextContent('عدد النقاط');
         expect(form).toHaveTextContent('السبب');
         expect(screen.getByRole('button', { name: 'حفظ التصحيح' })).toBeInTheDocument();

@@ -10544,5 +10544,10 @@
     "تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — ألغِ المسودّة وأنشئ فاتورةً جديدة.": "The customer's points balance or the redemption rules changed since the draft was written — cancel the draft and create a new invoice.",
     "الرصيد لا يكفي لهذا النقص — رصيد العميل :n نقطة.": "The balance can't cover this reduction — the customer has :n points.",
     "صُحّح رصيد النقاط — الرصيد الآن :n نقطة": "Points balance corrected — the balance is now :n points",
-    "نوع التصحيح": "Correction type"
+    "نوع التصحيح": "Correction type",
+    "تصحيح رصيد نقاط العميل": "Correct a customer's points balance",
+    "استبدال على هذه الفاتورة": "Redeemed on this invoice",
+    "إعادة بإشعار دائن": "Returned by a credit note",
+    "إعادة بإلغاء الفاتورة": "Returned by cancelling the invoice",
+    "اختر: زيادة أم إنقاص": "Choose: add or deduct"
 }

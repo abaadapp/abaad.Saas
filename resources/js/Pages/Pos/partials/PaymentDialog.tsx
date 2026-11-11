@@ -323,8 +323,10 @@ export default function PaymentDialog({
                 if (overrideReason.trim() !== '') details.credit_override_reason = overrideReason;
             }
 
+            // ما قُبض يُثبَّت الآن — السلّةُ تُحسب من جديد بعد البيعة (`CheckoutResult.total`)
+            const charged = total;
             const res = await onCheckout(method, details);
-            setResult(res);
+            setResult({ ...res, total: res.total ?? charged });
             setStep('success');
 
             /*
@@ -715,7 +717,7 @@ export default function PaymentDialog({
                             )}
                             <div className="flex justify-between">
                                 <span className="text-gray-500">{t('المبلغ')}</span>
-                                <span className="font-bold text-[#111]">{money(total)}</span>
+                                <span data-testid="paid-total" className="font-bold text-[#111]">{money(result?.total ?? total)}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-500">{t('وسيلة الدفع')}</span>

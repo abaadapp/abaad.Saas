@@ -113,7 +113,8 @@ export default function CustomerShow() {
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
     const mayAdjustPoints = (auth?.mayActions ?? []).includes('customerPoints.adjust');
-    const adjust = useForm({ direction: 'deduct' as 'add' | 'deduct', points: '', reason: '' });
+    // ولا نوعَ مختارًا سلفًا: «إنقاص» افتراضًا أنقص رصيدَ من أُريد تعويضُه — فيُختار صراحةً
+    const adjust = useForm({ direction: '' as '' | 'add' | 'deduct', points: '', reason: '' });
     const [editingProfile, setEditingProfile] = useState(false);
 
     /*
@@ -599,11 +600,12 @@ export default function CustomerShow() {
                         <Field label="نوع التصحيح" error={adjust.errors.direction}>
                             <Select
                                 value={adjust.data.direction}
+                                placeholder="اختر: زيادة أم إنقاص"
                                 options={[
                                     { value: 'deduct', label: t('إنقاص') },
                                     { value: 'add', label: t('زيادة') },
                                 ]}
-                                onChange={(e) => adjust.setData('direction', e.target.value as 'add' | 'deduct')}
+                                onChange={(e) => adjust.setData('direction', e.target.value as '' | 'add' | 'deduct')}
                             />
                         </Field>
                         <Field label="عدد النقاط" error={adjust.errors.points}>

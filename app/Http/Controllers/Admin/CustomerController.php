@@ -303,7 +303,7 @@ class CustomerController extends Controller
             PointTransaction::create([
                 'business_id' => (int) $customer->business_id,
                 'customer_id' => $customer->id,
-                'type' => 'adjust',
+                'type' => PointTransaction::ADJUST,
                 'points' => $signed,
                 'balance_after' => (int) $customer->points,
                 'note' => mb_substr('تصحيح إداري بيد '.$by.' — '.$reason, 0, 250),

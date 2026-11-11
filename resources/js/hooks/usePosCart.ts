@@ -232,6 +232,14 @@ export interface CheckoutResult {
      * للزبون إنّ نقاطه نفدت.
      */
     balance?: number | null;
+    /**
+     * المبلغُ كما كتبه الخادم — أو `null` حين لا ردَّ يحمله.
+     *
+     * نافذةُ النجاح كانت تقرأ إجماليَّ السلّة الحيّ، والسلّةُ تُحسب من جديد بعد
+     * البيعة: رصيدُ العميل يُصحَّح من الردّ فيسقط استحقاقُ الاستبدال ويعود
+     * الخصمُ صفرًا — فيُقرأ «١٠٥» على بيعةٍ قُبض فيها ٩٤٫٥.
+     */
+    total?: number | null;
     /** رفضه الخادم (مخزون غير كافٍ أو صنف غير معروف) — لا يُعاد إلى الطابور */
     rejected?: boolean;
 }
@@ -1040,6 +1048,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             redeemed?: number;
             /** رصيدُ العميل بعد البيعة — كما في القاعدة، لا محسوبًا هنا */
             balance?: number | null;
+            /** إجماليُّ البيعة كما كتبه الخادم */
+            total?: number;
             error?: string;
         }> => {
             try {
@@ -1067,6 +1077,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                          * يقول للكاشير إنّ العميل أنفق نقاطه كلَّها.
                          */
                         balance: typeof d.points_balance === 'number' ? d.points_balance : null,
+                        total: typeof d.total === 'number' ? d.total : undefined,
                     };
                 }
                 // 419 جلسة منتهية و422 بيانات مرفوضة — إعادة المحاولة بلا فائدة.
@@ -1246,6 +1257,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 points: res.points ?? 0,
                 redeemed: res.redeemed ?? 0,
                 balance: res.balance ?? null,
+                total: res.total ?? null,
                 rejected: !!res.drop,
             };
         },

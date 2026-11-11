@@ -208,6 +208,28 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(2.0, $rules['earn_rate']);
     }
 
+    /** والقواعدُ تُكتب بلوحةٍ عربيّة كغيرها — «٠٫٥» و«١٥» لا تُردّ (`NormalizeNumbers`) */
+    public function test_the_redemption_rules_accept_arabic_digits(): void
+    {
+        $this->post(route('admin.marketing.loyalty.save'), [
+            'loyalty_enabled' => true,
+            'loyalty_earn_rate' => '١',
+            'loyalty_redeem_enabled' => true,
+            'loyalty_redeem_points' => '١٠',
+            'loyalty_redeem_value' => '٠٫٥',
+            'loyalty_redeem_min_invoice' => '١٥',
+            'loyalty_redeem_max_pct' => '٣٠',
+            'loyalty_redeem_min' => '٢٠',
+        ])->assertSessionHasNoErrors();
+
+        $rules = Loyalty::rules($this->shop->id);
+        $this->assertSame(10, $rules['points']);
+        $this->assertSame(0.5, $rules['value']);
+        $this->assertSame(15.0, $rules['min_invoice']);
+        $this->assertSame(30.0, $rules['max_pct']);
+        $this->assertSame(20, $rules['min_points']);
+    }
+
     /** سقفُ الاكتساب يتبع القيمة: عشرُ نقاطٍ بريالٍ تجعل عشرَ نقاطٍ لكلّ ريالٍ استردادًا كاملًا */
     public function test_the_earn_ceiling_follows_the_value_the_owner_chose(): void
     {
@@ -984,6 +1006,18 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         CustomerInvoices::cancel($invoice->fresh(), 'لم يُدفع');
         $this->assertSame(500, $this->returned($invoice));
         $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /** وحركاتُ الورقة في صفحتها بأسمائها: صرفٌ، وإعادةٌ بإشعار، وإعادةٌ بإلغاء — لا «عكس تحصيل» */
+    public function test_the_invoice_names_each_points_movement_by_what_it_was(): void
+    {
+        $invoice = $this->invoice(500);
+        $this->credit($invoice, 39.9);
+        CustomerInvoices::cancel($invoice->fresh(), 'أُلغيت');
+
+        $kinds = array_column(\App\Support\InvoiceLoyalty::rows($invoice->fresh()), 'kind');
+
+        $this->assertSame(['spent', 'returned_credit', 'returned_cancel'], $kinds);
     }
 
     /** البيعةُ نفسُها تُرسل مرّتين (انقطاعٌ ثمّ إعادة): طلبٌ واحد وخصمٌ واحد */

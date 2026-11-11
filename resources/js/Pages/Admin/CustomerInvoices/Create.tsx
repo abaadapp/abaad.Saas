@@ -551,8 +551,43 @@ export default function CustomerInvoiceCreate({
     const [loyaltyOffer, setLoyaltyOffer] = useState<LoyaltyOffer | null>(null);
     const [serverTotals, setServerTotals] = useState<ServerTotals | null>(null);
     const [redeem, setRedeem] = useState<'ask' | 'use' | 'skip'>('ask');
-    useEffect(() => setRedeem('ask'), [form.data.customer_id]);
-    const redeemPoints = redeem === 'use' && loyaltyOffer?.eligible ? loyaltyOffer.points : 0;
+    /*
+     * ═══ وما وافق عليه التاجرُ يُحفظ كما رآه ═══
+     *
+     * كان الخصمُ يتبع آخرَ عرضٍ رسمته المعاينة: رصيدٌ صُرف في الصندوق أو
+     * قاعدةٌ غيّرت قيمةَ النقطة، فيتبدّل المبلغُ تحت «استخدام النقاط» ولا
+     * يُسأل أحد. فيُمسك هنا ما وافق عليه (النقاطَ وقيمتَها) ويُرسل كما هو،
+     * وعرضٌ يتغيّر بعده يُلغي الاختيارَ ويُقال ذلك — ولا خصمَ حتّى يختار من
+     * جديد. والخادمُ يقارن الاثنين بما يحسبه (`CustomerInvoices::create`).
+     */
+    const [agreed, setAgreed] = useState<{ points: number; discount: number } | null>(null);
+    const [redeemNotice, setRedeemNotice] = useState('');
+    useEffect(() => {
+        setRedeem('ask');
+        setAgreed(null);
+        setRedeemNotice('');
+    }, [form.data.customer_id]);
+
+    const chooseRedeem = (choice: 'ask' | 'use' | 'skip') => {
+        setRedeemNotice('');
+        setAgreed(choice === 'use' && loyaltyOffer?.eligible ? { points: loyaltyOffer.points, discount: loyaltyOffer.discount } : null);
+        setRedeem(choice === 'use' && !loyaltyOffer?.eligible ? 'ask' : choice);
+    };
+
+    useEffect(() => {
+        if (redeem !== 'use' || agreed === null) return;
+        const same =
+            !!loyaltyOffer?.eligible &&
+            loyaltyOffer.points === agreed.points &&
+            Math.abs(loyaltyOffer.discount - agreed.discount) < 0.0005;
+        if (!same) {
+            setRedeem('ask');
+            setAgreed(null);
+            setRedeemNotice(t('تغيّر ما يُخصم بالنقاط — راجع العرض واختر من جديد.'));
+        }
+    }, [loyaltyOffer, redeem, agreed, t]);
+
+    const redeemPoints = redeem === 'use' && agreed !== null ? agreed.points : 0;
 
     /*
      * والملخّصُ بعد خصم النقاط من الخادم: النقاطُ تُوزَّع على البنود وتُحسب
@@ -681,8 +716,21 @@ export default function CustomerInvoiceCreate({
             preparation: preparation ? preparationPayload(data.preparation) : undefined,
             // ونقاطٌ اختار استبدالَها — صفرٌ ما لم يضغط «استخدام النقاط»
             redeem_points: redeemPoints,
+            // وقيمتُها كما رآها — فإن حسب الخادمُ غيرَها ردّ الورقةَ ومعها العرضُ الصحيح
+            redeem_discount: redeemPoints > 0 && agreed !== null ? agreed.discount : null,
         }));
-        form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
+        form.post('/admin/customer-invoices', {
+            preserveScroll: true,
+            forceFormData: files.length > 0,
+            onError: (errors) => {
+                // عرضٌ تغيّر: لا خصمَ حتّى يختار من جديد، والعرضُ يُجلب الآن لا بعد ضغطة حرف
+                if ((errors as Record<string, string | undefined>).redeem_points) {
+                    setRedeem('ask');
+                    setAgreed(null);
+                    void draw();
+                }
+            },
+        });
     };
 
     return (
@@ -874,8 +922,9 @@ export default function CustomerInvoiceCreate({
                             <LoyaltyPrompt
                                 offer={loyaltyOffer}
                                 choice={redeem}
-                                onChoose={setRedeem}
+                                onChoose={chooseRedeem}
                                 error={(form.errors as Record<string, string | undefined>).redeem_points}
+                                notice={redeemNotice}
                             />
 
                             {/* ── تاريخ الإصدار ── */}
@@ -2069,25 +2118,48 @@ export function LoyaltyPrompt({
     choice,
     onChoose,
     error,
+    notice,
 }: {
     offer: LoyaltyOffer | null;
     choice: 'ask' | 'use' | 'skip';
     onChoose: (c: 'ask' | 'use' | 'skip') => void;
     error?: string;
+    /** عرضٌ تغيّر بعد «استخدام النقاط» فأُلغي الاختيار — يُقال لماذا عاد السؤال */
+    notice?: string;
 }) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
     const m = (v: number) => money(v, context!.currency);
 
-    if (!offer || offer.balance <= 0) return null;
+    /*
+     * وردُّ الخادم يُقرأ ولو لم يبقَ ما يُعرض: رصيدٌ صُرف كلُّه في الصندوق
+     * بين العرض والحفظ لا يُخفي السببَ الذي رُدّت به الورقة.
+     */
+    const said = error || notice;
+    if (!offer || offer.balance <= 0) {
+        return said ? (
+            <p data-testid="invoice-loyalty-changed" role="alert" className="text-[12px] text-[#b91c1c] sm:col-span-2">
+                {said}
+            </p>
+        ) : null;
+    }
 
     if (!offer.eligible) {
         const why = loyaltyReasonText(offer.reason, t);
 
-        return why ? (
-            <p data-testid="invoice-loyalty-reason" className="text-[12px] text-[#6b7280] sm:col-span-2">
-                {t('نقاط العميل:')} {offer.balance} — {why}
-            </p>
+        return why || said ? (
+            <div className="sm:col-span-2">
+                {why && (
+                    <p data-testid="invoice-loyalty-reason" className="text-[12px] text-[#6b7280]">
+                        {t('نقاط العميل:')} {offer.balance} — {why}
+                    </p>
+                )}
+                {said && (
+                    <p data-testid="invoice-loyalty-changed" role="alert" className="mt-1 text-[12px] text-[#b91c1c]">
+                        {said}
+                    </p>
+                )}
+            </div>
         ) : null;
     }
 
@@ -2122,7 +2194,7 @@ export function LoyaltyPrompt({
                 </div>
             )}
 
-            {error && <Err msg={error} />}
+            {error ? <Err msg={error} /> : notice ? <Err msg={notice} /> : null}
         </div>
     );
 }

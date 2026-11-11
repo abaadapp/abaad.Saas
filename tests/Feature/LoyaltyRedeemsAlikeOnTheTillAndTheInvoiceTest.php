@@ -21,6 +21,7 @@ use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\Ledger;
 use App\Support\Loyalty;
+use App\Support\Money;
 use App\Support\PaymentLinks;
 use App\Support\Paymob\Amount;
 use App\Support\Store\Paymob;
@@ -644,6 +645,61 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(200, (int) $this->customer->fresh()->points);
     }
 
+    /**
+     * قيمةُ النقطة تغيّرت بين العرض والحفظ — العددُ نفسُه والمبلغُ غيرُه: يُردّ بالعرض الجديد.
+     *
+     * كان يُقارن عددُ النقاط وحده: خمسمئةٌ عرضتها الشاشةُ بخمسة، وصارت بعشرة،
+     * فتُكتب الورقةُ بعشرةٍ لم يرها أحد. والردُّ يقول الرصيدَ وما يجوز الآن.
+     */
+    public function test_an_invoice_whose_points_value_changed_is_refused_with_the_new_offer(): void
+    {
+        $this->set('vat_enabled', '1');
+        $this->set('vat_rate', '5');
+        $this->set('loyalty_redeem_value', '2'); // صارت مئةُ نقطةٍ بريالين بعد أن عرضت الشاشةُ ريالًا
+        $lines = [['description' => 'باقة', 'quantity' => 2, 'unit_price' => 50]];
+        $post = fn (float $agreed) => $this->post(route('admin.customerInvoices.store'), [
+            'customer_id' => $this->customer->id, 'issued_at' => '2026-11-11', 'payment_method' => 'آجل',
+            'issue' => true, 'items' => $lines, 'redeem_points' => 500, 'redeem_discount' => $agreed,
+        ]);
+
+        $post(5)->assertSessionHasErrors('redeem_points');
+        $said = session('errors')->first('redeem_points');
+        $now = CustomerInvoices::loyaltyQuote($this->shop->id, $this->customer->fresh(), $lines);
+        $this->assertStringContainsString('الرصيد الآن 1000 نقطة', $said);
+        $this->assertStringContainsString(Money::format($now['max_discount'], Money::of($this->shop->id)).' مقابل '.$now['max_points'].' نقطة', $said);
+        $this->assertSame(0, CustomerInvoice::count(), 'كُتبت ورقةٌ بخصمٍ لم يُرَ');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+
+        // وبما يُعرض الآن تُكتب — خمسمئةٌ بعشرة، وضريبتُها على ما بقي
+        $this->flushSession();
+        $post(10)->assertSessionHasNoErrors();
+        $invoice = CustomerInvoice::sole();
+        $this->assertEqualsWithDelta(10.0, (float) $invoice->loyalty_discount, 0.0001);
+        $this->assertEqualsWithDelta(94.5, (float) $invoice->total, 0.0001);
+        $this->assertSame(500, (int) $this->customer->fresh()->points);
+    }
+
+    /** ومسودّةٌ صُرف رصيدُها في الصندوق قبل إصدارها: يُقال الرصيدُ الآن وما يجوز — ولا يُمسّ مبلغُها */
+    public function test_a_stale_draft_is_refused_with_the_balance_and_offer_now(): void
+    {
+        $draft = $this->invoice(500, issue: false);
+        $this->customer->update(['points' => 300]);
+
+        try {
+            CustomerInvoices::issue($draft);
+            $this->fail('صدرت مسودّةٌ بنقاطٍ لا رصيدَ لها');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('الرصيد الآن 300 نقطة', $e->getMessage());
+            $this->assertStringContainsString('مقابل 300 نقطة', $e->getMessage());
+            $this->assertStringContainsString('ألغِ المسودّة', $e->getMessage());
+        }
+
+        $this->assertEqualsWithDelta(99.75, (float) $draft->fresh()->total, 0.0001);
+        $this->assertSame(CustomerInvoice::DRAFT, $draft->fresh()->status);
+        $this->assertSame(300, (int) $this->customer->fresh()->points);
+        $this->assertSame(0, $this->redeems());
+    }
+
     /* ═══════════════════ السدادُ ولوحةُ التجهيز ═══════════════════ */
 
     /**
@@ -682,6 +738,10 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $link = PaymentLinks::create($this->shop->id, $this->customer, $invoice->fresh(), null, null, $this->owner->id);
         $link->forceFill(['provider_order_id' => (string) (++$this->order)])->save();
         $this->assertEqualsWithDelta(99.75, (float) $link->amount, 0.0001, 'الرابطُ يطلب ما بعد الخصم');
+        // وما يصل إلى Paymob هو إجماليُّ الورقة بعد النقاط وضريبتِها — بالبيسة، لا قبل الخصم
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/api/ecommerce/payment-links')
+            && collect($r->data())->firstWhere('name', 'amount_cents')['contents'] === (string) Amount::toMinor((float) $invoice->fresh()->total, (string) $link->currency)
+            && (string) Amount::toMinor((float) $invoice->fresh()->total, (string) $link->currency) === '99750');
 
         $obj = [
             'amount_cents' => Amount::toMinor((float) $link->amount, (string) $link->currency),
@@ -787,7 +847,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
 
     private function credit(CustomerInvoice $invoice, float $amount): void
     {
-        CustomerInvoices::creditNote($invoice->fresh(), $amount, 0.0, 'إرجاع', $this->owner->id);
+        \Tests\Support\ReturnNote::issue($invoice->fresh(), $amount, $this->owner->id);
     }
 
     private function returned(CustomerInvoice $invoice): int
@@ -970,8 +1030,8 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         try {
             $this->credit($invoice, 99.75);
             $this->fail('أُصدر إشعارٌ ثانٍ بكامل فاتورةٍ رُدّت كلُّها');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('لا يتجاوز', $e->getMessage());
+        } catch (\RuntimeException|\Illuminate\Validation\ValidationException) {
+            // والنصُّ يختلف بعد #202 («رُدّت الفاتورة كلها…») — والمقياسُ ما في القاعدة تحته
         }
 
         $this->assertEqualsWithDelta(99.75, (float) \App\Models\CustomerCreditNote::where('customer_invoice_id', $invoice->id)->sum('amount'), 0.0001);
@@ -992,6 +1052,7 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         ]);
         Http::fake([
             'oman.paymob.com/api/auth/tokens' => Http::response(['token' => 'tok']),
+            'oman.paymob.com/api/ecommerce/payment-links/cancel' => Http::response(['success' => true]),
             'oman.paymob.com/api/ecommerce/payment-links' => Http::response([
                 'id' => 580012, 'amount_cents' => 0, 'shorten_url' => 'https://paymob.link/f',
                 'client_url' => 'https://oman.paymob.com/f', 'created_at' => '2026-11-11T10:00:00',
@@ -1029,6 +1090,8 @@ class LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest extends TestCase
         $this->assertSame(1, $this->redeems());
         $this->assertSame(0, PointTransaction::where('business_id', $this->shop->id)->where('type', 'earn')->count(), 'ولا اكتسابَ بلا دفع');
 
+        // والرابطُ يُلغى قبل الورقة — فلا يدفع العميلُ فاتورةً ملغاة (ويشترطه #202)
+        PaymentLinks::cancel($link->fresh(), $this->owner->id);
         CustomerInvoices::cancel($invoice, 'لم يُدفع');
         CustomerInvoices::cancel($invoice->fresh(), 'لم يُدفع');
         $this->assertSame(500, $this->returned($invoice));

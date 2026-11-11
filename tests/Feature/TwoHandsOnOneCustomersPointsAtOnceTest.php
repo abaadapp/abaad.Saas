@@ -257,9 +257,9 @@ PHP;
 // يُمسك ما يمسكه برهةً قبل أن يكتب الإشعار — فيصل الآخرُ وقد قرأ حدَّه
 App\Models\CustomerCreditNote::creating(function () { usleep(800000); });
 try {
-    App\Support\CustomerInvoices::creditNote(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 60, 0, 'إرجاع');
+    Tests\Support\ReturnNote::issue(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 60);
     echo 'credited';
-} catch (RuntimeException $e) {
+} catch (RuntimeException|Illuminate\Validation\ValidationException $e) {
     echo 'refused';
 }
 PHP;
@@ -287,7 +287,7 @@ PHP;
         $invoice = $this->issued(); // ٥٠٠ صُرفت، والرصيدُ ٥٠٠
         $credit = <<<'PHP'
 App\Models\CustomerCreditNote::created(function () { usleep(1500000); });
-App\Support\CustomerInvoices::creditNote(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 47.5, 0, 'إرجاع');
+Tests\Support\ReturnNote::issue(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 47.5);
 echo 'credited';
 PHP;
 
@@ -326,9 +326,9 @@ echo 'cancelled';
 PHP;
         $credit = <<<'PHP'
 try {
-    App\Support\CustomerInvoices::creditNote(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 47.5, 0, 'إرجاع');
+    Tests\Support\ReturnNote::issue(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 47.5);
     echo 'credited';
-} catch (RuntimeException $e) {
+} catch (RuntimeException|Illuminate\Validation\ValidationException $e) {
     echo 'refused';
 }
 PHP;

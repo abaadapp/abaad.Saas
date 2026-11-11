@@ -540,15 +540,37 @@ final class CustomerInvoices
              *
              * والمطلوبُ فوق ما يجوز يُردّ لا يُحصر: الشاشةُ عرضت مبلغًا، وورقةٌ
              * تُكتب بغيره يقرؤها العميلُ بعد أن وافق على الأوّل.
+             *
+             * ═══ والمقياسُ النقاطُ وقيمتُها معًا — كما في الصندوق ═══
+             *
+             * الشاشةُ ترسل ما وافق عليه التاجر: عددَ النقاط (`redeem_points`)
+             * وقيمتَها (`redeem_discount`). وكان يُقارن العددُ وحده، فقاعدةٌ
+             * غيّرت قيمةَ النقطة بين العرض والحفظ تُكتب بها الورقةُ بخصمٍ غيرِ
+             * الذي رآه — في صمت. فيُقارنان معًا، وما اختلف يُردّ بالعرض الصحيح
+             * الآن ليختار من جديد (`PosController::resolveRedemption` أخوه).
+             * ومن لا يرسل القيمةَ (طلبُ واتساب، والفاتورةُ من طلب) يُقارن عددُه.
              */
             $loyalty = ['points' => 0, 'discount' => 0.0];
             $requested = (int) ($data['redeem_points'] ?? 0);
+            $agreed = isset($data['redeem_discount']) && $data['redeem_discount'] !== ''
+                ? round((float) $data['redeem_discount'], 3)
+                : null;
 
             if ($requested > 0) {
-                $quote = self::loyaltyQuote($businessId, $customer->fresh() ?? $customer, $lines, $requested);
-                if ($quote['points'] !== $requested) {
+                $fresh = $customer->fresh() ?? $customer;
+                $quote = self::loyaltyQuote($businessId, $fresh, $lines, $requested);
+                if ($quote['points'] !== $requested || ($agreed !== null && abs($quote['discount'] - $agreed) > 0.0005)) {
+                    $now = self::loyaltyQuote($businessId, $fresh, $lines);
+                    $currency = Money::of($businessId);
+
                     throw ValidationException::withMessages([
-                        'redeem_points' => __('تغيّر رصيد نقاط العميل أو حدّ الاستبدال — راجع خصم النقاط قبل الحفظ.'),
+                        'redeem_points' => $now['max_points'] > 0
+                            ? __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، والخصم المتاح :discount مقابل :points نقطة. اختر من جديد قبل الحفظ.', [
+                                'balance' => (int) $now['balance'], 'discount' => Money::format($now['max_discount'], $currency), 'points' => $now['max_points'],
+                            ])
+                            : __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط على هذه الفاتورة. احفظها بلا خصم.', [
+                                'balance' => (int) $now['balance'],
+                            ]),
                     ]);
                 }
 
@@ -1388,10 +1410,8 @@ final class CustomerInvoices
         $customer = Customer::where('business_id', $invoice->business_id)
             ->whereKey($invoice->customer_id)->lockForUpdate()->first();
 
-        $refuse = fn () => new RuntimeException(__('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
-
         if (! $customer) {
-            throw $refuse();
+            throw new RuntimeException(__('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
         }
 
         $base = 0.0;
@@ -1402,7 +1422,29 @@ final class CustomerInvoices
             $other = round($other + (float) $item->discount - (float) $item->loyalty_discount, 3);
         }
 
-        $quote = Loyalty::quote(Loyalty::rules((int) $invoice->business_id), (int) $customer->points, $base, $other, $points);
+        $rules = Loyalty::rules((int) $invoice->business_id);
+
+        /*
+         * والردُّ يقول ما صار — لا «تغيّر» وحدها.
+         *
+         * الرصيدُ الآن وأقصى ما يجوز على هذه البنود بقواعد اليوم: فيعرف
+         * التاجرُ بكم يكتب الفاتورةَ الجديدة، ولا يُخمّن. والمسودّةُ لا تُعدَّل
+         * هنا — مبلغُها ما وافق عليه حين كتبها، ولا يُصدَر له غيرُه.
+         */
+        $refuse = function () use ($rules, $customer, $base, $other, $invoice) {
+            $balance = (int) $customer->fresh()?->points;
+            $now = Loyalty::quote($rules, $balance, $base, $other, null);
+
+            return new RuntimeException($now['points'] > 0
+                ? __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن :balance نقطة، والخصم المتاح الآن :discount مقابل :points نقطة. ألغِ المسودّة وأنشئ فاتورةً جديدة.', [
+                    'balance' => $balance, 'discount' => Money::format($now['discount'], Money::of((int) $invoice->business_id)), 'points' => $now['points'],
+                ])
+                : __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط عليها الآن. ألغِ المسودّة وأنشئ فاتورةً جديدة.', [
+                    'balance' => $balance,
+                ]));
+        };
+
+        $quote = Loyalty::quote($rules, (int) $customer->points, $base, $other, $points);
         if ($quote['points'] !== $points || abs($quote['discount'] - (float) $invoice->loyalty_discount) > 0.0005) {
             throw $refuse();
         }

@@ -1232,8 +1232,12 @@ class CustomerInvoiceController extends Controller
              * نقاطُ الولاء التي اختار التاجرُ استبدالَها — تُحسب وتُخصم في
              * الخادم مع الورقة (`CustomerInvoices::create`)، ولا تُطبَّق إلّا
              * بطلبه: صفرٌ أو غيابٌ يعني «بدون خصم».
+             *
+             * ومعها قيمتُها كما عرضتها الشاشة — فإن حسب الخادمُ غيرَها رُدّت
+             * الورقةُ ومعها العرضُ الصحيح، ولا تُكتب بخصمٍ لم يُرَ.
              */
             'redeem_points' => ['nullable', 'integer', 'min:0'],
+            'redeem_discount' => ['nullable', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
             // منتجٌ أو إضافة — لا الاثنان: إضافةٌ لا تلبس منتجًا وهميًّا

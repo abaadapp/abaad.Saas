@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -208,6 +208,44 @@ describe('ما في الطابور بيعةٌ اكتملت', () => {
         const replayed = sent.find((b) => b.client_uuid === 'q-1');
         expect(replayed?.replay).toBe(true);
         expect(replayed?.redeem_discount).toBe(3);
+    });
+});
+
+describe('انقطاعٌ بعد الإرسال — لا تُفترض خسارتُها ولا تُنشأ بيعةٌ ثانية', () => {
+    it('تبقى في الطابور بمعرّفها، وتُرفع به نفسِه مع `replay` — فيعرفها الخادمُ إن كان كتبها', async () => {
+        let down = true;
+        const { view, sent } = await hook(() => {
+            if (down) throw new Error('network');
+
+            return { status: 200, body: { invoice: 'INV-1' } };
+        });
+
+        act(() => view.result.current.chooseRedeem(true));
+        let result: Awaited<ReturnType<typeof view.result.current.checkoutSale>> | undefined;
+        await act(async () => {
+            result = await view.result.current.checkoutSale('نقدي');
+        });
+
+        // لم يُعرف مصيرُها: لا «رُدّت» ولا «تمّت» — محفوظةٌ لتُرسل
+        expect(result?.synced).toBe(false);
+        expect(result?.rejected).toBe(false);
+        const queued = JSON.parse(localStorage.getItem('abadpos:pos:outbox') || '[]');
+        expect(queued).toHaveLength(1);
+        expect(queued[0].uuid).toBe(sent[0].client_uuid);
+        // وما وافق عليه الكاشيرُ متّصلًا يبقى معها كما هو
+        expect(queued[0].payload.redeem_points).toBe(1000);
+        expect(queued[0].payload.redeem_discount).toBe(10);
+
+        down = false;
+        await act(async () => {
+            window.dispatchEvent(new Event('online'));
+        });
+        await waitFor(() => expect(sent.length).toBeGreaterThanOrEqual(2));
+
+        expect(sent[1].client_uuid).toBe(sent[0].client_uuid);
+        expect(sent[1].replay).toBe(true);
+        expect(sent.filter((b) => b.client_uuid !== sent[0].client_uuid)).toHaveLength(0);
+        await waitFor(() => expect(JSON.parse(localStorage.getItem('abadpos:pos:outbox') || '[]')).toHaveLength(0));
     });
 });
 

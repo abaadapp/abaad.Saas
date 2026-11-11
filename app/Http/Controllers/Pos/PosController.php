@@ -39,7 +39,6 @@ use App\Support\Loyalty;
 use App\Support\Money;
 use App\Support\OrderNumbers;
 use App\Support\OrderStatus;
-use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\ProductAddons;
@@ -60,9 +59,6 @@ use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
-    /** صرفُ النقاط إلى مال — من بابه الواحد (انظر Support\Loyalty) */
-    private const POINTS_PER_UNIT = Loyalty::POINTS_PER_UNIT;
-
     private function bid(): int
     {
         return auth()->user()->business_id ?? Demo::bid();
@@ -1335,11 +1331,7 @@ class PosController extends Controller
      */
     private function loyaltyOn(): bool
     {
-        if ((string) $this->setting('loyalty_enabled', '1') === '0') {
-            return false;
-        }
-
-        return PlanFeatures::allows(auth()->user()?->business, 'loyalty');
+        return Loyalty::on($this->bid());
     }
 
     /**
@@ -1352,25 +1344,21 @@ class PosController extends Controller
     {
         $none = ['points' => 0, 'discount' => 0.0];
 
-        if (! $customer || $requested <= 0 || ! $this->loyaltyOn()) {
+        if (! $customer || $requested <= 0) {
             return $none;
         }
 
-        // الحد الأدنى لبدء الاستبدال: تحته تتراكم النقاط فقط
-        $redeemMin = max(0, (int) $this->setting('loyalty_redeem_min', 100));
-        if ((int) $customer->points < $redeemMin) {
-            return $none;
-        }
+        /*
+         * والحسابُ من بابه الواحد (`Loyalty::quote`) — هو نفسُه في فاتورة
+         * العميل وفي مرآة الشاشة (`resources/js/lib/loyalty.ts`). والمطلوبُ
+         * يُحصر بالأقصى ولا يتجاوزه: رصيدٌ، وحدٌّ أدنى للنقاط وللفاتورة،
+         * ونسبةٌ من المجموع، وما بقي بعد الكوبون.
+         */
+        $quote = Loyalty::quote(Loyalty::rules($this->bid()), (int) $customer->points, $subtotal, $couponDiscount, $requested);
 
-        $maxPct = max(0, min(100, (int) $this->setting('loyalty_redeem_max_pct', 50)));
-        $cap = min($subtotal * $maxPct / 100, max(0.0, $subtotal - $couponDiscount));
-
-        $points = min($requested, (int) $customer->points, (int) floor($cap * self::POINTS_PER_UNIT));
-        if ($points <= 0) {
-            return $none;
-        }
-
-        return ['points' => $points, 'discount' => $points / self::POINTS_PER_UNIT];
+        return $quote['points'] > 0
+            ? ['points' => $quote['points'], 'discount' => $quote['discount']]
+            : $none;
     }
 
     /** يقيّد الاستبدال والاكتساب على العميل بعد اكتمال الفاتورة */
@@ -1399,23 +1387,12 @@ class PosController extends Controller
              * فالشرط في جملة التحديث نفسها: من سبق أخذ، ومن تأخّر يُردّ بلا
              * فاتورةٍ ناقصة الثمن.
              */
-            $taken = Customer::whereKey($customer->id)
-                ->where('points', '>=', $redeemPoints)
-                ->update(['points' => \DB::raw('points - '.$redeemPoints), 'updated_at' => now()]);
-
-            if (! $taken) {
-                throw ValidationException::withMessages([
-                    'redeem_points' => __('تغيّر رصيد نقاط العميل — أعد احتساب الاستبدال.'),
-                ]);
-            }
-
-            $customer->refresh();
-            PointTransaction::record($customer, 'redeem', $redeemPoints, (int) $customer->points, $order->id, 'استبدال عند البيع — فاتورة '.$order->number);
+            Loyalty::spend($customer, $redeemPoints, 'استبدال عند البيع — فاتورة '.$order->number, ['order_id' => $order->id]);
         }
 
         // اكتساب نقاط الشراء (على الإجمالي بعد الخصم)
         $earned = 0;
-        $rate = (float) $this->setting('loyalty_earn_rate', 5);
+        $rate = Loyalty::rules($this->bid())['earn_rate'];
         if ($rate > 0) {
             $earned = (int) floor((float) $order->total * $rate);
             if ($earned > 0) {

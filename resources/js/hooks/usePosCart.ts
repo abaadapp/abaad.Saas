@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
 import { money } from '@/lib/format';
+import { loyaltyQuote, loyaltyWorth, type LoyaltyRules } from '@/lib/loyalty';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
@@ -177,6 +178,15 @@ export interface LoyaltySettings {
     redeemMaxPct: number;
     earnRate: number;
     redeemMin: number;
+    /*
+     * وما صار إعدادًا للتاجر — اختياريٌّ لأنّ ردًّا من خادمٍ أقدم لا يحمله،
+     * وغيابُه يعني الصرفَ القديم: مئةُ نقطةٍ بوحدة، بلا حدٍّ للفاتورة.
+     */
+    loyaltyEnabled?: boolean;
+    redeemEnabled?: boolean;
+    redeemPoints?: number;
+    redeemValue?: number;
+    redeemMinInvoice?: number;
 }
 
 /**
@@ -228,17 +238,10 @@ export interface CheckoutResult {
 
 const OUTBOX_KEY = 'abadpos:pos:outbox';
 /* لا نسبة في الشيفرة: النسبة تصل من إعدادات المتجر (انظر VatSettings) */
-/**
- * 100 نقطة = وحدة واحدة من العملة الأساسية.
- *
- * ويجب أن يطابق `Loyalty::POINTS_PER_UNIT` في الخادم: الشاشة تحسب الخصم
- * لتعرضه، والخادم يحسبه ليكتبه — ولو افترقا لقرأ الزبون رقمًا ودفع آخر.
- *
- * ويُصدَّر لأنّ الشاشة تعرض قيمة النقاط بالمال (انظر `Pos/Index`): كان
- * الرقم مكتوبًا هناك بيده مرّتين، فصارت للمقسوم ثلاثةُ مواضع — واثنان منها
- * لا يعلمان بتبديل الثالث.
+/*
+ * وصرفُ النقاط إلى مال لم يعد ثابتًا هنا: يحدّده التاجرُ، ويُحسب الخصمُ في
+ * `lib/loyalty.ts` — مرآةِ `Loyalty::quote` في الخادم.
  */
-export const POINTS_PER_UNIT = 100;
 const CASH_CUSTOMER = 'عميل نقدي';
 
 /**
@@ -431,6 +434,13 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const couponConfirmed = useRef('');
 
     const [redeemActive, setRedeemActive] = useState(false);
+    /**
+     * هل أجاب الكاشيرُ عن تنبيه النقاط — «استخدام النقاط» أو «بدون خصم».
+     *
+     * التنبيهُ يُسأل ولا يُطبَّق: الخصمُ لا يقع إلّا بضغطةٍ، والتنبيهُ يبقى
+     * ظاهرًا حتى يُجاب. وعميلٌ آخر يُختار يُسأل عنه من جديد.
+     */
+    const [redeemDecided, setRedeemDecided] = useState(false);
 
     const [online, setOnline] = useState(() => navigator.onLine);
     const [pending, setPending] = useState<OutboxEntry[]>(readOutbox);
@@ -441,6 +451,21 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const redeemMaxPct = Math.min(100, Math.max(0, Number(loyalty.redeemMaxPct) || 0));
     const earnRate = Math.max(0, Number(loyalty.earnRate) || 0);
     const redeemMin = Math.max(0, Number(loyalty.redeemMin) || 0);
+
+    /** قواعدُ المتجر كما يقرؤها الخادم (`Loyalty::rules`) — بافتراضات الصرف القديم */
+    const loyaltyRules: LoyaltyRules = useMemo(() => {
+        const value = loyalty.redeemValue === undefined ? 1 : Math.max(0, Number(loyalty.redeemValue) || 0);
+        const on = loyalty.loyaltyEnabled !== false;
+        return {
+            on,
+            redeem: on && loyalty.redeemEnabled !== false && value > 0,
+            min_points: redeemMin,
+            points: Math.max(1, Math.trunc(Number(loyalty.redeemPoints) || 100)),
+            value,
+            min_invoice: Math.max(0, Number(loyalty.redeemMinInvoice) || 0),
+            max_pct: redeemMaxPct,
+        };
+    }, [loyalty.loyaltyEnabled, loyalty.redeemEnabled, loyalty.redeemPoints, loyalty.redeemValue, loyalty.redeemMinInvoice, redeemMin, redeemMaxPct]);
 
     /* ----------------------------- الحسابات ----------------------------- */
 
@@ -481,22 +506,45 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         return byName.length === 1 ? byName[0] : null;
     }, [customers, customer, customerId]);
     const selectedPoints = selectedCustomer?.points ?? 0;
-    const canRedeem = selectedPoints > 0 && selectedPoints >= redeemMin;
+
+    /*
+     * ═══ وأقصى ما يُستبدل — من مرآة الخادم لا من حسابٍ هنا ═══
+     *
+     * كانت الشاشةُ تحسب `min(نقاط ÷ ١٠٠، السقف)` وتُرسل `round(خصم × ١٠٠)`،
+     * والخادمُ يحسب بقصّ النقاط. فسقفٌ بكسر بيسةٍ يجعل الشاشة تقول رقمًا
+     * والفاتورةَ تُكتب بغيره. والحسابُ الآن واحد (`loyaltyQuote`).
+     */
+    const redeemQuote = useMemo(
+        () => loyaltyQuote(loyaltyRules, selectedPoints, subtotal, couponDiscount, null),
+        [loyaltyRules, selectedPoints, subtotal, couponDiscount],
+    );
+    const canRedeem = redeemQuote.eligible;
     const pointsToThreshold = Math.max(0, redeemMin - selectedPoints);
+    /** قيمةُ عددٍ من النقاط بعملة المتجر — للعرض بجانب الرصيد */
+    const pointsWorth = useCallback((points: number) => loyaltyWorth(loyaltyRules, points), [loyaltyRules]);
 
     // سقف الاستبدال: نسبة من المجموع الفرعي، ولا يتجاوز المتبقّي بعد الكوبون
     const redeemCap = useMemo(() => {
-        const byPct = (subtotal * redeemMaxPct) / 100;
+        const byPct = Math.round(((subtotal * redeemMaxPct) / 100) * 1000) / 1000;
         const afterCoupon = Math.max(0, subtotal - couponDiscount);
         return Math.min(byPct, afterCoupon);
     }, [subtotal, redeemMaxPct, couponDiscount]);
 
-    const redeemDiscount = useMemo(() => {
-        if (!redeemActive || !canRedeem) return 0;
-        return Math.min(selectedPoints / POINTS_PER_UNIT, redeemCap);
-    }, [redeemActive, canRedeem, selectedPoints, redeemCap]);
+    const redeemOn = redeemActive && canRedeem;
+    const redeemDiscount = redeemOn ? redeemQuote.max_discount : 0;
+    const redeemPointsUsed = redeemOn ? redeemQuote.max_points : 0;
 
-    const redeemPointsUsed = Math.round(redeemDiscount * POINTS_PER_UNIT);
+    // وعميلٌ آخر يُسأل عنه من جديد — ولا يرث خصمَ من قبله
+    useEffect(() => {
+        setRedeemActive(false);
+        setRedeemDecided(false);
+    }, [selectedCustomer?.id]);
+
+    /** جوابُ التنبيه: «استخدام النقاط» أو «بدون خصم» */
+    const chooseRedeem = useCallback((use: boolean) => {
+        setRedeemActive(use);
+        setRedeemDecided(true);
+    }, []);
 
     // `round(min($couponDiscount + $redeem, $subtotal), 3)` كما في الدفع
     const discountAmount = roundMoney(Math.min(couponDiscount + redeemDiscount, base));
@@ -709,6 +757,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setItems([]);
         removeCoupon();
         setRedeemActive(false);
+        setRedeemDecided(false);
     }, [removeCoupon]);
 
     /**
@@ -1253,6 +1302,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
         selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage, blocked, blockOverrideReason,
         redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
+        redeemQuote, redeemDecided, chooseRedeem, pointsWorth,
         pointsToEarn, hasStockWarning, filteredCustomers,
         // الأفعال
         add, inc, dec, remove, setNote, clear,

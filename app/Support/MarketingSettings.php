@@ -599,12 +599,11 @@ class MarketingSettings
         'seo' => [
             'ga_measurement_id' => '',
         ],
-        'loyalty' => [
-            'loyalty_enabled' => '1',
-            'loyalty_earn_rate' => '5',
-            'loyalty_redeem_max_pct' => '50',
-            'loyalty_redeem_min' => '100',
-        ],
+        /*
+         * والولاءُ يقرأ افتراضاتِه من بابه (`Loyalty::DEFAULTS`) — وهي ما كان
+         * يعمل به كلُّ متجرٍ قبل أن يصير الصرفُ والحدُّ إعدادًا.
+         */
+        'loyalty' => Loyalty::DEFAULTS,
     ];
 
     /**

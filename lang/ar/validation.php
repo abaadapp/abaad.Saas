@@ -610,6 +610,11 @@ return [
         'loyalty_earn_rate' => 'معدّل كسب النقاط',
         'loyalty_redeem_max_pct' => 'أقصى نسبة استبدال',
         'loyalty_redeem_min' => 'أدنى رصيد للاستبدال',
+        'loyalty_redeem_enabled' => 'تفعيل الاستبدال',
+        'redeem_points' => 'نقاط الاستبدال',
+        'loyalty_redeem_points' => 'عدد النقاط',
+        'loyalty_redeem_value' => 'قيمة الخصم مقابل النقاط',
+        'loyalty_redeem_min_invoice' => 'الحد الأدنى لقيمة الفاتورة',
 
         // التكاملات وإعدادات المنصّة
         'account' => 'الحساب',

@@ -14,7 +14,7 @@ use App\Support\Demo;
 use App\Support\NotesAndEdits;
 use App\Support\Seasons;
 use App\Support\FlowerOrder;
-use App\Support\PlanFeatures;
+use App\Support\Loyalty;
 use App\Support\PosAddonsLayout;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
@@ -37,6 +37,7 @@ class PageController extends Controller
     private function loyaltySettings(): array
     {
         $s = Demo::businessSettings();
+        $loyalty = Loyalty::rules(Demo::bid());
 
         return [
             /*
@@ -46,12 +47,18 @@ class PageController extends Controller
              * تشمله باقتُه: يعِد الكاشيرُ زبونَه بنقاطٍ يردّها الخادم — انظر
              * `PosController::loyaltyOn`. والوعدُ المكسور عند الصندوق أسوأ من
              * ميزةٍ لا تُعرض أصلًا.
+             *
+             * والأرقامُ كلُّها من `Loyalty::rules` — البابِ الذي يحسب به الخادمُ
+             * عند الدفع. فمرآةُ الشاشة (`lib/loyalty.ts`) تحسب بالأرقام نفسِها.
              */
-            'loyaltyEnabled' => ($s['loyalty_enabled'] ?? '1') !== '0'
-                && PlanFeatures::allows(auth()->user()?->business, 'loyalty'),
-            'redeemMaxPct' => (float) ($s['loyalty_redeem_max_pct'] ?? 50),
-            'earnRate' => (float) ($s['loyalty_earn_rate'] ?? 5),
-            'redeemMin' => (float) ($s['loyalty_redeem_min'] ?? 100),
+            'loyaltyEnabled' => $loyalty['on'],
+            'redeemEnabled' => $loyalty['redeem'],
+            'redeemMaxPct' => $loyalty['max_pct'],
+            'earnRate' => $loyalty['earn_rate'],
+            'redeemMin' => $loyalty['min_points'],
+            'redeemPoints' => $loyalty['points'],
+            'redeemValue' => $loyalty['value'],
+            'redeemMinInvoice' => $loyalty['min_invoice'],
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
             'paymentMethods' => PaymentMethods::enabled($s),

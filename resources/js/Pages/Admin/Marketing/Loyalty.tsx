@@ -21,6 +21,7 @@ import {
 } from '@/Components/ui/table';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { loyaltyWorth } from '@/lib/loyalty';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
@@ -57,10 +58,19 @@ export default function Loyalty() {
         loyalty_earn_rate: settings.loyalty_earn_rate ?? '5',
         loyalty_redeem_max_pct: settings.loyalty_redeem_max_pct ?? '50',
         loyalty_redeem_min: settings.loyalty_redeem_min ?? '100',
+        // وما صار للتاجر أن يحدّده — وافتراضُه الصرفُ القديم (`Loyalty::DEFAULTS`)
+        loyalty_redeem_enabled: (settings.loyalty_redeem_enabled ?? '1') === '1',
+        loyalty_redeem_points: settings.loyalty_redeem_points ?? '100',
+        loyalty_redeem_value: settings.loyalty_redeem_value ?? '1',
+        loyalty_redeem_min_invoice: settings.loyalty_redeem_min_invoice ?? '0',
     });
 
-    // ١٠٠ نقطة = وحدة عملة (POINTS_PER_UNIT في نقطة البيع)
+    // وقيمةُ النقاط كما يحدّدها التاجر — والحسابُ من مرآة الخادم (`lib/loyalty.ts`)
     const rate = parseFloat(form.data.loyalty_earn_rate) || 0;
+    const worthRules = {
+        points: Math.max(1, Math.trunc(Number(form.data.loyalty_redeem_points) || 0)),
+        value: Math.max(0, Number(form.data.loyalty_redeem_value) || 0),
+    };
 
     return (
         <AdminLayout title="برنامج ولاء">
@@ -102,7 +112,6 @@ export default function Loyalty() {
                                 <Input
                                     type="number"
                                     min="0"
-                                    max="99.9"
                                     step="0.1"
                                     dir="ltr"
                                     value={form.data.loyalty_earn_rate}
@@ -110,6 +119,60 @@ export default function Loyalty() {
                                 />
                             </Field>
 
+                            <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                                <Toggle
+                                    label="تفعيل الاستبدال"
+                                    hint="بإطفائه تبقى النقاط تُكتسب وتتراكم، ولا تُستبدل في الصندوق ولا في فواتير العملاء."
+                                    on={form.data.loyalty_redeem_enabled}
+                                    onChange={(v) => form.setData('loyalty_redeem_enabled', v)}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field
+                                    label="عدد النقاط"
+                                    hint="عددٌ صحيح"
+                                    error={form.errors.loyalty_redeem_points}
+                                >
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        dir="ltr"
+                                        data-testid="redeem-points"
+                                        value={form.data.loyalty_redeem_points}
+                                        onChange={(e) => form.setData('loyalty_redeem_points', e.target.value)}
+                                    />
+                                </Field>
+                                <Field
+                                    label="تساوي خصمًا بقيمة"
+                                    hint="بعملة النشاط"
+                                    error={form.errors.loyalty_redeem_value}
+                                >
+                                    <Input
+                                        type="number"
+                                        min="0.001"
+                                        step="0.001"
+                                        dir="ltr"
+                                        data-testid="redeem-value"
+                                        value={form.data.loyalty_redeem_value}
+                                        onChange={(e) => form.setData('loyalty_redeem_value', e.target.value)}
+                                    />
+                                </Field>
+                            </div>
+                            <Field
+                                label="الحدّ الأدنى لقيمة الفاتورة المؤهّلة"
+                                hint="بعملة النشاط — فاتورةٌ دونه لا يُستبدل عليها. صفرٌ يعني كلّ فاتورة."
+                                error={form.errors.loyalty_redeem_min_invoice}
+                            >
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.001"
+                                    dir="ltr"
+                                    value={form.data.loyalty_redeem_min_invoice}
+                                    onChange={(e) => form.setData('loyalty_redeem_min_invoice', e.target.value)}
+                                />
+                            </Field>
                             <Field
                                 label="أقصى نسبة استبدال من الفاتورة (%)"
                                 hint="سقفٌ يمنع أن تُغطّي النقاط الفاتورة كلّها"
@@ -145,7 +208,7 @@ export default function Loyalty() {
                             <p className="mt-4 rounded-[12px] bg-[#fafafa] px-4 py-3 text-[13px] text-[#6b7280]">
                                 {t('فاتورة بـ١٠ تمنح :points نقطة — أي ما قيمته :value عند الاستبدال.', {
                                     points: number(Math.floor(rate * 10)),
-                                    value: (Math.floor(rate * 10) / 100).toFixed(3),
+                                    value: loyaltyWorth(worthRules, Math.floor(rate * 10)).toFixed(3),
                                 })}
                             </p>
                         )}

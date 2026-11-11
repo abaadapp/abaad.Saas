@@ -54,7 +54,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
     });
 
     /** ولا سطرَ خصمٍ قبل أن يُضغط الزرّ — النقاط تُستبدَل باختيار */
-    it('لا تخصم قبل أن يُضغط «استخدم النقاط»', async () => {
+    it('لا تخصم قبل أن يُضغط «استخدام النقاط»', async () => {
         draw();
         await open();
 
@@ -72,7 +72,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
         draw();
         await open();
 
-        fireEvent.click(screen.getByRole('button', { name: 'استخدم النقاط' }));
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
 
         const line = screen.getByTestId('redeem-line');
 
@@ -93,7 +93,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
         });
         await open();
 
-        fireEvent.click(screen.getByRole('button', { name: 'استخدم النقاط' }));
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
 
         const line = screen.getByTestId('redeem-line');
 
@@ -106,7 +106,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
         draw();
         await open();
 
-        fireEvent.click(screen.getByRole('button', { name: 'استخدم النقاط' }));
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
         expect(screen.getByTestId('redeem-line')).toBeInTheDocument();
 
         // و«إلغاء» غيرُ وحيدةٍ في الشاشة — فيُضغط زرُّ البطاقة نفسِه

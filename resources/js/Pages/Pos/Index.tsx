@@ -43,10 +43,10 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { decimalsFor, money as fmtMoney } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { loyaltyReasonText } from '@/lib/loyalty';
 import { cn } from '@/lib/utils';
 import useLiveStock from '@/hooks/useLiveStock';
 import {
-    POINTS_PER_UNIT,
     cartLineTotal,
     usePosCart,
     type LoyaltySettings,
@@ -920,12 +920,12 @@ export default function PosIndex() {
                                     <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[#be185d]">
                                         <Award className="size-4 shrink-0" />
                                         <span className="truncate">{t('نقاط العميل:')} {cart.selectedPoints}</span>
-                                        <span className="shrink-0 text-[#ec4899]">({money(cart.selectedPoints / POINTS_PER_UNIT)})</span>
+                                        <span className="shrink-0 text-[#ec4899]">({money(cart.pointsWorth(cart.selectedPoints))})</span>
                                     </span>
-                                    {cart.canRedeem && (
+                                    {cart.canRedeem && cart.redeemDecided && (
                                         <button
                                             type="button"
-                                            onClick={() => cart.setRedeemActive(!cart.redeemActive)}
+                                            onClick={() => cart.chooseRedeem(!cart.redeemActive)}
                                             className={cn(
                                                 'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition',
                                                 cart.redeemActive
@@ -933,23 +933,64 @@ export default function PosIndex() {
                                                     : 'border border-[#f9a8d4] bg-white text-[#be185d]',
                                             )}
                                         >
-                                            {cart.redeemActive ? t('إلغاء') : t('استخدم النقاط')}
+                                            {cart.redeemActive ? t('إلغاء') : t('استخدام النقاط')}
                                         </button>
                                     )}
                                 </div>
 
+                                {/*
+                                    ═══ التنبيه يُسأل ولا يُطبَّق ═══
+
+                                    عميلٌ مؤهَّل يُعرض رصيدُه وما يستطيع خصمَه
+                                    الآن، ويختار الكاشيرُ أحدَ اثنين. ولا خصمَ
+                                    قبل الضغط — والرقمُ من مرآة الخادم نفسِها.
+                                */}
+                                {cart.canRedeem && !cart.redeemDecided && (
+                                    <div data-testid="redeem-offer" role="alert" className="mt-2 rounded-lg bg-white/80 p-2">
+                                        <p className="text-[11px] font-semibold text-[#be185d]">
+                                            {t('يستطيع العميل خصم')} {money(cart.redeemQuote.max_discount)} {t('مقابل')} {cart.redeemQuote.max_points}{' '}
+                                            {t('نقطة من هذه الفاتورة')}
+                                        </p>
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => cart.chooseRedeem(true)}
+                                                className="flex-1 rounded-full bg-[#db2777] px-3 py-1.5 text-[11px] font-semibold text-white"
+                                            >
+                                                {t('استخدام النقاط')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => cart.chooseRedeem(false)}
+                                                className="flex-1 rounded-full border border-[#f9a8d4] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#be185d]"
+                                            >
+                                                {t('بدون خصم')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {cart.canRedeem ? (
-                                    <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
-                                        <Lightbulb className="size-3.5 shrink-0" />
-                                        {cart.redeemActive
-                                            ? t('سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع')
-                                            : t('اضغط «استخدم النقاط» لخصمها من الفاتورة')}
-                                    </p>
-                                ) : (
+                                    cart.redeemDecided && (
+                                        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
+                                            <Lightbulb className="size-3.5 shrink-0" />
+                                            {cart.redeemActive
+                                                ? t('سيُخصم عند الدفع — اضغط «إلغاء» للتراجع')
+                                                : t('بدون خصم — اضغط «استخدام النقاط» لخصمها من الفاتورة')}
+                                        </p>
+                                    )
+                                ) : cart.redeemQuote.reason === 'below_min_points' ? (
                                     <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
                                         <TrendingUp className="size-3.5 shrink-0" />
                                         {t('تتراكم النقاط — يبدأ الاستبدال من')} {cart.redeemMin} {t('نقطة (باقٍ')} {cart.pointsToThreshold})
                                     </p>
+                                ) : (
+                                    loyaltyReasonText(cart.redeemQuote.reason, t) && (
+                                        <p data-testid="redeem-reason" className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
+                                            <TrendingUp className="size-3.5 shrink-0" />
+                                            {loyaltyReasonText(cart.redeemQuote.reason, t)}
+                                        </p>
+                                    )
                                 )}
 
                                 {/*
@@ -970,11 +1011,11 @@ export default function PosIndex() {
                                         </span>
                                         <span className="font-normal text-[#ec4899]">
                                             {t('يبقى')} {cart.selectedPoints - cart.redeemPointsUsed} {t('نقطة')}
-                                            {' '}({money((cart.selectedPoints - cart.redeemPointsUsed) / POINTS_PER_UNIT)})
+                                            {' '}({money(cart.pointsWorth(cart.selectedPoints - cart.redeemPointsUsed))})
                                         </span>
                                     </p>
                                 )}
-                                {cart.redeemActive && cart.selectedPoints / POINTS_PER_UNIT > cart.redeemCap && (
+                                {cart.redeemActive && cart.redeemPointsUsed < cart.selectedPoints && (
                                     <p className="mt-1 text-[10px] text-[#ec4899]">
                                         {t('الحد الأقصى لهذه الفاتورة')} {cart.redeemMaxPct}% ({money(cart.redeemCap)})
                                     </p>

@@ -2,14 +2,12 @@
 
 namespace App\Support;
 
-use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\CustomerPaymentLink;
 use App\Models\PointTransaction;
-use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -68,14 +66,13 @@ class InvoiceLoyalty
     /** هل الولاءُ عاملٌ في المتجر الآن — مفتاحُ التاجر وباقتُه، كـ`PosController::loyaltyOn` */
     public static function on(int $businessId): bool
     {
-        $enabled = (string) (Setting::where('business_id', $businessId)->where('key', 'loyalty_enabled')->value('value') ?? '1') !== '0';
-
-        return $enabled && PlanFeatures::allows(Business::find($businessId), 'loyalty');
+        return Loyalty::on($businessId);
     }
 
+    // ونسبةُ الاكتساب من البابِ نفسِه الذي يقرؤه الصندوق (`Loyalty::rules`)
     public static function rate(int $businessId): float
     {
-        return (float) (Setting::where('business_id', $businessId)->where('key', 'loyalty_earn_rate')->value('value') ?? 5);
+        return Loyalty::rules($businessId)['earn_rate'];
     }
 
     /**

@@ -12,12 +12,14 @@ use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Support\Document\Snapshot;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -372,9 +374,26 @@ final class CustomerInvoices
             throw new RuntimeException(__('هذا العميل ليس من عملاء متجرك.'));
         }
 
+        /*
+         * والمعاينةُ تُرسم بخصم النقاط كما سيُكتب — بالحساب نفسِه، ولا تُخصم
+         * نقطة: لا شيء يُكتب هنا. وما لا يجوز يُعرض بلا خصم، والكتابةُ هي
+         * التي تردّ وتقول لماذا.
+         */
+        $loyalty = ['points' => 0, 'discount' => 0.0];
+        if ($customer !== null && (int) ($data['redeem_points'] ?? 0) > 0) {
+            $quote = self::loyaltyQuote($businessId, $customer, $lines, (int) $data['redeem_points']);
+            if ($quote['points'] > 0) {
+                $loyalty = $quote;
+                $lines = self::withLoyalty($lines, $quote['discount']);
+            }
+        }
+
         $totals = self::compute($businessId, $lines);
 
-        $invoice = new CustomerInvoice(self::attributes($businessId, $customer, $data, $totals));
+        $invoice = new CustomerInvoice(self::attributes($businessId, $customer, $data, $totals) + [
+            'loyalty_points' => $loyalty['points'],
+            'loyalty_discount' => $loyalty['discount'],
+        ]);
 
         /*
          * والبنودُ تُعلَّق بلا حفظ.
@@ -507,12 +526,53 @@ final class CustomerInvoices
             }
         }
 
-        $totals = self::compute($businessId, $lines);
+        return DB::transaction(function () use ($businessId, $customer, $data, $lines, $userId) {
+            /*
+             * ═══ ونقاطُ الولاء تُحسب وتُخصم مع الورقة — مرّةً واحدة ═══
+             *
+             * تحت قفل صفّ العميل: فاتورتان له في اللحظة نفسها، أو فاتورةٌ
+             * وبيعةُ صندوق، تصطفّان ولا تريان الرصيدَ نفسَه. والخصمُ لقطةٌ في
+             * الصفّ (`loyalty_points`/`loyalty_discount`) — ما بعد الكتابة من
+             * إصدارٍ ورابطٍ وسدادٍ ولوحةِ تجهيز يقرؤها ولا يعيد حسابها.
+             *
+             * والمطلوبُ فوق ما يجوز يُردّ لا يُحصر: الشاشةُ عرضت مبلغًا، وورقةٌ
+             * تُكتب بغيره يقرؤها العميلُ بعد أن وافق على الأوّل.
+             */
+            $loyalty = ['points' => 0, 'discount' => 0.0];
+            $holder = $customer;
+            $requested = (int) ($data['redeem_points'] ?? 0);
 
-        return DB::transaction(function () use ($businessId, $customer, $data, $totals, $userId) {
+            if ($requested > 0) {
+                $holder = Customer::where('business_id', $businessId)->whereKey($customer->id)
+                    ->lockForUpdate()->firstOrFail();
+
+                $quote = self::loyaltyQuote($businessId, $holder, $lines, $requested);
+                if ($quote['points'] !== $requested) {
+                    throw ValidationException::withMessages([
+                        'redeem_points' => __('تغيّر رصيد نقاط العميل أو حدّ الاستبدال — راجع خصم النقاط قبل الحفظ.'),
+                    ]);
+                }
+
+                $loyalty = $quote;
+                $lines = self::withLoyalty($lines, $quote['discount']);
+            }
+
+            $totals = self::compute($businessId, $lines);
+
             $invoice = CustomerInvoice::create(
-                self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
+                self::attributes($businessId, $customer, $data, $totals) + [
+                    'created_by' => $userId,
+                    'loyalty_points' => $loyalty['points'],
+                    'loyalty_discount' => $loyalty['discount'],
+                ]
             );
+
+            if ($loyalty['points'] > 0) {
+                Loyalty::spend($holder, $loyalty['points'], 'استبدال على فاتورة عميل — '.$customer->name, [
+                    'customer_invoice_id' => $invoice->id,
+                    'source_key' => self::redeemKey($invoice),
+                ]);
+            }
 
             /*
              * والإضافةُ المدفوعةُ تعرف صنفَها — بمجموعته في النموذج، تُقرأ هنا
@@ -713,6 +773,9 @@ final class CustomerInvoices
                 'cancellation_reason' => $reason,
             ]);
 
+            // وما صُرف عليها من نقاطٍ يعود إلى صاحبه — كما يعيده إلغاءُ بيعة الصندوق
+            self::returnPoints($invoice);
+
             Activity::log('deleted', 'ألغى فاتورة عميل '.$invoice->number.' — '.$reason, [
                 'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
             ]);
@@ -868,6 +931,12 @@ final class CustomerInvoices
                 }
             }
 
+            /*
+             * ولا نقاطَ تُستبدل على ورقةٍ تجمع طلبات: خصمُ كلّ طلبٍ وقع عند
+             * بيعه ورُحّل في دفتره، وخصمٌ ثانٍ هنا ورقةٌ بغير ما في الدفتر.
+             */
+            unset($data['redeem_points']);
+
             $invoice = self::create($businessId, $customer, $data, $lines, $userId);
             $invoice->orders()->attach($orders->pluck('id')->all());
 
@@ -1018,6 +1087,9 @@ final class CustomerInvoices
          * وإعادةُ الحساب هنا تُنتج ورقةً بمبلغٍ غير الذي رُحّل في الدفتر —
          * فتفترق الذمّةُ التشغيليّة عن رصيد `receivable`.
          */
+        // ولا استبدالَ على ورقة طلبٍ واحد — خصمُه وقع عند بيعه (انظر `consolidate`)
+        unset($data['redeem_points']);
+
         $invoice = self::create((int) $order->business_id, $customer, $data + [
             'branch_id' => $order->branch_id,
             'issued_at' => $order->ordered_at ?? $order->created_at,
@@ -1142,5 +1214,162 @@ final class CustomerInvoices
         $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names], 'ar').')'.$suffix, 255, '');
 
         return [$main];
+    }
+
+    /* ═══════════════════ نقاطُ الولاء على الفاتورة ═══════════════════ */
+
+    /** مفتاحُ حركة الاستبدال — واحدٌ للورقة، وعكسُه بلاحقة */
+    public static function redeemKey(CustomerInvoice $invoice): string
+    {
+        return 'cinv:'.$invoice->id.':redeem';
+    }
+
+    /**
+     * أساسُ الاستبدال من بنود الورقة — كما يقرؤه الصندوق.
+     *
+     * `base` مجموعُ البنود قبل خصومها، و`other` ما خُصم منها — مقابلُ
+     * المجموع الفرعيّ والكوبون في نقطة البيع. فالقاعدةُ واحدة: نسبةٌ من
+     * المجموع، ولا تتجاوز ما بقي بعد خصوم البنود.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array{0: float, 1: float}
+     */
+    public static function loyaltyBase(array $lines): array
+    {
+        $base = 0.0;
+        $other = 0.0;
+
+        foreach ($lines as $line) {
+            $qty = round((float) ($line['quantity'] ?? 1), 3);
+            if ($qty <= 0) {
+                continue;
+            }
+            $gross = round($qty * round((float) ($line['unit_price'] ?? 0), 3), 3);
+            $base = round($base + $gross, 3);
+            $other = round($other + min(max(0.0, round((float) ($line['discount'] ?? 0), 3)), $gross), 3);
+        }
+
+        return [$base, $other];
+    }
+
+    /**
+     * عرضُ الاستبدال لهذا العميل على هذه البنود — من `Loyalty::quote` وحدَها.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public static function loyaltyQuote(int $businessId, ?Customer $customer, array $lines, ?int $requested = null): array
+    {
+        [$base, $other] = self::loyaltyBase($lines);
+
+        return Loyalty::quote(Loyalty::rules($businessId), $customer?->points, $base, $other, $requested);
+    }
+
+    /**
+     * يوزّع خصمَ النقاط على البنود بنسبة صافيها — ثمّ تحسبها `compute` كما هي.
+     *
+     * ═══ ولمَ في البنود لا في رأس الورقة ═══
+     *
+     * الضريبةُ تُحسب لكلّ بند، والقيدُ يقرأ المجموعَ الفرعيّ والخصمَ
+     * والضريبة، والإشعارُ الدائن يقرأ البنود. فخصمٌ في الرأس وحده يجعل
+     * الضريبةَ تُحسب على ما لم يُدفع، والبنودَ لا تجمع إلى إجماليّها. ونصيبُ
+     * كلّ بندٍ من الخصم يمرّ بالصيغة نفسِها التي يمرّ بها خصمُه اليدويّ —
+     * شاملةً أو غير شاملة — فلا صيغةَ ثانيةً تُكتب للضريبة.
+     *
+     * والتقريبُ لا يضيع: يُقصّ نصيبُ كلّ بندٍ إلى البيسة، ويُعطى الباقي لأكبر
+     * البنود حتى يستوفى — ولا يتجاوز بندٌ صافيه.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    public static function withLoyalty(array $lines, float $discount): array
+    {
+        $discount = round($discount, 3);
+        if ($discount <= 0) {
+            return $lines;
+        }
+
+        $nets = [];
+        foreach ($lines as $i => $line) {
+            $qty = round((float) ($line['quantity'] ?? 1), 3);
+            if ($qty <= 0) {
+                continue;
+            }
+            $gross = round($qty * round((float) ($line['unit_price'] ?? 0), 3), 3);
+            $own = round(min(max(0.0, round((float) ($line['discount'] ?? 0), 3)), $gross), 3);
+            $net = round($gross - $own, 3);
+            if ($net > 0) {
+                $nets[$i] = ['own' => $own, 'net' => $net];
+            }
+        }
+
+        $sum = round(array_sum(array_column($nets, 'net')), 3);
+        if ($sum < $discount) {
+            throw ValidationException::withMessages([
+                'redeem_points' => __('خصم النقاط أكبر من قيمة البنود.'),
+            ]);
+        }
+
+        $shares = [];
+        $given = 0.0;
+        foreach ($nets as $i => $n) {
+            $shares[$i] = floor(round($discount * $n['net'] / $sum * 1000, 6)) / 1000;
+            $given = round($given + $shares[$i], 3);
+        }
+
+        // الباقي من التقريب — لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه
+        $left = round($discount - $given, 3);
+        uasort($nets, fn ($a, $b) => $b['net'] <=> $a['net']);
+        foreach ($nets as $i => $n) {
+            if ($left <= 0) {
+                break;
+            }
+            $room = round($n['net'] - $shares[$i], 3);
+            $add = min($room, $left);
+            $shares[$i] = round($shares[$i] + $add, 3);
+            $left = round($left - $add, 3);
+        }
+
+        foreach ($shares as $i => $share) {
+            $lines[$i]['discount'] = round($nets[$i]['own'] + $share, 3);
+        }
+
+        return $lines;
+    }
+
+    /**
+     * يعيد إلى العميل ما صُرف على الورقة من نقاط — مرّةً واحدة.
+     *
+     * بحركةٍ ثانيةٍ لا بمحو الأولى، والمفتاحُ الفريد يمنع إعادتَها مرّتين.
+     */
+    public static function returnPoints(CustomerInvoice $invoice): void
+    {
+        $points = (int) $invoice->loyalty_points;
+        if ($points <= 0 || ! $invoice->customer_id) {
+            return;
+        }
+
+        $key = self::redeemKey($invoice).':reverse';
+        if (PointTransaction::where('source_key', $key)->exists()) {
+            return;
+        }
+
+        $customer = Customer::withTrashed()->where('business_id', $invoice->business_id)
+            ->whereKey($invoice->customer_id)->lockForUpdate()->first();
+        if (! $customer) {
+            return;
+        }
+
+        $customer->increment('points', $points);
+
+        PointTransaction::create([
+            'business_id' => (int) $invoice->business_id,
+            'customer_id' => $customer->id,
+            'customer_invoice_id' => $invoice->id,
+            'type' => 'earn',
+            'points' => $points,
+            'balance_after' => (int) $customer->points,
+            'note' => mb_substr('إعادة نقاط مستبدلة — إلغاء فاتورة '.($invoice->number ?: '#'.$invoice->id), 0, 250),
+            'source_key' => $key,
+        ]);
     }
 }

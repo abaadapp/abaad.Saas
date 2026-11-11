@@ -41,6 +41,8 @@ interface Invoice {
     attention_to: string | null;
     subtotal: number;
     discount_total: number;
+    loyalty_points?: number;
+    loyalty_discount?: number;
     tax_total: number;
     notes: string | null;
     /** لا تُطبع ولا تخرج من هذه الشاشة */
@@ -323,6 +325,12 @@ export default function CustomerInvoiceShow() {
                             <Row label={t('المجموع الفرعي')} value={m(invoice.subtotal)} />
                             {invoice.discount_total > 0 && (
                                 <Row label={t('الخصم')} value={m(invoice.discount_total)} />
+                            )}
+                            {(invoice.loyalty_discount ?? 0) > 0 && (
+                                <Row
+                                    label={`${t('منه خصم نقاط الولاء')} (${invoice.loyalty_points} ${t('نقطة')})`}
+                                    value={m(invoice.loyalty_discount ?? 0)}
+                                />
                             )}
                             {invoice.tax_total > 0 && <Row label={t('الضريبة')} value={m(invoice.tax_total)} />}
                             <Row label={t('الإجمالي')} value={m(invoice.total)} strong />

@@ -7,6 +7,7 @@ import {
     Contact,
     Info,
     Lock,
+    LogIn,
     Mail,
     MoreVertical,
     Pencil,
@@ -49,6 +50,8 @@ interface PlatformUser {
     status: string;
     last_login: string;
     created: string;
+    /** هل يُدخل باسمه؟ — من قاعدة الخادم (`ImpersonationController::refusal`) لا من تخمين هنا */
+    can_enter: boolean;
 }
 
 interface Props {
@@ -110,6 +113,16 @@ export default function UserShow() {
                 subtitle={t('عرض تفاصيل المستخدم وصلاحياته ونشاطه')}
                 actions={
                     <>
+                        {/* الدعمُ يرى الشاشة كما يراها هذا الحسابُ بعينه — بصلاحياته لا بصلاحيات المالك */}
+                        {user.can_enter && (
+                            <Button
+                                variant="outline"
+                                onClick={() => router.post(route('super-admin.users.impersonate', user.id))}
+                            >
+                                <LogIn />
+                                {t('دخول كمستخدم')}
+                            </Button>
+                        )}
                         <Button onClick={() => setEditing(true)}>
                             <Pencil />
                             {t('تعديل')}

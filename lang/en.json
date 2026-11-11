@@ -10511,5 +10511,11 @@
     "أعمدة التذييل وسطره الأخير، وواتساب وإنستغرام وساعات العمل.": "Footer columns and its last line, WhatsApp, Instagram and opening hours.",
     "خياراتٌ تُضبط مرّةً — مثل «أضف مع طلبك» في صفحة المنتج.": "Options set once — such as “Add to your order” on the product page.",
     "تابلت": "Tablet",
-    "منتجاتك وفئاتك": "Your products and categories"
+    "منتجاتك وفئاتك": "Your products and categories",
+    "دخول كمستخدم": "Sign in as user",
+    "تدخل الآن باسم :name (:role) في :business": "You are signed in as :name (:role) at :business",
+    "حساب محذوف — يُستعاد أولًا ثم يُدخل إليه.": "Deleted account — restore it first, then sign in as it.",
+    "حساب مدير منصة — لا يُدخل باسمه.": "Platform admin account — you cannot sign in as it.",
+    "حساب موقوف — صاحبه لا يدخله، فلا يُدخل باسمه.": "Suspended account — its owner cannot sign in, so neither can you as them.",
+    "حساب غير مربوط بنشاط تجاري — لا متجر يُدخل إليه.": "Account not linked to a business — there is no shop to enter."
 }

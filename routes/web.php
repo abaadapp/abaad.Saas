@@ -425,6 +425,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/users/{id}/toggle', [UserController::class, 'toggleStatus'])->name('users.toggle');
     Route::delete('/users/{id}', [UserController::class, 'destroy'])->name('users.destroy');
     Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
+    // «دخول كمستخدم» — الحسابُ المختار بصلاحياته كما هي (انظر `ImpersonationController::startUser`)
+    Route::post('/users/{id}/impersonate', [ImpersonationController::class, 'startUser'])->name('users.impersonate');
     Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
     // الباقات

@@ -214,6 +214,20 @@ export default function CustomerInvoiceShow() {
                 }
             />
 
+            {/*
+                وإصدارٌ رُدّ يقول لماذا.
+
+                الخادمُ يردّ الإصدارَ بسببه (`CustomerInvoiceController::issue`) —
+                ومنه مسودّةٌ صُرف رصيدُ نقاطها أو تغيّرت قواعدُها، فيُقال الرصيدُ
+                الآن وما يجوز. وكان الردُّ يقع في نموذجٍ لا يقرؤه أحد: يضغط
+                التاجرُ «إصدار» فلا يصدر شيءٌ ولا يُقال شيء.
+            */}
+            {(issue.errors as Record<string, string | undefined>).invoice && (
+                <Card role="alert" data-testid="issue-refused" className="mb-4 border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
+                    {(issue.errors as Record<string, string | undefined>).invoice}
+                </Card>
+            )}
+
             {invoice.status === 'ملغاة' && (
                 <Card className="mb-4 border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
                     {t('فاتورة ملغاة')} — {invoice.cancellation_reason}

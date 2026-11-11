@@ -35,6 +35,7 @@ use App\Support\InvoiceAttachments;
 use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
 use App\Support\InvoiceLineDetails;
+use App\Support\Loyalty;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
@@ -784,6 +785,8 @@ class CustomerInvoiceController extends Controller
             'balance' => $quote['balance'],
             'points' => $quote['max_points'],
             'discount' => $quote['max_discount'],
+            // وفي طريقة النسبة يُقال كم بالمئة من الفاتورة هذا الخصم — و`null` في المبلغ الثابت
+            'percent' => Loyalty::percentOf(Loyalty::rules($bid), $quote['max_points']),
         ];
     }
 

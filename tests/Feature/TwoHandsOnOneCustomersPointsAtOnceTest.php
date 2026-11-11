@@ -315,6 +315,34 @@ PHP;
         $this->assertSame(0, Order::where('business_id', $this->shop->id)->count(), 'ولا بيعةَ بخصمٍ لا رصيدَ له');
     }
 
+    /**
+     * وبطريقة النسبة كذلك: فاتورةٌ تصرف خمسَمئة (٥٠٪ من مئة) وصندوقٌ يطلب
+     * ثلاثَمئة (٣٠٪ = ثلاثون) في اللحظة نفسها — يسبق أحدُهما، ويُردّ الآخر
+     * بالرصيد الصحيح، ولا ينزل الرصيدُ تحت الصفر.
+     */
+    public function test_in_percent_mode_issuing_and_a_till_sale_at_once_spend_the_balance_once(): void
+    {
+        foreach (['loyalty_redeem_mode' => 'percent', 'loyalty_redeem_percent' => '10', 'loyalty_redeem_points' => '100'] as $key => $value) {
+            Setting::create(['business_id' => $this->shop->id, 'key' => $key, 'value' => $value]);
+        }
+        $draft = $this->draft();
+        $this->assertEqualsWithDelta(50.0, (float) $draft->total, 0.0001, '٥٠٠ نقطة = نصفُ المئة');
+
+        [$outs, $sale] = $this->race([sprintf(self::ISSUE, $draft->id)], [], fn () => $this->actingAs($this->owner)
+            ->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), [
+                'items' => [['id' => $this->product->id, 'name' => 'باقة', 'qty' => 1]],
+                'payment_method' => 'نقدي', 'customer_id' => $this->customer->id, 'client_uuid' => uniqid('race', true),
+                'redeem_points' => 300, 'redeem_discount' => 30,
+            ]));
+
+        $this->assertSame(['issued'], $outs);
+        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points')->assertJsonPath('loyalty.balance', 0);
+        $this->assertSame(0, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
+    }
+
     /** إلغاءٌ وإشعارٌ على الورقة نفسِها معًا: يعود ما صُرف كلُّه، مرّةً — ولا إشعارَ على ملغاة */
     public function test_a_cancel_and_a_credit_note_at_once_return_the_points_once(): void
     {

@@ -2095,6 +2095,8 @@ interface LoyaltyOffer {
     balance: number;
     points: number;
     discount: number;
+    /** كم بالمئة من الفاتورة المؤهّلة — في طريقة النسبة وحدها (`Loyalty::percentOf`) */
+    percent?: number | null;
 }
 
 interface ServerTotals {
@@ -2170,8 +2172,8 @@ export function LoyaltyPrompt({
             className="rounded-[10px] border border-[#fbcfe8] bg-[#fdf2f8] p-3 sm:col-span-2"
         >
             <p className="text-[13px] font-semibold text-[#be185d]">
-                {t('نقاط العميل:')} {offer.balance} — {t('يستطيع خصم')} {m(offer.discount)} {t('مقابل')} {offer.points}{' '}
-                {t('نقطة من هذه الفاتورة')}
+                {t('نقاط العميل:')} {offer.balance} — {t('يستطيع خصم')} {m(offer.discount)}
+                {offer.percent != null && ` (${offer.percent}%)`} {t('مقابل')} {offer.points} {t('نقطة من هذه الفاتورة')}
             </p>
 
             {choice === 'ask' ? (

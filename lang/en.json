@@ -10582,5 +10582,18 @@
     "لا يُفعَّل جهاز نقطة بيع أثناء الدعم — هذا المتصفّح متصفّحك لا صندوق المتجر.": "A POS device is not activated during support — this browser is yours, not the shop's till.",
     "حساب بلا صلاحية تفتح له شاشة — صاحبه نفسه لا يرى شيئًا بعد دخوله. أعطه صلاحية أولًا.": "This account has no permission that opens a screen — its owner sees nothing after signing in. Grant a permission first.",
     "هذا الحساب غير مُسنَد إلى أي فرع في متجره — لا صندوق له.": "This account is not assigned to any branch of its shop — it has no till.",
-    "حساب غير مُسنَد إلى أي فرع في متجره — أسنده إلى فرع أولًا.": "This account is not assigned to any branch of its shop — assign a branch first."
+    "حساب غير مُسنَد إلى أي فرع في متجره — أسنده إلى فرع أولًا.": "This account is not assigned to any branch of its shop — assign a branch first.",
+    "طريقة الاستبدال": "Redemption method",
+    "خصم بمبلغ ثابت": "Fixed amount discount",
+    "خصم بنسبة مئوية": "Percentage discount",
+    "مثال: 100 نقطة = 1 ريال": "Example: 100 points = 1 rial",
+    "مثال: 100 نقطة = 10% من الفاتورة": "Example: 100 points = 10% of the invoice",
+    "تساوي خصمًا بنسبة (%)": "Equal a discount of (%)",
+    "من الفاتورة المؤهّلة بعد الخصومات الأخرى": "Of the eligible invoice after other discounts",
+    "سقفٌ مستقلّ عن نسبة الخصم: لا يُخصم بالنقاط أكثر منه مهما كثر الرصيد": "A cap separate from the discount rate: points never discount more than this, however large the balance",
+    "فاتورة مؤهّلة بـ٢٠ وعميلٌ رصيده :balance نقطة: يُخصم :discount (:pct٪) مقابل :points نقطة.": "An eligible invoice of 20 and a customer with :balance points: :discount (:pct%) is discounted for :points points.",
+    "لا يُخصم شيء بهذه الأرقام — راجع النسبة وسقف الاستبدال.": "Nothing is discounted with these numbers — check the rate and the redemption cap.",
+    "قيمة النقطة تتبع الفاتورة: كلما كبرت الفاتورة كبر خصم النقاط نفسها، وسقف الاستبدال يحدّه.": "A point's value follows the invoice: the larger the invoice, the larger the same points' discount — and the redemption cap limits it.",
+    "فاتورة بـ١٠ تمنح :points نقطة — أي :pct٪ من فاتورة قادمة.": "An invoice of 10 earns :points points — that is :pct% of a future invoice.",
+    "أقصى ما يُمنح :max نقطة لكل وحدة شراء.": "The most that can be awarded is :max points per unit spent."
 }

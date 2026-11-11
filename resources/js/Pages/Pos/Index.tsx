@@ -922,7 +922,10 @@ export default function PosIndex() {
                                     <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[#be185d]">
                                         <Award className="size-4 shrink-0" />
                                         <span className="truncate">{t('نقاط العميل:')} {cart.selectedPoints}</span>
-                                        <span className="shrink-0 text-[#ec4899]">({money(cart.pointsWorth(cart.selectedPoints))})</span>
+                                        {/* وفي طريقة النسبة لا قيمةَ ثابتةً للنقطة: تُقال نسبتُها من الفاتورة */}
+                                        <span data-testid="points-worth" className="shrink-0 text-[#ec4899]">
+                                            ({cart.redeemByPercent ? `${cart.pointsPercent(cart.selectedPoints)}%` : money(cart.pointsWorth(cart.selectedPoints))})
+                                        </span>
                                     </span>
                                     {cart.canRedeem && cart.redeemDecided && (
                                         <button
@@ -963,8 +966,9 @@ export default function PosIndex() {
                                 {cart.canRedeem && !cart.redeemDecided && (
                                     <div data-testid="redeem-offer" role="alert" className="mt-2 rounded-lg bg-white/80 p-2">
                                         <p className="text-[11px] font-semibold text-[#be185d]">
-                                            {t('يستطيع العميل خصم')} {money(cart.redeemQuote.max_discount)} {t('مقابل')} {cart.redeemQuote.max_points}{' '}
-                                            {t('نقطة من هذه الفاتورة')}
+                                            {t('يستطيع العميل خصم')} {money(cart.redeemQuote.max_discount)}
+                                            {cart.redeemByPercent && ` (${cart.pointsPercent(cart.redeemQuote.max_points)}%)`} {t('مقابل')}{' '}
+                                            {cart.redeemQuote.max_points} {t('نقطة من هذه الفاتورة')}
                                         </p>
                                         <div className="mt-2 flex gap-2">
                                             <button
@@ -1031,7 +1035,11 @@ export default function PosIndex() {
                                         </span>
                                         <span className="font-normal text-[#ec4899]">
                                             {t('يبقى')} {cart.selectedPoints - cart.redeemPointsUsed} {t('نقطة')}
-                                            {' '}({money(cart.pointsWorth(cart.selectedPoints - cart.redeemPointsUsed))})
+                                            {' '}(
+                                            {cart.redeemByPercent
+                                                ? `${cart.pointsPercent(cart.selectedPoints - cart.redeemPointsUsed)}%`
+                                                : money(cart.pointsWorth(cart.selectedPoints - cart.redeemPointsUsed))}
+                                            )
                                         </span>
                                     </p>
                                 )}

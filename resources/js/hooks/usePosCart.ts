@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
 import { money } from '@/lib/format';
-import { loyaltyQuote, loyaltyWorth, type LoyaltyRules } from '@/lib/loyalty';
+import { loyaltyPercentOf, loyaltyQuote, loyaltyWorth, type LoyaltyRules } from '@/lib/loyalty';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
@@ -187,6 +187,9 @@ export interface LoyaltySettings {
     redeemPoints?: number;
     redeemValue?: number;
     redeemMinInvoice?: number;
+    /** طريقةُ الاستبدال — وغيابُها (خادمٌ أقدم) مبلغٌ ثابت */
+    redeemMode?: 'fixed' | 'percent';
+    redeemPercent?: number;
 }
 
 /**
@@ -482,17 +485,24 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     /** قواعدُ المتجر كما يقرؤها الخادم (`Loyalty::rules`) — بافتراضات الصرف القديم */
     const loyaltyRules: LoyaltyRules = useMemo(() => {
         const value = program.redeemValue === undefined ? 1 : Math.max(0, Number(program.redeemValue) || 0);
+        const percent = Math.min(100, Math.max(0, Number(program.redeemPercent) || 0));
+        const mode = program.redeemMode === 'percent' ? 'percent' : 'fixed';
         const on = program.loyaltyEnabled !== false;
         return {
             on,
-            redeem: on && program.redeemEnabled !== false && value > 0,
+            redeem: on && program.redeemEnabled !== false && (mode === 'percent' ? percent > 0 : value > 0),
             min_points: redeemMin,
+            mode,
             points: Math.max(1, Math.trunc(Number(program.redeemPoints) || 100)),
             value,
+            percent,
             min_invoice: Math.max(0, Number(program.redeemMinInvoice) || 0),
             max_pct: redeemMaxPct,
         };
-    }, [program.loyaltyEnabled, program.redeemEnabled, program.redeemPoints, program.redeemValue, program.redeemMinInvoice, redeemMin, redeemMaxPct]);
+    }, [
+        program.loyaltyEnabled, program.redeemEnabled, program.redeemMode, program.redeemPoints, program.redeemValue,
+        program.redeemPercent, program.redeemMinInvoice, redeemMin, redeemMaxPct,
+    ]);
 
     /* ----------------------------- الحسابات ----------------------------- */
 
@@ -555,8 +565,19 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const canRedeem = redeemQuote.eligible && online;
     const redeemOffline = redeemQuote.eligible && !online;
     const pointsToThreshold = Math.max(0, redeemMin - selectedPoints);
-    /** قيمةُ عددٍ من النقاط بعملة المتجر — للعرض بجانب الرصيد */
-    const pointsWorth = useCallback((points: number) => loyaltyWorth(loyaltyRules, points), [loyaltyRules]);
+    /**
+     * قيمةُ عددٍ من النقاط بعملة المتجر — للعرض بجانب الرصيد.
+     *
+     * وفي طريقة النسبة قيمتُها من هذه السلّة: ما بقي بعد الكوبون (الفاتورةُ
+     * المؤهّلة)، كما يحسبها الخادم. ونسبتُها تُعرض معها (`pointsPercent`).
+     */
+    const eligible = Math.max(0, roundMoney(base - couponDiscount));
+    const pointsWorth = useCallback(
+        (points: number) => loyaltyWorth(loyaltyRules, points, eligible),
+        [loyaltyRules, eligible],
+    );
+    const redeemByPercent = loyaltyRules.mode === 'percent';
+    const pointsPercent = useCallback((points: number) => loyaltyPercentOf(loyaltyRules, points), [loyaltyRules]);
 
     // سقف الاستبدال: نسبة من المجموع الفرعي، ولا يتجاوز المتبقّي بعد الكوبون
     const redeemCap = useMemo(() => {
@@ -1378,7 +1399,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
         selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage, blocked, blockOverrideReason,
         redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
-        redeemQuote, redeemDecided, chooseRedeem, pointsWorth, redeemOffline, redeemNotice,
+        redeemQuote, redeemDecided, chooseRedeem, pointsWorth, pointsPercent, redeemByPercent, redeemOffline, redeemNotice,
         // البرنامجُ عاملٌ — بما ردّه الخادمُ آخرَ مرّة إن ردّ
         loyaltyOn: program.loyaltyEnabled !== false,
         pointsToEarn, hasStockWarning, filteredCustomers,

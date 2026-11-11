@@ -37,11 +37,30 @@ class Loyalty
         'loyalty_earn_rate' => '5',
         'loyalty_redeem_enabled' => '1',
         'loyalty_redeem_min' => '100',
+        'loyalty_redeem_mode' => self::FIXED,
         'loyalty_redeem_points' => '100',
         'loyalty_redeem_value' => '1',
+        'loyalty_redeem_percent' => '10',
         'loyalty_redeem_min_invoice' => '0',
         'loyalty_redeem_max_pct' => '50',
     ];
+
+    /**
+     * طريقتا الاستبدال.
+     *
+     * `fixed`: كلُّ `points` نقطةً تساوي مبلغًا ثابتًا (`value`) بعملة المتجر —
+     * وهو ما كان يعمل به كلُّ متجرٍ قبل أن يصير الاختيارُ له، فهو الافتراض.
+     *
+     * `percent`: كلُّ `points` نقطةً تساوي نسبةً (`percent`) من الفاتورة
+     * المؤهّلة — ما بقي منها بعد الخصومات الأخرى. فقيمةُ النقطة تتبع الفاتورة:
+     * مئةُ نقطةٍ بعشرةٍ بالمئة تخصم ريالًا من عشرة، وعشرةً من مئة.
+     *
+     * والسقفُ (`max_pct`) والحدّان الأدنيان قيودٌ مستقلّةٌ تُطبَّق على الطريقتين
+     * بعد الحساب — لا طريقةُ حساب.
+     */
+    public const FIXED = 'fixed';
+
+    public const PERCENT = 'percent';
 
     /** أسبابُ عدم الأهليّة — رموزٌ تقرؤها الشاشة وتترجمها */
     public const OFF = 'off';
@@ -57,7 +76,7 @@ class Loyalty
     /**
      * قواعدُ المتجر كما تُطبَّق الآن — مفتاحُه وباقتُه وأرقامُه.
      *
-     * @return array{on: bool, redeem: bool, earn_rate: float, min_points: int, points: int, value: float, min_invoice: float, max_pct: float}
+     * @return array{on: bool, redeem: bool, earn_rate: float, min_points: int, mode: string, points: int, value: float, percent: float, min_invoice: float, max_pct: float}
      */
     public static function rules(int $businessId): array
     {
@@ -76,15 +95,21 @@ class Loyalty
             && PlanFeatures::allows(Business::find($businessId), 'loyalty');
 
         $value = max(0.0, (float) $v('loyalty_redeem_value'));
+        $percent = max(0.0, min(100.0, (float) $v('loyalty_redeem_percent')));
+        // وقيمةٌ لا تُعرف طريقتُها تُقرأ بالطريقة القديمة — لا تُفتح على التاجر طريقةٌ لم يخترها
+        $mode = $v('loyalty_redeem_mode') === self::PERCENT ? self::PERCENT : self::FIXED;
 
         return [
             'on' => $on,
             // وقيمةٌ صفريّة للنقاط لا تُصرف: لا خصمَ يُعرض بصفر ولا رصيدَ يُنقص بلا مقابل
-            'redeem' => $on && $v('loyalty_redeem_enabled') !== '0' && $value > 0,
+            'redeem' => $on && $v('loyalty_redeem_enabled') !== '0'
+                && ($mode === self::PERCENT ? $percent > 0 : $value > 0),
             'earn_rate' => max(0.0, (float) $v('loyalty_earn_rate')),
             'min_points' => max(0, (int) $v('loyalty_redeem_min')),
+            'mode' => $mode,
             'points' => max(1, (int) $v('loyalty_redeem_points')),
             'value' => $value,
+            'percent' => $percent,
             'min_invoice' => max(0.0, (float) $v('loyalty_redeem_min_invoice')),
             'max_pct' => max(0.0, min(100.0, (float) $v('loyalty_redeem_max_pct'))),
         ];
@@ -100,15 +125,22 @@ class Loyalty
      * كم يُستبدل وكم يساوي — الحسابُ الوحيد للخصم.
      *
      * `$base` ما قبل أيّ خصم (المجموعُ الفرعيّ كما يقرؤه الصندوق)، و`$other`
-     * ما خُصم منه قبل النقاط (كوبونٌ أو خصمُ بند). والسقفُ أصغرُ اثنين: نسبةٌ
-     * من `$base`، وما بقي بعد `$other` — فلا تُغطّي النقاطُ أكثرَ ممّا بقي.
-     * والحدُّ الأدنى للفاتورة يُقاس على ما بقي بعد `$other`: ما سيدفعه الزبون
-     * لولا النقاط.
+     * ما خُصم منه قبل النقاط (كوبونٌ أو خصمُ بند). وما بقي بينهما هو الفاتورةُ
+     * المؤهّلة: ما سيدفعه الزبونُ لولا النقاط.
+     *
+     *   1. الحدّان الأدنيان: رصيدٌ دون `min_points`، أو فاتورةٌ مؤهّلةٌ دون
+     *      `min_invoice`، لا يُستبدل عليهما.
+     *   2. السقف: أصغرُ اثنين — نسبةُ `max_pct` من `$base`، وما بقي بعد
+     *      `$other`. فلا تُغطّي النقاطُ أكثرَ ممّا بقي.
+     *   3. كم نقطةً يبلغها السقفُ بقيمة النقطة في طريقة المتجر (`unit`)،
+     *      ولا أكثرَ من الرصيد.
+     *   4. قيمتُها تُقصّ إلى البيسة (`worth`)، ثمّ يُصرف أقلُّ عددٍ يبلغ تلك
+     *      القيمة (`fewest`) — فلا تُصرف نقطةٌ لم يقابلها خصم.
      *
      * و`$requested`: `null` يعني «أقصى ما يجوز» (عرضُ التنبيه)، ورقمٌ يعني ما
-     * اختاره الكاشير — ويُحصر بالأقصى ولا يتجاوزه.
+     * اختاره الكاشير — ويُحصر بالأقصى ولا يتجاوزه، ثمّ يمرّ بالخطوة الرابعة.
      *
-     * @param  array{on: bool, redeem: bool, min_points: int, points: int, value: float, min_invoice: float, max_pct: float}  $rules
+     * @param  array{on: bool, redeem: bool, min_points: int, mode?: string, points: int, value: float, percent?: float, min_invoice: float, max_pct: float}  $rules
      * @return array{eligible: bool, reason: ?string, balance: int, max_points: int, max_discount: float, points: int, discount: float}
      */
     public static function quote(array $rules, ?int $balance, float $base, float $other = 0.0, ?int $requested = null): array
@@ -142,24 +174,32 @@ class Loyalty
         $cap = min(round($base * $rules['max_pct'] / 100, 3), $remaining);
 
         // كم نقطةً تغطّي السقف — ولا كسرَ نقطة: ما لا يبلغ نقطةً كاملة لا يُصرف
-        $byCap = (int) floor(round($cap * $rules['points'] / $rules['value'], 6));
-        $max = min($balance, $byCap);
+        $byCap = self::isPercent($rules)
+            ? (int) floor(round($cap * $rules['points'] * 100 / ($remaining * $rules['percent']), 6))
+            : (int) floor(round($cap * $rules['points'] / $rules['value'], 6));
+        $max = self::fewest($rules, min($balance, $byCap), $remaining);
 
         if ($max <= 0) {
             return $none(self::NOTHING_TO_DISCOUNT);
         }
 
-        $points = $requested === null ? $max : max(0, min($requested, $max));
+        $points = $requested === null ? $max : self::fewest($rules, max(0, min($requested, $max)), $remaining);
 
         return [
             'eligible' => true,
             'reason' => null,
             'balance' => $balance,
             'max_points' => $max,
-            'max_discount' => self::worth($rules, $max),
+            'max_discount' => self::worth($rules, $max, $remaining),
             'points' => $points,
-            'discount' => self::worth($rules, $points),
+            'discount' => self::worth($rules, $points, $remaining),
         ];
+    }
+
+    /** هل يستبدل المتجرُ نسبةً من الفاتورة — وقواعدُ بلا طريقةٍ (حالاتٌ قديمة) مبلغٌ ثابت */
+    private static function isPercent(array $rules): bool
+    {
+        return ($rules['mode'] ?? self::FIXED) === self::PERCENT;
     }
 
     /**
@@ -167,17 +207,79 @@ class Loyalty
      *
      * التدويرُ إلى أعلى يجعل خصمَ ثلاثمئةٍ وثلاثٍ وثلاثين نقطةً أكبرَ من
      * السقف بجزءٍ من ألف، فيخرج من الصندوق ما لم تغطِّه نقطة. والقصُّ يُبقي
-     * الخصمَ دون ما تستحقّه النقاطُ بأقلَّ من بيسة — لصالح المتجر لا عليه.
+     * الخصمَ دون ما تستحقّه النقاطُ بأقلَّ من بيسة — لصالح المتجر لا عليه،
+     * والنقاطُ التي لم يقابلها ذلك الكسرُ لا تُصرف (`fewest`).
      *
-     * @param  array{points: int, value: float}  $rules
+     * و`$eligible` الفاتورةُ المؤهّلة — لا تُقرأ إلّا في طريقة النسبة، حيث
+     * النقاطُ نسبةٌ منها: `points × eligible × percent ÷ 100 ÷ rules.points`.
+     *
+     * @param  array{mode?: string, points: int, value: float, percent?: float}  $rules
      */
-    public static function worth(array $rules, int $points): float
+    public static function worth(array $rules, int $points, float $eligible = 0.0): float
     {
         if ($points <= 0 || $rules['points'] <= 0) {
             return 0.0;
         }
 
+        if (self::isPercent($rules)) {
+            $eligible = max(0.0, round($eligible, 3));
+
+            return floor(round($points * $eligible * (float) $rules['percent'] / 100 / $rules['points'] * 1000, 6)) / 1000;
+        }
+
         return floor(round($points * $rules['value'] / $rules['points'] * 1000, 6)) / 1000;
+    }
+
+    /**
+     * أقلُّ عددٍ من النقاط يبلغ قيمةَ `$points` نفسَها — ولا يزيد عليه.
+     *
+     * القيمةُ تُقصّ إلى البيسة، فقد تساوي ألفُ نقطةٍ ما تساويه تسعُمئةٍ وتسعٌ
+     * وتسعون (ثلاثةُ آلافِ نقطةٍ بريال: ٠٫٣٣٣ للعددين)، وتساوي نقطةٌ واحدةٌ
+     * صفرًا حين تكون قيمتُها نصفَ بيسة. فصرفُ العدد كما طُلب يأخذ من رصيد
+     * الزبون نقاطًا لم يقابلها خصم. فيُصرف أقلُّ عددٍ يبلغ القيمةَ نفسَها،
+     * وما لا يبلغ بيسةً لا يُصرف منه شيء.
+     *
+     * وفي الصرف القديم (مئةُ نقطةٍ بريال: النقطةُ عشرُ بيسات) العددُ هو هو.
+     */
+    private static function fewest(array $rules, int $points, float $eligible): int
+    {
+        $worth = self::worth($rules, $points, $eligible);
+        if ($points <= 0 || $worth <= 0) {
+            return 0;
+        }
+
+        $unit = self::isPercent($rules)
+            ? max(0.0, round($eligible, 3)) * (float) $rules['percent'] / 100 / $rules['points']
+            : $rules['value'] / $rules['points'];
+
+        // التقديرُ من القسمة، ثمّ يُصحَّح بالدالّة نفسِها — فلا يُعتمد على كسرٍ عشريٍّ وحده
+        $fewest = (int) max(1, min($points, ceil(round($worth / $unit, 6))));
+        while ($fewest < $points && self::worth($rules, $fewest, $eligible) < $worth) {
+            $fewest++;
+        }
+        while ($fewest > 1 && self::worth($rules, $fewest - 1, $eligible) >= $worth) {
+            $fewest--;
+        }
+
+        return $fewest;
+    }
+
+    /**
+     * كم بالمئة من الفاتورة المؤهّلة يخصمها عددٌ من النقاط — في طريقة النسبة.
+     *
+     * للعرض («٥٠٠ نقطة = ٥٠٪»)، لا للحساب — الحسابُ `quote`. ومرآتُه
+     * `loyaltyPercentOf` في الشاشة. و`null` في طريقة المبلغ الثابت.
+     */
+    public static function percentOf(array $rules, int $points): ?float
+    {
+        if (! self::isPercent($rules)) {
+            return null;
+        }
+        if ($points <= 0 || $rules['points'] <= 0) {
+            return 0.0;
+        }
+
+        return min(100.0, floor(round($points * (float) $rules['percent'] / $rules['points'] * 100, 6)) / 100);
     }
 
     /**
@@ -214,7 +316,7 @@ class Loyalty
      * (`PosController::redemptionChanged`): قواعدُ تبدّلت بعد فتح الشاشة تُردّ
      * إليها بالشكل نفسِه، فتحسب مرآتُها (`lib/loyalty.ts`) ما يحسبه الخادم.
      *
-     * @return array{loyaltyEnabled: bool, redeemEnabled: bool, redeemMaxPct: float, earnRate: float, redeemMin: int, redeemPoints: int, redeemValue: float, redeemMinInvoice: float}
+     * @return array{loyaltyEnabled: bool, redeemEnabled: bool, redeemMaxPct: float, earnRate: float, redeemMin: int, redeemMode: string, redeemPoints: int, redeemValue: float, redeemPercent: float, redeemMinInvoice: float}
      */
     public static function tillSettings(int $businessId): array
     {
@@ -226,8 +328,10 @@ class Loyalty
             'redeemMaxPct' => $rules['max_pct'],
             'earnRate' => $rules['earn_rate'],
             'redeemMin' => $rules['min_points'],
+            'redeemMode' => $rules['mode'],
             'redeemPoints' => $rules['points'],
             'redeemValue' => $rules['value'],
+            'redeemPercent' => $rules['percent'],
             'redeemMinInvoice' => $rules['min_invoice'],
         ];
     }

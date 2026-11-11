@@ -500,6 +500,465 @@
                 "points": 0,
                 "discount": 0.0
             }
+        },
+        {
+            "name": "percent: 100 points = 10%, a big balance stops at the 50% cap",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 500,
+                "max_discount": 50.0,
+                "points": 500,
+                "discount": 50.0
+            }
+        },
+        {
+            "name": "percent: a balance below the cap spends all of it",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 300,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 300,
+                "max_points": 300,
+                "max_discount": 30.0,
+                "points": 300,
+                "discount": 30.0
+            }
+        },
+        {
+            "name": "percent: computed on what is left after a coupon",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 300,
+            "base": 100,
+            "other": 20,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 300,
+                "max_points": 300,
+                "max_discount": 24.0,
+                "points": 300,
+                "discount": 24.0
+            }
+        },
+        {
+            "name": "percent: the coupon leaves less than the cap, the rest is the limit",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 100,
+            "other": 60,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 1000,
+                "max_discount": 40.0,
+                "points": 1000,
+                "discount": 40.0
+            }
+        },
+        {
+            "name": "percent: a tiny invoice, each point is half a baisa",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 0.5,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 500,
+                "max_discount": 0.25,
+                "points": 500,
+                "discount": 0.25
+            }
+        },
+        {
+            "name": "percent: asked for 3 points that buy one baisa, spends 2",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 0.5,
+            "other": 0,
+            "requested": 3,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 500,
+                "max_discount": 0.25,
+                "points": 2,
+                "discount": 0.001
+            }
+        },
+        {
+            "name": "percent: one point worth less than a baisa spends nothing",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 0.5,
+            "other": 0,
+            "requested": 1,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 500,
+                "max_discount": 0.25,
+                "points": 0,
+                "discount": 0.0
+            }
+        },
+        {
+            "name": "percent: a large invoice at 2.5% per 100 points, full cap",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 2.5,
+                "min_invoice": 0.0,
+                "max_pct": 100.0
+            },
+            "balance": 1000000,
+            "base": 12345.678,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000000,
+                "max_points": 4000,
+                "max_discount": 12345.678,
+                "points": 4000,
+                "discount": 12345.678
+            }
+        },
+        {
+            "name": "percent: below the minimum eligible invoice",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 5.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 10,
+            "other": 6,
+            "requested": null,
+            "expect": {
+                "eligible": false,
+                "reason": "below_min_invoice",
+                "balance": 1000,
+                "max_points": 0,
+                "max_discount": 0.0,
+                "points": 0,
+                "discount": 0.0
+            }
+        },
+        {
+            "name": "percent: below the minimum points",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 99,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": false,
+                "reason": "below_min_points",
+                "balance": 99,
+                "max_points": 0,
+                "max_discount": 0.0,
+                "points": 0,
+                "discount": 0.0
+            }
+        },
+        {
+            "name": "percent: fractional rate and fractional coupon",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 150,
+                "value": 1.0,
+                "percent": 7.5,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 777,
+            "base": 33.333,
+            "other": 3.333,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 777,
+                "max_points": 777,
+                "max_discount": 11.655,
+                "points": 777,
+                "discount": 11.655
+            }
+        },
+        {
+            "name": "percent: the cashier asks for fewer points than allowed",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 80,
+            "other": 0,
+            "requested": 250,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 500,
+                "max_discount": 40.0,
+                "points": 250,
+                "discount": 20.0
+            }
+        },
+        {
+            "name": "percent: asked for more than allowed is clamped to the cap",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 80,
+            "other": 0,
+            "requested": 900,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 500,
+                "max_discount": 40.0,
+                "points": 500,
+                "discount": 40.0
+            }
+        },
+        {
+            "name": "percent: a zero cap redeems nothing",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 0.0
+            },
+            "balance": 1000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": false,
+                "reason": "nothing_to_discount",
+                "balance": 1000,
+                "max_points": 0,
+                "max_discount": 0.0,
+                "points": 0,
+                "discount": 0.0
+            }
+        },
+        {
+            "name": "fixed: 3000 points = 1, never spend points that buy nothing (max)",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 3000,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 5000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 5000,
+                "max_points": 4998,
+                "max_discount": 1.666,
+                "points": 4998,
+                "discount": 1.666
+            }
+        },
+        {
+            "name": "fixed: 3000 points = 1, asked for 1000 spends 999 for 0.333",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 3000,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 5000,
+            "base": 100,
+            "other": 0,
+            "requested": 1000,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 5000,
+                "max_points": 4998,
+                "max_discount": 1.666,
+                "points": 999,
+                "discount": 0.333
+            }
+        },
+        {
+            "name": "fixed: legacy 100 = 1 with an explicit mode spends what it always did",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 50.0
+            },
+            "balance": 1000,
+            "base": 100,
+            "other": 0,
+            "requested": 333,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 1000,
+                "max_points": 1000,
+                "max_discount": 10.0,
+                "points": 333,
+                "discount": 3.33
+            }
         }
     ]
 }

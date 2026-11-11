@@ -21,7 +21,7 @@ import {
 } from '@/Components/ui/table';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { loyaltyWorth } from '@/lib/loyalty';
+import { loyaltyPercentOf, loyaltyQuote, loyaltyWorth, type LoyaltyMode } from '@/lib/loyalty';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
@@ -60,17 +60,46 @@ export default function Loyalty() {
         loyalty_redeem_min: settings.loyalty_redeem_min ?? '100',
         // وما صار للتاجر أن يحدّده — وافتراضُه الصرفُ القديم (`Loyalty::DEFAULTS`)
         loyalty_redeem_enabled: (settings.loyalty_redeem_enabled ?? '1') === '1',
+        loyalty_redeem_mode: settings.loyalty_redeem_mode === 'percent' ? 'percent' : 'fixed',
         loyalty_redeem_points: settings.loyalty_redeem_points ?? '100',
         loyalty_redeem_value: settings.loyalty_redeem_value ?? '1',
+        loyalty_redeem_percent: settings.loyalty_redeem_percent ?? '10',
         loyalty_redeem_min_invoice: settings.loyalty_redeem_min_invoice ?? '0',
     });
 
     // وقيمةُ النقاط كما يحدّدها التاجر — والحسابُ من مرآة الخادم (`lib/loyalty.ts`)
     const rate = parseFloat(form.data.loyalty_earn_rate) || 0;
+    const byPercent = form.data.loyalty_redeem_mode === 'percent';
     const worthRules = {
+        mode: form.data.loyalty_redeem_mode as LoyaltyMode,
         points: Math.max(1, Math.trunc(Number(form.data.loyalty_redeem_points) || 0)),
         value: Math.max(0, Number(form.data.loyalty_redeem_value) || 0),
+        percent: Math.min(100, Math.max(0, Number(form.data.loyalty_redeem_percent) || 0)),
     };
+
+    /*
+     * ومثالٌ في طريقة النسبة يمرّ بالحساب كلِّه — لا بالنسبة وحدها.
+     *
+     * فاتورةٌ مؤهّلةٌ بعشرين، والرصيدُ ضعفا ما يُستبدل به: يُرى أثرُ السقف
+     * (`max_pct`) والحدّين في الرقم نفسِه الذي سيراه الكاشير.
+     */
+    const percentExample = byPercent
+        ? loyaltyQuote(
+              {
+                  on: true,
+                  redeem: worthRules.percent > 0,
+                  min_points: 0,
+                  mode: 'percent',
+                  points: worthRules.points,
+                  value: worthRules.value,
+                  percent: worthRules.percent,
+                  min_invoice: 0,
+                  max_pct: Math.min(100, Math.max(0, Number(form.data.loyalty_redeem_max_pct) || 0)),
+              },
+              worthRules.points * 2,
+              20,
+          )
+        : null;
 
     return (
         <AdminLayout title="برنامج ولاء">
@@ -127,6 +156,41 @@ export default function Loyalty() {
                                     onChange={(v) => form.setData('loyalty_redeem_enabled', v)}
                                 />
                             </div>
+                            {/*
+                                ═══ طريقةُ الاستبدال ═══
+
+                                مبلغٌ ثابتٌ لكلّ عددٍ من النقاط (كما كان)، أو نسبةٌ
+                                من الفاتورة المؤهّلة. والسقفُ والحدّان تحتهما
+                                قيودٌ مستقلّة تُطبَّق على الطريقتين.
+                            */}
+                            <Field label="طريقة الاستبدال" error={form.errors.loyalty_redeem_mode}>
+                                <div role="radiogroup" className="grid grid-cols-2 gap-2" data-testid="redeem-mode">
+                                    {(
+                                        [
+                                            ['fixed', t('خصم بمبلغ ثابت'), t('مثال: 100 نقطة = 1 ريال')],
+                                            ['percent', t('خصم بنسبة مئوية'), t('مثال: 100 نقطة = 10% من الفاتورة')],
+                                        ] as const
+                                    ).map(([mode, label, hint]) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={form.data.loyalty_redeem_mode === mode}
+                                            data-testid={`redeem-mode-${mode}`}
+                                            onClick={() => form.setData('loyalty_redeem_mode', mode)}
+                                            className={cn(
+                                                'rounded-[10px] border px-3 py-2 text-start transition',
+                                                form.data.loyalty_redeem_mode === mode
+                                                    ? 'border-[#db2777] bg-[#fdf2f8] text-[#be185d]'
+                                                    : 'border-[var(--ui-border,#e8e8e8)] bg-white text-[#374151]',
+                                            )}
+                                        >
+                                            <span className="block text-[13px] font-semibold">{label}</span>
+                                            <span className="block text-[11px] text-[#6b7280]">{hint}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </Field>
                             <div className="grid grid-cols-2 gap-3">
                                 <Field
                                     label="عدد النقاط"
@@ -143,21 +207,40 @@ export default function Loyalty() {
                                         onChange={(e) => form.setData('loyalty_redeem_points', e.target.value)}
                                     />
                                 </Field>
-                                <Field
-                                    label="تساوي خصمًا بقيمة"
-                                    hint="بعملة النشاط"
-                                    error={form.errors.loyalty_redeem_value}
-                                >
-                                    <Input
-                                        type="number"
-                                        min="0.001"
-                                        step="0.001"
-                                        dir="ltr"
-                                        data-testid="redeem-value"
-                                        value={form.data.loyalty_redeem_value}
-                                        onChange={(e) => form.setData('loyalty_redeem_value', e.target.value)}
-                                    />
-                                </Field>
+                                {byPercent ? (
+                                    <Field
+                                        label="تساوي خصمًا بنسبة (%)"
+                                        hint="من الفاتورة المؤهّلة بعد الخصومات الأخرى"
+                                        error={form.errors.loyalty_redeem_percent}
+                                    >
+                                        <Input
+                                            type="number"
+                                            min="0.01"
+                                            max="100"
+                                            step="0.01"
+                                            dir="ltr"
+                                            data-testid="redeem-percent"
+                                            value={form.data.loyalty_redeem_percent}
+                                            onChange={(e) => form.setData('loyalty_redeem_percent', e.target.value)}
+                                        />
+                                    </Field>
+                                ) : (
+                                    <Field
+                                        label="تساوي خصمًا بقيمة"
+                                        hint="بعملة النشاط"
+                                        error={form.errors.loyalty_redeem_value}
+                                    >
+                                        <Input
+                                            type="number"
+                                            min="0.001"
+                                            step="0.001"
+                                            dir="ltr"
+                                            data-testid="redeem-value"
+                                            value={form.data.loyalty_redeem_value}
+                                            onChange={(e) => form.setData('loyalty_redeem_value', e.target.value)}
+                                        />
+                                    </Field>
+                                )}
                             </div>
                             <Field
                                 label="الحدّ الأدنى لقيمة الفاتورة المؤهّلة"
@@ -175,7 +258,11 @@ export default function Loyalty() {
                             </Field>
                             <Field
                                 label="أقصى نسبة استبدال من الفاتورة (%)"
-                                hint="سقفٌ يمنع أن تُغطّي النقاط الفاتورة كلّها"
+                                hint={
+                                    byPercent
+                                        ? 'سقفٌ مستقلّ عن نسبة الخصم: لا يُخصم بالنقاط أكثر منه مهما كثر الرصيد'
+                                        : 'سقفٌ يمنع أن تُغطّي النقاط الفاتورة كلّها'
+                                }
                                 error={form.errors.loyalty_redeem_max_pct}
                             >
                                 <Input
@@ -204,12 +291,35 @@ export default function Loyalty() {
                         </div>
 
                         {/* مثالٌ محسوب: النِسَب المجرّدة لا تُقرأ حتى تُترجَم إلى فاتورة */}
-                        {rate > 0 && (
+                        {rate > 0 && !byPercent && (
                             <p className="mt-4 rounded-[12px] bg-[#fafafa] px-4 py-3 text-[13px] text-[#6b7280]">
                                 {t('فاتورة بـ١٠ تمنح :points نقطة — أي ما قيمته :value عند الاستبدال.', {
                                     points: number(Math.floor(rate * 10)),
                                     value: loyaltyWorth(worthRules, Math.floor(rate * 10)).toFixed(3),
                                 })}
+                            </p>
+                        )}
+                        {percentExample && (
+                            <p data-testid="redeem-percent-example" className="mt-4 rounded-[12px] bg-[#fafafa] px-4 py-3 text-[13px] text-[#6b7280]">
+                                {percentExample.eligible
+                                    ? t('فاتورة مؤهّلة بـ٢٠ وعميلٌ رصيده :balance نقطة: يُخصم :discount (:pct٪) مقابل :points نقطة.', {
+                                          balance: number(worthRules.points * 2),
+                                          discount: percentExample.max_discount.toFixed(3),
+                                          pct: loyaltyPercentOf(worthRules, percentExample.max_points),
+                                          points: number(percentExample.max_points),
+                                      })
+                                    : t('لا يُخصم شيء بهذه الأرقام — راجع النسبة وسقف الاستبدال.')}
+                                <span className="mt-1 block text-[12px]">
+                                    {t('قيمة النقطة تتبع الفاتورة: كلما كبرت الفاتورة كبر خصم النقاط نفسها، وسقف الاستبدال يحدّه.')}
+                                </span>
+                                {rate > 0 && (
+                                    <span className="mt-1 block text-[12px]">
+                                        {t('فاتورة بـ١٠ تمنح :points نقطة — أي :pct٪ من فاتورة قادمة.', {
+                                            points: number(Math.floor(rate * 10)),
+                                            pct: loyaltyPercentOf(worthRules, Math.floor(rate * 10)),
+                                        })}
+                                    </span>
+                                )}
                             </p>
                         )}
 

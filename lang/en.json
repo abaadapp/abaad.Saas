@@ -10554,5 +10554,22 @@
     "بيعة :number وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة": "Sale :number arrived after an outage and its points discount needs review",
     "طُلبت :requested نقطة وصُرفت :spent — خصمٌ بقيمة :gap لم تغطّه نقاط العميل. لم يُغيَّر المبلغ المدفوع.": ":requested points were requested and :spent spent — a :gap discount isn't covered by the customer's points. The amount paid was not changed.",
     "تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، والخصم المتاح :discount مقابل :points نقطة. أكّد من جديد قبل الدفع.": "The customer's points balance or the redemption rules changed — the balance is now :balance points, and the available discount is :discount for :points points. Confirm again before paying.",
-    "تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط على هذه الفاتورة. أكمل البيع بلا خصم.": "The customer's points balance or the redemption rules changed — the balance is now :balance points, and no points discount applies to this invoice. Complete the sale without it."
+    "تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط على هذه الفاتورة. أكمل البيع بلا خصم.": "The customer's points balance or the redemption rules changed — the balance is now :balance points, and no points discount applies to this invoice. Complete the sale without it.",
+    "دخول كمستخدم": "Sign in as user",
+    "تدخل الآن باسم :name (:role) في :business": "You are signed in as :name (:role) at :business",
+    "حساب محذوف — يُستعاد أولًا ثم يُدخل إليه.": "Deleted account — restore it first, then sign in as it.",
+    "حساب مدير منصة — لا يُدخل باسمه.": "Platform admin account — you cannot sign in as it.",
+    "حساب موقوف — صاحبه لا يدخله، فلا يُدخل باسمه.": "Suspended account — its owner cannot sign in, so neither can you as them.",
+    "حساب غير مربوط بنشاط تجاري — لا متجر يُدخل إليه.": "Account not linked to a business — there is no shop to enter.",
+    "النظام في وضع الصيانة": "The system is in maintenance mode",
+    "الحساب موقوف": "The account is suspended",
+    "الحساب محذوف": "The account is deleted",
+    "المتجر معطَّل": "The shop is disabled",
+    "اشتراك المتجر منتهٍ": "The shop's subscription has ended",
+    "اشتراك المتجر بانتظار السداد": "The shop's subscription is awaiting payment",
+    "للعرض فقط أثناء الدعم — :reason. لا يُحفظ هنا شيء.": "View only during support — :reason. Nothing is saved here.",
+    "لا يُعدَّل الملف الشخصي (الاسم والبريد وكلمة المرور) أثناء الدخول باسم غيرك.": "The profile (name, email and password) cannot be changed while signed in as someone else.",
+    "كل ما تفعله يُسجَّل باسمه وباسمك معًا": "Everything you do is recorded under their name and yours",
+    "للعرض فقط — :reason": "View only — :reason",
+    "طلب عبر الدعم": "Request via support"
 }

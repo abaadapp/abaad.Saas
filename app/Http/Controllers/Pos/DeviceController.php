@@ -38,7 +38,8 @@ class DeviceController extends Controller
      */
     public function setup()
     {
-        if (PosTerminal::activated()) {
+        // جلسةُ الدعم بلا شاشة تفعيل: صندوقُها صندوقُ المستخدم في فرعه (`PosTerminal::supporting`)
+        if (PosTerminal::activated() || PosTerminal::supporting()) {
             return redirect()->route('pos.index');
         }
 

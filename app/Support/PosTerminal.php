@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\PosDevice;
+use App\Models\User;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Str;
@@ -39,6 +40,47 @@ class PosTerminal
 
     /** سنتان: عمر جهاز الصندوق أطول من أي جلسة */
     private const DAYS = 730;
+
+    /* ------------------------------ جلسة الدعم ------------------------------ */
+
+    /**
+     * أهذه جلسةُ دعم — مديرُ المنصّة داخلٌ باسم غيره؟
+     *
+     * ═══ ولماذا يسأل الصندوقُ عنها ═══
+     *
+     * المتصفّحُ في جلسة الدعم متصفّحُ مدير المنصّة، لا صندوقُ المتجر الذي
+     * يدخله. وكوكي الجهاز فيه بقيّةُ زيارةٍ سابقة: دخل متجرًا بفرعٍ واحد ففتح
+     * نقطةَ البيع، فرُبط المتصفّحُ به صندوقًا سنتين (`PageController::index`).
+     *
+     * فلمّا دخل بعدها كاشيرًا في متجرٍ آخر ردّه `BindPosBranch`: «جهازُ متجرٍ
+     * آخر» — وأخرج الجلسةَ كلَّها، وفيها حسابُ مدير المنصّة نفسِه. فوقف على
+     * شاشة الدخول يُطلب منه البريدُ وكلمةُ المرور، وعليها اسمُ المتجر الأوّل.
+     *
+     * فالقاعدة: في جلسة الدعم لا يُقرأ كوكي الصندوق ولا يُكتب. الصندوقُ صندوقُ
+     * المستخدم المختار في فرعه (`supportBranchId`)، والمتصفّحُ يخرج كما دخل.
+     */
+    public static function supporting(): bool
+    {
+        $request = request();
+
+        return $request->hasSession() && $request->session()->has('impersonator_id');
+    }
+
+    /**
+     * فرعُ صندوق المستخدم في جلسة الدعم — أوّلُ فرعٍ في متجره يعمل فيه.
+     *
+     * وهو ما يراه الكاشيرُ نفسُه على صندوق فرعه: أصنافُ ذلك الفرع ورصيدُه.
+     * ومتجرٌ بلا فروع: null — لا فرعَ يُربط به، ونقطةُ البيع لا تطلبه.
+     */
+    public static function supportBranchId(?User $user): ?int
+    {
+        if (! $user?->business_id) {
+            return null;
+        }
+
+        return Branch::where('business_id', $user->business_id)->orderBy('id')->pluck('id')
+            ->first(fn ($id) => $user->worksAt((int) $id));
+    }
 
     /* ------------------------------ التفعيل ------------------------------ */
 
@@ -99,6 +141,10 @@ class PosTerminal
      */
     public static function previous(int $businessId): ?PosDevice
     {
+        if (self::supporting()) {
+            return null;
+        }
+
         $raw = (string) Request::cookie(self::COOKIE);
 
         if (! str_contains($raw, '|')) {
@@ -155,6 +201,11 @@ class PosTerminal
      */
     public static function current(): ?PosDevice
     {
+        // في جلسة الدعم كوكي الجهاز لمتصفّح مدير المنصّة لا للمتجر — انظر `supporting`
+        if (self::supporting()) {
+            return null;
+        }
+
         $raw = (string) Request::cookie(self::COOKIE);
         if (! str_contains($raw, '|')) {
             return null;

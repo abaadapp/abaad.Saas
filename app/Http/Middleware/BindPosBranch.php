@@ -36,6 +36,24 @@ class BindPosBranch
 {
     public function handle(Request $request, Closure $next)
     {
+        /*
+         * ═══ وجلسةُ الدعم لا تُردّ عند هذا الباب ═══
+         *
+         * المتصفّحُ فيها متصفّحُ مدير المنصّة، وكوكي صندوقه بقيّةُ متجرٍ آخر.
+         * فكان الكاشيرُ المختار يُردّ «جهازُ متجرٍ آخر» وتُهدَم الجلسةُ كلُّها —
+         * ومعها حسابُ مدير المنصّة — فيقف على شاشة الدخول (`PosTerminal::supporting`).
+         *
+         * فالصندوقُ هنا صندوقُ المستخدم المختار في فرعه، كما يراه هو على جهاز
+         * فرعه. ولا يُختم «آخر ظهور» على جهازٍ لم يُفتح.
+         */
+        if (PosTerminal::supporting()) {
+            if ($branch = PosTerminal::supportBranchId(Auth::user())) {
+                Demo::bindTillBranch($branch);
+            }
+
+            return $next($request);
+        }
+
         $branchId = PosTerminal::branchId();
 
         if (! $branchId) {

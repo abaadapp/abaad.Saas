@@ -1132,7 +1132,14 @@ class MarketingController extends Controller
              * تجاوزُها يجعل النقاط تُغطّي الفاتورة كلّها وزيادة، فيخرج البيع
              * بمبلغٍ سالب.
              */
-            'loyalty_redeem_max_pct' => ['required', 'integer', 'min:0', 'max:100'],
+            'loyalty_redeem_max_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            /*
+             * والسقفان اختياريّان: صاحبُ النشاط يحدّد سياستَه، ولا تفرض المنصّةُ
+             * سقفًا. فراغُ الحقل يُحفظ «بلا حدّ» (`Loyalty::rules`)، وحقلٌ لا يُرسله
+             * تبويبٌ أقدم يبقى كما حُفظ. ومبلغٌ صفريٌّ لا يُكتب: من لا يريد
+             * الاستبدالَ يطفئه بمقبضه، لا بسقفٍ يُخفي التنبيهَ بلا سبب.
+             */
+            'loyalty_redeem_max_amount' => ['nullable', 'numeric', 'gt:0', 'max:10000000'],
             'loyalty_redeem_min' => ['required', 'integer', 'min:0'],
         ], [
             'loyalty_earn_rate.max' => $byPercent

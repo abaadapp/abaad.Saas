@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pageProps } from './setup';
@@ -11,8 +11,10 @@ import { pageProps } from './setup';
  *
  *   - «استخدام النقاط» يُرسل النقاطَ وقيمتَها كما عُرضت (`redeem_discount`) —
  *     والخادمُ يقارنهما بما يحسبه (`CustomerInvoices::create`).
- *   - معاينةٌ لاحقةٌ بعرضٍ غيرِه (رصيدٌ صُرف في الصندوق، قيمةُ نقطةٍ تغيّرت)
- *     تُلغي الاختيارَ وتقول ذلك — ولا يُرسل خصمٌ حتّى يختار من جديد.
+ *   - معاينةٌ لاحقةٌ بعرضٍ غيرِه (بندٌ تغيّر، رصيدٌ صُرف في الصندوق) تُعيد
+ *     الحسابَ وحدها ويبقى الاختيار — ويُقال ذلك، ويُرسل العرضُ الجديد كما يُرى.
+ *     (كان يُلغي الاختيار؛ وطلبُ المالك 2026-11-11: «يعاد الحساب تلقائيًا».)
+ *   - وعرضٌ لم يعد مؤهَّلًا يُسقط الاختيارَ ويقول ذلك — ولا خصمَ يُرسل.
  *   - وردُّ الخادم على حقل النقاط يُلغي الاختيارَ ويجلب العرضَ الآن.
  *
  * والخادمُ يحرس ما يُكتب (`LoyaltyRedeemsAlikeOnTheTillAndTheInvoiceTest`).
@@ -137,25 +139,36 @@ describe('فاتورةُ العميل — ما وافق عليه التاجرُ 
         expect(post.payload.redeem_discount).toBeNull();
     });
 
-    it('عرضٌ تغيّر بعد «استخدام النقاط» يُلغي الاختيارَ ويقول ذلك — ولا خصمَ يُرسل', async () => {
+    it('عرضٌ تغيّر بعد «استخدام النقاط» يُعاد حسابُه ويبقى الاختيار — ويُرسل الجديدُ كما يُرى', async () => {
         const user = await open();
         // صُرف الرصيدُ في الصندوق بين العرضين: المعاينةُ التالية ترى ثلاثمئة
         offer = { ...offer, balance: 300, points: 300, discount: 3 };
         await user.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
 
-        await waitFor(() => expect(screen.getByTestId('invoice-loyalty')).toHaveTextContent('تغيّر ما يُخصم بالنقاط'), { timeout: 2000 });
+        await waitFor(() => expect(screen.getByTestId('invoice-loyalty-recalculated')).toHaveTextContent('أُعيد احتساب خصم النقاط'), { timeout: 2000 });
         expect(screen.getByTestId('invoice-loyalty')).toHaveTextContent('300');
-        expect(screen.getByRole('button', { name: 'استخدام النقاط' })).toBeInTheDocument();
+        expect(screen.getByTestId('invoice-loyalty-choice')).toHaveTextContent('يُخصم من رصيده');
 
-        const before = await issue(user);
-        expect(before.payload.redeem_points).toBe(0);
-        expect(before.payload.redeem_discount).toBeNull();
-
-        // ويختار من جديد بالعرض الجديد — فيُرسل ما رآه الآن
-        await user.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
         const after = await issue(user);
         expect(after.payload.redeem_points).toBe(300);
         expect(after.payload.redeem_discount).toBe(3);
+    });
+
+    it('وعرضٌ لم يعد مؤهَّلًا يُسقط الاختيارَ ويقول سببه — ولا خصمَ يُرسل', async () => {
+        const user = await open();
+        await user.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
+        await waitFor(() => expect(previews).toBeGreaterThanOrEqual(2), { timeout: 2000 });
+
+        // تغيّر شيءٌ فصارت الفاتورةُ دون الحدّ الأدنى — والمعاينةُ التالية تقول ذلك
+        offer = { ...offer, eligible: false, reason: 'below_min_invoice', points: 0, discount: 0 };
+        fireEvent.change(document.getElementById('issued-at') as HTMLInputElement, { target: { value: '2026-11-12' } });
+
+        await waitFor(() => expect(screen.getByTestId('invoice-loyalty-changed')).toHaveTextContent('تغيّر ما يُخصم بالنقاط'), { timeout: 2000 });
+        expect(screen.getByTestId('invoice-loyalty-reason')).toHaveTextContent('دون الحدّ الأدنى');
+
+        const post = await issue(user);
+        expect(post.payload.redeem_points).toBe(0);
+        expect(post.payload.redeem_discount).toBeNull();
     });
 
     it('وردُّ الخادم على حقل النقاط يُلغي الاختيارَ ويجلب العرضَ الآن', async () => {

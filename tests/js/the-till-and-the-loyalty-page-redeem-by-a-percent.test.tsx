@@ -48,6 +48,7 @@ vi.mock('@inertiajs/react', async () => {
 vi.mock('@/Layouts/PosLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('@/Layouts/AdminLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('@/hooks/useLiveStock', () => ({ default: (_url: string, p: unknown[]) => ({ products: p, updatedAt: null }) }));
+vi.mock('@/Components/PaperFrame', () => ({ default: () => null }));
 
 const PERCENT = { loyaltyEnabled: true, redeemMaxPct: 50, earnRate: 1, redeemMin: 100, redeemMode: 'percent', redeemPercent: 10, redeemPoints: 100 };
 const CURRENCY = { code: 'OMR', name: 'ريال', symbol: 'ر.ع', rate: 1, is_base: true, active: true, decimals: 3 };
@@ -69,7 +70,7 @@ const reset = (over: Record<string, unknown> = {}) => {
 describe('الصندوقُ بطريقة النسبة', () => {
     beforeEach(() => reset());
 
-    const draw = (points: number) =>
+    const draw = (points: number, settings: Record<string, unknown> = PERCENT) =>
         Object.assign(pageProps, {
             products: [],
             categories: [{ value: 'الكل', label: 'الكل' }],
@@ -79,7 +80,7 @@ describe('الصندوقُ بطريقة النسبة', () => {
             coupons: [],
             // سلّةٌ بأربعين: السقفُ ٥٠٪ = عشرون
             resumeCart: { id: null, customer: 'مريم', items: [{ id: 1, name: 'باقة ورد', price: 20, qty: 2 }] },
-            settings: PERCENT,
+            settings,
             orderOptions: undefined,
             customOrder: { templates: [] },
         });
@@ -102,6 +103,31 @@ describe('الصندوقُ بطريقة النسبة', () => {
         expect(line).toHaveTextContent('500 نقطة');
         expect(line).toHaveTextContent(/20[.,]000/);
         expect(line).toHaveTextContent(/يبقى 300 نقطة\s*\(30%\)/);
+    });
+
+    it('بلا سقفٍ يحدّده التاجر: النقاطُ تخصم ما تساويه حتّى الفاتورةَ كلَّها — لا صفرٌ يُغلقها', async () => {
+        draw(800, { ...PERCENT, redeemMaxPct: null, redeemMaxAmount: null });
+        const { default: PosIndex } = await import('@/Pages/Pos/Index');
+        render(<PosIndex />);
+
+        // ٨٠٠ نقطة = ٨٠٪ من أربعين = ٣٢
+        const offer = screen.getByTestId('redeem-offer');
+        expect(offer).toHaveTextContent(/32[.,]000/);
+        expect(offer).toHaveTextContent('(80%)');
+        expect(offer).toHaveTextContent('800 نقطة');
+    });
+
+    it('وسقفُ المبلغ يحدّ الخصمَ ويُقال تحته', async () => {
+        draw(800, { loyaltyEnabled: true, redeemMaxPct: null, redeemMaxAmount: 7, earnRate: 1, redeemMin: 100 });
+        const { default: PosIndex } = await import('@/Pages/Pos/Index');
+        render(<PosIndex />);
+
+        // مبلغٌ ثابت بالصرف القديم: سبعةٌ = ٧٠٠ نقطة، ويبقى مئة
+        expect(screen.getByTestId('redeem-offer')).toHaveTextContent(/7[.,]000/);
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
+        expect(screen.getByTestId('redeem-line')).toHaveTextContent('700 نقطة');
+        expect(screen.getByText(/الحد الأقصى لهذه الفاتورة/)).toHaveTextContent(/7[.,]000/);
+        expect(screen.getByText(/الحد الأقصى لهذه الفاتورة/)).not.toHaveTextContent('%');
     });
 
     it('يُرسل النقاطَ والخصمَ كما يحسبهما الخادم', async () => {
@@ -183,5 +209,41 @@ describe('صفحةُ برنامج الولاء — طريقةُ الاستبدا
 
         fireEvent.click(screen.getByRole('button', { name: /حفظ/ }));
         expect(posts.at(-1)?.data).toMatchObject({ loyalty_redeem_mode: 'percent', loyalty_redeem_percent: '10', loyalty_redeem_value: '1' });
+    });
+
+    it('السقفان اختياريّان: فراغٌ «بلا حدّ» يُرسل فارغًا، ومبلغٌ يُكتب', async () => {
+        await page({ loyalty_enabled: '1', loyalty_redeem_max_pct: '' });
+
+        expect((screen.getByTestId('redeem-max-pct') as HTMLInputElement).value).toBe('');
+        expect(screen.getByTestId('redeem-max-pct')).toHaveAttribute('placeholder', 'بلا حدّ');
+        fireEvent.change(screen.getByTestId('redeem-max-amount'), { target: { value: '7.5' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /حفظ/ }));
+        expect(posts.at(-1)?.data).toMatchObject({ loyalty_redeem_max_pct: '', loyalty_redeem_max_amount: '7.5' });
+    });
+
+    it('ومتجرٌ لم يحفظ شيئًا يرى الافتراضَ: خمسون بالمئة، والمبلغُ بلا حدّ', async () => {
+        await page({ loyalty_enabled: '1' });
+
+        expect((screen.getByTestId('redeem-max-pct') as HTMLInputElement).value).toBe('50');
+        expect((screen.getByTestId('redeem-max-amount') as HTMLInputElement).value).toBe('');
+    });
+});
+
+describe('تنبيهُ الفاتورة — نقاطٌ تغطّيها كلَّها', () => {
+    beforeEach(() => reset());
+
+    it('يقول السببَ ولا يعرض «استخدام النقاط»', async () => {
+        const { LoyaltyPrompt } = await import('@/Pages/Admin/CustomerInvoices/Create');
+        render(
+            <LoyaltyPrompt
+                offer={{ eligible: false, reason: 'covers_whole_invoice', balance: 20000, points: 0, discount: 0, percent: null }}
+                choice="ask"
+                onChoose={() => {}}
+            />,
+        );
+
+        expect(screen.getByTestId('invoice-loyalty-reason')).toHaveTextContent('تغطّي الفاتورة كلّها');
+        expect(screen.queryByRole('button', { name: 'استخدام النقاط' })).toBeNull();
     });
 });

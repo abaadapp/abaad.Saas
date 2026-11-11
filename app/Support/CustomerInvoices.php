@@ -580,6 +580,20 @@ final class CustomerInvoices
 
             $totals = self::compute($businessId, $lines);
 
+            /*
+             * ═══ ونقاطٌ تغطّي الورقةَ كلَّها لا تُكتب عليها ═══
+             *
+             * الصندوقُ يبيع بلا مبلغٍ حين يرفع صاحبُ النشاط السقوف، والفاتورةُ لا
+             * تُصدَر بلا مبلغ (`issue`): لا ذمّةَ تُقيَّد ولا رابطَ يُدفع. فمسودّةٌ
+             * تُكتب بهذا تبقى مسودّةً لا تُصدَر. فتُردّ هنا قبل أن يُكتب صفّ، ويُقال
+             * السببُ على حقل النقاط — والشاشةُ لا تعرضها أصلًا (`coversWholeInvoice`).
+             */
+            if ($loyalty['points'] > 0 && (float) $totals['total'] <= 0) {
+                throw ValidationException::withMessages([
+                    'redeem_points' => __('نقاط العميل تغطّي الفاتورة كلّها، والفاتورة لا تُصدَر بلا مبلغ — أصدرها بلا خصم النقاط، أو حدّد سقفًا للاستبدال في برنامج الولاء.'),
+                ]);
+            }
+
             $invoice = CustomerInvoice::create(
                 self::attributes($businessId, $customer, $data, $totals) + [
                     'created_by' => $userId,
@@ -1291,6 +1305,22 @@ final class CustomerInvoices
         }
 
         return [$base, $other];
+    }
+
+    /** سببُ عدم الأهليّة في الفاتورة وحدها: النقاطُ تغطّيها كلَّها، ولا تُصدَر بلا مبلغ */
+    public const COVERS_WHOLE_INVOICE = 'covers_whole_invoice';
+
+    /**
+     * هل يمحو أقصى خصمٍ بالنقاط الورقةَ كلَّها؟ الضريبةُ على ما بقي، فما لا
+     * يبقى منه شيءٌ إجماليُّه صفر.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public static function coversWholeInvoice(array $lines, array $quote): bool
+    {
+        [$base, $other] = self::loyaltyBase($lines);
+
+        return $quote['eligible'] && $quote['max_discount'] + 0.0005 >= round($base - $other, 3);
     }
 
     /**

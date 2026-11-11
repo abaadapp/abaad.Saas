@@ -779,6 +779,18 @@ class CustomerInvoiceController extends Controller
     {
         $quote = CustomerInvoices::loyaltyQuote($bid, $customer, $items);
 
+        // نقاطٌ تغطّي الورقةَ كلَّها لا تُعرض: لا تُصدَر فاتورةٌ بلا مبلغ — ويُقال السبب
+        if (CustomerInvoices::coversWholeInvoice($items, $quote)) {
+            return [
+                'eligible' => false,
+                'reason' => CustomerInvoices::COVERS_WHOLE_INVOICE,
+                'balance' => $quote['balance'],
+                'points' => 0,
+                'discount' => 0.0,
+                'percent' => null,
+            ];
+        }
+
         return [
             'eligible' => $quote['eligible'],
             'reason' => $quote['reason'],

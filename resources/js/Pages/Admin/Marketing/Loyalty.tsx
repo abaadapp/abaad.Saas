@@ -56,7 +56,9 @@ export default function Loyalty() {
     const form = useForm({
         loyalty_enabled: settings.loyalty_enabled === '1',
         loyalty_earn_rate: settings.loyalty_earn_rate ?? '5',
+        // والسقفان اختياريّان: فراغٌ محفوظ يبقى فراغًا («بلا حدّ»)، وغيابُ الصفّ افتراضُه
         loyalty_redeem_max_pct: settings.loyalty_redeem_max_pct ?? '50',
+        loyalty_redeem_max_amount: settings.loyalty_redeem_max_amount ?? '',
         loyalty_redeem_min: settings.loyalty_redeem_min ?? '100',
         // وما صار للتاجر أن يحدّده — وافتراضُه الصرفُ القديم (`Loyalty::DEFAULTS`)
         loyalty_redeem_enabled: (settings.loyalty_redeem_enabled ?? '1') === '1',
@@ -70,6 +72,9 @@ export default function Loyalty() {
     // وقيمةُ النقاط كما يحدّدها التاجر — والحسابُ من مرآة الخادم (`lib/loyalty.ts`)
     const rate = parseFloat(form.data.loyalty_earn_rate) || 0;
     const byPercent = form.data.loyalty_redeem_mode === 'percent';
+    // حقلٌ فارغ = بلا حدّ (`Loyalty::rules`)
+    const limit = (v: string, ceiling = Infinity): number | null =>
+        v.trim() === '' ? null : Math.min(ceiling, Math.max(0, Number(v) || 0));
     const worthRules = {
         mode: form.data.loyalty_redeem_mode as LoyaltyMode,
         points: Math.max(1, Math.trunc(Number(form.data.loyalty_redeem_points) || 0)),
@@ -94,7 +99,8 @@ export default function Loyalty() {
                   value: worthRules.value,
                   percent: worthRules.percent,
                   min_invoice: 0,
-                  max_pct: Math.min(100, Math.max(0, Number(form.data.loyalty_redeem_max_pct) || 0)),
+                  max_pct: limit(form.data.loyalty_redeem_max_pct, 100),
+                  max_amount: limit(form.data.loyalty_redeem_max_amount),
               },
               worthRules.points * 2,
               20,
@@ -256,24 +262,51 @@ export default function Loyalty() {
                                     onChange={(e) => form.setData('loyalty_redeem_min_invoice', e.target.value)}
                                 />
                             </Field>
-                            <Field
-                                label="أقصى نسبة استبدال من الفاتورة (%)"
-                                hint={
-                                    byPercent
-                                        ? 'سقفٌ مستقلّ عن نسبة الخصم: لا يُخصم بالنقاط أكثر منه مهما كثر الرصيد'
-                                        : 'سقفٌ يمنع أن تُغطّي النقاط الفاتورة كلّها'
-                                }
-                                error={form.errors.loyalty_redeem_max_pct}
-                            >
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    dir="ltr"
-                                    value={form.data.loyalty_redeem_max_pct}
-                                    onChange={(e) => form.setData('loyalty_redeem_max_pct', e.target.value)}
-                                />
-                            </Field>
+                            {/*
+                                ═══ السقفان اختياريّان — سياسةُ صاحب النشاط ═══
+
+                                فراغُ الحقل «بلا حدّ». ولا يتجاوز الخصمُ ما بقي من
+                                الفاتورة بعد الخصومات الأخرى في كلّ حال — حسابٌ لا سقف.
+                            */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field
+                                    label="أقصى نسبة خصم بالنقاط (%) — اختياري"
+                                    hint={
+                                        byPercent
+                                            ? 'مستقلّ عن نسبة الخصم أعلاه. اتركه فارغًا: بلا حدّ'
+                                            : 'من قيمة الفاتورة. اتركه فارغًا: بلا حدّ'
+                                    }
+                                    error={form.errors.loyalty_redeem_max_pct}
+                                >
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        step="0.01"
+                                        dir="ltr"
+                                        placeholder={t('بلا حدّ')}
+                                        data-testid="redeem-max-pct"
+                                        value={form.data.loyalty_redeem_max_pct}
+                                        onChange={(e) => form.setData('loyalty_redeem_max_pct', e.target.value)}
+                                    />
+                                </Field>
+                                <Field
+                                    label="أقصى مبلغ خصم بالنقاط — اختياري"
+                                    hint="بعملة النشاط لكل فاتورة. اتركه فارغًا: بلا حدّ"
+                                    error={form.errors.loyalty_redeem_max_amount}
+                                >
+                                    <Input
+                                        type="number"
+                                        min="0.001"
+                                        step="0.001"
+                                        dir="ltr"
+                                        placeholder={t('بلا حدّ')}
+                                        data-testid="redeem-max-amount"
+                                        value={form.data.loyalty_redeem_max_amount}
+                                        onChange={(e) => form.setData('loyalty_redeem_max_amount', e.target.value)}
+                                    />
+                                </Field>
+                            </div>
 
                             <Field
                                 label="الحدّ الأدنى لبدء الاستبدال"

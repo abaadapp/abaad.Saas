@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
 import { money } from '@/lib/format';
-import { loyaltyPercentOf, loyaltyQuote, loyaltyWorth, type LoyaltyRules } from '@/lib/loyalty';
+import { loyaltyCap, loyaltyPercentOf, loyaltyQuote, loyaltyWorth, phpRound, type LoyaltyRules } from '@/lib/loyalty';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
@@ -175,7 +175,10 @@ export interface AppliedCoupon {
 }
 
 export interface LoyaltySettings {
-    redeemMaxPct: number;
+    /** سقفٌ اختياريّ — `null` بلا حدّ (`Loyalty::tillSettings`) */
+    redeemMaxPct: number | null;
+    /** سقفٌ اختياريٌّ بالمبلغ — `null` أو غيابُه (خادمٌ أقدم) بلا حدّ */
+    redeemMaxAmount?: number | null;
     earnRate: number;
     redeemMin: number;
     /*
@@ -478,7 +481,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     /** نصُّ الخادم حين ردّ عرضًا تغيّر — يبقى أمام الكاشير حتّى يختار من جديد */
     const [redeemNotice, setRedeemNotice] = useState('');
 
-    const redeemMaxPct = Math.min(100, Math.max(0, Number(program.redeemMaxPct) || 0));
+    /*
+     * والسقفان اختياريّان: `null` «بلا حدّ» لا صفر — `Number(null)` صفرٌ كان
+     * يُغلق الاستبدالَ على متجرٍ لم يحدّد سقفًا.
+     */
+    const optionalLimit = (v: unknown, ceiling = Infinity): number | null =>
+        v === null || v === undefined || v === '' ? null : Math.min(ceiling, Math.max(0, Number(v) || 0));
+    const redeemMaxPct = optionalLimit(program.redeemMaxPct, 100);
+    const redeemMaxAmount = optionalLimit(program.redeemMaxAmount);
     const earnRate = Math.max(0, Number(program.earnRate) || 0);
     const redeemMin = Math.max(0, Number(program.redeemMin) || 0);
 
@@ -498,10 +508,11 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             percent,
             min_invoice: Math.max(0, Number(program.redeemMinInvoice) || 0),
             max_pct: redeemMaxPct,
+            max_amount: redeemMaxAmount,
         };
     }, [
         program.loyaltyEnabled, program.redeemEnabled, program.redeemMode, program.redeemPoints, program.redeemValue,
-        program.redeemPercent, program.redeemMinInvoice, redeemMin, redeemMaxPct,
+        program.redeemPercent, program.redeemMinInvoice, redeemMin, redeemMaxPct, redeemMaxAmount,
     ]);
 
     /* ----------------------------- الحسابات ----------------------------- */
@@ -579,12 +590,15 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const redeemByPercent = loyaltyRules.mode === 'percent';
     const pointsPercent = useCallback((points: number) => loyaltyPercentOf(loyaltyRules, points), [loyaltyRules]);
 
-    // سقف الاستبدال: نسبة من المجموع الفرعي، ولا يتجاوز المتبقّي بعد الكوبون
-    const redeemCap = useMemo(() => {
-        const byPct = Math.round(((subtotal * redeemMaxPct) / 100) * 1000) / 1000;
-        const afterCoupon = Math.max(0, subtotal - couponDiscount);
-        return Math.min(byPct, afterCoupon);
-    }, [subtotal, redeemMaxPct, couponDiscount]);
+    // سقفُ الاستبدال كما يحسبه الخادم (`Loyalty::cap`): ما بقي بعد الكوبون، وسقفا التاجر إن حدّدهما
+    const redeemCap = useMemo(
+        () => {
+            // بتقريب الخادم نفسِه (`phpRound`) — كما يقرأ `Loyalty::quote` المجموعَ وما بقي منه
+            const b = Math.max(0, phpRound(subtotal, 3));
+            return loyaltyCap(loyaltyRules, b, Math.max(0, phpRound(b - Math.max(0, couponDiscount), 3)));
+        },
+        [loyaltyRules, subtotal, couponDiscount],
+    );
 
     const redeemOn = redeemActive && canRedeem;
     const redeemDiscount = redeemOn ? redeemQuote.max_discount : 0;
@@ -1398,7 +1412,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         // المحسوبات
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
         selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage, blocked, blockOverrideReason,
-        redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
+        redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMaxAmount, redeemMin,
         redeemQuote, redeemDecided, chooseRedeem, pointsWorth, pointsPercent, redeemByPercent, redeemOffline, redeemNotice,
         // البرنامجُ عاملٌ — بما ردّه الخادمُ آخرَ مرّة إن ردّ
         loyaltyOn: program.loyaltyEnabled !== false,

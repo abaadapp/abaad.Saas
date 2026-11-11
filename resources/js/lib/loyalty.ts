@@ -21,10 +21,20 @@ export interface LoyaltyRules {
     /** نسبةُ كلّ `points` نقطةً من الفاتورة المؤهّلة — في طريقة النسبة وحدها */
     percent?: number;
     min_invoice: number;
-    max_pct: number;
+    /** سقفٌ اختياريٌّ بالنسبة من المجموع — `null` بلا حدّ */
+    max_pct: number | null;
+    /** سقفٌ اختياريٌّ بالمبلغ — `null` أو غيابُه بلا حدّ */
+    max_amount?: number | null;
 }
 
-export type LoyaltyReason = 'off' | 'redeem_off' | 'below_min_points' | 'below_min_invoice' | 'nothing_to_discount';
+/** و`covers_whole_invoice` من عرض فاتورة العميل وحدها (`CustomerInvoices::COVERS_WHOLE_INVOICE`) */
+export type LoyaltyReason =
+    | 'off'
+    | 'redeem_off'
+    | 'below_min_points'
+    | 'below_min_invoice'
+    | 'nothing_to_discount'
+    | 'covers_whole_invoice';
 
 export interface LoyaltyQuote {
     eligible: boolean;
@@ -103,6 +113,14 @@ function loyaltyFewest(rules: LoyaltyRules, points: number, eligible: number): n
     return fewest;
 }
 
+/** أقصى ما يُخصم بالنقاط من هذه الفاتورة — `Loyalty::cap` */
+export function loyaltyCap(rules: Pick<LoyaltyRules, 'max_pct' | 'max_amount'>, base: number, remaining: number): number {
+    let cap = Math.max(0, remaining);
+    if (rules.max_pct !== null && rules.max_pct !== undefined) cap = Math.min(cap, round((base * rules.max_pct) / 100, 3));
+    if (rules.max_amount !== null && rules.max_amount !== undefined) cap = Math.min(cap, round(Number(rules.max_amount), 3));
+    return Math.max(0, cap);
+}
+
 export function loyaltyQuote(
     rules: LoyaltyRules,
     balanceIn: number | null | undefined,
@@ -131,7 +149,7 @@ export function loyaltyQuote(
     if (remaining <= 0) return none('nothing_to_discount');
     if (remaining < rules.min_invoice) return none('below_min_invoice');
 
-    const cap = Math.min(round((base * rules.max_pct) / 100, 3), remaining);
+    const cap = loyaltyCap(rules, base, remaining);
     const byCap = isPercent(rules)
         ? Math.floor(round((cap * rules.points * 100) / (remaining * Number(rules.percent ?? 0)), 6))
         : Math.floor(round((cap * rules.points) / rules.value, 6));
@@ -175,6 +193,8 @@ export function loyaltyReasonText(reason: LoyaltyReason | null, t: (s: string) =
             return t('قيمة الفاتورة دون الحدّ الأدنى للاستبدال.');
         case 'nothing_to_discount':
             return t('لا يبقى في الفاتورة ما يُخصم بالنقاط.');
+        case 'covers_whole_invoice':
+            return t('النقاط تغطّي الفاتورة كلّها، والفاتورة لا تُصدَر بلا مبلغ — حدّد سقفًا للاستبدال في برنامج الولاء أو أصدرها بلا خصم.');
         default:
             return null;
     }

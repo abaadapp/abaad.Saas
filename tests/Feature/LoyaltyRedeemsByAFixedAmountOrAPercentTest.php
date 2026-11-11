@@ -16,9 +16,10 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoices;
+use App\Support\CustomerPayments;
 use App\Support\Ledger;
 use App\Support\Loyalty;
-use App\Support\Vat;
+use App\Support\OrderCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -173,10 +174,10 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
 
         $this->assertEqualsWithDelta((float) $invoice->loyalty_discount, round((float) $items->sum('loyalty_discount'), 3), 0.0001, 'حصصُ البنود غيرُ خصم النقاط');
         $this->assertEqualsWithDelta((float) $invoice->total, round((float) $items->sum('line_total'), 3), 0.0001, 'البنودُ لا تجمع إلى الإجماليّ');
-        // وفي «الشاملة» الضريبةُ داخل الصافي — لا تُضاف فوقه
+        // وفي «الشاملة» كما في الصندوق: المجموعُ الفرعيّ بلا الضريبة المستخرجة، فالصيغةُ واحدة
         $this->assertEqualsWithDelta(
             (float) $invoice->total,
-            round((float) $invoice->subtotal - (float) $invoice->discount_total + (Vat::inclusive((int) $invoice->business_id) ? 0 : (float) $invoice->tax_total), 3),
+            round((float) $invoice->subtotal - (float) $invoice->discount_total + (float) $invoice->tax_total, 3),
             0.0001,
             'المجموعُ الفرعيّ − الخصم + الضريبة ≠ الإجماليّ',
         );
@@ -726,6 +727,251 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertStringContainsString('30.000', $strip);
     }
 
+    /* ═══════════════════ السقفان الاختياريّان: سياسةُ صاحب النشاط ═══════════════════ */
+
+    /** متجرٌ جديد يأخذ الافتراضَ المعتمد — وسقفُ المبلغ بلا حدٍّ حتّى يكتبه */
+    public function test_a_new_shop_gets_the_approved_defaults(): void
+    {
+        $fresh = Business::create(['name' => 'متجر جديد', 'type' => 'عام', 'status' => 'نشط']);
+        $rules = Loyalty::rules($fresh->id);
+
+        $this->assertSame(Loyalty::FIXED, $rules['mode']);
+        $this->assertSame(100, $rules['points']);
+        $this->assertSame(1.0, $rules['value']);
+        $this->assertSame(100, $rules['min_points']);
+        $this->assertSame(0.0, $rules['min_invoice']);
+        $this->assertSame(50.0, $rules['max_pct']);
+        $this->assertNull($rules['max_amount']);
+        $this->assertNull(Loyalty::tillSettings($fresh->id)['redeemMaxAmount']);
+        $this->assertSame(0, Setting::where('business_id', $fresh->id)->count(), 'ولا يُكتب له إعداد');
+    }
+
+    /** يترك صاحبُ النشاط السقفين فارغين: لا سقفَ إلّا الفاتورة نفسُها — ولا مستحقَّ سالب */
+    public function test_with_both_caps_left_empty_points_may_cover_the_whole_sale_and_no_more(): void
+    {
+        $this->save(['loyalty_redeem_max_pct' => '', 'loyalty_redeem_max_amount' => ''])->assertSessionHasNoErrors();
+        $this->assertSame('', Setting::where('business_id', $this->shop->id)->where('key', 'loyalty_redeem_max_pct')->value('value'));
+
+        $rules = Loyalty::rules($this->shop->id);
+        $this->assertNull($rules['max_pct']);
+        $this->assertNull($rules['max_amount']);
+        $this->assertNull(Loyalty::tillSettings($this->shop->id)['redeemMaxPct'], '«بلا حدّ» لا صفر');
+
+        $this->vat();
+        $this->customer->update(['points' => 20000]);
+
+        // مئةٌ وضريبتُها: النقاطُ تغطّي المئة كلَّها (١٠٠٠٠ نقطة) ولا تتجاوزها
+        $this->till(['redeem_points' => 20000, 'redeem_discount' => 200])
+            ->assertStatus(422)->assertJsonPath('loyalty.points', 10000)->assertJsonPath('loyalty.discount', 100);
+
+        $order = $this->sell(['redeem_points' => 10000, 'redeem_discount' => 100]);
+        $this->assertEqualsWithDelta(100.0, (float) $order->discount, 0.0001);
+        $this->assertEqualsWithDelta(0.0, (float) $order->tax, 0.0001);
+        $this->assertEqualsWithDelta(0.0, (float) $order->total, 0.0001, 'المستحقّ صفرٌ لا سالب');
+        $this->assertSame(10000, (int) $this->customer->fresh()->points);
+    }
+
+    /**
+     * ونقاطٌ تغطّي فاتورةَ العميل كلَّها: الفاتورةُ لا تُصدَر بلا مبلغ (قاعدةُ
+     * الإصدار القائمة) — فلا تُعرض، ويُقال السبب، ويُردّ الحفظُ قبل أن يُكتب صفّ.
+     * والصندوقُ يبيع بلا مبلغ (الاختبارُ أعلاه). قرارُ تغييرها للمالك.
+     */
+    public function test_points_covering_the_whole_invoice_are_not_offered_and_nothing_is_written(): void
+    {
+        $this->set('loyalty_redeem_max_pct', '');
+        $this->vat();
+        $this->customer->update(['points' => 20000]);
+        $items = [['description' => 'باقة', 'quantity' => 2, 'unit_price' => 50]];
+
+        $offer = $this->postJson(route('admin.customerInvoices.preview'), [
+            'customer_id' => $this->customer->id, 'items' => $items,
+        ])->assertOk()->json('loyalty');
+        $this->assertFalse($offer['eligible']);
+        $this->assertSame(CustomerInvoices::COVERS_WHOLE_INVOICE, $offer['reason']);
+        $this->assertSame(20000, $offer['balance']);
+
+        try {
+            $this->invoice(10000, $items);
+            $this->fail('كُتبت فاتورةٌ تغطّيها النقاطُ كلُّها');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('تغطّي الفاتورة كلّها', $e->errors()['redeem_points'][0]);
+        }
+        $this->assertSame(0, CustomerInvoice::count());
+        $this->assertSame(20000, (int) $this->customer->fresh()->points);
+
+        // وسقفٌ يحدّده صاحبُ النشاط يعيدها: ٩٠٪ = ٩٠٠٠ نقطة، وتُصدَر بعشرة وضريبتها
+        $this->set('loyalty_redeem_max_pct', '90');
+        $invoice = $this->invoice(9000, $items);
+        $this->assertEqualsWithDelta(90.0, (float) $invoice->loyalty_discount, 0.0001);
+        $this->assertEqualsWithDelta(10.5, (float) $invoice->total, 0.0001);
+        $this->assertBalancedEntry($invoice);
+        $this->assertSame(11000, (int) $this->customer->fresh()->points);
+
+        CustomerInvoices::cancel($invoice->fresh(), 'طلب العميل');
+        $this->assertSame(20000, (int) $this->customer->fresh()->points);
+    }
+
+    /** سقفُ المبلغ يحدّ الطريقتين — والأصغرُ من السقفين هو الحدّ */
+    public function test_an_amount_cap_limits_both_methods(): void
+    {
+        $this->customer->update(['points' => 20000]);
+        $this->set('loyalty_redeem_max_pct', '');
+        $this->set('loyalty_redeem_max_amount', '15');
+
+        // مبلغٌ ثابت: مئةُ نقطةٍ بريال — خمسة عشر = ١٥٠٠ نقطة
+        $this->till(['redeem_points' => 10000, 'redeem_discount' => 100])
+            ->assertStatus(422)->assertJsonPath('loyalty.points', 1500)->assertJsonPath('loyalty.discount', 15)
+            ->assertJsonPath('loyalty.settings.redeemMaxAmount', 15);
+
+        // نسبة: ١٥٪ من مئة = ١٥٠ نقطة
+        $this->percent();
+        $order = $this->sell(['redeem_points' => 150, 'redeem_discount' => 15]);
+        $this->assertEqualsWithDelta(15.0, (float) $order->discount, 0.0001);
+
+        // والسقفان معًا: ١٠٪ أصغرُ من خمسة عشر
+        $this->set('loyalty_redeem_max_pct', '10');
+        $quote = Loyalty::quote(Loyalty::rules($this->shop->id), 20000, 100.0);
+        $this->assertSame(100, $quote['max_points']);
+        $this->assertEqualsWithDelta(10.0, $quote['max_discount'], 0.0001);
+
+        // ونسبةٌ كسريّة تُقبل: ١٢٫٥٪
+        $this->set('loyalty_redeem_max_pct', '12.5');
+        $this->assertEqualsWithDelta(12.5, Loyalty::quote(Loyalty::rules($this->shop->id), 20000, 100.0)['max_discount'], 0.0001);
+    }
+
+    public function test_the_caps_are_validated_by_their_arabic_names(): void
+    {
+        foreach (['0', '-1', 'كثير'] as $bad) {
+            $this->save(['loyalty_redeem_max_amount' => $bad])->assertSessionHasErrors('loyalty_redeem_max_amount');
+            $this->assertStringContainsString('الحد الأقصى لمبلغ الخصم', session('errors')->first('loyalty_redeem_max_amount'));
+        }
+        foreach (['101', '-1'] as $bad) {
+            $this->save(['loyalty_redeem_max_pct' => $bad])->assertSessionHasErrors('loyalty_redeem_max_pct');
+        }
+
+        $this->save(['loyalty_redeem_max_pct' => '12.5', 'loyalty_redeem_max_amount' => '٧٫٥'])->assertSessionHasNoErrors();
+        $rules = Loyalty::rules($this->shop->id);
+        $this->assertSame(12.5, $rules['max_pct']);
+        $this->assertSame(7.5, $rules['max_amount']);
+
+        // وتبويبٌ أقدم لا يعرف سقفَ المبلغ يحفظ فلا يمحوه
+        $this->save([])->assertSessionHasNoErrors();
+        $this->assertSame(7.5, Loyalty::rules($this->shop->id)['max_amount']);
+    }
+
+    public function test_one_shops_caps_never_reach_another(): void
+    {
+        $this->set('loyalty_redeem_max_amount', '1', $this->other);
+        $this->set('loyalty_redeem_max_pct', '', $this->other);
+
+        $mine = Loyalty::rules($this->shop->id);
+        $this->assertSame(50.0, $mine['max_pct']);
+        $this->assertNull($mine['max_amount']);
+
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10]);
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
+    }
+
+    /* ═══════════════════ تعديلُ الإعدادات لاحقًا لا يمسّ ما صدر ═══════════════════ */
+
+    public function test_changing_every_rule_later_leaves_issued_and_paid_documents_as_they_were(): void
+    {
+        $this->vat();
+        $invoice = $this->invoice(500, [['description' => 'باقة', 'quantity' => 2, 'unit_price' => 50]]);
+        CustomerPayments::record($this->shop->id, $this->customer, 99.75, ['method' => 'نقدي', 'occurred_at' => '2026-11-11'], [$invoice->id => 99.75]);
+        $order = $this->sell(['redeem_points' => 300, 'redeem_discount' => 3]);
+
+        $before = [
+            'invoice' => $invoice->fresh()->only(['subtotal', 'discount_total', 'tax_total', 'total', 'loyalty_points', 'loyalty_discount', 'status']),
+            'items' => $invoice->fresh('items')->items->map->only(['discount', 'loyalty_discount', 'tax_amount', 'line_total'])->all(),
+            'order' => $order->fresh()->only(['subtotal', 'discount', 'tax', 'total', 'redeemed_points']),
+        ];
+        $paper = PdfController::customerInvoiceHtml($this->shop->id, $invoice->fresh());
+
+        // صاحبُ النشاط يغيّر كلَّ شيء
+        $this->save([
+            'loyalty_redeem_mode' => 'percent', 'loyalty_redeem_percent' => 50, 'loyalty_redeem_points' => 10,
+            'loyalty_redeem_max_pct' => '', 'loyalty_redeem_max_amount' => '1', 'loyalty_redeem_min' => 0,
+            'loyalty_redeem_min_invoice' => 1000, 'loyalty_redeem_enabled' => false,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($before['invoice'], $invoice->fresh()->only(['subtotal', 'discount_total', 'tax_total', 'total', 'loyalty_points', 'loyalty_discount', 'status']));
+        $this->assertSame($before['items'], $invoice->fresh('items')->items->map->only(['discount', 'loyalty_discount', 'tax_amount', 'line_total'])->all());
+        $this->assertSame($before['order'], $order->fresh()->only(['subtotal', 'discount', 'tax', 'total', 'redeemed_points']));
+        $this->assertSame($paper, PdfController::customerInvoiceHtml($this->shop->id, $invoice->fresh()), 'الورقةُ المطبوعة كما كانت');
+
+        // والإعادةُ بما صُرف لا بقواعد اليوم: إشعارٌ بنصف الورقة يعيد نصفَ الخمسمئة
+        ReturnNote::issue($invoice->fresh(), 49.875, $this->owner->id);
+        $this->assertSame(250, CustomerInvoices::pointsReturned($invoice->fresh()));
+
+        // وإلغاءُ البيعة يعيد ثلاثَمئتها ويسحب ما اكتسبته — فيعود الرصيدُ كما كان قبلها
+        $beforeCancel = (int) $this->customer->fresh()->points;
+        OrderCorrection::cancel($order->fresh(), 'أُلغيت');
+        $this->assertSame($beforeCancel + 300 - (int) $order->points_earned, (int) $this->customer->fresh()->points);
+    }
+
+    /* ═══════════════════ الصندوقُ والفاتورةُ رقمٌ واحد ═══════════════════ */
+
+    /**
+     * السلّةُ نفسُها بابين — في كلّ ما يضبطه التاجر: الطريقتان، والضريبةُ
+     * شاملةً وغيرَ شاملة، والسقوفُ (افتراضٌ، بلا حدّ، مبلغ)، وخصمٌ آخر قبل
+     * النقاط (كوبونٌ بمبلغ في الصندوق، وخصمُ بندٍ بالمبلغ نفسِه في الفاتورة).
+     */
+    public function test_the_till_and_the_invoice_agree_in_every_setting(): void
+    {
+        $this->product->update(['price' => 33.333]);
+        Coupon::create([
+            'business_id' => $this->shop->id, 'code' => 'OFF5', 'type' => 'مبلغ',
+            'value' => 5, 'max_uses' => 1000, 'used_count' => 0, 'active' => true,
+        ]);
+        $n = 0;
+
+        foreach (['fixed', 'percent'] as $mode) {
+            $mode === 'percent' ? $this->percent('7.5', '150') : $this->set('loyalty_redeem_mode', 'fixed');
+            $this->set('loyalty_redeem_points', $mode === 'percent' ? '150' : '3');
+            $this->set('loyalty_redeem_value', '0.1');
+
+            foreach ([false, true] as $inclusive) {
+                $this->vat($inclusive);
+
+                foreach ([['50', ''], ['', ''], ['', '7']] as [$pct, $amount]) {
+                    $this->set('loyalty_redeem_max_pct', $pct);
+                    $this->set('loyalty_redeem_max_amount', $amount);
+
+                    foreach ([0, 5] as $other) {
+                        $n++;
+                        $label = "$mode / ".($inclusive ? 'شاملة' : 'غير شاملة')." / سقف [$pct|$amount] / خصم آخر $other";
+                        $atTill = Customer::create(['business_id' => $this->shop->id, 'name' => 'صندوق '.$n, 'phone' => (string) (92000000 + $n), 'points' => 777, 'language' => 'ar']);
+                        $onInvoice = Customer::create(['business_id' => $this->shop->id, 'name' => 'فاتورة '.$n, 'phone' => (string) (93000000 + $n), 'points' => 777, 'language' => 'ar']);
+
+                        $offer = Loyalty::quote(Loyalty::rules($this->shop->id), 777, 33.333, (float) $other);
+                        $this->assertTrue($offer['eligible'], $label);
+
+                        $this->customer = $atTill;
+                        $order = $this->sell(array_filter([
+                            'redeem_points' => $offer['max_points'], 'redeem_discount' => $offer['max_discount'],
+                            'coupon_code' => $other ? 'OFF5' : null,
+                        ]));
+                        $invoice = $this->invoice($offer['max_points'], [[
+                            'description' => 'باقة', 'quantity' => 1, 'unit_price' => 33.333, 'discount' => $other,
+                        ]], $onInvoice);
+
+                        $this->assertSame((int) $order->redeemed_points, (int) $invoice->loyalty_points, $label);
+                        $this->assertEqualsWithDelta($order->loyaltyDiscount(), (float) $invoice->loyalty_discount, 0.00001, $label);
+                        $this->assertEqualsWithDelta((float) $order->discount, (float) $invoice->discount_total, 0.00001, $label.': الخصمُ كلُّه');
+                        $this->assertEqualsWithDelta((float) $order->tax, (float) $invoice->tax_total, 0.00001, $label);
+                        $this->assertEqualsWithDelta((float) $order->total, (float) $invoice->total, 0.00001, $label);
+                        $this->assertGreaterThanOrEqual(0.0, (float) $invoice->total, $label);
+                        $this->assertAddsUp($invoice);
+                        $this->assertBalancedEntry($invoice);
+                    }
+                }
+            }
+        }
+
+        $this->assertSame(24, $n);
+    }
+
     /* ═══════════════════ الحسابُ في كلّ الأرقام ═══════════════════ */
 
     /**
@@ -748,7 +994,8 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
                 'value' => [0.001, 0.1, 0.5, 1.0, 2.75][mt_rand(0, 4)],
                 'percent' => [0.5, 2.5, 7.5, 10.0, 33.333, 100.0][mt_rand(0, 5)],
                 'min_invoice' => [0.0, 0.0, 5.0][mt_rand(0, 2)],
-                'max_pct' => (float) [0, 10, 25, 50, 100][mt_rand(0, 4)],
+                'max_pct' => [0.0, 10.0, 12.5, 25.0, 50.0, 100.0, null][mt_rand(0, 6)],
+                'max_amount' => [null, null, 0.5, 7.0, 1234.567][mt_rand(0, 4)],
             ];
             $base = mt_rand(1, 2) === 1 ? mt_rand(1, 2000) / 1000 : mt_rand(1, 50000000) / 1000;
             $other = mt_rand(0, 2) === 0 ? round($base * mt_rand(0, 100) / 100, 3) : 0.0;
@@ -762,7 +1009,13 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
             $this->assertLessThanOrEqual($balance, $q['points'], $why);
             $this->assertLessThanOrEqual($q['max_points'], $q['points'], $why);
             $this->assertLessThanOrEqual($remaining + 0.0005, $q['discount'], $why);
-            $this->assertLessThanOrEqual(round($base * $rules['max_pct'] / 100, 3) + 0.0005, $q['max_discount'], $why);
+            if ($rules['max_pct'] !== null) {
+                $this->assertLessThanOrEqual(round($base * $rules['max_pct'] / 100, 3) + 0.0005, $q['max_discount'], $why);
+            }
+            if ($rules['max_amount'] !== null) {
+                $this->assertLessThanOrEqual($rules['max_amount'] + 0.0005, $q['max_discount'], $why);
+            }
+            $this->assertSame(Loyalty::cap($rules, round($base, 3), max(0.0, $remaining)) >= $q['max_discount'], true, $why);
             $this->assertSame($q['discount'], Loyalty::worth($rules, $q['points'], $remaining), $why);
 
             if ($q['points'] > 0) {
@@ -802,7 +1055,8 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
                     'value' => [0.001, 0.1, 0.5, 1.0, 2.75][mt_rand(0, 4)],
                     'percent' => [0.5, 2.5, 7.5, 10.0, 33.333, 100.0][mt_rand(0, 5)],
                     'min_invoice' => [0.0, 0.0, 5.0][mt_rand(0, 2)],
-                    'max_pct' => (float) [10, 25, 50, 100][mt_rand(0, 3)],
+                    'max_pct' => [10.0, 12.5, 25.0, 50.0, 100.0, null][mt_rand(0, 5)],
+                    'max_amount' => [null, null, 0.5, 7.0, 1234.567][mt_rand(0, 4)],
                 ];
                 $base = mt_rand(0, 1) ? mt_rand(1, 3000) / 1000 : mt_rand(1, 20000000) / 1000;
                 $other = mt_rand(0, 2) === 0 ? round($base * mt_rand(0, 90) / 100, 3) : 0.0;

@@ -959,6 +959,202 @@
                 "points": 333,
                 "discount": 3.33
             }
+        },
+        {
+            "name": "caps: fixed, no percent cap, points cover what the coupon left",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": null
+            },
+            "balance": 20000,
+            "base": 100,
+            "other": 20,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 20000,
+                "max_points": 8000,
+                "max_discount": 80.0,
+                "points": 8000,
+                "discount": 80.0
+            }
+        },
+        {
+            "name": "caps: percent, no cap, 100% at most",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": null
+            },
+            "balance": 5000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 5000,
+                "max_points": 1000,
+                "max_discount": 100.0,
+                "points": 1000,
+                "discount": 100.0
+            }
+        },
+        {
+            "name": "caps: fixed, an amount cap of 15",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": 15.0
+            },
+            "balance": 20000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 20000,
+                "max_points": 1500,
+                "max_discount": 15.0,
+                "points": 1500,
+                "discount": 15.0
+            }
+        },
+        {
+            "name": "caps: percent, both caps, the smaller wins",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 10.0,
+                "max_amount": 15.0
+            },
+            "balance": 20000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 20000,
+                "max_points": 100,
+                "max_discount": 10.0,
+                "points": 100,
+                "discount": 10.0
+            }
+        },
+        {
+            "name": "caps: percent, a fractional amount cap on a fractional invoice",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "percent",
+                "points": 150,
+                "value": 1.0,
+                "percent": 7.5,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": 7.777
+            },
+            "balance": 777,
+            "base": 33.333,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 777,
+                "max_points": 466,
+                "max_discount": 7.766,
+                "points": 466,
+                "discount": 7.766
+            }
+        },
+        {
+            "name": "caps: fixed, a fractional percent cap of 12.5",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": 12.5,
+                "max_amount": null
+            },
+            "balance": 20000,
+            "base": 100,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 20000,
+                "max_points": 1250,
+                "max_discount": 12.5,
+                "points": 1250,
+                "discount": 12.5
+            }
+        },
+        {
+            "name": "caps: an amount cap above the invoice is the invoice",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 100,
+                "mode": "fixed",
+                "points": 100,
+                "value": 1.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": 500.0
+            },
+            "balance": 100000,
+            "base": 100,
+            "other": 30,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 100000,
+                "max_points": 7000,
+                "max_discount": 70.0,
+                "points": 7000,
+                "discount": 70.0
+            }
         }
     ]
 }

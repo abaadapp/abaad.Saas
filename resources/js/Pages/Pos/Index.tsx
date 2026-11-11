@@ -1045,7 +1045,15 @@ export default function PosIndex() {
                                 )}
                                 {cart.redeemActive && cart.redeemPointsUsed < cart.selectedPoints && (
                                     <p className="mt-1 text-[10px] text-[#ec4899]">
-                                        {t('الحد الأقصى لهذه الفاتورة')} {cart.redeemMaxPct}% ({money(cart.redeemCap)})
+                                        {/* السقفان كما حدّدهما التاجر — وبلا حدٍّ يُقال المبلغُ وحده: ما بقي من الفاتورة */}
+                                        {t('الحد الأقصى لهذه الفاتورة')}{' '}
+                                        {[
+                                            cart.redeemMaxPct !== null ? `${cart.redeemMaxPct}%` : null,
+                                            cart.redeemMaxAmount !== null ? money(cart.redeemMaxAmount) : null,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' / ')}{' '}
+                                        ({money(cart.redeemCap)})
                                     </p>
                                 )}
                             </div>

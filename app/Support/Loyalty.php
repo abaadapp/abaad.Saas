@@ -200,6 +200,18 @@ class Loyalty
         $byCap = self::isPercent($rules)
             ? (int) floor(round($cap * $rules['points'] * 100 / ($remaining * $rules['percent']), 6))
             : (int) floor(round($cap * $rules['points'] / $rules['value'], 6));
+
+        /*
+         * والتقريبُ الذي يمحو ضجيجَ الكسور لا يرفع نقطةً فوق السقف.
+         *
+         * `round(…, 6)` تقرأ ٢٫٩٩٩٩٩٩٧ ثلاثًا، وحين تكون النقطةُ الواحدة بآلاف
+         * (نسبةٌ من فاتورةٍ كبيرة) تتجاوز الثالثةُ سقفَ صاحب النشاط ببيسة:
+         * سقفٌ ٨٩٩٩٫٩٩٩ يخرج خصمًا ٩٠٠٠. فيُنزَل حتى لا تتجاوزه.
+         */
+        while ($byCap > 0 && round(self::worth($rules, $byCap, $remaining) - $cap, 3) > 0) {
+            $byCap--;
+        }
+
         $max = self::fewest($rules, min($balance, $byCap), $remaining);
 
         if ($max <= 0) {

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ClosedPeriod;
 use App\Http\Controllers\PdfController;
 use App\Models\Branch;
 use App\Models\Business;
@@ -18,6 +19,7 @@ use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\BooksPeriod;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -952,6 +954,195 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame(1, $row['orders']);
         $this->assertEqualsWithDelta(0.0, $row['total'], 0.0001);
+    }
+
+    /**
+     * وفاتورةٌ صفريّةٌ بتاريخ فترةٍ مقفلة تُردّ كأختها بمبلغ — ولا تصرف نقطة.
+     *
+     * لا قيدَ لها، فلا يسألها الدفتر (`Ledger::post`). فتسأل هي (`post`).
+     */
+    public function test_a_whole_points_invoice_in_a_closed_period_is_refused_like_any_other(): void
+    {
+        $draft = $this->invoice(10000, $this->wholeInvoiceByPoints(), issue: false);
+        $this->set(BooksPeriod::SETTING, '2026-11-30');
+
+        try {
+            CustomerInvoices::issue($draft, $this->owner->id);
+            $this->fail('أُصدرت فاتورةٌ صفريّة في فترةٍ مقفلة');
+        } catch (ClosedPeriod) {
+        }
+        $this->assertSame(CustomerInvoice::DRAFT, $draft->fresh()->status);
+        $this->assertNull($draft->fresh()->number);
+        $this->assertSame(20000, (int) $this->customer->fresh()->points);
+        $this->assertSame(0, $this->redeems());
+
+        Setting::where('business_id', $this->shop->id)->where('key', BooksPeriod::SETTING)->delete();
+        $this->assertSame(CustomerInvoice::ISSUED, CustomerInvoices::issue($draft->fresh(), $this->owner->id)->status);
+        $this->assertSame(10000, (int) $this->customer->fresh()->points);
+    }
+
+    /* ═══════════════════ مثالُ صاحب النشاط: مئةٌ ونقاطٌ بعشرين ═══════════════════ */
+
+    /**
+     * فاتورةٌ بمئةٍ ونقاطٌ بعشرين: الضريبةُ على الثمانين المقبوضة لا على المئة.
+     * المستحقُّ ٨٤ (غير شاملة) و٨٠ (شاملة)، والقيدُ متوازن، ورابطُ Paymob يطلب
+     * المستحقَّ نفسَه بالبيسة.
+     */
+    public function test_a_hundred_with_twenty_in_points_is_due_eighty_four_and_the_link_asks_exactly_that(): void
+    {
+        $this->vat();
+        $this->customer->update(['points' => 5000]);
+        PaymentGateway::create([
+            'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
+            'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
+            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
+        ]);
+        Http::fake([
+            'oman.paymob.com/api/auth/tokens' => Http::response(['token' => 'tok']),
+            'oman.paymob.com/api/ecommerce/payment-links' => Http::response([
+                'id' => 590001, 'shorten_url' => 'https://paymob.link/h', 'created_at' => '2026-11-11T10:00:00',
+                'expires_at' => '2026-11-18T23:59:00', 'state' => 'created', 'order' => 717000001,
+            ]),
+        ]);
+        $line = [['description' => 'باقة', 'quantity' => 1, 'unit_price' => 100]];
+
+        $invoice = $this->invoice(2000, $line);
+        $this->assertEqualsWithDelta(20.0, (float) $invoice->loyalty_discount, 0.0001);
+        $this->assertEqualsWithDelta(100.0, (float) $invoice->subtotal, 0.0001);
+        $this->assertEqualsWithDelta(4.0, (float) $invoice->tax_total, 0.0001, 'خمسةٌ بالمئة من الثمانين لا من المئة');
+        $this->assertEqualsWithDelta(84.0, (float) $invoice->total, 0.0001);
+        $this->assertAddsUp($invoice);
+        $this->assertBalancedEntry($invoice);
+        $credits = JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->sole()
+            ->lines()->where('credit', '>', 0)->pluck('credit')->map(fn ($c) => round((float) $c, 3))->sort()->values()->all();
+        $this->assertSame([4.0, 80.0], $credits, 'إيرادٌ بالثمانين وضريبةٌ بأربعة');
+        $this->assertSame(3000, (int) $this->customer->fresh()->points);
+
+        $link = PaymentLinks::create($this->shop->id, $this->customer->fresh(), $invoice, null, null, $this->owner->id);
+        $this->assertEqualsWithDelta(84.0, (float) $link->amount, 0.0001);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/api/ecommerce/payment-links')
+            && collect($r->data())->firstWhere('name', 'amount_cents')['contents'] === '84000');
+
+        // والشاملة: المئةُ على الرفّ فيها ضريبتُها — ثمانون، ضريبتُها المستخرجة ٣٫٨١٠
+        $this->set('tax_mode', 'inclusive');
+        $inclusive = $this->invoice(2000, $line);
+        $this->assertEqualsWithDelta(20.0, (float) $inclusive->loyalty_discount, 0.0001);
+        $this->assertEqualsWithDelta(3.81, (float) $inclusive->tax_total, 0.0001);
+        $this->assertEqualsWithDelta(96.19, (float) $inclusive->subtotal, 0.0001);
+        $this->assertEqualsWithDelta(80.0, (float) $inclusive->total, 0.0001);
+        $this->assertAddsUp($inclusive);
+        $this->assertBalancedEntry($inclusive);
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+    }
+
+    /**
+     * إصدارٌ فشل بعد أن صرف النقاط (يردّه الدفترُ لفترةٍ مقفلة) لا يُبقي صرفًا:
+     * المعاملةُ كلُّها تُرجع. وإعادةُ المحاولة تصرف مرّةً، وتكرارُها لا يصرف ثانية.
+     */
+    public function test_an_issue_that_fails_spends_nothing_and_the_retry_spends_once(): void
+    {
+        $this->vat();
+        $draft = $this->invoice(1000, [['description' => 'باقة', 'quantity' => 1, 'unit_price' => 100]], issue: false);
+        $this->set(BooksPeriod::SETTING, '2026-11-30');
+
+        try {
+            CustomerInvoices::issue($draft, $this->owner->id);
+            $this->fail('أُصدرت في فترةٍ مقفلة');
+        } catch (ClosedPeriod) {
+        }
+        $this->assertSame(CustomerInvoice::DRAFT, $draft->fresh()->status);
+        $this->assertNull($draft->fresh()->number);
+        $this->assertSame(1000, (int) $this->customer->fresh()->points, 'الصرفُ رجع مع المعاملة');
+        $this->assertSame(0, $this->redeems());
+
+        Setting::where('business_id', $this->shop->id)->where('key', BooksPeriod::SETTING)->delete();
+        CustomerInvoices::issue($draft->fresh(), $this->owner->id);
+        CustomerInvoices::issue($draft->fresh(), $this->owner->id);
+
+        $this->assertSame(CustomerInvoice::ISSUED, $draft->fresh()->status);
+        $this->assertSame(0, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
+        $this->assertBalancedEntry($draft->fresh());
+    }
+
+    /**
+     * يدٌ قرأت المسودّة لتلغيها، ويدٌ أخرى أصدرتها قبلها: الإلغاءُ يقرأ «صادرة»
+     * تحت القفل فيعكس قيدَها ويعيد نقاطَها مرّةً — لا «ملغاةٌ» بقيدٍ قائم.
+     */
+    public function test_a_cancel_holding_a_stale_draft_reverses_what_an_issue_wrote_meanwhile(): void
+    {
+        $this->vat();
+        $stale = $this->invoice(1000, [['description' => 'باقة', 'quantity' => 1, 'unit_price' => 100]], issue: false);
+        CustomerInvoices::issue(CustomerInvoice::findOrFail($stale->id), $this->owner->id);
+        $this->assertSame(CustomerInvoice::DRAFT, $stale->status, 'اليدُ الأولى ما زالت ترى مسودّة');
+        $this->assertSame(0, (int) $this->customer->fresh()->points);
+
+        CustomerInvoices::cancel($stale, 'طلب العميل', $this->owner->id);
+
+        $this->assertSame(CustomerInvoice::CANCELLED, $stale->fresh()->status);
+        $original = JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $stale->id)
+            ->whereNull('reverses_id')->sole();
+        $this->assertSame(1, JournalEntry::where('reverses_id', $original->id)->count(), 'قيدُ الفاتورة الملغاة لم يُعكس');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, PointTransaction::where('source_key', CustomerInvoices::redeemKey($stale).':reverse')->count());
+    }
+
+    /** بيعةُ صندوقٍ أُعيد إرسالُها بعد انقطاع الاتّصال (المعرّفُ نفسُه) تصرف نقاطَها مرّةً */
+    public function test_a_till_sale_sent_twice_after_a_dropped_connection_spends_its_points_once(): void
+    {
+        $this->percent();
+        $payload = ['client_uuid' => 'dropped-connection-1', 'redeem_points' => 100, 'redeem_discount' => 10];
+
+        $first = $this->till($payload)->assertOk();
+        $again = $this->till($payload)->assertOk();
+
+        $this->assertSame($first->json('invoice'), $again->json('invoice'));
+        $this->assertTrue($again->json('duplicate'));
+        $order = Order::where('business_id', $this->shop->id)->sole();
+        $this->assertSame(100, (int) $order->redeemed_points);
+        // صُرفت مئةٌ مرّةً، واكتُسب على التسعين مرّةً
+        $this->assertSame(1000 - 100 + (int) $order->points_earned, (int) $this->customer->fresh()->points);
+        $this->assertSame(1, $this->redeems());
+        $this->assertSame(1, PointTransaction::where('customer_id', $this->customer->id)->where('type', 'earn')->count());
+    }
+
+    /**
+     * صنفٌ معفًى يأخذ نصيبَه من خصم النقاط ولا ضريبةَ عليه — في الصندوق والفاتورة.
+     *
+     * مئةٌ بخمسةٍ بالمئة وخمسون معفاة، ونقاطٌ بثلاثين: نصيبُ المعفى عشرة،
+     * والخاضعُ ثمانون ضريبتُه أربعة، والإجماليُّ ١٢٤ في الموضعين.
+     */
+    public function test_an_exempt_item_takes_its_share_of_the_points_on_the_till_and_the_invoice(): void
+    {
+        $this->vat();
+        $this->customer->update(['points' => 5000]);
+        $onInvoice = Customer::create(['business_id' => $this->shop->id, 'name' => 'فاتورة', 'phone' => '93000002', 'points' => 5000, 'language' => 'ar']);
+        $exempt = Product::create([
+            'business_id' => $this->shop->id, 'name' => 'خدمة معفاة', 'price' => 50, 'cost' => 0,
+            'quantity' => 100, 'alert_qty' => 1, 'active' => true, 'tax' => 0,
+        ]);
+
+        $order = $this->sell([
+            'items' => [
+                ['id' => $this->product->id, 'name' => $this->product->name, 'qty' => 1],
+                ['id' => $exempt->id, 'name' => $exempt->name, 'qty' => 1],
+            ],
+            'redeem_points' => 3000, 'redeem_discount' => 30,
+        ]);
+        $invoice = $this->invoice(3000, [
+            ['description' => 'باقة', 'quantity' => 1, 'unit_price' => 100],
+            ['description' => 'خدمة معفاة', 'quantity' => 1, 'unit_price' => 50, 'tax_rate' => 0],
+        ], $onInvoice);
+
+        $this->assertEqualsWithDelta(4.0, (float) $order->tax, 0.0001);
+        $this->assertEqualsWithDelta(124.0, (float) $order->total, 0.0001);
+        foreach ([[(float) $order->discount, (float) $invoice->discount_total, 'الخصم'], [(float) $order->tax, (float) $invoice->tax_total, 'الضريبة'], [(float) $order->total, (float) $invoice->total, 'الإجماليّ']] as [$till, $paper, $what]) {
+            $this->assertEqualsWithDelta($till, $paper, 0.00001, $what);
+        }
+        $this->assertEqualsWithDelta(10.0, (float) $invoice->items->firstWhere('description', 'خدمة معفاة')->loyalty_discount, 0.0001);
+        $this->assertEqualsWithDelta(0.0, (float) $invoice->items->firstWhere('description', 'خدمة معفاة')->tax_amount, 0.0001);
+        $this->assertAddsUp($invoice);
+        $this->assertBalancedEntry($invoice);
     }
 
     /** سقفُ المبلغ يحدّ الطريقتين — والأصغرُ من السقفين هو الحدّ */

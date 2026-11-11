@@ -143,9 +143,11 @@ export function loyaltyQuote(
     if (remaining < rules.min_invoice) return none('below_min_invoice');
 
     const cap = loyaltyCap(rules, base, remaining);
-    const byCap = isPercent(rules)
+    let byCap = isPercent(rules)
         ? Math.floor(round((cap * rules.points * 100) / (remaining * Number(rules.percent ?? 0)), 6))
         : Math.floor(round((cap * rules.points) / rules.value, 6));
+    // والتقريبُ لا يرفع نقطةً فوق السقف — مرآةُ `Loyalty::quote` حرفًا بحرف
+    while (byCap > 0 && round(loyaltyWorth(rules, byCap, remaining) - cap, 3) > 0) byCap--;
     const max = loyaltyFewest(rules, Math.min(balance, byCap), remaining);
 
     if (max <= 0) return none('nothing_to_discount');

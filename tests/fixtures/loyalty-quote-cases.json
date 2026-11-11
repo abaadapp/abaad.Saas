@@ -1155,6 +1155,62 @@
                 "points": 7000,
                 "discount": 70.0
             }
+        },
+        {
+            "name": "caps: rounding never lifts a point above the amount cap (percent)",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 0,
+                "points": 1,
+                "value": 3000.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": 8999.999,
+                "mode": "percent"
+            },
+            "balance": 100,
+            "base": 30000,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 100,
+                "max_points": 2,
+                "max_discount": 6000.0,
+                "points": 2,
+                "discount": 6000.0
+            }
+        },
+        {
+            "name": "caps: rounding never lifts a point above the amount cap (fixed)",
+            "rules": {
+                "on": true,
+                "redeem": true,
+                "min_points": 0,
+                "points": 1,
+                "value": 3000.0,
+                "percent": 10.0,
+                "min_invoice": 0.0,
+                "max_pct": null,
+                "max_amount": 8999.999,
+                "mode": "fixed"
+            },
+            "balance": 100,
+            "base": 30000,
+            "other": 0,
+            "requested": null,
+            "expect": {
+                "eligible": true,
+                "reason": null,
+                "balance": 100,
+                "max_points": 2,
+                "max_discount": 6000.0,
+                "points": 2,
+                "discount": 6000.0
+            }
         }
     ]
 }

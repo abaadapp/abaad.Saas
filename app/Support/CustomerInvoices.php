@@ -712,11 +712,23 @@ final class CustomerInvoices
          *
          * خصمُ النقاط يُنقص الإيرادَ في البنود (لا حسابَ له في الدليل)، فيُقيَّد
          * ما بقي: ذمّةٌ وإيرادٌ وضريبة. وحين لا يبقى شيء فكلُّها أصفار، والقيدُ
-         * لا يُكتب بسطرٍ واحدٍ صفريّ (`Ledger::post`). وهي قاعدةُ الصندوق نفسُها
-         * في بيعةٍ إجماليُّها صفر (`Books::recordSale`). والإلغاءُ لا يجد قيدًا
-         * يعكسه فلا يعكس شيئًا، ويعيد النقاطَ وحدها.
+         * لا يُكتب بسطرٍ واحدٍ صفريّ (`Ledger::post`). وهي قاعدةُ الصندوق في
+         * إيراد بيعةٍ إجماليُّها صفر (`Books::recordSale`) — والصندوقُ يكتب بعدها
+         * تكلفةَ ما خرج من الرفّ إن كانت له تكلفة؛ وفاتورةُ العميل اليدويّة لا
+         * تُخرج مخزونًا ولا تكتب تكلفةً بأيّ مبلغ، فلا يسقط هنا شيءٌ غيرُ الأصفار.
+         * والإلغاءُ لا يجد قيدًا يعكسه فلا يعكس شيئًا، ويعيد النقاطَ وحدها.
+         *
+         * ═══ وما لا قيدَ له يسأل عن الفترة بنفسه ═══
+         *
+         * الفترةُ المقفلة (أو المقدَّمُ إقرارُها) يسألها الدفترُ عند الكتابة
+         * (`Ledger::post` ← `BooksPeriod::assertOpen`). وورقةٌ لا تبلغ الدفتر
+         * لا يسألها أحد: فاتورةٌ بتاريخ شهرٍ مقفل تُصدَر وتصرف نقاطها، وأختُها
+         * بمبلغٍ تُردّ. فيُسأل هنا السؤالُ نفسُه، والردُّ يُرجع صرفَ النقاط مع
+         * المعاملة كلّها.
          */
         if (round((float) $invoice->total, 3) <= 0 && $net <= 0 && $tax <= 0) {
+            BooksPeriod::assertOpen((int) $invoice->business_id, Carbon::parse($invoice->issued_at));
+
             return;
         }
 
@@ -788,11 +800,27 @@ final class CustomerInvoices
         if ($invoice->status === CustomerInvoice::CANCELLED) {
             return $invoice;
         }
-        if ($invoice->paidTotal() > 0) {
-            throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
-        }
 
         return DB::transaction(function () use ($invoice, $reason, $userId) {
+            /*
+             * ═══ والحالةُ تُقرأ تحت القفل، لا من النسخة التي في اليد ═══
+             *
+             * النسخةُ قُرئت قبل المعاملة. فمسودّةٌ يُصدرها أحدٌ في اللحظة التي
+             * يُلغيها فيها آخر: الإصدارُ يكتب قيدَه ويُغلق، والإلغاءُ يقرأ
+             * «مسودّة» من يده فلا يعكس شيئًا، ثمّ يكتب «ملغاة» فوق «صادرة».
+             * فاتورةٌ ملغاةٌ وذمّتُها وإيرادُها باقيان في الدفتر. فيُقفل الصفّ
+             * (والإصدارُ يقفله أيضًا) ويُقرأ من جديد، وعليه يُبنى كلُّ ما بعده.
+             */
+            $invoice = CustomerInvoice::where('business_id', $invoice->business_id)
+                ->lockForUpdate()->findOrFail($invoice->id);
+
+            if ($invoice->status === CustomerInvoice::CANCELLED) {
+                return $invoice;
+            }
+            if ($invoice->paidTotal() > 0) {
+                throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
+            }
+
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
                 $entry = JournalEntry::where('business_id', $invoice->business_id)
                     ->where('sourceable_type', CustomerInvoice::class)

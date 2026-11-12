@@ -107,6 +107,21 @@ export default function Loyalty() {
           )
         : null;
 
+    /*
+     * ═══ تحذيرٌ قبل الحفظ — لا منع ═══
+     *
+     * صاحبُ النشاط يحدّد قواعده بنفسه، فلا يُرفض إعدادٌ آمنٌ حسابيًّا. لكنّ
+     * سقفًا بالنسبة فارغًا (أو مئة) يجعل النقاطَ تغطّي الفاتورةَ كلَّها فيصير
+     * إجماليُّها صفرًا، ونسبةُ مئةٍ تجعل كلَّ دفعةِ نقاطٍ فاتورةً كاملة، وطريقةُ
+     * النسبة بلا حدٍّ بالمبلغ تجعل قيمةَ النقاط تكبر مع الفاتورة بلا سقف. فيُقال
+     * ذلك صريحًا وهو يكتب، لا بعد أن يقرأه في فاتورةٍ صدرت.
+     */
+    const redeemOn = form.data.loyalty_enabled && form.data.loyalty_redeem_enabled;
+    const maxPct = limit(form.data.loyalty_redeem_max_pct, 100);
+    const wholeInvoice = redeemOn && (maxPct === null || maxPct >= 100);
+    const fullPercent = redeemOn && byPercent && worthRules.percent >= 100;
+    const noAmountCap = redeemOn && byPercent && limit(form.data.loyalty_redeem_max_amount) === null;
+
     return (
         <AdminLayout title="برنامج ولاء">
             <PageHeader
@@ -354,6 +369,33 @@ export default function Loyalty() {
                                     </span>
                                 )}
                             </p>
+                        )}
+
+                        {(wholeInvoice || fullPercent || noAmountCap) && (
+                            <div
+                                role="status"
+                                data-testid="loyalty-settings-warning"
+                                className="mt-4 space-y-1 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-[13px] leading-6 text-[#92400e]"
+                            >
+                                {wholeInvoice && (
+                                    <p data-testid="loyalty-warning-whole-invoice">
+                                        {t('تنبيه: بهذه الحدود قد تغطّي النقاط الفاتورة كلّها فيصير إجماليّها صفرًا — لا يدفع العميل شيئًا ولا يُطلب له رابط دفع. ضع أقصى نسبة خصم أقل من ١٠٠ إن أردت أن يدفع العميل جزءًا دائمًا.')}
+                                    </p>
+                                )}
+                                {fullPercent && (
+                                    <p data-testid="loyalty-warning-full-percent">
+                                        {t('تنبيه: نسبة ١٠٠٪ تعني أن كل :points نقطة تساوي الفاتورة المؤهّلة كاملة.', {
+                                            points: number(worthRules.points),
+                                        })}
+                                    </p>
+                                )}
+                                {noAmountCap && (
+                                    <p data-testid="loyalty-warning-no-amount-cap">
+                                        {t('تنبيه: في طريقة النسبة تكبر قيمة النقاط مع الفاتورة ولا حدّ لها بالمبلغ — النقاط نفسها تخصم من فاتورة بألف ما تخصمه نسبتها من فاتورة بعشرة. ضع أقصى مبلغ خصم إن أردت حدًّا بعملة النشاط.')}
+                                    </p>
+                                )}
+                                <p className="text-[12px]">{t('الإعداد يُحفظ كما اخترته — هذا تنبيه لا منع.')}</p>
+                            </div>
                         )}
 
                         <div className="mt-5 flex justify-end">

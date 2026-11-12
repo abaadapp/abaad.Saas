@@ -228,6 +228,50 @@ describe('صفحةُ برنامج الولاء — طريقةُ الاستبدا
         expect((screen.getByTestId('redeem-max-pct') as HTMLInputElement).value).toBe('50');
         expect((screen.getByTestId('redeem-max-amount') as HTMLInputElement).value).toBe('');
     });
+
+    it('الافتراضُ بلا تنبيه: سقفُ الخمسين يُبقي على العميل نصفَ الفاتورة', async () => {
+        await page({ loyalty_enabled: '1' });
+
+        expect(screen.queryByTestId('loyalty-settings-warning')).toBeNull();
+    });
+
+    it('سقفُ النسبة فارغًا أو مئةً: تنبيهٌ بأنّ الفاتورة قد تصير صفرًا — ويُحفظ كما اختير', async () => {
+        await page({ loyalty_enabled: '1', loyalty_redeem_max_pct: '' });
+
+        expect(screen.getByTestId('loyalty-warning-whole-invoice')).toHaveTextContent('صفرًا');
+        expect(screen.getByTestId('loyalty-settings-warning')).toHaveTextContent('تنبيه لا منع');
+
+        fireEvent.change(screen.getByTestId('redeem-max-pct'), { target: { value: '100' } });
+        expect(screen.getByTestId('loyalty-warning-whole-invoice')).toBeInTheDocument();
+
+        // وتحت المئة يزول — والحفظُ لا يُمنع في الحالين
+        fireEvent.change(screen.getByTestId('redeem-max-pct'), { target: { value: '99.99' } });
+        expect(screen.queryByTestId('loyalty-warning-whole-invoice')).toBeNull();
+
+        fireEvent.change(screen.getByTestId('redeem-max-pct'), { target: { value: '' } });
+        fireEvent.click(screen.getByRole('button', { name: /حفظ/ }));
+        expect(posts.at(-1)?.data).toMatchObject({ loyalty_redeem_max_pct: '' });
+    });
+
+    it('في النسبة: مئةٌ بالمئة تنبيه، وغيابُ سقف المبلغ تنبيه، وسقفُ المبلغ يُزيله', async () => {
+        await page({ loyalty_enabled: '1', loyalty_redeem_mode: 'percent', loyalty_redeem_percent: '100', loyalty_redeem_points: '250' });
+
+        expect(screen.getByTestId('loyalty-warning-full-percent')).toHaveTextContent('250');
+        expect(screen.getByTestId('loyalty-warning-no-amount-cap')).toBeInTheDocument();
+        // سقفُ الخمسين باقٍ: لا صفرَ يُخشى
+        expect(screen.queryByTestId('loyalty-warning-whole-invoice')).toBeNull();
+
+        fireEvent.change(screen.getByTestId('redeem-max-amount'), { target: { value: '20' } });
+        expect(screen.queryByTestId('loyalty-warning-no-amount-cap')).toBeNull();
+        fireEvent.change(screen.getByTestId('redeem-percent'), { target: { value: '10' } });
+        expect(screen.queryByTestId('loyalty-settings-warning')).toBeNull();
+    });
+
+    it('والاستبدالُ مطفأً لا تنبيه عليه', async () => {
+        await page({ loyalty_enabled: '1', loyalty_redeem_enabled: '0', loyalty_redeem_max_pct: '' });
+
+        expect(screen.queryByTestId('loyalty-settings-warning')).toBeNull();
+    });
 });
 
 describe('تنبيهُ الفاتورة — نقاطٌ تغطّيها كلَّها', () => {

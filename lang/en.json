@@ -10601,5 +10601,9 @@
     "أقصى مبلغ خصم بالنقاط — اختياري": "Maximum points discount amount — optional",
     "بعملة النشاط لكل فاتورة. اتركه فارغًا: بلا حدّ": "In the shop's currency, per invoice. Leave empty for no limit",
     "أُعيد احتساب خصم النقاط على المبلغ أو الرصيد الجديد — راجعه قبل الحفظ.": "The points discount was recalculated for the new amount or balance — review it before saving.",
-    "أُصدرت الفاتورة :n مسدَّدةً بالكامل بنقاط الولاء — لا يُطلب لها رابط دفع.": "Invoice :n was issued fully settled with loyalty points — no payment link is requested for it."
+    "أُصدرت الفاتورة :n مسدَّدةً بالكامل بنقاط الولاء — لا يُطلب لها رابط دفع.": "Invoice :n was issued fully settled with loyalty points — no payment link is requested for it.",
+    "تنبيه: بهذه الحدود قد تغطّي النقاط الفاتورة كلّها فيصير إجماليّها صفرًا — لا يدفع العميل شيئًا ولا يُطلب له رابط دفع. ضع أقصى نسبة خصم أقل من ١٠٠ إن أردت أن يدفع العميل جزءًا دائمًا.": "Warning: with these limits, points may cover the whole invoice and bring its total to zero — the customer pays nothing and no payment link is requested. Set a maximum discount percentage below 100 if the customer should always pay part.",
+    "تنبيه: نسبة ١٠٠٪ تعني أن كل :points نقطة تساوي الفاتورة المؤهّلة كاملة.": "Warning: a 100% rate means every :points points equal the whole eligible invoice.",
+    "تنبيه: في طريقة النسبة تكبر قيمة النقاط مع الفاتورة ولا حدّ لها بالمبلغ — النقاط نفسها تخصم من فاتورة بألف ما تخصمه نسبتها من فاتورة بعشرة. ضع أقصى مبلغ خصم إن أردت حدًّا بعملة النشاط.": "Warning: in percent mode, points grow in value with the invoice and have no amount limit — the same points take their percentage off an invoice of a thousand as off one of ten. Set a maximum discount amount if you want a limit in the shop's currency.",
+    "الإعداد يُحفظ كما اخترته — هذا تنبيه لا منع.": "Your settings are saved as you chose — this is a warning, not a block."
 }

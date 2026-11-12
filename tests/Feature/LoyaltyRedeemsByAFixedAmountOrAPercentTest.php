@@ -1087,6 +1087,117 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertSame(1, PointTransaction::where('source_key', CustomerInvoices::redeemKey($stale).':reverse')->count());
     }
 
+    /**
+     * ═══ فرقُ تقريب الضريبة بين الصندوق والفاتورة — معروضٌ لقرار المالك، لا مُصلَح ═══
+     *
+     * خصمُ النقاط واحدٌ في الموضعين (`Loyalty::quote`). أمّا الضريبةُ فلكلٍّ
+     * محرّكُه، وكلاهما أقدمُ من هذه الميزة:
+     *
+     *   أ. الصندوق (`SaleLines::taxFor`) يجمع ضرائبَ البنود بلا تقريب ويقرّب
+     *      المجموعَ مرّة؛ والفاتورة (`CustomerInvoices::compute`) تقرّب كلَّ بند.
+     *      فسلّةٌ ببندين قد تختلف ببيسة — بنقاطٍ وبلا نقاط.
+     *   ب. الصندوقُ يطرح الخصمَ بكسرٍ عائم قبل الضرب، فيقع ما على نصف البيسة
+     *      تمامًا (٢٥٫٧١ × ٥٪ = ١٫٢٨٥٥) تحت النصف أحيانًا: ١٫٢٨٥ بدل ١٫٢٨٦.
+     *
+     * واختيارُ قاعدةٍ واحدة (بندًا بندًا أم المجموع) قرارٌ ضريبيٌّ لم يُتّخذ،
+     * فلا يُخترع هنا. هذا الاختبارُ يثبّت الفرقَ بأرقامه حتى يُتّخذ — ويسقط
+     * يومَ يُوحَّد المحرّكان فيُحدَّث معه.
+     */
+    public function test_the_till_and_the_invoice_round_vat_differently_and_the_gap_is_pinned(): void
+    {
+        $this->vat();
+        $this->customer->update(['points' => 100000]);
+        $onInvoice = Customer::create(['business_id' => $this->shop->id, 'name' => 'فاتورة', 'phone' => '93000003', 'points' => 100000, 'language' => 'ar']);
+
+        // (ب) بندٌ واحد: ٣٢٫٢٧٥ ونقاطٌ بـ٦٫٥٦٥ (النقطةُ بيسة) — الصافي ٢٥٫٧١ وضريبتُه ١٫٢٨٥٥ تمامًا
+        $this->set('loyalty_redeem_points', '1');
+        $this->set('loyalty_redeem_value', '0.001');
+        $tie = Product::create(['business_id' => $this->shop->id, 'name' => 'نصف بيسة', 'price' => 32.275, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $order = $this->sell(['redeem_points' => 6565, 'redeem_discount' => 6.565], $tie);
+        $invoice = $this->invoice(6565, [['description' => 'نصف بيسة', 'quantity' => 1, 'unit_price' => 32.275]], $onInvoice);
+
+        $this->assertEqualsWithDelta(6.565, (float) $order->discount, 0.00001, 'الخصمُ واحد');
+        $this->assertEqualsWithDelta(6.565, (float) $invoice->discount_total, 0.00001, 'الخصمُ واحد');
+        $this->assertEqualsWithDelta(1.286, (float) $invoice->tax_total, 0.00001, 'الفاتورة: ١٫٢٨٥٥ نصفًا إلى أعلى');
+        $this->assertEqualsWithDelta(1.285, (float) $order->tax, 0.00001, 'الصندوق: الكسرُ العائم يقصّ النصف');
+        $this->assertEqualsWithDelta(0.001, round((float) $invoice->total - (float) $order->total, 3), 0.00001);
+
+        // (أ) بندان: ١٣٫٠٥٠ و١٤٫٣٠٠ ونقاطٌ بأربعة (مئةٌ بريال)
+        $this->set('loyalty_redeem_points', '100');
+        $this->set('loyalty_redeem_value', '1');
+        $a = Product::create(['business_id' => $this->shop->id, 'name' => 'أ', 'price' => 13.05, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $b = Product::create(['business_id' => $this->shop->id, 'name' => 'ب', 'price' => 14.3, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $order = $this->sell([
+            'items' => [['id' => $a->id, 'name' => 'أ', 'qty' => 1], ['id' => $b->id, 'name' => 'ب', 'qty' => 1]],
+            'redeem_points' => 400, 'redeem_discount' => 4,
+        ]);
+        $invoice = $this->invoice(400, [
+            ['description' => 'أ', 'quantity' => 1, 'unit_price' => 13.05],
+            ['description' => 'ب', 'quantity' => 1, 'unit_price' => 14.3],
+        ], $onInvoice);
+
+        $this->assertEqualsWithDelta((float) $order->discount, (float) $invoice->discount_total, 0.00001, 'الخصمُ واحد');
+        $this->assertEqualsWithDelta(1.168, (float) $order->tax, 0.00001, 'الصندوق: ١٫١٦٧٥ مجموعًا ثمّ يُقرَّب');
+        $this->assertEqualsWithDelta(1.167, (float) $invoice->tax_total, 0.00001, 'الفاتورة: ٠٫٥٥٧ + ٠٫٦١٠ بندًا بندًا');
+        $this->assertAddsUp($invoice);
+    }
+
+    /**
+     * سقفٌ بمئةٍ بالمئة كالفارغ: النقاطُ تغطّي الفاتورةَ كلَّها ولا تتجاوزها.
+     * وفاتورةٌ ببنودٍ وكسور بيسات (كميّاتٌ عشريّة وأسعارٌ بثلاث خانات ومعفى):
+     * حصصُ النقاط تجمع إلى خصمها بالبيسة، والورقةُ تجمع إلى إجماليّها.
+     */
+    public function test_a_hundred_percent_cap_and_a_fractional_multi_line_invoice_add_up_to_the_baisa(): void
+    {
+        $this->vat();
+        $this->set('loyalty_redeem_max_pct', '100');
+        $this->customer->update(['points' => 50000]);
+        $lines = [
+            ['description' => 'ورد بالوزن', 'quantity' => 1.5, 'unit_price' => 3.333],
+            ['description' => 'بطاقة', 'quantity' => 3, 'unit_price' => 0.999],
+            ['description' => 'توصيل معفى', 'quantity' => 1, 'unit_price' => 0.333, 'tax_rate' => 0],
+        ];
+
+        // المجموع ٥٫٠٠٠ + ٢٫٩٩٧ + ٠٫٣٣٣ = ٨٫٣٣٠ — سقفُ المئة = الفاتورة كلُّها
+        $offer = $this->postJson(route('admin.customerInvoices.preview'), ['customer_id' => $this->customer->id, 'items' => $lines])
+            ->assertOk()->json('loyalty');
+        $this->assertSame(833, $offer['points']);
+        $this->assertEqualsWithDelta(8.33, $offer['discount'], 0.00001);
+
+        $whole = $this->invoice(833, $lines);
+        $this->assertEqualsWithDelta(0.0, (float) $whole->total, 0.00001);
+        $this->assertEqualsWithDelta(0.0, (float) $whole->tax_total, 0.00001);
+        $this->assertAddsUp($whole);
+
+        // وجزءٌ منها بنقاطٍ بـ٣٫٣٣٣: الحصصُ بالتناسب بلا كسرٍ عائم، والضريبةُ على ما بقي من الخاضع
+        $part = $this->invoice(333, $lines);
+        $this->assertEqualsWithDelta(3.33, (float) $part->loyalty_discount, 0.00001);
+        $this->assertAddsUp($part);
+        $this->assertBalancedEntry($part);
+        $this->assertEqualsWithDelta(0.0, (float) $part->items->firstWhere('description', 'توصيل معفى')->tax_amount, 0.00001);
+        $this->assertSame(50000 - 833 - 333, (int) $this->customer->fresh()->points);
+    }
+
+    /** الكاشيرُ يستبدل في الصندوق بقواعد صاحب النشاط، ولا يغيّر القواعد — بلا قسم التسويق تُردّ */
+    public function test_a_cashier_redeems_at_the_till_but_cannot_change_the_rules(): void
+    {
+        $cashier = User::create([
+            'business_id' => $this->shop->id, 'name' => 'كاشير', 'email' => 'cashier@percent.test',
+            'password' => bcrypt('x'), 'role' => 'cashier', 'status' => 'نشط', 'permissions' => ['pos'],
+        ]);
+
+        $this->actingAs($cashier)->post(route('admin.marketing.loyalty.save'), [
+            'loyalty_enabled' => true, 'loyalty_earn_rate' => 5, 'loyalty_redeem_enabled' => true,
+            'loyalty_redeem_mode' => 'percent', 'loyalty_redeem_percent' => 100, 'loyalty_redeem_max_pct' => '',
+        ])->assertForbidden();
+        $this->assertSame(0, Setting::where('business_id', $this->shop->id)->where('key', 'like', 'loyalty%')->count(), 'لم يُكتب شيء');
+
+        $order = $this->sell(['redeem_points' => 1000, 'redeem_discount' => 10]);
+        $this->assertSame(1000, (int) $order->redeemed_points);
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
+        $this->assertSame(1, $this->redeems());
+    }
+
     /** بيعةُ صندوقٍ أُعيد إرسالُها بعد انقطاع الاتّصال (المعرّفُ نفسُه) تصرف نقاطَها مرّةً */
     public function test_a_till_sale_sent_twice_after_a_dropped_connection_spends_its_points_once(): void
     {

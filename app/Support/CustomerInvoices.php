@@ -15,6 +15,7 @@ use App\Models\OrderItem;
 use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Support\Document\Snapshot;
+use Brick\Math\BigInteger;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -1406,36 +1407,43 @@ final class CustomerInvoices
             }
         }
 
-        $sum = round(array_sum(array_column($nets, 'net')), 3);
-        if ($sum < $discount) {
+        /*
+         * ═══ والقسمةُ بالبيسات الصحيحة لا بالكسور العائمة ═══
+         *
+         * الصافي والخصمُ أرقامٌ بثلاث خانات، فيصيران بيساتٍ صحيحة، ونصيبُ كلّ
+         * بندٍ قسمةٌ صحيحة (`d × صافيه ÷ المجموع`) مقصوصة — فلا يقع نصيبٌ على
+         * حدّ البيسة مرّةً فوقه ومرّةً تحته بحسب تمثيل الرقم. وما بقي من القصّ
+         * يذهب إلى أكبر البنود صافيًا كما كان.
+         */
+        $d = (int) round($discount * 1000);
+        $cents = array_map(fn ($n) => (int) round($n['net'] * 1000), $nets);
+        $sum = array_sum($cents);
+        if ($sum < $d) {
             throw ValidationException::withMessages([
                 'redeem_points' => __('خصم النقاط أكبر من قيمة البنود.'),
             ]);
         }
 
         $shares = [];
-        $given = 0.0;
-        foreach ($nets as $i => $n) {
-            $shares[$i] = floor(round($discount * $n['net'] / $sum * 1000, 6)) / 1000;
-            $given = round($given + $shares[$i], 3);
+        foreach ($cents as $i => $net) {
+            $shares[$i] = BigInteger::of($d)->multipliedBy($net)->quotient($sum)->toInt();
         }
 
-        // الباقي من التقريب — لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه
-        $left = round($discount - $given, 3);
-        uasort($nets, fn ($a, $b) => $b['net'] <=> $a['net']);
-        foreach ($nets as $i => $n) {
+        // الباقي من القصّ — لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه
+        $left = $d - array_sum($shares);
+        uasort($cents, fn ($a, $b) => $b <=> $a);
+        foreach ($cents as $i => $net) {
             if ($left <= 0) {
                 break;
             }
-            $room = round($n['net'] - $shares[$i], 3);
-            $add = min($room, $left);
-            $shares[$i] = round($shares[$i] + $add, 3);
-            $left = round($left - $add, 3);
+            $add = min($net - $shares[$i], $left);
+            $shares[$i] += $add;
+            $left -= $add;
         }
 
         foreach ($shares as $i => $share) {
-            $lines[$i]['discount'] = round($nets[$i]['own'] + $share, 3);
-            $lines[$i]['loyalty_discount'] = $share;
+            $lines[$i]['discount'] = round($nets[$i]['own'] + $share / 1000.0, 3);
+            $lines[$i]['loyalty_discount'] = $share / 1000.0;
         }
 
         return $lines;
@@ -1569,11 +1577,14 @@ final class CustomerInvoices
         if ($spent <= 0 || $credited <= 0 || $total <= 0) {
             return 0;
         }
-        if ($credited + 0.0005 >= $total) {
+        // بالبيسات الصحيحة: المبلغان بثلاث خانات، والنسبةُ قسمةٌ صحيحة مقصوصة لا كسرٌ عائم
+        $creditedB = (int) round($credited * 1000);
+        $totalB = (int) round($total * 1000);
+        if ($creditedB >= $totalB) {
             return $spent;
         }
 
-        return (int) min($spent, floor(round($spent * $credited / $total, 6)));
+        return min($spent, BigInteger::of($spent)->multipliedBy($creditedB)->quotient($totalB)->toInt());
     }
 
     /**

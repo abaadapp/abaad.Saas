@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\PointTransaction;
 use App\Models\Setting;
+use Brick\Math\BigInteger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -181,54 +182,169 @@ class Loyalty
             return $none(self::REDEEM_OFF);
         }
 
-        $base = max(0.0, round($base, 3));
-        $remaining = max(0.0, round($base - max(0.0, $other), 3));
+        /*
+         * ═══ والحسابُ كلُّه بأعدادٍ صحيحة: بيساتٌ ونسبٌ مضبوطة ═══
+         *
+         * كان بكسورٍ عائمة يُرمَّم ضجيجُها بـ`round(…, 6)` قبل كلّ قصّ. وهذا
+         * يصيب ما دامت الأرقام معتادة، ويخطئ حين تقع القيمةُ الحقيقيّة على
+         * جزءٍ من مليونٍ من حدّ البيسة: سقفٌ ٨٩٩٩٫٩٩٩ أخرج خصمًا ٩٠٠٠. فصار
+         * المالُ بيساتٍ صحيحة، وقيمةُ النقطة نسبةً مضبوطة (بسطٌ ومقام)، والقصُّ
+         * والتدويرُ قسمةً صحيحة — فلا ترميم ولا حالةَ حدٍّ تُترك للحظّ.
+         * ومرآتُه في الشاشة بـ`BigInt` بالخطوات نفسِها.
+         */
+        $baseB = self::milli(max(0.0, $base));
+        $remB = self::remainder($baseB, max(0.0, $other));
 
         if ($balance <= 0 || $balance < $rules['min_points']) {
             return $none(self::BELOW_MIN_POINTS);
         }
-        if ($remaining <= 0) {
+        if ($remB->isZero()) {
             return $none(self::NOTHING_TO_DISCOUNT);
         }
-        if ($remaining < $rules['min_invoice']) {
+        [$minN, $minD] = self::exact(max(0.0, (float) $rules['min_invoice']));
+        if ($remB->multipliedBy($minD)->isLessThan($minN->multipliedBy(1000))) {
             return $none(self::BELOW_MIN_INVOICE);
         }
 
-        $cap = self::cap($rules, $base, $remaining);
+        $capB = self::capBaisa($rules, $baseB, $remB);
+        [$vn, $vd] = self::perPoint($rules, $remB);
 
-        // كم نقطةً تغطّي السقف — ولا كسرَ نقطة: ما لا يبلغ نقطةً كاملة لا يُصرف
-        $byCap = self::isPercent($rules)
-            ? (int) floor(round($cap * $rules['points'] * 100 / ($remaining * $rules['percent']), 6))
-            : (int) floor(round($cap * $rules['points'] / $rules['value'], 6));
-
-        /*
-         * والتقريبُ الذي يمحو ضجيجَ الكسور لا يرفع نقطةً فوق السقف.
-         *
-         * `round(…, 6)` تقرأ ٢٫٩٩٩٩٩٩٧ ثلاثًا، وحين تكون النقطةُ الواحدة بآلاف
-         * (نسبةٌ من فاتورةٍ كبيرة) تتجاوز الثالثةُ سقفَ صاحب النشاط ببيسة:
-         * سقفٌ ٨٩٩٩٫٩٩٩ يخرج خصمًا ٩٠٠٠. فيُنزَل حتى لا تتجاوزه.
-         */
-        while ($byCap > 0 && round(self::worth($rules, $byCap, $remaining) - $cap, 3) > 0) {
-            $byCap--;
+        if (! $vn->isPositive()) {
+            return $none(self::NOTHING_TO_DISCOUNT);
         }
 
-        $max = self::fewest($rules, min($balance, $byCap), $remaining);
+        // كم نقطةً يبلغها السقف: أكبرُ عددٍ لا تتجاوز قيمتُه السقفَ — ولا كسرَ نقطة
+        $byCap = $capB->multipliedBy($vd)->quotient($vn);
+        $max = self::fewest($rules, $byCap->isLessThan($balance) ? $byCap->toInt() : $balance, $remB);
 
         if ($max <= 0) {
             return $none(self::NOTHING_TO_DISCOUNT);
         }
 
-        $points = $requested === null ? $max : self::fewest($rules, max(0, min($requested, $max)), $remaining);
+        $points = $requested === null ? $max : self::fewest($rules, max(0, min($requested, $max)), $remB);
 
         return [
             'eligible' => true,
             'reason' => null,
             'balance' => $balance,
             'max_points' => $max,
-            'max_discount' => self::worth($rules, $max, $remaining),
+            'max_discount' => self::worthBaisa($rules, $max, $remB) / 1000.0,
             'points' => $points,
-            'discount' => self::worth($rules, $points, $remaining),
+            'discount' => self::worthBaisa($rules, $points, $remB) / 1000.0,
         ];
+    }
+
+    /**
+     * العددُ كما يُكتب بأقصر صورةٍ تعيده هو نفسَه ← بسطٌ ومقامٌ صحيحان.
+     *
+     * ٠٫١ العائمةُ ليست عُشرًا، لكنّ أقصرَ ما يُكتب لها «0.1» — وهو ما
+     * كتبه التاجر. فتُقرأ عُشرًا تامًّا، والشاشةُ تقرؤها كذلك (`String(x)`).
+     *
+     * @return array{0: BigInteger, 1: BigInteger}
+     */
+    private static function exact(float|int $x): array
+    {
+        $s = is_finite((float) $x) ? json_encode((float) $x) : '0';
+
+        if (! is_string($s) || ! preg_match('/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i', $s, $m)) {
+            return [BigInteger::zero(), BigInteger::one()];
+        }
+
+        $fraction = $m[3] ?? '';
+        $num = BigInteger::of($m[2].$fraction);
+        $scale = strlen($fraction) - (int) ($m[4] ?? 0);
+        $den = BigInteger::one();
+
+        if ($scale >= 0) {
+            $den = BigInteger::ten()->power($scale);
+        } else {
+            $num = $num->multipliedBy(BigInteger::ten()->power(-$scale));
+        }
+
+        return [$m[1] === '-' ? $num->negated() : $num, $den];
+    }
+
+    /** `a ÷ b` مدوَّرًا نصفًا إلى أعلى — `round()` في PHP لما ليس سالبًا */
+    private static function halfUp(BigInteger $a, BigInteger $b): BigInteger
+    {
+        return $a->multipliedBy(2)->plus($b)->quotient($b->multipliedBy(2));
+    }
+
+    /** مبلغٌ بالبيسات — `round($x, 3) × 1000` بلا كسرٍ عائم */
+    private static function milli(float $x): BigInteger
+    {
+        [$n, $d] = self::exact(max(0.0, $x));
+
+        return self::halfUp($n->multipliedBy(1000), $d);
+    }
+
+    /** ما بقي بعد الخصومات الأخرى بالبيسات — `round($base − $other, 3)`، ولا سالب */
+    private static function remainder(BigInteger $baseB, float $other): BigInteger
+    {
+        [$on, $od] = self::exact($other);
+        $left = $baseB->multipliedBy($od)->minus($on->multipliedBy(1000));
+
+        return $left->isPositive() ? self::halfUp($left, $od) : BigInteger::zero();
+    }
+
+    /**
+     * قيمةُ النقطة الواحدة بالبيسات — نسبةٌ مضبوطة (بسط، مقام).
+     *
+     * مبلغٌ ثابت: `value × 1000 ÷ points`. ونسبة: `المؤهّلة × percent ÷ 100 ÷ points`.
+     *
+     * @return array{0: BigInteger, 1: BigInteger}
+     */
+    private static function perPoint(array $rules, BigInteger $eligibleB): array
+    {
+        $per = BigInteger::of(max(1, (int) $rules['points']));
+
+        if (self::isPercent($rules)) {
+            [$pn, $pd] = self::exact(max(0.0, (float) ($rules['percent'] ?? 0)));
+
+            return [$eligibleB->multipliedBy($pn), $pd->multipliedBy(100)->multipliedBy($per)];
+        }
+
+        [$vn, $vd] = self::exact(max(0.0, (float) $rules['value']));
+
+        return [$vn->multipliedBy(1000), $vd->multipliedBy($per)];
+    }
+
+    /** قيمةُ عددٍ من النقاط بالبيسات — مقصوصةً لا مدوَّرة */
+    private static function worthBaisa(array $rules, int $points, BigInteger $eligibleB): int
+    {
+        if ($points <= 0 || $rules['points'] <= 0) {
+            return 0;
+        }
+
+        [$vn, $vd] = self::perPoint($rules, $eligibleB);
+
+        return BigInteger::of($points)->multipliedBy($vn)->quotient($vd)->toInt();
+    }
+
+    /**
+     * السقفُ بالبيسات — `cap` بلا كسرٍ عائم.
+     *
+     * ═══ وحدُّ صاحب النشاط يُقصّ ولا يُدوَّر ═══
+     *
+     * خمسون بالمئة من ٢٫٩١٩ هي ١٫٤٥٩٥ — نصفُ بيسةٍ تمامًا. التدويرُ إلى أعلى
+     * يجعل الحدَّ ١٫٤٦٠ فيتجاوز ما كتبه صاحبُ النشاط بنصف بيسة. وكانت
+     * الكسورُ العائمة تقصّها هنا وتدوّرها هناك بحسب تمثيل الرقم، لا بقاعدة.
+     * فالحدّان يُقصّان دائمًا — كما تُقصّ قيمةُ النقاط — فلا يتجاوزهما خصم.
+     */
+    private static function capBaisa(array $rules, BigInteger $baseB, BigInteger $remB): BigInteger
+    {
+        $cap = $remB;
+
+        if (($rules['max_pct'] ?? null) !== null) {
+            [$mn, $md] = self::exact(max(0.0, (float) $rules['max_pct']));
+            $cap = BigInteger::min($cap, $baseB->multipliedBy($mn)->quotient($md->multipliedBy(100)));
+        }
+        if (($rules['max_amount'] ?? null) !== null) {
+            [$an, $ad] = self::exact(max(0.0, (float) $rules['max_amount']));
+            $cap = BigInteger::min($cap, $an->multipliedBy(1000)->quotient($ad));
+        }
+
+        return $cap->isNegative() ? BigInteger::zero() : $cap;
     }
 
     /**
@@ -242,16 +358,7 @@ class Loyalty
      */
     public static function cap(array $rules, float $base, float $remaining): float
     {
-        $cap = max(0.0, $remaining);
-
-        if (($rules['max_pct'] ?? null) !== null) {
-            $cap = min($cap, round($base * $rules['max_pct'] / 100, 3));
-        }
-        if (($rules['max_amount'] ?? null) !== null) {
-            $cap = min($cap, round((float) $rules['max_amount'], 3));
-        }
-
-        return max(0.0, $cap);
+        return self::capBaisa($rules, self::milli(max(0.0, $base)), self::milli(max(0.0, $remaining)))->toInt() / 1000.0;
     }
 
     /** هل يستبدل المتجرُ نسبةً من الفاتورة — وقواعدُ بلا طريقةٍ (حالاتٌ قديمة) مبلغٌ ثابت */
@@ -275,17 +382,7 @@ class Loyalty
      */
     public static function worth(array $rules, int $points, float $eligible = 0.0): float
     {
-        if ($points <= 0 || $rules['points'] <= 0) {
-            return 0.0;
-        }
-
-        if (self::isPercent($rules)) {
-            $eligible = max(0.0, round($eligible, 3));
-
-            return floor(round($points * $eligible * (float) $rules['percent'] / 100 / $rules['points'] * 1000, 6)) / 1000;
-        }
-
-        return floor(round($points * $rules['value'] / $rules['points'] * 1000, 6)) / 1000;
+        return self::worthBaisa($rules, $points, self::milli(max(0.0, $eligible))) / 1000.0;
     }
 
     /**
@@ -299,27 +396,18 @@ class Loyalty
      *
      * وفي الصرف القديم (مئةُ نقطةٍ بريال: النقطةُ عشرُ بيسات) العددُ هو هو.
      */
-    private static function fewest(array $rules, int $points, float $eligible): int
+    private static function fewest(array $rules, int $points, BigInteger $eligibleB): int
     {
-        $worth = self::worth($rules, $points, $eligible);
+        $worth = self::worthBaisa($rules, $points, $eligibleB);
         if ($points <= 0 || $worth <= 0) {
             return 0;
         }
 
-        $unit = self::isPercent($rules)
-            ? max(0.0, round($eligible, 3)) * (float) $rules['percent'] / 100 / $rules['points']
-            : $rules['value'] / $rules['points'];
+        // أصغرُ عددٍ تبلغ قيمتُه `worth` بيسةً: سقفُ `worth ÷ قيمة النقطة` — قسمةٌ صحيحة لا تقدير
+        [$vn, $vd] = self::perPoint($rules, $eligibleB);
+        $fewest = BigInteger::of($worth)->multipliedBy($vd)->plus($vn)->minus(1)->quotient($vn)->toInt();
 
-        // التقديرُ من القسمة، ثمّ يُصحَّح بالدالّة نفسِها — فلا يُعتمد على كسرٍ عشريٍّ وحده
-        $fewest = (int) max(1, min($points, ceil(round($worth / $unit, 6))));
-        while ($fewest < $points && self::worth($rules, $fewest, $eligible) < $worth) {
-            $fewest++;
-        }
-        while ($fewest > 1 && self::worth($rules, $fewest - 1, $eligible) >= $worth) {
-            $fewest--;
-        }
-
-        return $fewest;
+        return max(1, min($points, $fewest));
     }
 
     /**
@@ -337,7 +425,10 @@ class Loyalty
             return 0.0;
         }
 
-        return min(100.0, floor(round($points * (float) $rules['percent'] / $rules['points'] * 100, 6)) / 100);
+        [$pn, $pd] = self::exact(max(0.0, (float) ($rules['percent'] ?? 0)));
+        $hundredths = BigInteger::of($points)->multipliedBy($pn)->multipliedBy(100)->quotient($pd->multipliedBy($rules['points']));
+
+        return $hundredths->isGreaterThan(10000) ? 100.0 : $hundredths->toInt() / 100.0;
     }
 
     /**

@@ -392,6 +392,35 @@ PHP;
         $this->assertSame(1, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->whereNotNull('reversed_at')->count());
     }
 
+    /**
+     * يدٌ تفتح المسودّة لتلغيها، ويدٌ تُصدرها في اللحظة نفسها.
+     *
+     * الإلغاءُ قرأ «مسودّة» قبل أن يكتب الإصدارُ قيدَه. فإن بنى على تلك القراءة
+     * كتب «ملغاة» فوق «صادرة» وترك القيدَ قائمًا (الإصلاح: يقفل الصفّ ويقرأ من
+     * جديد). فالنتيجةُ: ملغاةٌ، وقيدُها معكوسٌ مرّة، ونقاطُها عادت مرّة.
+     */
+    public function test_issuing_and_cancelling_one_draft_at_once_leave_no_live_entry_behind(): void
+    {
+        $draft = $this->draft();
+        $cancel = <<<'PHP'
+$stale = App\Models\CustomerInvoice::findOrFail($ids['invoice']);
+usleep(1500000); // يدُ الإلغاء تقرأ المسودّة ثمّ تتأخّر — والإصدارُ يمضي
+App\Support\CustomerInvoices::cancel($stale, 'أُلغيت');
+echo 'cancelled';
+PHP;
+
+        [$outs] = $this->race([sprintf(self::ISSUE, $draft->id), $cancel], ['invoice' => $draft->id]);
+
+        $this->assertSame(['issued', 'cancelled'], $outs);
+        $this->assertSame(CustomerInvoice::CANCELLED, $draft->fresh()->status);
+        $entries = JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $draft->id)->get();
+        $this->assertSame(1, $entries->whereNull('reverses_id')->count(), 'قيدُ الإصدار مرّة');
+        $this->assertSame(1, $entries->whereNull('reverses_id')->whereNotNull('reversed_at')->count(), 'قيدٌ قائمٌ على فاتورةٍ ملغاة');
+        $this->assertSame(500, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(1, PointTransaction::where('customer_invoice_id', $draft->id)->where('type', 'earn')->count());
+    }
+
     /*
      * ═══ وفاتورةٌ تغطّيها النقاطُ كلُّها — إجماليٌّ صفر ═══
      *

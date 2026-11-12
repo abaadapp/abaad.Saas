@@ -1036,6 +1036,41 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
     }
 
     /**
+     * وبالنسبة: بندٌ بخمسين وخصمُه خمسة، ومئةُ نقطةٍ بعشرةٍ بالمئة من المؤهّلة.
+     * خمسُمئة نقطة = ٥٠٪ من ٤٥ = ٢٢٫٥٠٠ (تحت سقف الخمسين: ٢٥). الضريبةُ على ٢٢٫٥٠٠
+     * = ١٫١٢٥، والمستحقّ ٢٣٫٦٢٥ — ورابطُ Paymob يطلب ٢٣٦٢٥ بيسةً بالضبط.
+     */
+    public function test_a_percent_invoice_with_a_line_discount_asks_paymob_for_exactly_its_total(): void
+    {
+        $this->vat();
+        $this->percent();
+        PaymentGateway::create([
+            'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
+            'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
+            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
+        ]);
+        Http::fake([
+            'oman.paymob.com/api/auth/tokens' => Http::response(['token' => 'tok']),
+            'oman.paymob.com/api/ecommerce/payment-links' => Http::response([
+                'id' => 590002, 'shorten_url' => 'https://paymob.link/p', 'created_at' => '2026-11-11T10:00:00',
+                'expires_at' => '2026-11-18T23:59:00', 'state' => 'created', 'order' => 717000002,
+            ]),
+        ]);
+
+        $invoice = $this->invoice(500, [['description' => 'باقة', 'quantity' => 1, 'unit_price' => 50, 'discount' => 5]]);
+        $this->assertEqualsWithDelta(22.5, (float) $invoice->loyalty_discount, 0.00001);
+        $this->assertEqualsWithDelta(1.125, (float) $invoice->tax_total, 0.00001);
+        $this->assertEqualsWithDelta(23.625, (float) $invoice->total, 0.00001);
+        $this->assertAddsUp($invoice);
+        $this->assertBalancedEntry($invoice);
+
+        $link = PaymentLinks::create($this->shop->id, $this->customer->fresh(), $invoice, null, null, $this->owner->id);
+        $this->assertEqualsWithDelta(23.625, (float) $link->amount, 0.00001);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/api/ecommerce/payment-links')
+            && collect($r->data())->firstWhere('name', 'amount_cents')['contents'] === '23625');
+    }
+
+    /**
      * إصدارٌ فشل بعد أن صرف النقاط (يردّه الدفترُ لفترةٍ مقفلة) لا يُبقي صرفًا:
      * المعاملةُ كلُّها تُرجع. وإعادةُ المحاولة تصرف مرّةً، وتكرارُها لا يصرف ثانية.
      */
@@ -1176,6 +1211,43 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertBalancedEntry($part);
         $this->assertEqualsWithDelta(0.0, (float) $part->items->firstWhere('description', 'توصيل معفى')->tax_amount, 0.00001);
         $this->assertSame(50000 - 833 - 333, (int) $this->customer->fresh()->points);
+    }
+
+    /**
+     * ═══ الإرجاعُ الجزئيّ في الصندوق كما هو اليوم — معروضٌ لقرار المالك، لا مُغيَّر ═══
+     *
+     * تصحيحُ الكميّة (`OrderCorrection::setQuantity`) يُبقي خصمَ البيعة كاملًا على
+     * ما بقي ولا يعيد نقطة، والمستردُّ نقدًا فرقُ الإجماليّين. فلا يأخذ العميلُ
+     * أكثرَ ممّا دفع (نقدًا + نقاطًا). وحين يصير ما بقي دون الخصم يُقصّ الخصمُ إليه،
+     * فتضيع على العميل قيمةُ ما فاض من نقاطه. وإعادةُ النقاط بالتناسب سياسةٌ تغيّر
+     * المستردَّ نقدًا — قرارُ صاحب المنصّة لا إصلاحٌ صامت.
+     */
+    public function test_a_partial_till_return_today_keeps_the_points_discount_and_returns_no_points(): void
+    {
+        $this->customer->update(['points' => 5000]);
+
+        // بقطعتين بمئة ونقاطٍ بعشرين: ١٨٠ — ثمّ تُعاد قطعة
+        $order = $this->sell(['redeem_points' => 2000, 'redeem_discount' => 20], null, 2);
+        $this->assertEqualsWithDelta(180.0, (float) $order->total, 0.0001);
+        [$before, $earned] = [(int) $this->customer->fresh()->points, (int) $order->points_earned];
+
+        OrderCorrection::setQuantity($order->fresh(), $order->items()->firstOrFail(), 1, 'أعاد قطعة');
+        $order = $order->fresh();
+        $this->assertEqualsWithDelta(20.0, (float) $order->discount, 0.0001, 'الخصمُ كلُّه باقٍ على القطعة الباقية');
+        $this->assertEqualsWithDelta(80.0, (float) $order->total, 0.0001, 'فيُستردّ نقدًا ١٠٠ — ثمنُ القطعة كاملًا');
+        $this->assertSame(2000, (int) $order->redeemed_points, 'ولا تعود نقطةٌ مستبدلة');
+        $this->assertSame($before + (int) $order->points_earned - $earned, (int) $this->customer->fresh()->points, 'الرصيدُ لا يتغيّر إلّا بتصحيح المكتسَب');
+
+        // وحين يصير الباقي دون الخصم: عشرُ قطعٍ بعشرة ونقاطٌ بعشرين، ثمّ تبقى واحدة
+        $cheap = Product::create(['business_id' => $this->shop->id, 'name' => 'وردة', 'price' => 10, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $order = $this->sell(['redeem_points' => 2000, 'redeem_discount' => 20], $cheap, 10);
+        $this->assertEqualsWithDelta(80.0, (float) $order->total, 0.0001);
+
+        OrderCorrection::setQuantity($order->fresh(), $order->items()->firstOrFail(), 1, 'أعاد تسعًا');
+        $order = $order->fresh();
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001, 'الخصمُ يُقصّ إلى ما بقي');
+        $this->assertEqualsWithDelta(0.0, (float) $order->total, 0.0001, 'فيُستردّ ٨٠ — كلُّ ما دُفع');
+        $this->assertSame(2000, (int) $order->redeemed_points, 'ونقاطُ العشرين كلُّها مصروفة وقد قابلها خصمٌ بعشرة');
     }
 
     /** الكاشيرُ يستبدل في الصندوق بقواعد صاحب النشاط، ولا يغيّر القواعد — بلا قسم التسويق تُردّ */

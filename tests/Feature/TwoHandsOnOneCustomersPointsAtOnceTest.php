@@ -375,6 +375,50 @@ PHP;
         }
     }
 
+    /**
+     * إلغاءٌ وإشعارٌ تتقاطع أقفالُهما — فلا يُسقط أحدُهما الآخر.
+     *
+     * الإشعارُ يقفل المتجرَ ثمّ الورقة (كتابتُه تطلب صفَّها بمفتاحها الأجنبيّ، ثمّ
+     * `returnPointsForCredit`). فإلغاءٌ يقفل الورقةَ ثمّ المتجر (`Ledger::reverse`) ينتظر كلٌّ منهما ما في
+     * يد الآخر، فتُسقط القاعدةُ أحدَهما (40P01) ويرى الموظّفُ خطأً لا سببَ له.
+     * والترتيبُ الواحد — المتجرُ ثمّ الورقةُ ثمّ العميل — يجعلهما ينتظران ولا
+     * يتعارضان: الإشعارُ يصدر، ثمّ يلغي الإلغاءُ ويعيد الباقي.
+     */
+    public function test_a_cancel_and_a_credit_note_crossing_their_locks_both_finish(): void
+    {
+        $invoice = $this->issued();
+        $cancel = <<<'PHP'
+// يدُ الإلغاء تبدأ بعد أن يمسك الإشعارُ المتجرَ — فتمسك الورقةَ وهو ممسكٌ به
+usleep(250000);
+try {
+    App\Support\CustomerInvoices::cancel(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 'أُلغيت');
+    echo 'cancelled';
+} catch (Illuminate\Database\QueryException $e) {
+    echo 'lock-error:'.$e->getCode();
+}
+PHP;
+        $credit = <<<'PHP'
+// يدُ الإشعار تمسك المتجرَ ثمّ تتمهّل قبل أن تكتب الإشعار (والكتابةُ تطلب صفَّ الورقة بمفتاحها الأجنبيّ)
+App\Models\Business::retrieved(function () { usleep(1000000); });
+try {
+    Tests\Support\ReturnNote::issue(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 47.5);
+    echo 'credited';
+} catch (Illuminate\Database\QueryException $e) {
+    echo 'lock-error:'.$e->getCode();
+} catch (RuntimeException|Illuminate\Validation\ValidationException $e) {
+    echo 'refused';
+}
+PHP;
+
+        [$outs] = $this->race([$cancel, $credit], ['invoice' => $invoice->id]);
+
+        $this->assertSame(['cancelled', 'credited'], $outs, 'تقاطعُ الأقفال أسقط إحدى اليدين');
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+        $this->assertSame(1, CustomerCreditNote::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertSame(500, CustomerInvoices::pointsReturned($invoice));
+        $this->assertSame(500, $this->points());
+    }
+
     /** إلغاءان معًا: النقاطُ تعود مرّةً والقيدُ يُعكس مرّة */
     public function test_two_cancels_at_once_return_the_points_once(): void
     {

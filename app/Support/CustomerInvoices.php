@@ -625,6 +625,27 @@ final class CustomerInvoices
      *
      * ولا يُصدَر ما صدر: نداءان لا يكتبان قيدين.
      */
+    /**
+     * يقفل المتجرَ ثمّ الورقة، ويردّها كما هي الآن — داخل معاملةٍ قائمة.
+     *
+     * ═══ ترتيبٌ واحد للأقفال: المتجر ← الورقة ← العميل ═══
+     *
+     * الإشعارُ الدائن والتحصيلُ والدفترُ يأخذون المتجرَ أوّلًا (`creditNote`،
+     * `CustomerPayments`، `Ledger::post`)، ثمّ الورقة (كتابةُ الإشعار تطلب صفَّها
+     * بمفتاحها الأجنبيّ)، ثمّ العميل. فإلغاءٌ يقفل الورقةَ ثمّ يطلب المتجرَ
+     * لعكس قيده، وإشعارٌ في اللحظة نفسها يمسك المتجرَ ويطلب الورقة: ينتظر
+     * كلٌّ ما في يد الآخر فتُسقط القاعدةُ أحدَهما (40P01). قِيس، ويحرسه
+     * `TwoHandsOnOneCustomersPointsAtOnceTest`. فالإصدارُ والإلغاءُ يأخذان
+     * المتجرَ أوّلًا كذلك — وأخذُه ثانيةً في المعاملة نفسِها لا يكلّف شيئًا.
+     */
+    private static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
+    {
+        Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+
+        return CustomerInvoice::where('business_id', $invoice->business_id)
+            ->lockForUpdate()->findOrFail($invoice->id);
+    }
+
     public static function issue(CustomerInvoice $invoice, ?int $userId = null): CustomerInvoice
     {
         return DB::transaction(function () use ($invoice, $userId) {
@@ -635,9 +656,10 @@ final class CustomerInvoices
              * «مسودة» كلتاهما خارج المعاملة فتمضيان: قيدان لفاتورةٍ واحدة،
              * وإيرادٌ مضاعف، وذمّتان لدَينٍ واحد. والقفلُ يجعل الثانيةَ تنتظر
              * ثمّ تجدها صادرةً فتخرج بها.
+             *
+             * والمتجرُ قبل الورقة — ترتيبُ الأقفال الواحد (`lockInOrder`).
              */
-            $locked = CustomerInvoice::where('business_id', $invoice->business_id)
-                ->lockForUpdate()->findOrFail($invoice->id);
+            $locked = self::lockInOrder($invoice);
 
             if ($locked->status === CustomerInvoice::CANCELLED) {
                 throw new RuntimeException(__('لا تُصدَر فاتورةٌ ملغاة.'));
@@ -811,9 +833,9 @@ final class CustomerInvoices
              * «مسودّة» من يده فلا يعكس شيئًا، ثمّ يكتب «ملغاة» فوق «صادرة».
              * فاتورةٌ ملغاةٌ وذمّتُها وإيرادُها باقيان في الدفتر. فيُقفل الصفّ
              * (والإصدارُ يقفله أيضًا) ويُقرأ من جديد، وعليه يُبنى كلُّ ما بعده.
+             * والمتجرُ قبل الورقة (`lockInOrder`).
              */
-            $invoice = CustomerInvoice::where('business_id', $invoice->business_id)
-                ->lockForUpdate()->findOrFail($invoice->id);
+            $invoice = self::lockInOrder($invoice);
 
             if ($invoice->status === CustomerInvoice::CANCELLED) {
                 return $invoice;

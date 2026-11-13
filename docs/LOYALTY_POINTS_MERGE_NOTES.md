@@ -1,9 +1,32 @@
 # نقاط الولاء — ما يحتاجه دمج PR #195 وPR #202 مع PR #239
 
 **مذكرة للمراجعة، لا تغيير.** كُتبت بعد المراجعة الثامنة (2026-11-13) على فرع
-`work/loyalty-redeem-modes`. لم يُغيَّر #195 ولا #202، ولم يُدمج أيٌّ منهما.
+`work/loyalty-redeem-modes`، وحُدّثت في التاسعة. لم يُغيَّر #195 ولا #202، ولم يُدمج
+أيٌّ منهما.
 
 ---
+
+## ٠) نتيجة الدمج التجريبي (في الذاكرة، `git merge-tree`، بلا مساس بالفرعين)
+
+| الدمج | ملفات التعارض | كتل التعارض في `CustomerInvoices.php` |
+|---|---|---|
+| main الحالي + #195 | `CustomerInvoices.php`، `Permissions.php`، `lang/en.json` | 2 |
+| #239 + #195 | الملفات نفسها | 2 — #239 لا يزيد تعارضًا |
+| main الحالي + #202 | `CustomerInvoices.php`، `CustomerInvoices/Show.tsx`، `ACompanyKeepsItsDocumentsTest.php` | 2 |
+| #239 + #202 | الملفات نفسها | 3 — كتلةٌ واحدةٌ زائدة من #239 |
+
+- الطلبان متأخران عن main بأكثر من 140 إيداعًا، فأكثرُ التعارض بينهما وبين main لا بسبب #239.
+- **الكتل الثلاث مع #202 في `CustomerInvoices.php`:**
+  1. **`cancel`:** في #239 صار فحصُ «سُدِّد من هذه الفاتورة» تحت القفل بعد `lockInOrder`.
+     و#202 يضيف قبله `ManualInvoiceAdjustments::cancelRefusal`. الحلّ: يُوضع فحص #202
+     تحت القفل بجانب فحص السداد، بعد `lockInOrder`.
+  2. **`creditNote` (رأس المعاملة):** يُؤخذ توقيع #202 (`$basis` في `use`) ويبقى
+     `lockInOrder` من #239.
+  3. **`creditNote` (الحدّ):** يُؤخذ `ManualInvoiceAdjustments::assertCreditNote` من #202
+     للإشعار اليدوي، ويبقى بعده استدعاءُ `returnPointsForCredit` من #239.
+- **الكتلتان مع #195 في `CustomerInvoices.php`** (موجودتان بين main و#195 أصلًا): #195
+  ينقل كتابة البنود إلى `writeItems`. الحلّ: يبقى فحصُ عرض النقاط و`withLoyalty` قبل
+  `compute` كما في #239، ثمّ تُكتب البنود بـ`writeItems` من #195.
 
 ## ١) الإشعار الدائن اليوم (بقي كما هو بقرار المالك)
 

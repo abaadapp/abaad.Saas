@@ -107,6 +107,8 @@ class OrderCorrection
              * `ACorrectionSettlesFromTheTotalItLockedTest`.
              */
             $order = self::lockOrder($order);
+            // وما اشترته نقاطُها يُكتب قبل أن يتغيّر بند — أو يُرفض التعديل (`TillRedemption`)
+            TillRedemption::pin($order);
             if ($newQty > $oldQty) {
                 self::assertNotOnBoutiqueSheet($order, $item);
             }
@@ -698,13 +700,17 @@ class OrderCorrection
     /**
      * يُعيد حساب الفاتورة من بنودها الباقية — بالمعادلة نفسها التي بيعت بها.
      *
-     * الخصم يبقى كما اتُّفق عليه إلّا أن يتجاوز المجموع الجديد فيُقصّ إليه:
-     * كوبونٌ بعشرة على سلّةٍ صارت بثمانية لا يجعل الفاتورة سالبة. والضريبة
-     * تُحتسب سطرًا سطرًا بنسبة كل صنف كما في البيع، لا بنسبةٍ واحدة.
+     * الكوبون يبقى كما اتُّفق عليه إلّا أن يتجاوز المجموع الجديد فيُقصّ إليه:
+     * كوبونٌ بعشرة على سلّةٍ صارت بثمانية لا يجعل الفاتورة سالبة. وخصمُ النقاط
+     * يتبع ما بقي من البنود ويعود نصيبُ المرتجَع نقاطًا (`TillRedemption`).
+     * والضريبة تُحتسب سطرًا سطرًا بنسبة كل صنف وبقاعدة البيعة (`VatLines`).
      */
     private static function recompute(Order $order): void
     {
+        $pointsBefore = (int) $order->redeemed_points;
         $order->update(self::totals($order, $order->items));
+        // وما نقص من نقاط البيعة يعود إلى رصيد الزبون — مرّةً واحدة (`TillRedemption`)
+        TillRedemption::giveBack($order, $pointsBefore);
     }
 
     /**
@@ -747,7 +753,7 @@ class OrderCorrection
      * مبالغُ الفاتورة من بنودٍ تُعطى — بالمعادلة نفسها التي بيعت بها.
      *
      * @param  Collection<int, OrderItem>  $items
-     * @return array{subtotal: float, discount: float, coupon_discount: float, tax: float, total: float}
+     * @return array{subtotal: float, discount: float, coupon_discount: float, tax: float, total: float, redeemed_points: int}
      */
     private static function totals(Order $order, Collection $items): array
     {
@@ -758,6 +764,27 @@ class OrderCorrection
         $gross = round($items->sum(fn ($i) => (float) $i->price * (int) $i->quantity + (float) $i->addons_total), 3);
         $discount = round(min((float) $order->discount, $gross), 3);
         $couponDiscount = round(min((float) $order->coupon_discount, $discount), 3);
+        $points = (int) $order->redeemed_points;
+
+        /*
+         * ═══ وخصمُ النقاط يتبع ما بقي من البنود ═══
+         *
+         * الكوبونُ يبقى كما اتُّفق عليه (ويُقصّ إلى المجموع)، والنقاطُ يبقى منها
+         * نصيبُ ما لم يُرجَع ويعود الباقي (`TillRedemption::kept`). وبيعةٌ بلا
+         * نقاطٍ أو لا تُعرف لقطتُها تبقى كما كانت — وتعديلُ بنود الثانية مرفوضٌ
+         * قبل أن يصل إلى هنا (`TillRedemption::pin`).
+         */
+        $basis = $points > 0 ? TillRedemption::basis($order, $items) : null;
+
+        if ($basis !== null) {
+            $grossB = TillRedemption::grossOf($items);
+            $couponB = Baisa::of((float) $order->coupon_discount);
+            $kept = TillRedemption::kept($basis, $grossB, $couponB, $points);
+            $discountB = min($couponB + $kept['discount'], $grossB);
+            $discount = Baisa::toMoney($discountB);
+            $couponDiscount = Baisa::toMoney(min($couponB, $discountB));
+            $points = $kept['points'];
+        }
 
         $tax = 0.0;
         if (Vat::enabled($bid) && $gross > 0) {
@@ -783,12 +810,23 @@ class OrderCorrection
                 ->whereIn('id', $items->pluck('product_id')->filter())
                 ->get()->keyBy('id');
 
-            foreach ($items as $i) {
-                $net = (float) $i->price * (int) $i->quantity + (float) $i->addons_total;
-                $taxable = $net - ($discount * ($net / $gross));
-                $rate = Vat::rateFor($products->get($i->product_id), $bid);
-                $tax += $inclusive ? ($taxable * $rate) / (100 + $rate) : ($taxable * $rate) / 100;
-            }
+            /*
+             * ═══ وبالقاعدة التي بيعت بها ═══
+             *
+             * البيعةُ الجديدة سطرًا سطرًا بالبيسات (`VatLines`) — قاعدةُ الصندوق
+             * وفاتورة العميل معًا. والقديمةُ (`vat_rounding` فارغ) بقاعدتها: لا
+             * تُعاد ضريبةُ ما لم يُصحَّح فيها بقاعدةٍ لم تُبَع بها.
+             */
+            $tax = $order->vat_rounding === VatLines::RULE
+                ? Baisa::toMoney(VatLines::document(
+                    $items->map(fn ($i) => [
+                        'net' => Baisa::of((float) $i->price) * (int) $i->quantity + Baisa::of((float) $i->addons_total),
+                        'rate' => (float) Vat::rateFor($products->get($i->product_id), $bid),
+                    ])->values()->all(),
+                    Baisa::of($discount),
+                    $inclusive,
+                )['tax'])
+                : self::legacyTax($items, $products, $bid, $gross, $discount, $inclusive);
         }
         $tax = round($tax, 3);
 
@@ -801,7 +839,27 @@ class OrderCorrection
             'coupon_discount' => $couponDiscount,
             'tax' => $tax,
             'total' => round($subtotal - $discount + $tax + (float) $order->delivery_fee, 3),
+            'redeemed_points' => $points,
         ];
+    }
+
+    /**
+     * ضريبةُ بيعةٍ قديمة بقاعدتها: ضرائبُ البنود بلا تقريب، والمجموعُ يُدوَّر مرّةً.
+     *
+     * هي القاعدةُ التي كُتبت بها كلُّ بيعةٍ قبل `VatLines` — تبقى لتصحيحها وحدَه.
+     */
+    private static function legacyTax(Collection $items, Collection $products, int $bid, float $gross, float $discount, bool $inclusive): float
+    {
+        $tax = 0.0;
+
+        foreach ($items as $i) {
+            $net = (float) $i->price * (int) $i->quantity + (float) $i->addons_total;
+            $taxable = $net - ($discount * ($net / $gross));
+            $rate = Vat::rateFor($products->get($i->product_id), $bid);
+            $tax += $inclusive ? ($taxable * $rate) / (100 + $rate) : ($taxable * $rate) / 100;
+        }
+
+        return round($tax, 3);
     }
 
     /**
@@ -847,6 +905,8 @@ class OrderCorrection
 
             // والفاتورةُ مقفلةً وغيرَ ملغاة قبل الإضافة، وبنسختها المقفلة — كما في `setQuantity`
             $order = self::lockOrder($order);
+            // وما اشترته نقاطُها يُكتب قبل أن يتغيّر بند — أو يُرفض التعديل (`TillRedemption`)
+            TillRedemption::pin($order);
 
             // وصفُّ الإضافة يُقرأ مقفلًا كما يُقرأ البند — العلّةُ واحدة
             $locked = OrderItemAddon::whereKey($row->id)->lockForUpdate()->first();
@@ -1040,6 +1100,8 @@ class OrderCorrection
 
         return DB::transaction(function () use ($order, $wanted, $reason, $settle, $method) {
             $order = self::lockOrder($order);
+            // وما اشترته نقاطُها يُكتب قبل أن يتغيّر بند — أو يُرفض التعديل (`TillRedemption`)
+            TillRedemption::pin($order);
             $totalBefore = (float) $order->total;
 
             $item = self::writeLine($order, self::priceOne($order, $wanted));
@@ -1095,6 +1157,8 @@ class OrderCorrection
 
         return DB::transaction(function () use ($order, $old, $wanted, $reason, $settle, $method) {
             $order = self::lockOrder($order);
+            // وما اشترته نقاطُها يُكتب قبل أن يتغيّر بند — أو يُرفض التعديل (`TillRedemption`)
+            TillRedemption::pin($order);
             self::assertNotOnBoutiqueSheet($order, $old);
             $locked = OrderItem::whereKey($old->id)->lockForUpdate()->first();
 

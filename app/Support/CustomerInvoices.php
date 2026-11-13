@@ -182,9 +182,10 @@ final class CustomerInvoices
         $inclusive = Vat::inclusive($businessId);
 
         $items = [];
-        $subtotal = 0.0;
-        $discount = 0.0;
-        $tax = 0.0;
+        // بالبيسات الصحيحة — والقاعدةُ قاعدةُ الصندوق نفسُها (`VatLines`)
+        $subtotalB = 0;
+        $discountB = 0;
+        $taxB = 0;
         $sort = 0;
 
         foreach ($lines as $line) {
@@ -196,7 +197,9 @@ final class CustomerInvoices
                 continue;
             }
 
-            $gross = round($qty * $price, 3);
+            // الكمّيّةُ في السعر بالبيسات، مدوَّرةً نصفًا إلى أعلى — كما كانت `round(…, 3)` بلا كسرٍ عائم
+            $grossB = Baisa::halfUp(BigInteger::of(Baisa::of($qty))->multipliedBy(Baisa::of($price)), BigInteger::of(1000))->toInt();
+            $gross = Baisa::toMoney($grossB);
 
             /*
              * ═══ والخصمُ المحتسَب هو المطبَّق، لا المطلوب ═══
@@ -214,8 +217,10 @@ final class CustomerInvoices
              * `subtotal − discount + tax` مساويًا لمجموع البنود دائمًا،
              * وهي الخاصّيّةُ التي تُراجَع بها الورقة.
              */
-            $lineDiscount = round(min(max(0.0, $lineDiscount), $gross), 3);
-            $net = round($gross - $lineDiscount, 3);
+            $lineDiscountB = min(Baisa::of($lineDiscount), $grossB);
+            $lineDiscount = Baisa::toMoney($lineDiscountB);
+            $netB = $grossB - $lineDiscountB;
+            $net = Baisa::toMoney($netB);
             // بندٌ معفًى يُكتب بنسبة صفر — والإعفاء لقطةٌ في السطر لا قاعدةٌ عامّة
             $lineRate = array_key_exists('tax_rate', $line) ? (float) $line['tax_rate'] : $rate;
             /*
@@ -231,13 +236,17 @@ final class CustomerInvoices
              *
              * والصيغةُ صيغةُ الموضعين الآخرين حرفًا بحرف: `net × r ÷ (100+r)`.
              */
-            $lineTax = $inclusive
-                ? round($net * $lineRate / (100 + $lineRate), 3)
-                : round($net * $lineRate / 100, 3);
+            /*
+             * وضريبةُ البند تُدوَّر وحدَها نصفًا إلى أعلى، بالبيسات — `VatLines::lineTax`،
+             * التي يحسب بها الصندوقُ كذلك. فبندٌ بالسعر نفسِه والخصمِ نفسِه تُكتب
+             * ضريبتُه في الصندوق وفي الفاتورة رقمًا واحدًا (PINT-OM: ‏IBR-168-OM).
+             */
+            $lineTaxB = VatLines::lineTax($netB, (float) $lineRate, $inclusive);
+            $lineTax = Baisa::toMoney($lineTaxB);
 
-            $subtotal = round($subtotal + $gross, 3);
-            $discount = round($discount + $lineDiscount, 3);
-            $tax = round($tax + $lineTax, 3);
+            $subtotalB += $grossB;
+            $discountB += $lineDiscountB;
+            $taxB += $lineTaxB;
 
             $items[] = [
                 'product_id' => $line['product_id'] ?? null,
@@ -260,7 +269,7 @@ final class CustomerInvoices
                  * ثانيةً تجعل مجموعَ البنود أكبرَ من إجمالي الورقة — وهي
                  * الخاصّيّةُ التي يُراجَع بها ورقٌ رسميّ.
                  */
-                'line_total' => $inclusive ? $net : round($net + $lineTax, 3),
+                'line_total' => $inclusive ? $net : Baisa::toMoney($netB + $lineTaxB),
                 'sort_order' => $sort++,
                 /*
                  * وما لا مالَ فيه يمرّ كما جاء — لقطةُ ما اختير مع البند، ومن
@@ -280,14 +289,14 @@ final class CustomerInvoices
          * `subtotal − discount + tax` مساويًا لمجموع البنود في الحالين —
          * وهي القاعدةُ التي تُراجَع بها الورقة سطرًا سطرًا.
          */
-        $subtotal = $inclusive ? round($subtotal - $tax, 3) : $subtotal;
+        $subtotalB = $inclusive ? $subtotalB - $taxB : $subtotalB;
 
         return [
             'items' => $items,
-            'subtotal' => $subtotal,
-            'discount' => $discount,
-            'tax' => $tax,
-            'total' => round($subtotal - $discount + $tax, 3),
+            'subtotal' => Baisa::toMoney($subtotalB),
+            'discount' => Baisa::toMoney($discountB),
+            'tax' => Baisa::toMoney($taxB),
+            'total' => Baisa::toMoney($subtotalB - $discountB + $taxB),
         ];
     }
 
@@ -1421,11 +1430,11 @@ final class CustomerInvoices
             if ($qty <= 0) {
                 continue;
             }
-            $gross = round($qty * round((float) ($line['unit_price'] ?? 0), 3), 3);
-            $own = round(min(max(0.0, round((float) ($line['discount'] ?? 0), 3)), $gross), 3);
-            $net = round($gross - $own, 3);
-            if ($net > 0) {
-                $nets[$i] = ['own' => $own, 'net' => $net];
+            // صافي البند بالبيسات كما يحسبه `compute` حرفًا — فلا يفترقان على بيسة
+            $grossB = Baisa::halfUp(BigInteger::of(Baisa::of($qty))->multipliedBy(Baisa::of((float) ($line['unit_price'] ?? 0))), BigInteger::of(1000))->toInt();
+            $ownB = min(Baisa::of((float) ($line['discount'] ?? 0)), $grossB);
+            if ($grossB - $ownB > 0) {
+                $nets[$i] = ['own' => $ownB, 'net' => $grossB - $ownB];
             }
         }
 
@@ -1437,8 +1446,8 @@ final class CustomerInvoices
          * حدّ البيسة مرّةً فوقه ومرّةً تحته بحسب تمثيل الرقم. وما بقي من القصّ
          * يذهب إلى أكبر البنود صافيًا كما كان.
          */
-        $d = (int) round($discount * 1000);
-        $cents = array_map(fn ($n) => (int) round($n['net'] * 1000), $nets);
+        $d = Baisa::of($discount);
+        $cents = array_map(fn ($n) => $n['net'], $nets);
         $sum = array_sum($cents);
         if ($sum < $d) {
             throw ValidationException::withMessages([
@@ -1446,25 +1455,12 @@ final class CustomerInvoices
             ]);
         }
 
-        $shares = [];
-        foreach ($cents as $i => $net) {
-            $shares[$i] = BigInteger::of($d)->multipliedBy($net)->quotient($sum)->toInt();
-        }
-
-        // الباقي من القصّ — لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه
-        $left = $d - array_sum($shares);
-        uasort($cents, fn ($a, $b) => $b <=> $a);
-        foreach ($cents as $i => $net) {
-            if ($left <= 0) {
-                break;
-            }
-            $add = min($net - $shares[$i], $left);
-            $shares[$i] += $add;
-            $left -= $add;
-        }
+        // والباقي من القصّ لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه —
+        // القسمةُ نفسُها التي يوزَّع بها خصمُ بيعة الصندوق (`Baisa::spread`)
+        $shares = Baisa::spread($d, $cents);
 
         foreach ($shares as $i => $share) {
-            $lines[$i]['discount'] = round($nets[$i]['own'] + $share / 1000.0, 3);
+            $lines[$i]['discount'] = Baisa::toMoney($nets[$i]['own'] + $share);
             $lines[$i]['loyalty_discount'] = $share / 1000.0;
         }
 

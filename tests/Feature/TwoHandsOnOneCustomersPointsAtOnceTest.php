@@ -471,6 +471,55 @@ PHP;
      * سقوفٌ تركها صاحبُ النشاط فارغة: خمسُمئة نقطةٍ تغطّي ورقةً بخمسة. ولا قيدَ
      * لها، فالقفلُ والمفتاحُ الفريد وحدهما يمنعان الصرفَ والإعادةَ مرّتين.
      */
+    private const RETURN_ONE = <<<'PHP'
+auth()->setUser(App\Models\User::findOrFail(%d));
+// يُمسك قفلَ الطلب والعميل برهةً بعد أن يردّ النقاط — فيصل الآخرُ وهو ممسوك
+App\Models\PointTransaction::created(function () { usleep(800000); });
+App\Support\OrderCorrection::setQuantity(App\Models\Order::findOrFail(%d), App\Models\OrderItem::findOrFail(%d), 1, 'إرجاع');
+echo 'returned';
+PHP;
+
+    /**
+     * إرجاعان من بيعةٍ واحدة على صندوقين في اللحظة نفسها: كلٌّ يردّ نصيبَه مرّةً،
+     * والمجموعُ كما لو أُرجعا معًا — ولا تُردّ نقطةٌ مرّتين (`TillRedemption`).
+     */
+    public function test_two_partial_returns_of_one_sale_at_once_give_back_each_share_once(): void
+    {
+        $this->customer->update(['points' => 5000]);
+        $rose = Product::create([
+            'business_id' => $this->shop->id, 'name' => 'وردة', 'price' => 100, 'cost' => 40,
+            'quantity' => 1000, 'alert_qty' => 1, 'active' => true,
+        ]);
+        $this->actingAs($this->owner)->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), [
+                'items' => [['id' => $this->product->id, 'name' => 'باقة', 'qty' => 2], ['id' => $rose->id, 'name' => 'وردة', 'qty' => 2]],
+                'payment_method' => 'نقدي',
+                'customer_id' => $this->customer->id,
+                'client_uuid' => uniqid('race', true),
+                'redeem_points' => 2000,
+                'redeem_discount' => 20,
+            ])->assertOk();
+        $order = Order::latest('id')->firstOrFail();
+        $this->assertSame(3000, $this->points());
+        $a = $order->items()->where('product_id', $this->product->id)->firstOrFail();
+        $b = $order->items()->where('product_id', $rose->id)->firstOrFail();
+
+        [$outs] = $this->race([
+            sprintf(self::RETURN_ONE, $this->owner->id, $order->id, $a->id),
+            sprintf(self::RETURN_ONE, $this->owner->id, $order->id, $b->id),
+        ], []);
+
+        $this->assertSame(['returned', 'returned'], $outs);
+        $order->refresh();
+        $this->assertSame(1000, (int) $order->redeemed_points);
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
+        $this->assertEqualsWithDelta(190.0, (float) $order->total, 0.0001);
+        $back = PointTransaction::where('order_id', $order->id)->where('source_key', 'like', 'till-return:%')->get();
+        $this->assertCount(2, $back, 'حركةٌ لكلّ إرجاع');
+        $this->assertSame([500, 500], $back->pluck('points')->map(fn ($p) => (int) $p)->sort()->values()->all());
+        $this->assertSame(4000, $this->points(), '٣٠٠٠ + ١٠٠٠ — لا أكثر');
+    }
+
     private function wholeDraft(): CustomerInvoice
     {
         Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'loyalty_redeem_max_pct'], ['value' => '']);

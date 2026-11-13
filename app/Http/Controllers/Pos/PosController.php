@@ -50,6 +50,7 @@ use App\Support\SalesChannel;
 use App\Support\SeasonSales;
 use App\Support\Stock;
 use App\Support\StockLedger;
+use App\Support\TillRedemption;
 use App\Support\Vat;
 use App\Support\WhatsAppEvent;
 use Illuminate\Database\QueryException;
@@ -1516,6 +1517,13 @@ class PosController extends Controller
         $order->points_earned = $earned;
         // وما صُرف فعلًا لا ما طُلب — فإلغاءُ البيعة يُعيد ما أُخذ لا أكثر (`OrderCorrection`)
         $order->redeemed_points = $spent;
+        /*
+         * وما اشترته هذه النقاطُ يومَ بيعت: عددُها وخصمُها ومجموعُ البنود.
+         *
+         * منه يُقاس ما يعود منها إن أُرجع بعضُ البنود في يومها
+         * (`TillRedemption`) — ولا يُستنتج بعد أوّل تصحيح.
+         */
+        $order->loyalty_basis = TillRedemption::atSale($spent, $order->loyaltyDiscount(), (float) $redeem['base']);
         $order->save();
 
         /*

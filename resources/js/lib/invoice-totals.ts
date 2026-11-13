@@ -1,3 +1,6 @@
+import { halfUp, milli, toMoney } from '@/lib/baisa';
+import { vatLineTax } from '@/lib/vat-lines';
+
 /**
  * ملخّصُ فاتورة العميل في الشاشة — نسخةٌ حرفيّة من `App\Support\CustomerInvoices::compute`.
  *
@@ -37,34 +40,40 @@ const num = (v: string | number): number => {
 };
 
 /**
- * ولا تقريبَ على كلّ خطوةٍ هنا.
+ * وبالبيسات الصحيحة كما يكتبها الخادم — لا تقريبَ عند العرض وحده.
  *
- * الخادمُ يقرّب إلى ثلاث منازل في كلّ خطوة لأنّه يكتب في أعمدة
- * `decimal(12,3)`. وهذا صندوقُ عرضٍ يُعاد رسمُه مع كلّ حرف، ويُطبع بـ
- * `Money` التي تقرّب عند العرض. فالتقريبُ عند الخرج وحده، والفرقُ بين
- * الاثنين دون منزلةٍ واحدة — أصغرُ من أن يُرى على الشاشة.
+ * كانت تجمع بكسورٍ عائمة وتقرّب عند العرض، فتختلف عن الورقة ببيسةٍ أحيانًا.
+ * والآن الخطواتُ خطواتُ `compute` نفسُها: الكمّيّةُ في السعر مدوَّرةً إلى البيسة،
+ * والخصمُ مقصورٌ إلى [صفر، قيمة البند]، وضريبةُ كلّ بندٍ تُدوَّر وحدَها
+ * (`vatLineTax` — القاعدةُ الواحدة مع الصندوق) ثمّ تُجمع.
  */
 export function invoiceTotals(lines: InvoiceLine[], inclusive: boolean): InvoiceTotals {
-    let gross_sum = 0;
-    let discount = 0;
-    let tax = 0;
+    let grossB = 0n;
+    let discountB = 0n;
+    let taxB = 0n;
 
     for (const line of lines) {
-        const gross = num(line.quantity) * num(line.unit_price);
-        // ‏والخصمُ المحتسَب هو المطبَّق: يُقصَر إلى [صفر، قيمة البند] كما في الخادم
-        const off = Math.min(Math.max(0, num(line.discount)), gross);
-        const net = gross - off;
-        const rate = num(line.tax_rate);
+        if (!(num(line.quantity) > 0)) continue;
 
-        gross_sum += gross;
-        discount += off;
-        tax += inclusive ? (net * rate) / (100 + rate) : (net * rate) / 100;
+        const g = halfUp(milli(num(line.quantity)) * milli(num(line.unit_price)), 1000n);
+        // ‏والخصمُ المحتسَب هو المطبَّق: يُقصَر إلى [صفر، قيمة البند] كما في الخادم
+        const offRaw = milli(num(line.discount));
+        const off = offRaw < g ? offRaw : g;
+
+        grossB += g;
+        discountB += off;
+        taxB += vatLineTax(g - off, num(line.tax_rate), inclusive);
     }
 
     // ‏والمجموعُ الفرعيُّ صافٍ من الضريبة حين تكون مشمولة — كما في الخادم
-    const subtotal = inclusive ? gross_sum - tax : gross_sum;
+    const subtotalB = inclusive ? grossB - taxB : grossB;
 
-    return { subtotal, discount, tax, total: subtotal - discount + tax };
+    return {
+        subtotal: toMoney(subtotalB),
+        discount: toMoney(discountB),
+        tax: toMoney(taxB),
+        total: toMoney(subtotalB - discountB + taxB),
+    };
 }
 
 /**

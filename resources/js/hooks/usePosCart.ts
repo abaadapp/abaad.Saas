@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
 import { money } from '@/lib/format';
 import { loyaltyCap, loyaltyPercentOf, loyaltyQuote, loyaltyWorth, phpRound, type LoyaltyRules } from '@/lib/loyalty';
+import { tillTax } from '@/lib/vat-lines';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
@@ -643,20 +644,23 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      * البند الصافية بنسبته هو. وأيّ اختلافٍ في هذه المعادلة يعني رقمين
      * لبيعةٍ واحدة: واحدًا على الشاشة وآخر في الفاتورة.
      *
-     * والتقريبُ تقريبُه كذلك (`SaleLines::taxFor`): البنودُ بلا تقريب على المجموع
-     * المقرَّب، والناتجُ إلى ثلاث منازل.
+     * والتقريبُ تقريبُه كذلك (`SaleLines::taxFor` ← `VatLines`): الخصمُ يُوزَّع
+     * على البنود بالبيسات، وضريبةُ كلّ بندٍ تُدوَّر وحدَها ثمّ تُجمع — القاعدةُ
+     * الواحدة مع فاتورة العميل (`tillTax`).
      */
     const taxAmount = useMemo(() => {
         if (vat?.enabled === false || base <= 0) return 0;
 
-        return roundMoney(
-            items.reduce((sum, i) => {
-                const net = cartLineTotal(i);
-                const taxableLine = net - discountAmount * (net / base);
-                const rate = Math.max(0, Number(i.tax ?? vatRate) || 0);
-
-                return sum + (vat?.inclusive ? (taxableLine * rate) / (100 + rate) : (taxableLine * rate) / 100);
-            }, 0),
+        return tillTax(
+            items.map((i) => ({
+                price: i.price,
+                qty: i.qty,
+                addons: billableAddons(i),
+                rate: Math.max(0, Number(i.tax ?? vatRate) || 0),
+            })),
+            discountAmount,
+            base,
+            vat?.inclusive === true,
         );
     }, [items, base, discountAmount, vat?.enabled, vat?.inclusive, vatRate]);
     /*

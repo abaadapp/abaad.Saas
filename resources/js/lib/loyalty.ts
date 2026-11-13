@@ -1,3 +1,5 @@
+import { exact, halfUp, milli, type Ratio } from '@/lib/baisa';
+
 /**
  * مرآةُ `App\Support\Loyalty::quote` — حرفًا بحرف.
  *
@@ -77,32 +79,7 @@ const isPercent = (rules: Pick<LoyaltyRules, 'mode'>) => rules.mode === 'percent
  * يُرمَّم ضجيجُها بـ`round(…, 6)`، فتقع حالاتُ الحدّ على هذا الجانب أو ذاك
  * بحسب تمثيل الرقم. والآن لا كسرَ عائمًا في القرار، فالخادمُ والشاشةُ واحد.
  */
-type Ratio = [bigint, bigint];
-
-/** العددُ كما يُكتب بأقصر صورةٍ تعيده هو نفسَه (`String(x)`) ← بسطٌ ومقام */
-function exact(x: number): Ratio {
-    if (!Number.isFinite(x)) return [0n, 1n];
-    const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(x));
-    if (!m) return [0n, 1n];
-
-    const fraction = m[3] ?? '';
-    let num = BigInt(m[2] + fraction);
-    const scale = fraction.length - Number(m[4] ?? 0);
-    let den = 1n;
-    if (scale >= 0) den = 10n ** BigInt(scale);
-    else num *= 10n ** BigInt(-scale);
-
-    return [m[1] === '-' ? -num : num, den];
-}
-
-/** `a ÷ b` نصفًا إلى أعلى — لما ليس سالبًا */
-const halfUp = (a: bigint, b: bigint): bigint => (2n * a + b) / (2n * b);
-
-/** مبلغٌ بالبيسات — `round(x, 3) × 1000` */
-function milli(x: number): bigint {
-    const [n, d] = exact(Math.max(0, x));
-    return halfUp(n * 1000n, d);
-}
+// والأدواتُ مشتركةٌ مع محرّك الضريبة (`vat-lines.ts`) — من موضعٍ واحد
 
 /** ما بقي بعد الخصومات الأخرى بالبيسات — ولا سالب */
 function remainder(baseB: bigint, other: number): bigint {

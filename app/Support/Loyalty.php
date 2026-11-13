@@ -244,30 +244,13 @@ class Loyalty
      */
     private static function exact(float|int $x): array
     {
-        $s = is_finite((float) $x) ? json_encode((float) $x) : '0';
-
-        if (! is_string($s) || ! preg_match('/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i', $s, $m)) {
-            return [BigInteger::zero(), BigInteger::one()];
-        }
-
-        $fraction = $m[3] ?? '';
-        $num = BigInteger::of($m[2].$fraction);
-        $scale = strlen($fraction) - (int) ($m[4] ?? 0);
-        $den = BigInteger::one();
-
-        if ($scale >= 0) {
-            $den = BigInteger::ten()->power($scale);
-        } else {
-            $num = $num->multipliedBy(BigInteger::ten()->power(-$scale));
-        }
-
-        return [$m[1] === '-' ? $num->negated() : $num, $den];
+        return Baisa::exact($x);
     }
 
     /** `a ÷ b` مدوَّرًا نصفًا إلى أعلى — `round()` في PHP لما ليس سالبًا */
     private static function halfUp(BigInteger $a, BigInteger $b): BigInteger
     {
-        return $a->multipliedBy(2)->plus($b)->quotient($b->multipliedBy(2));
+        return Baisa::halfUp($a, $b);
     }
 
     /** مبلغٌ بالبيسات — `round($x, 3) × 1000` بلا كسرٍ عائم */

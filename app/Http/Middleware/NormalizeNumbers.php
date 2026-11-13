@@ -74,10 +74,12 @@ class NormalizeNumbers
         // النسب والحدود
         'vat_rate', 'loyalty_earn_rate', 'percent',
         // وقواعدُ استبدال النقاط في صفحة «برنامج الولاء» — قيمةٌ عشريّةٌ وحدودٌ تُكتب بلوحةٍ عربيّة
-        'loyalty_redeem_value', 'loyalty_redeem_min_invoice', 'loyalty_redeem_points',
-        'loyalty_redeem_min', 'loyalty_redeem_max_pct',
+        'loyalty_redeem_value', 'loyalty_redeem_percent', 'loyalty_redeem_min_invoice', 'loyalty_redeem_points',
+        'loyalty_redeem_min', 'loyalty_redeem_max_pct', 'loyalty_redeem_max_amount',
         // وقيمةُ خصم النقاط كما عرضها الصندوق — `PosController::resolveRedemption`
         'redeem_discount',
+        // وإجماليُّ البيعة كما قرأه الكاشير — `PosController::assertScreenTotal`
+        'expected_total',
         'wastage_percent', 'threshold', 'monthly_target',
         // ونسبةُ المحلّ من بوتيكٍ يبيع تحت سقفه — يكتبها بلوحةٍ عربيّة كغيرها
         'commission_rate',

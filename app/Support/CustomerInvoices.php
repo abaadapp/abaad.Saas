@@ -15,6 +15,7 @@ use App\Models\OrderItem;
 use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Support\Document\Snapshot;
+use Brick\Math\BigInteger;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -181,9 +182,10 @@ final class CustomerInvoices
         $inclusive = Vat::inclusive($businessId);
 
         $items = [];
-        $subtotal = 0.0;
-        $discount = 0.0;
-        $tax = 0.0;
+        // بالبيسات الصحيحة — والقاعدةُ قاعدةُ الصندوق نفسُها (`VatLines`)
+        $subtotalB = 0;
+        $discountB = 0;
+        $taxB = 0;
         $sort = 0;
 
         foreach ($lines as $line) {
@@ -195,7 +197,9 @@ final class CustomerInvoices
                 continue;
             }
 
-            $gross = round($qty * $price, 3);
+            // الكمّيّةُ في السعر بالبيسات، مدوَّرةً نصفًا إلى أعلى — كما كانت `round(…, 3)` بلا كسرٍ عائم
+            $grossB = Baisa::halfUp(BigInteger::of(Baisa::of($qty))->multipliedBy(Baisa::of($price)), BigInteger::of(1000))->toInt();
+            $gross = Baisa::toMoney($grossB);
 
             /*
              * ═══ والخصمُ المحتسَب هو المطبَّق، لا المطلوب ═══
@@ -213,8 +217,10 @@ final class CustomerInvoices
              * `subtotal − discount + tax` مساويًا لمجموع البنود دائمًا،
              * وهي الخاصّيّةُ التي تُراجَع بها الورقة.
              */
-            $lineDiscount = round(min(max(0.0, $lineDiscount), $gross), 3);
-            $net = round($gross - $lineDiscount, 3);
+            $lineDiscountB = min(Baisa::of($lineDiscount), $grossB);
+            $lineDiscount = Baisa::toMoney($lineDiscountB);
+            $netB = $grossB - $lineDiscountB;
+            $net = Baisa::toMoney($netB);
             // بندٌ معفًى يُكتب بنسبة صفر — والإعفاء لقطةٌ في السطر لا قاعدةٌ عامّة
             $lineRate = array_key_exists('tax_rate', $line) ? (float) $line['tax_rate'] : $rate;
             /*
@@ -230,13 +236,17 @@ final class CustomerInvoices
              *
              * والصيغةُ صيغةُ الموضعين الآخرين حرفًا بحرف: `net × r ÷ (100+r)`.
              */
-            $lineTax = $inclusive
-                ? round($net * $lineRate / (100 + $lineRate), 3)
-                : round($net * $lineRate / 100, 3);
+            /*
+             * وضريبةُ البند تُدوَّر وحدَها نصفًا إلى أعلى، بالبيسات — `VatLines::lineTax`،
+             * التي يحسب بها الصندوقُ كذلك. فبندٌ بالسعر نفسِه والخصمِ نفسِه تُكتب
+             * ضريبتُه في الصندوق وفي الفاتورة رقمًا واحدًا (PINT-OM: ‏IBR-168-OM).
+             */
+            $lineTaxB = VatLines::lineTax($netB, (float) $lineRate, $inclusive);
+            $lineTax = Baisa::toMoney($lineTaxB);
 
-            $subtotal = round($subtotal + $gross, 3);
-            $discount = round($discount + $lineDiscount, 3);
-            $tax = round($tax + $lineTax, 3);
+            $subtotalB += $grossB;
+            $discountB += $lineDiscountB;
+            $taxB += $lineTaxB;
 
             $items[] = [
                 'product_id' => $line['product_id'] ?? null,
@@ -259,7 +269,7 @@ final class CustomerInvoices
                  * ثانيةً تجعل مجموعَ البنود أكبرَ من إجمالي الورقة — وهي
                  * الخاصّيّةُ التي يُراجَع بها ورقٌ رسميّ.
                  */
-                'line_total' => $inclusive ? $net : round($net + $lineTax, 3),
+                'line_total' => $inclusive ? $net : Baisa::toMoney($netB + $lineTaxB),
                 'sort_order' => $sort++,
                 /*
                  * وما لا مالَ فيه يمرّ كما جاء — لقطةُ ما اختير مع البند، ومن
@@ -279,14 +289,14 @@ final class CustomerInvoices
          * `subtotal − discount + tax` مساويًا لمجموع البنود في الحالين —
          * وهي القاعدةُ التي تُراجَع بها الورقة سطرًا سطرًا.
          */
-        $subtotal = $inclusive ? round($subtotal - $tax, 3) : $subtotal;
+        $subtotalB = $inclusive ? $subtotalB - $taxB : $subtotalB;
 
         return [
             'items' => $items,
-            'subtotal' => $subtotal,
-            'discount' => $discount,
-            'tax' => $tax,
-            'total' => round($subtotal - $discount + $tax, 3),
+            'subtotal' => Baisa::toMoney($subtotalB),
+            'discount' => Baisa::toMoney($discountB),
+            'tax' => Baisa::toMoney($taxB),
+            'total' => Baisa::toMoney($subtotalB - $discountB + $taxB),
         ];
     }
 
@@ -624,6 +634,27 @@ final class CustomerInvoices
      *
      * ولا يُصدَر ما صدر: نداءان لا يكتبان قيدين.
      */
+    /**
+     * يقفل المتجرَ ثمّ الورقة، ويردّها كما هي الآن — داخل معاملةٍ قائمة.
+     *
+     * ═══ ترتيبٌ واحد للأقفال: المتجر ← الورقة ← العميل ═══
+     *
+     * الإشعارُ الدائن والتحصيلُ والدفترُ يأخذون المتجرَ أوّلًا (`creditNote`،
+     * `CustomerPayments`، `Ledger::post`)، ثمّ الورقة (كتابةُ الإشعار تطلب صفَّها
+     * بمفتاحها الأجنبيّ)، ثمّ العميل. فإلغاءٌ يقفل الورقةَ ثمّ يطلب المتجرَ
+     * لعكس قيده، وإشعارٌ في اللحظة نفسها يمسك المتجرَ ويطلب الورقة: ينتظر
+     * كلٌّ ما في يد الآخر فتُسقط القاعدةُ أحدَهما (40P01). قِيس، ويحرسه
+     * `TwoHandsOnOneCustomersPointsAtOnceTest`. فالإصدارُ والإلغاءُ يأخذان
+     * المتجرَ أوّلًا كذلك — وأخذُه ثانيةً في المعاملة نفسِها لا يكلّف شيئًا.
+     */
+    private static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
+    {
+        Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+
+        return CustomerInvoice::where('business_id', $invoice->business_id)
+            ->lockForUpdate()->findOrFail($invoice->id);
+    }
+
     public static function issue(CustomerInvoice $invoice, ?int $userId = null): CustomerInvoice
     {
         return DB::transaction(function () use ($invoice, $userId) {
@@ -634,9 +665,10 @@ final class CustomerInvoices
              * «مسودة» كلتاهما خارج المعاملة فتمضيان: قيدان لفاتورةٍ واحدة،
              * وإيرادٌ مضاعف، وذمّتان لدَينٍ واحد. والقفلُ يجعل الثانيةَ تنتظر
              * ثمّ تجدها صادرةً فتخرج بها.
+             *
+             * والمتجرُ قبل الورقة — ترتيبُ الأقفال الواحد (`lockInOrder`).
              */
-            $locked = CustomerInvoice::where('business_id', $invoice->business_id)
-                ->lockForUpdate()->findOrFail($invoice->id);
+            $locked = self::lockInOrder($invoice);
 
             if ($locked->status === CustomerInvoice::CANCELLED) {
                 throw new RuntimeException(__('لا تُصدَر فاتورةٌ ملغاة.'));
@@ -644,7 +676,15 @@ final class CustomerInvoices
             if ($locked->status === CustomerInvoice::ISSUED) {
                 return $locked;
             }
-            if ((float) $locked->total <= 0) {
+            /*
+             * ولا تُصدَر ورقةٌ بلا مبلغ — إلّا ما غطّته نقاطُ العميل كلَّه.
+             *
+             * سقوفُ الاستبدال لصاحب النشاط، فقد يجعلها تغطّي الفاتورةَ كلَّها
+             * كما يبيع الصندوقُ بلا مبلغ. فتُصدَر بصفر: تُصرف نقاطُها هنا مرّةً،
+             * ولا قيدَ لها (`post`)، وتُقرأ مسدَّدةً لأنّ باقيها صفر، ولا يُطلب لها
+             * رابطُ دفع (`PaymentLinks`). وما عداها من صفرٍ يُردّ كما كان.
+             */
+            if ((float) $locked->total <= 0 && ! self::coveredByPoints($locked)) {
                 throw new RuntimeException(__('لا تُصدَر فاتورةٌ بلا مبلغ.'));
             }
 
@@ -698,6 +738,31 @@ final class CustomerInvoices
 
         $net = round((float) $invoice->subtotal - (float) $invoice->discount_total, 3);
         $tax = round((float) $invoice->tax_total, 3);
+
+        /*
+         * ═══ وورقةٌ غطّتها النقاطُ كلُّها لا قيدَ لها ═══
+         *
+         * خصمُ النقاط يُنقص الإيرادَ في البنود (لا حسابَ له في الدليل)، فيُقيَّد
+         * ما بقي: ذمّةٌ وإيرادٌ وضريبة. وحين لا يبقى شيء فكلُّها أصفار، والقيدُ
+         * لا يُكتب بسطرٍ واحدٍ صفريّ (`Ledger::post`). وهي قاعدةُ الصندوق في
+         * إيراد بيعةٍ إجماليُّها صفر (`Books::recordSale`) — والصندوقُ يكتب بعدها
+         * تكلفةَ ما خرج من الرفّ إن كانت له تكلفة؛ وفاتورةُ العميل اليدويّة لا
+         * تُخرج مخزونًا ولا تكتب تكلفةً بأيّ مبلغ، فلا يسقط هنا شيءٌ غيرُ الأصفار.
+         * والإلغاءُ لا يجد قيدًا يعكسه فلا يعكس شيئًا، ويعيد النقاطَ وحدها.
+         *
+         * ═══ وما لا قيدَ له يسأل عن الفترة بنفسه ═══
+         *
+         * الفترةُ المقفلة (أو المقدَّمُ إقرارُها) يسألها الدفترُ عند الكتابة
+         * (`Ledger::post` ← `BooksPeriod::assertOpen`). وورقةٌ لا تبلغ الدفتر
+         * لا يسألها أحد: فاتورةٌ بتاريخ شهرٍ مقفل تُصدَر وتصرف نقاطها، وأختُها
+         * بمبلغٍ تُردّ. فيُسأل هنا السؤالُ نفسُه، والردُّ يُرجع صرفَ النقاط مع
+         * المعاملة كلّها.
+         */
+        if (round((float) $invoice->total, 3) <= 0 && $net <= 0 && $tax <= 0) {
+            BooksPeriod::assertOpen((int) $invoice->business_id, Carbon::parse($invoice->issued_at));
+
+            return;
+        }
 
         $lines = [['account' => 'receivable', 'debit' => round((float) $invoice->total, 3)]];
 
@@ -767,11 +832,27 @@ final class CustomerInvoices
         if ($invoice->status === CustomerInvoice::CANCELLED) {
             return $invoice;
         }
-        if ($invoice->paidTotal() > 0) {
-            throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
-        }
 
         return DB::transaction(function () use ($invoice, $reason, $userId) {
+            /*
+             * ═══ والحالةُ تُقرأ تحت القفل، لا من النسخة التي في اليد ═══
+             *
+             * النسخةُ قُرئت قبل المعاملة. فمسودّةٌ يُصدرها أحدٌ في اللحظة التي
+             * يُلغيها فيها آخر: الإصدارُ يكتب قيدَه ويُغلق، والإلغاءُ يقرأ
+             * «مسودّة» من يده فلا يعكس شيئًا، ثمّ يكتب «ملغاة» فوق «صادرة».
+             * فاتورةٌ ملغاةٌ وذمّتُها وإيرادُها باقيان في الدفتر. فيُقفل الصفّ
+             * (والإصدارُ يقفله أيضًا) ويُقرأ من جديد، وعليه يُبنى كلُّ ما بعده.
+             * والمتجرُ قبل الورقة (`lockInOrder`).
+             */
+            $invoice = self::lockInOrder($invoice);
+
+            if ($invoice->status === CustomerInvoice::CANCELLED) {
+                return $invoice;
+            }
+            if ($invoice->paidTotal() > 0) {
+                throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
+            }
+
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
                 $entry = JournalEntry::where('business_id', $invoice->business_id)
                     ->where('sourceable_type', CustomerInvoice::class)
@@ -1294,6 +1375,20 @@ final class CustomerInvoices
     }
 
     /**
+     * ورقةٌ غطّت نقاطُ العميل إجماليَّها كلَّه — صفرٌ مستحقّ، وهو ما اختاره التاجرُ بسقوفه.
+     *
+     * المالُ هنا كلُّه خصمُ نقاط: البنودُ تحمل حصصَها حتّى صافيها، فلا إيرادَ
+     * ولا ضريبة (`withLoyalty` ثمّ `compute`)، ولا باقيَ يُطلب. وصفرٌ لغير
+     * النقاط (بنودٌ بلا قيمة، خصمٌ يدويٌّ كامل) يبقى مردودًا كما كان.
+     */
+    public static function coveredByPoints(CustomerInvoice $invoice): bool
+    {
+        return (int) $invoice->loyalty_points > 0
+            && (float) $invoice->loyalty_discount > 0
+            && abs(round((float) $invoice->total, 3)) < 0.0005;
+    }
+
+    /**
      * عرضُ الاستبدال لهذا العميل على هذه البنود — من `Loyalty::quote` وحدَها.
      *
      * @param  array<int, array<string, mixed>>  $lines
@@ -1335,44 +1430,38 @@ final class CustomerInvoices
             if ($qty <= 0) {
                 continue;
             }
-            $gross = round($qty * round((float) ($line['unit_price'] ?? 0), 3), 3);
-            $own = round(min(max(0.0, round((float) ($line['discount'] ?? 0), 3)), $gross), 3);
-            $net = round($gross - $own, 3);
-            if ($net > 0) {
-                $nets[$i] = ['own' => $own, 'net' => $net];
+            // صافي البند بالبيسات كما يحسبه `compute` حرفًا — فلا يفترقان على بيسة
+            $grossB = Baisa::halfUp(BigInteger::of(Baisa::of($qty))->multipliedBy(Baisa::of((float) ($line['unit_price'] ?? 0))), BigInteger::of(1000))->toInt();
+            $ownB = min(Baisa::of((float) ($line['discount'] ?? 0)), $grossB);
+            if ($grossB - $ownB > 0) {
+                $nets[$i] = ['own' => $ownB, 'net' => $grossB - $ownB];
             }
         }
 
-        $sum = round(array_sum(array_column($nets, 'net')), 3);
-        if ($sum < $discount) {
+        /*
+         * ═══ والقسمةُ بالبيسات الصحيحة لا بالكسور العائمة ═══
+         *
+         * الصافي والخصمُ أرقامٌ بثلاث خانات، فيصيران بيساتٍ صحيحة، ونصيبُ كلّ
+         * بندٍ قسمةٌ صحيحة (`d × صافيه ÷ المجموع`) مقصوصة — فلا يقع نصيبٌ على
+         * حدّ البيسة مرّةً فوقه ومرّةً تحته بحسب تمثيل الرقم. وما بقي من القصّ
+         * يذهب إلى أكبر البنود صافيًا كما كان.
+         */
+        $d = Baisa::of($discount);
+        $cents = array_map(fn ($n) => $n['net'], $nets);
+        $sum = array_sum($cents);
+        if ($sum < $d) {
             throw ValidationException::withMessages([
                 'redeem_points' => __('خصم النقاط أكبر من قيمة البنود.'),
             ]);
         }
 
-        $shares = [];
-        $given = 0.0;
-        foreach ($nets as $i => $n) {
-            $shares[$i] = floor(round($discount * $n['net'] / $sum * 1000, 6)) / 1000;
-            $given = round($given + $shares[$i], 3);
-        }
-
-        // الباقي من التقريب — لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه
-        $left = round($discount - $given, 3);
-        uasort($nets, fn ($a, $b) => $b['net'] <=> $a['net']);
-        foreach ($nets as $i => $n) {
-            if ($left <= 0) {
-                break;
-            }
-            $room = round($n['net'] - $shares[$i], 3);
-            $add = min($room, $left);
-            $shares[$i] = round($shares[$i] + $add, 3);
-            $left = round($left - $add, 3);
-        }
+        // والباقي من القصّ لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه —
+        // القسمةُ نفسُها التي يوزَّع بها خصمُ بيعة الصندوق (`Baisa::spread`)
+        $shares = Baisa::spread($d, $cents);
 
         foreach ($shares as $i => $share) {
-            $lines[$i]['discount'] = round($nets[$i]['own'] + $share, 3);
-            $lines[$i]['loyalty_discount'] = $share;
+            $lines[$i]['discount'] = Baisa::toMoney($nets[$i]['own'] + $share);
+            $lines[$i]['loyalty_discount'] = $share / 1000.0;
         }
 
         return $lines;
@@ -1506,11 +1595,14 @@ final class CustomerInvoices
         if ($spent <= 0 || $credited <= 0 || $total <= 0) {
             return 0;
         }
-        if ($credited + 0.0005 >= $total) {
+        // بالبيسات الصحيحة: المبلغان بثلاث خانات، والنسبةُ قسمةٌ صحيحة مقصوصة لا كسرٌ عائم
+        $creditedB = (int) round($credited * 1000);
+        $totalB = (int) round($total * 1000);
+        if ($creditedB >= $totalB) {
             return $spent;
         }
 
-        return (int) min($spent, floor(round($spent * $credited / $total, 6)));
+        return min($spent, BigInteger::of($spent)->multipliedBy($creditedB)->quotient($totalB)->toInt());
     }
 
     /**

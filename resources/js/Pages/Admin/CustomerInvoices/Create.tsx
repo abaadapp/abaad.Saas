@@ -557,33 +557,45 @@ export default function CustomerInvoiceCreate({
      * كان الخصمُ يتبع آخرَ عرضٍ رسمته المعاينة: رصيدٌ صُرف في الصندوق أو
      * قاعدةٌ غيّرت قيمةَ النقطة، فيتبدّل المبلغُ تحت «استخدام النقاط» ولا
      * يُسأل أحد. فيُمسك هنا ما وافق عليه (النقاطَ وقيمتَها) ويُرسل كما هو،
-     * وعرضٌ يتغيّر بعده يُلغي الاختيارَ ويُقال ذلك — ولا خصمَ حتّى يختار من
-     * جديد. والخادمُ يقارن الاثنين بما يحسبه (`CustomerInvoices::create`).
+     * والخادمُ يقارن الاثنين بما يحسبه (`CustomerInvoices::create`).
+     *
+     * ═══ وتغيّرُ المبلغ أو الرصيد يُعيد الحسابَ وحده — ويُقال ذلك ═══
+     *
+     * بندٌ أُضيف أو رصيدٌ صُرف في الصندوق: العرضُ الجديد من الخادم يحلّ محلَّ
+     * القديم تحت «استخدام النقاط» — كما يفعل الصندوقُ حين تتبدّل سلّتُه —
+     * ويُكتب تحته أنّه أُعيد، والملخّصُ يُرسم بخصمه الجديد قبل الحفظ. وما لم
+     * يعد مؤهَّلًا يُسقط الاختيارَ ويُقال سببُه: لا خصمَ يُرسل بلا شروطه.
      */
     const [agreed, setAgreed] = useState<{ points: number; discount: number } | null>(null);
     const [redeemNotice, setRedeemNotice] = useState('');
+    const [redeemRecalc, setRedeemRecalc] = useState('');
     useEffect(() => {
         setRedeem('ask');
         setAgreed(null);
         setRedeemNotice('');
+        setRedeemRecalc('');
     }, [form.data.customer_id]);
 
     const chooseRedeem = (choice: 'ask' | 'use' | 'skip') => {
         setRedeemNotice('');
+        setRedeemRecalc('');
         setAgreed(choice === 'use' && loyaltyOffer?.eligible ? { points: loyaltyOffer.points, discount: loyaltyOffer.discount } : null);
         setRedeem(choice === 'use' && !loyaltyOffer?.eligible ? 'ask' : choice);
     };
 
     useEffect(() => {
         if (redeem !== 'use' || agreed === null) return;
-        const same =
-            !!loyaltyOffer?.eligible &&
-            loyaltyOffer.points === agreed.points &&
-            Math.abs(loyaltyOffer.discount - agreed.discount) < 0.0005;
-        if (!same) {
+        if (!loyaltyOffer?.eligible || loyaltyOffer.points <= 0) {
             setRedeem('ask');
             setAgreed(null);
+            setRedeemRecalc('');
             setRedeemNotice(t('تغيّر ما يُخصم بالنقاط — راجع العرض واختر من جديد.'));
+            return;
+        }
+        const same = loyaltyOffer.points === agreed.points && Math.abs(loyaltyOffer.discount - agreed.discount) < 0.0005;
+        if (!same) {
+            setAgreed({ points: loyaltyOffer.points, discount: loyaltyOffer.discount });
+            setRedeemRecalc(t('أُعيد احتساب خصم النقاط على المبلغ أو الرصيد الجديد — راجعه قبل الحفظ.'));
         }
     }, [loyaltyOffer, redeem, agreed, t]);
 
@@ -727,6 +739,7 @@ export default function CustomerInvoiceCreate({
                 if ((errors as Record<string, string | undefined>).redeem_points) {
                     setRedeem('ask');
                     setAgreed(null);
+                    setRedeemRecalc('');
                     void draw();
                 }
             },
@@ -925,6 +938,7 @@ export default function CustomerInvoiceCreate({
                                 onChoose={chooseRedeem}
                                 error={(form.errors as Record<string, string | undefined>).redeem_points}
                                 notice={redeemNotice}
+                                recalculated={redeemRecalc}
                             />
 
                             {/* ── تاريخ الإصدار ── */}
@@ -2095,6 +2109,8 @@ interface LoyaltyOffer {
     balance: number;
     points: number;
     discount: number;
+    /** كم بالمئة من الفاتورة المؤهّلة — في طريقة النسبة وحدها (`Loyalty::percentOf`) */
+    percent?: number | null;
 }
 
 interface ServerTotals {
@@ -2119,13 +2135,16 @@ export function LoyaltyPrompt({
     onChoose,
     error,
     notice,
+    recalculated,
 }: {
     offer: LoyaltyOffer | null;
     choice: 'ask' | 'use' | 'skip';
     onChoose: (c: 'ask' | 'use' | 'skip') => void;
     error?: string;
-    /** عرضٌ تغيّر بعد «استخدام النقاط» فأُلغي الاختيار — يُقال لماذا عاد السؤال */
+    /** عرضٌ لم يعد مؤهَّلًا بعد «استخدام النقاط» فأُلغي الاختيار — يُقال لماذا عاد السؤال */
     notice?: string;
+    /** عرضٌ أُعيد حسابُه وبقي الاختيار — يُقال ذلك تحت الخصم الجديد */
+    recalculated?: string;
 }) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
@@ -2170,8 +2189,8 @@ export function LoyaltyPrompt({
             className="rounded-[10px] border border-[#fbcfe8] bg-[#fdf2f8] p-3 sm:col-span-2"
         >
             <p className="text-[13px] font-semibold text-[#be185d]">
-                {t('نقاط العميل:')} {offer.balance} — {t('يستطيع خصم')} {m(offer.discount)} {t('مقابل')} {offer.points}{' '}
-                {t('نقطة من هذه الفاتورة')}
+                {t('نقاط العميل:')} {offer.balance} — {t('يستطيع خصم')} {m(offer.discount)}
+                {offer.percent != null && ` (${offer.percent}%)`} {t('مقابل')} {offer.points} {t('نقطة من هذه الفاتورة')}
             </p>
 
             {choice === 'ask' ? (
@@ -2192,6 +2211,12 @@ export function LoyaltyPrompt({
                         {choice === 'use' ? t('إلغاء') : t('استخدام النقاط')}
                     </button>
                 </div>
+            )}
+
+            {choice === 'use' && recalculated && !error && (
+                <p data-testid="invoice-loyalty-recalculated" className="mt-1 text-[12px] text-[#9d174d]">
+                    {recalculated}
+                </p>
             )}
 
             {error ? <Err msg={error} /> : notice ? <Err msg={notice} /> : null}

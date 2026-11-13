@@ -122,40 +122,60 @@ final class SaleLines
         }
 
         $default = $this->vatRate();
-        $inclusive = Vat::inclusive($this->bid());
-        $tax = 0.0;
 
+        /*
+         * الإضافةُ داخل وعاء الضريبة كما هي داخل المجموع.
+         *
+         * «الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل» — هكذا يُبنى المجموع
+         * الفرعيّ (price × qty + addons_total) وهكذا تُطبع الفاتورة. وكان
+         * الوعاء وحده يقرأ سعر الصنف ويُسقط إضافته: بيعةُ باقةٍ بعشرةٍ
+         * وشوكولاتةٍ بخمسة تُحتسب ضريبتُها على عشرة.
+         *
+         * والخصمُ يُوزَّع على البنود بالبيسات بنسبة صافيها، ثمّ تُدوَّر ضريبةُ
+         * كلّ بندٍ وحدَه وتُجمع — القاعدةُ الواحدة مع فاتورة العميل
+         * (`VatLines`، PINT-OM). وكانت هنا تُجمع بلا تقريب ويُدوَّر المجموعُ
+         * مرّةً، فتفترق عن الفاتورة ببيسةٍ أو اثنتين في السلّة متعدّدة البنود.
+         *
+         * «مشمولة» تُستخرَج ولا تُضاف: ما على الرفّ هو ما يدفعه الزبون،
+         * فالضريبة جزءٌ منه — ١٠٥ بنسبة ٥٪ ضريبتها ٥ لا ٥.٢٥.
+         */
+        $rows = [];
         foreach ($lines as $l) {
-            /*
-             * الإضافةُ داخل وعاء الضريبة كما هي داخل المجموع.
-             *
-             * «الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل» — هكذا يُبنى المجموع
-             * الفرعيّ (price × qty + addons_total) وهكذا تُطبع الفاتورة. وكان
-             * الوعاء وحده يقرأ سعر الصنف ويُسقط إضافته: بيعةُ باقةٍ بعشرةٍ
-             * وشوكولاتةٍ بخمسة تُحتسب ضريبتُها على عشرة.
-             *
-             * وليس هذا خطأً في شاشة: هو ضريبةٌ لم تُجبَ من الزبون ولم تُقرّ
-             * للدولة، عن كلّ إضافةٍ باعها المحلّ.
-             *
-             * وحصّةُ البند من الخصم كانت تُقاس بالرقم الناقص نفسه، فتجمع
-             * الحصصُ أقلّ من واحدٍ صحيح: يُطرح من الوعاء بعضُ الخصم ويبقى
-             * باقيه محسوبًا عليه.
-             */
-            $net = $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0);
-            $share = $subtotal > 0 ? $net / $subtotal : 0;
-            $taxable = $net - ($discount * $share);
-            $rate = $l['product'] ? $l['product']->taxRate($default) : $default;
-
-            /*
-             * «مشمولة» تُستخرَج ولا تُضاف: ما على الرفّ هو ما يدفعه الزبون،
-             * فالضريبة جزءٌ منه — ١٠٥ بنسبة ٥٪ ضريبتها ٥ لا ٥.٢٥.
-             */
-            $tax += $inclusive
-                ? ($taxable * $rate) / (100 + $rate)
-                : ($taxable * $rate) / 100;
+            $rows[] = [
+                'net' => Baisa::of((float) $l['price']) * (int) $l['qty'] + Baisa::of((float) ($l['addons_total'] ?? 0)),
+                'rate' => (float) ($l['product'] ? $l['product']->taxRate($default) : $default),
+            ];
         }
 
-        return round($tax, 3);
+        return Baisa::toMoney(VatLines::document($rows, Baisa::of(min($discount, $subtotal)), Vat::inclusive($this->bid()))['tax']);
+    }
+
+    /**
+     * الإجماليُّ كما كانت تقرؤه شاشةُ الصندوق قبل `VatLines` — لا يُكتب، يُقارَن.
+     *
+     * كانت تجمع ضرائبَ البنود بلا تقريب ثمّ تدوّر المجموعَ مرّةً. وشاشةٌ فُتحت
+     * قبل التحديث تبقى تحسب هكذا حتى يُعاد تحميلُها، فيُسأل: أكانت ستقرأ رقمًا
+     * غيرَ الذي يُكتب؟ (`PosController::assertScreenTotal`).
+     */
+    public function legacyTotal(array $lines, float $gross, float $discount, float $delivery): float
+    {
+        $tax = 0.0;
+        $inclusive = Vat::inclusive($this->bid());
+
+        if (Vat::enabled($this->bid()) && $gross > 0) {
+            $default = $this->vatRate();
+            foreach ($lines as $l) {
+                $net = $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0);
+                $taxable = $net - ($discount * ($net / $gross));
+                $rate = $l['product'] ? $l['product']->taxRate($default) : $default;
+                $tax += $inclusive ? ($taxable * $rate) / (100 + $rate) : ($taxable * $rate) / 100;
+            }
+            $tax = round($tax, 3);
+        }
+
+        $subtotal = $inclusive ? round($gross - $tax, 3) : $gross;
+
+        return round($subtotal - $discount + $tax + $delivery, 3);
     }
 
     public function setting(string $key, $default = null)

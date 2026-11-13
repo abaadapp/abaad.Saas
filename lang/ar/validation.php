@@ -617,6 +617,9 @@ return [
         'replay' => 'حالة إرسال البيعة',
         'loyalty_redeem_points' => 'عدد النقاط',
         'loyalty_redeem_value' => 'قيمة الخصم مقابل النقاط',
+        'loyalty_redeem_mode' => 'طريقة الاستبدال',
+        'loyalty_redeem_percent' => 'نسبة الخصم مقابل النقاط',
+        'loyalty_redeem_max_amount' => 'الحد الأقصى لمبلغ الخصم',
         'loyalty_redeem_min_invoice' => 'الحد الأدنى لقيمة الفاتورة',
 
         // التكاملات وإعدادات المنصّة

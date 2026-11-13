@@ -315,6 +315,34 @@ PHP;
         $this->assertSame(0, Order::where('business_id', $this->shop->id)->count(), 'ولا بيعةَ بخصمٍ لا رصيدَ له');
     }
 
+    /**
+     * وبطريقة النسبة كذلك: فاتورةٌ تصرف خمسَمئة (٥٠٪ من مئة) وصندوقٌ يطلب
+     * ثلاثَمئة (٣٠٪ = ثلاثون) في اللحظة نفسها — يسبق أحدُهما، ويُردّ الآخر
+     * بالرصيد الصحيح، ولا ينزل الرصيدُ تحت الصفر.
+     */
+    public function test_in_percent_mode_issuing_and_a_till_sale_at_once_spend_the_balance_once(): void
+    {
+        foreach (['loyalty_redeem_mode' => 'percent', 'loyalty_redeem_percent' => '10', 'loyalty_redeem_points' => '100'] as $key => $value) {
+            Setting::create(['business_id' => $this->shop->id, 'key' => $key, 'value' => $value]);
+        }
+        $draft = $this->draft();
+        $this->assertEqualsWithDelta(50.0, (float) $draft->total, 0.0001, '٥٠٠ نقطة = نصفُ المئة');
+
+        [$outs, $sale] = $this->race([sprintf(self::ISSUE, $draft->id)], [], fn () => $this->actingAs($this->owner)
+            ->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), [
+                'items' => [['id' => $this->product->id, 'name' => 'باقة', 'qty' => 1]],
+                'payment_method' => 'نقدي', 'customer_id' => $this->customer->id, 'client_uuid' => uniqid('race', true),
+                'redeem_points' => 300, 'redeem_discount' => 30,
+            ]));
+
+        $this->assertSame(['issued'], $outs);
+        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points')->assertJsonPath('loyalty.balance', 0);
+        $this->assertSame(0, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
+    }
+
     /** إلغاءٌ وإشعارٌ على الورقة نفسِها معًا: يعود ما صُرف كلُّه، مرّةً — ولا إشعارَ على ملغاة */
     public function test_a_cancel_and_a_credit_note_at_once_return_the_points_once(): void
     {
@@ -347,6 +375,50 @@ PHP;
         }
     }
 
+    /**
+     * إلغاءٌ وإشعارٌ تتقاطع أقفالُهما — فلا يُسقط أحدُهما الآخر.
+     *
+     * الإشعارُ يقفل المتجرَ ثمّ الورقة (كتابتُه تطلب صفَّها بمفتاحها الأجنبيّ، ثمّ
+     * `returnPointsForCredit`). فإلغاءٌ يقفل الورقةَ ثمّ المتجر (`Ledger::reverse`) ينتظر كلٌّ منهما ما في
+     * يد الآخر، فتُسقط القاعدةُ أحدَهما (40P01) ويرى الموظّفُ خطأً لا سببَ له.
+     * والترتيبُ الواحد — المتجرُ ثمّ الورقةُ ثمّ العميل — يجعلهما ينتظران ولا
+     * يتعارضان: الإشعارُ يصدر، ثمّ يلغي الإلغاءُ ويعيد الباقي.
+     */
+    public function test_a_cancel_and_a_credit_note_crossing_their_locks_both_finish(): void
+    {
+        $invoice = $this->issued();
+        $cancel = <<<'PHP'
+// يدُ الإلغاء تبدأ بعد أن يمسك الإشعارُ المتجرَ — فتمسك الورقةَ وهو ممسكٌ به
+usleep(250000);
+try {
+    App\Support\CustomerInvoices::cancel(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 'أُلغيت');
+    echo 'cancelled';
+} catch (Illuminate\Database\QueryException $e) {
+    echo 'lock-error:'.$e->getCode();
+}
+PHP;
+        $credit = <<<'PHP'
+// يدُ الإشعار تمسك المتجرَ ثمّ تتمهّل قبل أن تكتب الإشعار (والكتابةُ تطلب صفَّ الورقة بمفتاحها الأجنبيّ)
+App\Models\Business::retrieved(function () { usleep(1000000); });
+try {
+    Tests\Support\ReturnNote::issue(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 47.5);
+    echo 'credited';
+} catch (Illuminate\Database\QueryException $e) {
+    echo 'lock-error:'.$e->getCode();
+} catch (RuntimeException|Illuminate\Validation\ValidationException $e) {
+    echo 'refused';
+}
+PHP;
+
+        [$outs] = $this->race([$cancel, $credit], ['invoice' => $invoice->id]);
+
+        $this->assertSame(['cancelled', 'credited'], $outs, 'تقاطعُ الأقفال أسقط إحدى اليدين');
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+        $this->assertSame(1, CustomerCreditNote::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertSame(500, CustomerInvoices::pointsReturned($invoice));
+        $this->assertSame(500, $this->points());
+    }
+
     /** إلغاءان معًا: النقاطُ تعود مرّةً والقيدُ يُعكس مرّة */
     public function test_two_cancels_at_once_return_the_points_once(): void
     {
@@ -362,6 +434,161 @@ PHP;
         $this->assertSame(500, $this->points());
         $this->assertSame(1, PointTransaction::where('customer_invoice_id', $invoice->id)->where('type', 'earn')->count());
         $this->assertSame(1, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->whereNotNull('reversed_at')->count());
+    }
+
+    /**
+     * يدٌ تفتح المسودّة لتلغيها، ويدٌ تُصدرها في اللحظة نفسها.
+     *
+     * الإلغاءُ قرأ «مسودّة» قبل أن يكتب الإصدارُ قيدَه. فإن بنى على تلك القراءة
+     * كتب «ملغاة» فوق «صادرة» وترك القيدَ قائمًا (الإصلاح: يقفل الصفّ ويقرأ من
+     * جديد). فالنتيجةُ: ملغاةٌ، وقيدُها معكوسٌ مرّة، ونقاطُها عادت مرّة.
+     */
+    public function test_issuing_and_cancelling_one_draft_at_once_leave_no_live_entry_behind(): void
+    {
+        $draft = $this->draft();
+        $cancel = <<<'PHP'
+$stale = App\Models\CustomerInvoice::findOrFail($ids['invoice']);
+usleep(1500000); // يدُ الإلغاء تقرأ المسودّة ثمّ تتأخّر — والإصدارُ يمضي
+App\Support\CustomerInvoices::cancel($stale, 'أُلغيت');
+echo 'cancelled';
+PHP;
+
+        [$outs] = $this->race([sprintf(self::ISSUE, $draft->id), $cancel], ['invoice' => $draft->id]);
+
+        $this->assertSame(['issued', 'cancelled'], $outs);
+        $this->assertSame(CustomerInvoice::CANCELLED, $draft->fresh()->status);
+        $entries = JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $draft->id)->get();
+        $this->assertSame(1, $entries->whereNull('reverses_id')->count(), 'قيدُ الإصدار مرّة');
+        $this->assertSame(1, $entries->whereNull('reverses_id')->whereNotNull('reversed_at')->count(), 'قيدٌ قائمٌ على فاتورةٍ ملغاة');
+        $this->assertSame(500, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(1, PointTransaction::where('customer_invoice_id', $draft->id)->where('type', 'earn')->count());
+    }
+
+    /*
+     * ═══ وفاتورةٌ تغطّيها النقاطُ كلُّها — إجماليٌّ صفر ═══
+     *
+     * سقوفٌ تركها صاحبُ النشاط فارغة: خمسُمئة نقطةٍ تغطّي ورقةً بخمسة. ولا قيدَ
+     * لها، فالقفلُ والمفتاحُ الفريد وحدهما يمنعان الصرفَ والإعادةَ مرّتين.
+     */
+    private const RETURN_ONE = <<<'PHP'
+auth()->setUser(App\Models\User::findOrFail(%d));
+// يُمسك قفلَ الطلب والعميل برهةً بعد أن يردّ النقاط — فيصل الآخرُ وهو ممسوك
+App\Models\PointTransaction::created(function () { usleep(800000); });
+App\Support\OrderCorrection::setQuantity(App\Models\Order::findOrFail(%d), App\Models\OrderItem::findOrFail(%d), 1, 'إرجاع');
+echo 'returned';
+PHP;
+
+    /**
+     * إرجاعان من بيعةٍ واحدة على صندوقين في اللحظة نفسها: كلٌّ يردّ نصيبَه مرّةً،
+     * والمجموعُ كما لو أُرجعا معًا — ولا تُردّ نقطةٌ مرّتين (`TillRedemption`).
+     */
+    public function test_two_partial_returns_of_one_sale_at_once_give_back_each_share_once(): void
+    {
+        $this->customer->update(['points' => 5000]);
+        $rose = Product::create([
+            'business_id' => $this->shop->id, 'name' => 'وردة', 'price' => 100, 'cost' => 40,
+            'quantity' => 1000, 'alert_qty' => 1, 'active' => true,
+        ]);
+        $this->actingAs($this->owner)->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), [
+                'items' => [['id' => $this->product->id, 'name' => 'باقة', 'qty' => 2], ['id' => $rose->id, 'name' => 'وردة', 'qty' => 2]],
+                'payment_method' => 'نقدي',
+                'customer_id' => $this->customer->id,
+                'client_uuid' => uniqid('race', true),
+                'redeem_points' => 2000,
+                'redeem_discount' => 20,
+            ])->assertOk();
+        $order = Order::latest('id')->firstOrFail();
+        $this->assertSame(3000, $this->points());
+        $a = $order->items()->where('product_id', $this->product->id)->firstOrFail();
+        $b = $order->items()->where('product_id', $rose->id)->firstOrFail();
+
+        [$outs] = $this->race([
+            sprintf(self::RETURN_ONE, $this->owner->id, $order->id, $a->id),
+            sprintf(self::RETURN_ONE, $this->owner->id, $order->id, $b->id),
+        ], []);
+
+        $this->assertSame(['returned', 'returned'], $outs);
+        $order->refresh();
+        $this->assertSame(1000, (int) $order->redeemed_points);
+        $this->assertEqualsWithDelta(10.0, (float) $order->discount, 0.0001);
+        $this->assertEqualsWithDelta(190.0, (float) $order->total, 0.0001);
+        $back = PointTransaction::where('order_id', $order->id)->where('source_key', 'like', 'till-return:%')->get();
+        $this->assertCount(2, $back, 'حركةٌ لكلّ إرجاع');
+        $this->assertSame([500, 500], $back->pluck('points')->map(fn ($p) => (int) $p)->sort()->values()->all());
+        $this->assertSame(4000, $this->points(), '٣٠٠٠ + ١٠٠٠ — لا أكثر');
+    }
+
+    private function wholeDraft(): CustomerInvoice
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'loyalty_redeem_max_pct'], ['value' => '']);
+
+        return CustomerInvoices::create($this->shop->id, $this->customer, [
+            'issued_at' => now()->toDateString(), 'redeem_points' => 500,
+        ], [['description' => 'وردة', 'quantity' => 1, 'unit_price' => 5]], $this->owner->id);
+    }
+
+    public function test_two_whole_points_drafts_issued_at_once_spend_the_balance_once(): void
+    {
+        $a = $this->wholeDraft();
+        $b = $this->wholeDraft();
+        $this->assertEqualsWithDelta(0.0, (float) $a->total, 0.0001);
+
+        [$outs] = $this->race([sprintf(self::ISSUE, $a->id), sprintf(self::ISSUE, $b->id)], []);
+
+        sort($outs);
+        $this->assertSame(['issued', 'refused'], $outs);
+        $this->assertSame(0, $this->points(), 'ولا رصيدَ سالب');
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->whereIn('sourceable_id', [$a->id, $b->id])->count());
+        $this->assertEqualsCanonicalizing([CustomerInvoice::DRAFT, CustomerInvoice::ISSUED], CustomerInvoice::whereIn('id', [$a->id, $b->id])->pluck('status')->all());
+    }
+
+    public function test_the_same_whole_points_draft_issued_twice_at_once_spends_and_numbers_once(): void
+    {
+        $draft = $this->wholeDraft();
+        $body = sprintf(self::ISSUE, $draft->id);
+
+        [$outs] = $this->race([$body, $body], []);
+
+        $this->assertSame(['issued', 'issued'], $outs);
+        $this->assertSame(0, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertNotNull($draft->fresh()->number);
+        $this->assertSame(1, CustomerInvoice::where('business_id', $this->shop->id)->where('number', $draft->fresh()->number)->count());
+        $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $draft->id)->count());
+    }
+
+    public function test_two_cancels_of_a_whole_points_invoice_at_once_return_the_points_once(): void
+    {
+        $invoice = CustomerInvoices::issue($this->wholeDraft(), $this->owner->id)->fresh();
+        $this->assertSame(0, $this->points());
+        $cancel = <<<'PHP'
+App\Models\PointTransaction::created(function () { usleep(800000); });
+App\Support\CustomerInvoices::cancel(App\Models\CustomerInvoice::findOrFail($ids['invoice']), 'أُلغيت');
+echo 'cancelled';
+PHP;
+
+        $this->race([$cancel, $cancel], ['invoice' => $invoice->id]);
+
+        $this->assertSame(500, $this->points());
+        $this->assertSame(1, PointTransaction::where('customer_invoice_id', $invoice->id)->where('type', 'earn')->count());
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+    }
+
+    /** إصدارُ ورقةٍ صفريّة وبيعةُ صندوقٍ على الرصيد نفسِه معًا: يسبق أحدُهما، ويُردّ الآخر */
+    public function test_a_whole_points_issue_and_a_till_sale_at_once_spend_the_balance_once(): void
+    {
+        $draft = $this->wholeDraft();
+
+        [$outs, $sale] = $this->race([sprintf(self::ISSUE, $draft->id)], [], fn () => $this->sell(300));
+
+        $this->assertSame(['issued'], $outs);
+        $sale->assertStatus(422)->assertJsonValidationErrors('redeem_points')->assertJsonPath('loyalty.balance', 0);
+        $this->assertSame(0, $this->points());
+        $this->assertSame(1, $this->spends());
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
     }
 
     private const OTHER_TILL = <<<'PHP'

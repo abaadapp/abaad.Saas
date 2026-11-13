@@ -1088,7 +1088,17 @@ class MarketingController extends Controller
         $current = Loyalty::rules($this->bid());
         $points = (int) ($request->input('loyalty_redeem_points') ?: $current['points']);
         $value = (float) ($request->input('loyalty_redeem_value') ?: $current['value']);
-        $maxRate = Loyalty::maxEarnRate(max(1, $points), max(0.001, $value));
+        $byPercent = ($request->input('loyalty_redeem_mode') ?? $current['mode']) === Loyalty::PERCENT;
+
+        /*
+         * وفي طريقة النسبة لا قيمةَ ثابتةً للنقطة يُقاس بها الاكتساب: قيمتُها
+         * تتبع الفاتورة التي تُصرف عليها. فيبقى السقفُ الذي كان قبل أن تصير
+         * القيمةُ إعدادًا (مئةُ نقطةٍ بوحدة: ٩٩٫٩)، ويحمي المتجرَ سقفُ الاستبدال
+         * (`loyalty_redeem_max_pct`) — لا قيمةٌ مخفيّةٌ في حقلٍ لا يراه.
+         */
+        $maxRate = $byPercent
+            ? Loyalty::maxEarnRate()
+            : Loyalty::maxEarnRate(max(1, $points), max(0.001, $value));
 
         $data = $request->validate([
             'loyalty_enabled' => ['nullable', 'boolean'],
@@ -1103,9 +1113,17 @@ class MarketingController extends Controller
             'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:'.$maxRate],
             // الاستبدالُ مقبضٌ مستقلّ: يُطفأ وتبقى النقاطُ تُكتسب وتتراكم
             'loyalty_redeem_enabled' => ['sometimes', 'boolean'],
+            /*
+             * وطريقةُ الاستبدال: مبلغٌ ثابتٌ لكلّ عددٍ من النقاط، أو نسبةٌ من الفاتورة
+             * المؤهّلة. وتبويبٌ أقدم لا يرسلها فتبقى كما حُفظت — ومن لم يحفظ شيئًا
+             * يبقى على المبلغ الثابت (`Loyalty::DEFAULTS`).
+             */
+            'loyalty_redeem_mode' => ['sometimes', 'required', 'in:'.Loyalty::FIXED.','.Loyalty::PERCENT],
             // كم نقطةً تساوي كم من عملة المتجر — عددٌ صحيحٌ وقيمةٌ موجبة
             'loyalty_redeem_points' => ['sometimes', 'required', 'integer', 'min:1', 'max:1000000'],
             'loyalty_redeem_value' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:100000'],
+            // نسبةٌ من الفاتورة لكلّ `loyalty_redeem_points` نقطة — لا تتجاوز الفاتورةَ كلَّها
+            'loyalty_redeem_percent' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:100'],
             // ما دونه من فاتورةٍ لا يُستبدل عليه — صفرٌ يعني كلَّ فاتورة
             'loyalty_redeem_min_invoice' => ['sometimes', 'required', 'numeric', 'min:0', 'max:10000000'],
             /*
@@ -1114,18 +1132,27 @@ class MarketingController extends Controller
              * تجاوزُها يجعل النقاط تُغطّي الفاتورة كلّها وزيادة، فيخرج البيع
              * بمبلغٍ سالب.
              */
-            'loyalty_redeem_max_pct' => ['required', 'integer', 'min:0', 'max:100'],
+            'loyalty_redeem_max_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            /*
+             * والسقفان اختياريّان: صاحبُ النشاط يحدّد سياستَه، ولا تفرض المنصّةُ
+             * سقفًا. فراغُ الحقل يُحفظ «بلا حدّ» (`Loyalty::rules`)، وحقلٌ لا يُرسله
+             * تبويبٌ أقدم يبقى كما حُفظ. ومبلغٌ صفريٌّ لا يُكتب: من لا يريد
+             * الاستبدالَ يطفئه بمقبضه، لا بسقفٍ يُخفي التنبيهَ بلا سبب.
+             */
+            'loyalty_redeem_max_amount' => ['nullable', 'numeric', 'gt:0', 'max:10000000'],
             'loyalty_redeem_min' => ['required', 'integer', 'min:0'],
         ], [
-            'loyalty_earn_rate.max' => __(
-                'كلّ :unit نقطة تساوي :value عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
-                [
-                    'unit' => $points,
-                    'value' => rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.'),
-                    'rate' => (string) $request->input('loyalty_earn_rate'),
-                    'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate'), max(1, $points), $value),
-                ],
-            ),
+            'loyalty_earn_rate.max' => $byPercent
+                ? __('أقصى ما يُمنح :max نقطة لكل وحدة شراء.', ['max' => $maxRate])
+                : __(
+                    'كلّ :unit نقطة تساوي :value عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
+                    [
+                        'unit' => $points,
+                        'value' => rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.'),
+                        'rate' => (string) $request->input('loyalty_earn_rate'),
+                        'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate'), max(1, $points), $value),
+                    ],
+                ),
         ]);
 
         MarketingSettings::save($this->bid(), 'loyalty', $data);

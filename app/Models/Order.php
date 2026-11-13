@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\OrderStatus;
+use App\Support\VatLines;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,6 +13,17 @@ class Order extends Model
 {
     protected $guarded = [];
 
+    /**
+     * والبيعةُ الجديدة تُدوَّر ضريبتُها سطرًا سطرًا (`VatLines`).
+     *
+     * من النموذج لا من القاعدة: العمودُ فارغٌ لكلّ بيعةٍ سبقته، وفراغُه يقول
+     * «قاعدتُها القديمة» فتُصحَّح بها (`OrderCorrection::totals`). وكلُّ بابٍ
+     * يكتب طلبًا — الصندوقُ والموقعُ وواتساب — يمرّ من هنا.
+     */
+    protected $attributes = [
+        'vat_rounding' => VatLines::RULE,
+    ];
+
     protected $casts = [
         'document_snapshot' => 'array',
         'subtotal' => 'decimal:3', 'discount' => 'decimal:3', 'tax' => 'decimal:3',
@@ -19,6 +31,8 @@ class Order extends Model
         'coupon_discount' => 'decimal:3',
         // بيعةٌ وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة — `PosController::reviewRedemption`
         'loyalty_review' => 'array',
+        // ما اشترته نقاطُ البيعة يومَ بيعت — منه يُقاس ما يعود عند إرجاع بعضها (`TillRedemption`)
+        'loyalty_basis' => 'array',
         'ordered_at' => 'datetime',
         'scheduled_for' => 'datetime',
         'hide_sender' => 'boolean',

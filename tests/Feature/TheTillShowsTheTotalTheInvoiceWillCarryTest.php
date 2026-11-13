@@ -63,7 +63,8 @@ class TheTillShowsTheTotalTheInvoiceWillCarryTest extends TestCase
         foreach ($case['lines'] as $i => $line) {
             $product = Product::create([
                 'business_id' => $shop->id, 'name' => 'صنف '.$i, 'price' => $line['price'], 'cost' => 0.1,
-                'quantity' => 100, 'active' => true,
+                // ونسبةُ الصنف حين تُكتب له (المعفى صفر) — وإلّا نسبةُ المتجر
+                'quantity' => 100, 'active' => true, 'tax' => $line['tax'] ?? null,
             ]);
             $items[] = ['id' => $product->id, 'name' => $product->name, 'qty' => $line['qty']];
         }
@@ -79,6 +80,8 @@ class TheTillShowsTheTotalTheInvoiceWillCarryTest extends TestCase
             'payment_method' => 'نقدي',
             'client_uuid' => uniqid('t', true),
             'coupon_code' => 'SHARED',
+            // وما قرأته الشاشة — فلو كتب الخادمُ غيرَه ردّ البيعة (`assertScreenTotal`)
+            'expected_total' => $case['expect']['total'],
         ])->assertOk()->assertJsonPath('ok', true);
 
         $order = Order::latest('id')->firstOrFail();

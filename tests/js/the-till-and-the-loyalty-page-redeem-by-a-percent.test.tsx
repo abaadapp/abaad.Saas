@@ -207,7 +207,13 @@ describe('صفحةُ برنامج الولاء — طريقةُ الاستبدا
         expect(screen.getByTestId('redeem-percent-example')).toHaveTextContent(/4\.000/);
         expect(screen.getByTestId('redeem-percent-example')).toHaveTextContent('20');
 
-        fireEvent.click(screen.getByRole('button', { name: /حفظ/ }));
+        // بلا سقف مبلغ: يُسأل قبل الحفظ (انظر الاختبارَ أدناه)، فيؤكّد
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ بلا سقف مبلغ' }));
+        });
         expect(posts.at(-1)?.data).toMatchObject({ loyalty_redeem_mode: 'percent', loyalty_redeem_percent: '10', loyalty_redeem_value: '1' });
     });
 
@@ -265,6 +271,55 @@ describe('صفحةُ برنامج الولاء — طريقةُ الاستبدا
         expect(screen.queryByTestId('loyalty-warning-no-amount-cap')).toBeNull();
         fireEvent.change(screen.getByTestId('redeem-percent'), { target: { value: '10' } });
         expect(screen.queryByTestId('loyalty-settings-warning')).toBeNull();
+    });
+
+    it('النسبةُ بلا سقف مبلغ تُحفظ بعد تأكيدٍ صريح — والإلغاءُ لا يحفظ شيئًا', async () => {
+        await page({ loyalty_enabled: '1', loyalty_redeem_mode: 'percent', loyalty_redeem_max_amount: '20' });
+        const before = posts.length;
+
+        fireEvent.change(screen.getByTestId('redeem-max-amount'), { target: { value: '' } });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
+        });
+        expect(screen.getByRole('dialog')).toHaveTextContent('بلا أقصى مبلغ خصم');
+        expect(posts.length).toBe(before);
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'إلغاء' }));
+        });
+        expect(posts.length).toBe(before);
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ بلا سقف مبلغ' }));
+        });
+        expect(posts.length).toBe(before + 1);
+        expect(posts.at(-1)?.data).toMatchObject({ loyalty_redeem_mode: 'percent', loyalty_redeem_max_amount: '' });
+    });
+
+    it('ومن حفظها من قبلُ لا يُسأل في كلّ حفظ', async () => {
+        await page({ loyalty_enabled: '1', loyalty_redeem_mode: 'percent' });
+        const before = posts.length;
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
+        });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(posts.length).toBe(before + 1);
+    });
+
+    it('والمبلغُ الثابت (الافتراض) لا يُسأل، ويُحفظ بسقف الخمسين كما كان', async () => {
+        await page({ loyalty_enabled: '1' });
+        const before = posts.length;
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
+        });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(posts.length).toBe(before + 1);
+        expect(posts.at(-1)?.data).toMatchObject({ loyalty_redeem_mode: 'fixed', loyalty_redeem_max_pct: '50', loyalty_redeem_max_amount: '' });
     });
 
     it('والاستبدالُ مطفأً لا تنبيه عليه', async () => {

@@ -1,6 +1,7 @@
 import { useForm, usePage } from '@inertiajs/react';
 import { Save, Star } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import PageHeader from '@/Components/PageHeader';
 import StatCard from '@/Components/StatCard';
 import SmartLink from '@/Components/SmartLink';
@@ -122,6 +123,16 @@ export default function Loyalty() {
     const fullPercent = redeemOn && byPercent && worthRules.percent >= 100;
     const noAmountCap = redeemOn && byPercent && limit(form.data.loyalty_redeem_max_amount) === null;
 
+    /*
+     * ═══ والنسبةُ بلا سقف مبلغ تُؤكَّد قبل الحفظ — بقرار المالك ═══
+     *
+     * اختيارٌ يملكه صاحبُ النشاط وحده، فلا يُمنع. لكنّه لا يُحفظ بنقرةٍ عابرة:
+     * يُسأل مرّةً حين يدخله، ومن حفظه من قبلُ لا يُسأل في كلّ حفظ. والافتراضُ
+     * (مبلغٌ ثابت) والإعداداتُ السابقة لا يمسّها السؤال.
+     */
+    const [ask, confirmDialog] = useConfirm();
+    const savedOpenPercent = settings.loyalty_redeem_mode === 'percent' && (settings.loyalty_redeem_max_amount ?? '').trim() === '';
+
     return (
         <AdminLayout title="برنامج ولاء">
             <PageHeader
@@ -138,8 +149,20 @@ export default function Loyalty() {
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                         e.preventDefault();
+                        if (
+                            noAmountCap &&
+                            !savedOpenPercent &&
+                            !(await ask({
+                                title: 'نسبة بلا سقف مبلغ',
+                                message:
+                                    'في طريقة النسبة لا حدّ لقيمة الخصم بعملة النشاط: النقاط نفسها تخصم من الفاتورة الكبيرة أكثر بكثير ممّا تخصمه من الصغيرة. هل تحفظ النسبة بلا أقصى مبلغ خصم؟',
+                                action: 'حفظ بلا سقف مبلغ',
+                            }))
+                        ) {
+                            return;
+                        }
                         form.post(route('admin.marketing.loyalty.save'), { preserveScroll: true });
                     }}
                 >
@@ -495,6 +518,7 @@ export default function Loyalty() {
                     </Card>
                 </div>
             </div>
+            {confirmDialog}
         </AdminLayout>
     );
 }

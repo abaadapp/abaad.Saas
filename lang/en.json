@@ -10619,5 +10619,8 @@
     "بيعة :number وصلت بعد انقطاع وأرقامُ خصمها لا تتّبع أيَّ قواعد — لا تُعتمد قبل التحقّق": "Sale :number arrived after an outage and its discount follows no rules — do not approve it before checking",
     "بيعة :number وصلت بعد انقطاع وفيها مخالفةٌ ماليّة تحتاج مراجعة": "Sale :number arrived after an outage with a financial exception to review",
     "تغيّر مبلغ البيعة منذ فُتحت الشاشة: الصحيح :total لا :shown. راجعه مع العميل ثمّ اضغط الدفع مرّةً أخرى لتأكيده.": "The sale amount changed since the screen was opened: the correct amount is :total, not :shown. Review it with the customer, then press pay again to confirm it.",
-    "شاشة الصندوق قديمة وتحسب :shown، والصحيح :total. أعد تحميل الصفحة ثمّ أكمل البيع.": "This till screen is out of date and shows :shown; the correct amount is :total. Reload the page, then complete the sale."
+    "شاشة الصندوق قديمة وتحسب :shown، والصحيح :total. أعد تحميل الصفحة ثمّ أكمل البيع.": "This till screen is out of date and shows :shown; the correct amount is :total. Reload the page, then complete the sale.",
+    "نسبة بلا سقف مبلغ": "Percent with no amount cap",
+    "في طريقة النسبة لا حدّ لقيمة الخصم بعملة النشاط: النقاط نفسها تخصم من الفاتورة الكبيرة أكثر بكثير ممّا تخصمه من الصغيرة. هل تحفظ النسبة بلا أقصى مبلغ خصم؟": "In percent mode the discount has no limit in the shop's currency: the same points take far more off a large invoice than off a small one. Save the percent with no maximum discount amount?",
+    "حفظ بلا سقف مبلغ": "Save with no amount cap"
 }

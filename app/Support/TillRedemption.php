@@ -171,7 +171,9 @@ final class TillRedemption
             return;
         }
 
-        $customer = $order->customer_id ? Customer::whereKey($order->customer_id)->lockForUpdate()->first() : null;
+        $customer = $order->customer_id
+            ? Customer::whereKey($order->customer_id)->where('business_id', $order->business_id)->lockForUpdate()->first()
+            : null;
 
         if (! $customer) {
             return;

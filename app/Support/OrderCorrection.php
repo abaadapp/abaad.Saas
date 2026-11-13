@@ -1946,7 +1946,8 @@ class OrderCorrection
      */
     private static function reverseLoyalty(Order $order): void
     {
-        $customer = $order->customer_id ? Customer::find($order->customer_id) : null;
+        // عميلُ المتجر نفسِه وحدَه — لا تعبر نقاطٌ إلى متجرٍ آخر ولو حمل الصفُّ معرّفَه
+        $customer = $order->customer_id ? Customer::where('business_id', $order->business_id)->find($order->customer_id) : null;
         if (! $customer) {
             return;
         }
@@ -2031,7 +2032,7 @@ class OrderCorrection
      */
     private static function syncLoyalty(Order $order): void
     {
-        $customer = $order->customer_id ? Customer::find($order->customer_id) : null;
+        $customer = $order->customer_id ? Customer::where('business_id', $order->business_id)->find($order->customer_id) : null;
         if (! $customer) {
             return;
         }

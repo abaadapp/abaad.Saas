@@ -28,9 +28,12 @@ use App\Support\Ledger;
 use App\Support\Loyalty;
 use App\Support\OrderCorrection;
 use App\Support\PaymentLinks;
+use App\Support\Paymob\Amount;
 use App\Support\ReportingPeriod;
+use App\Support\TillRedemption;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
@@ -1220,7 +1223,7 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
                 $exact = ((float) $item->line_total - ($n % 2 === 1 ? 0 : (float) $item->tax_amount)) * (float) $item->tax_rate / ($n % 2 === 1 ? 100 + (float) $item->tax_rate : 100);
                 $this->assertLessThanOrEqual(0.0005 + 1e-9, abs((float) $item->tax_amount - $exact), $label.': ضريبةُ السطر خارج نصف بيسة (IBR-168-OM)');
             }
-            $this->assertSame((string) (int) round((float) $invoice->total * 1000), (string) \App\Support\Paymob\Amount::toMinor((float) $invoice->total, 'OMR'), $label.': مبلغ Paymob');
+            $this->assertSame((string) (int) round((float) $invoice->total * 1000), (string) Amount::toMinor((float) $invoice->total, 'OMR'), $label.': مبلغ Paymob');
         }
     }
 
@@ -1302,6 +1305,25 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertEqualsWithDelta(8.0, (float) $order->total, 0.0001, 'فيُستردّ ٧٢ نقدًا');
         $this->assertSame(200, (int) $order->redeemed_points);
         $this->assertSame(1800, $this->pointsBack($order), '٧٢ + ١٨ = ٩٠ ثمنُ التسع — لا تضيع على الزبون قيمة');
+    }
+
+    /** وما يعود من إرجاعٍ جزئيّ يعود لعميل المتجر نفسِه — ولو حمل صفُّ البيعة معرّفَ عميلٍ من متجرٍ آخر */
+    public function test_a_partial_return_never_credits_a_customer_of_another_shop(): void
+    {
+        $this->customer->update(['points' => 5000]);
+        $order = $this->sell(['redeem_points' => 2000, 'redeem_discount' => 20], null, 2);
+
+        $stranger = Customer::create(['business_id' => $this->other->id, 'name' => 'زبون الجار', 'phone' => '94000001', 'points' => 7000, 'language' => 'ar']);
+        DB::table('orders')->where('id', $order->id)->update(['customer_id' => $stranger->id]);
+
+        OrderCorrection::setQuantity($order->fresh(), $order->items()->firstOrFail(), 1, 'أعاد قطعة');
+
+        $this->assertSame(7000, (int) $stranger->fresh()->points, 'لا تعبر نقاطٌ إلى متجرٍ آخر ولا تُسحب منه');
+
+        // ولا الإلغاءُ بعده
+        OrderCorrection::cancel($order->fresh(), 'إلغاء');
+        $this->assertSame(7000, (int) $stranger->fresh()->points, 'ولا بالإلغاء');
+        $this->assertSame(0, PointTransaction::where('customer_id', $stranger->id)->count());
     }
 
     /** على دفعاتٍ أو مرّةً: النقاطُ نفسُها. والإلغاءُ بعدها يعيد الباقي وحدَه، والإضافةُ لا تصرف ما رُدّ */
@@ -1438,7 +1460,7 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
             OrderCorrection::setQuantity($old->fresh(), $old->items()->firstOrFail(), 1, 'أعاد سبعًا');
             $this->fail('عُدّلت بنودٌ بلا لقطة');
         } catch (\RuntimeException $e) {
-            $this->assertSame(\App\Support\TillRedemption::refusal(), $e->getMessage());
+            $this->assertSame(TillRedemption::refusal(), $e->getMessage());
         }
         $this->assertSame(8, (int) $old->items()->firstOrFail()->quantity, 'لم يتغيّر بند');
         $this->assertSame(5000, (int) $this->customer->fresh()->points, 'ولم تتحرّك نقطة');

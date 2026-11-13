@@ -23,7 +23,8 @@ import { type ResumeCart, roundMoney, usePosCart } from '@/hooks/usePosCart';
 interface Case {
     name: string;
     vat: { enabled: boolean; rate: number; inclusive: boolean };
-    lines: { price: number; qty: number }[];
+    /** `tax` نسبةُ الصنف حين تُكتب له (المعفى صفر) — وغيابُها نسبةُ المتجر */
+    lines: { price: number; qty: number; tax?: number }[];
     coupon: { type: string; value: number; min_order: number };
     expect: { coupon_discount: number; discount: number; tax: number; total: number };
 }
@@ -43,7 +44,7 @@ const cart = (c: Case) =>
             resume: {
                 id: null,
                 customer: null,
-                items: c.lines.map((l, i) => ({ id: i + 1, name: `صنف ${i}`, price: l.price, qty: l.qty })),
+                items: c.lines.map((l, i) => ({ id: i + 1, name: `صنف ${i}`, price: l.price, qty: l.qty, tax: l.tax ?? null })),
             } as ResumeCart,
             currency: { code: 'OMR', name: 'ريال', symbol: 'ر.ع', rate: 1, is_base: true, active: true },
             onToast: vi.fn(),

@@ -42,6 +42,27 @@
             "lines": [{ "price": 2.5, "qty": 2 }],
             "coupon": { "type": "مبلغ", "value": 7, "min_order": 0 },
             "expect": { "coupon_discount": 5, "discount": 5, "tax": 0, "total": 0 }
+        },
+        {
+            "name": "نسبةٌ على ثلاثة بنود فيها معفًى وضريبةٌ مضافة",
+            "vat": { "enabled": true, "rate": 5, "inclusive": false },
+            "lines": [{ "price": 4.75, "qty": 3 }, { "price": 2.333, "qty": 2 }, { "price": 6.1, "qty": 1, "tax": 0 }],
+            "coupon": { "type": "نسبة", "value": 12.5, "min_order": 0 },
+            "expect": { "coupon_discount": 3.127, "discount": 3.127, "tax": 0.827, "total": 22.716 }
+        },
+        {
+            "name": "نسبةٌ على ثلاثة بنود فيها معفًى وضريبةٌ شاملة",
+            "vat": { "enabled": true, "rate": 5, "inclusive": true },
+            "lines": [{ "price": 4.75, "qty": 3 }, { "price": 2.333, "qty": 2 }, { "price": 6.1, "qty": 1, "tax": 0 }],
+            "coupon": { "type": "نسبة", "value": 12.5, "min_order": 0 },
+            "expect": { "coupon_discount": 3.127, "discount": 3.127, "tax": 0.788, "total": 21.889 }
+        },
+        {
+            "name": "مبلغٌ ثابت على بندٍ خاضع وآخرَ معفًى وضريبةٌ شاملة",
+            "vat": { "enabled": true, "rate": 5, "inclusive": true },
+            "lines": [{ "price": 9.999, "qty": 1 }, { "price": 0.5, "qty": 3, "tax": 0 }],
+            "coupon": { "type": "مبلغ", "value": 1.5, "min_order": 5 },
+            "expect": { "coupon_discount": 1.5, "discount": 1.5, "tax": 0.414, "total": 9.999 }
         }
     ]
 }

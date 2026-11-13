@@ -1140,7 +1140,8 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->set('loyalty_redeem_points', '1');
         $this->set('loyalty_redeem_value', '0.001');
         $tie = Product::create(['business_id' => $this->shop->id, 'name' => 'نصف بيسة', 'price' => 32.275, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
-        $order = $this->sell(['redeem_points' => 6565, 'redeem_discount' => 6.565], $tie);
+        // والشاشةُ الجديدة ترسل ما قرأته — ٣٢٫٢٧٥ − ٦٫٥٦٥ + ١٫٢٨٦
+        $order = $this->sell(['redeem_points' => 6565, 'redeem_discount' => 6.565, 'expected_total' => 26.996], $tie);
         $invoice = $this->invoice(6565, [['description' => 'نصف بيسة', 'quantity' => 1, 'unit_price' => 32.275]], $onInvoice);
 
         $this->assertSame('line', $order->vat_rounding, 'البيعةُ الجديدة تحمل قاعدتَها');
@@ -1156,7 +1157,7 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $b = Product::create(['business_id' => $this->shop->id, 'name' => 'ب', 'price' => 14.3, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
         $order = $this->sell([
             'items' => [['id' => $a->id, 'name' => 'أ', 'qty' => 1], ['id' => $b->id, 'name' => 'ب', 'qty' => 1]],
-            'redeem_points' => 400, 'redeem_discount' => 4,
+            'redeem_points' => 400, 'redeem_discount' => 4, 'expected_total' => 24.517,
         ]);
         $invoice = $this->invoice(400, [
             ['description' => 'أ', 'quantity' => 1, 'unit_price' => 13.05],
@@ -1206,9 +1207,10 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
             $offer = Loyalty::quote(Loyalty::rules($this->shop->id), mt_rand(100, (int) min(100000, floor($base * 100))), $base);
             $label = "سلّة $n";
 
-            $this->customer = $atTill;
-            $order = $this->sell(['items' => $items, 'redeem_points' => $offer['max_points'], 'redeem_discount' => $offer['max_discount']]);
+            // الفاتورةُ أوّلًا، ومبلغُها ما تقرؤه الشاشةُ الجديدة — فإن افترق الصندوقُ عنه ردّ البيعة
             $invoice = $this->invoice($offer['max_points'], $lines, $onInvoice);
+            $this->customer = $atTill;
+            $order = $this->sell(['items' => $items, 'redeem_points' => $offer['max_points'], 'redeem_discount' => $offer['max_discount'], 'expected_total' => (float) $invoice->total]);
 
             $this->assertEqualsWithDelta((float) $order->discount, (float) $invoice->discount_total, 0.00001, $label);
             $this->assertEqualsWithDelta((float) $order->tax, (float) $invoice->tax_total, 0.00001, $label.': الضريبة');
@@ -1463,7 +1465,7 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $b = Product::create(['business_id' => $this->shop->id, 'name' => 'ب', 'price' => 1.25, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
         $order = $this->sell([
             'items' => [['id' => $a->id, 'name' => 'أ', 'qty' => 2], ['id' => $b->id, 'name' => 'ب', 'qty' => 1]],
-            'redeem_points' => 200, 'redeem_discount' => 2,
+            'redeem_points' => 200, 'redeem_discount' => 2, 'expected_total' => 6.562,
         ]);
         $this->assertEqualsWithDelta(0.312, (float) $order->tax, 0.00001, 'الجديدةُ سطرًا سطرًا');
         $this->assertEqualsWithDelta(6.562, (float) $order->total, 0.00001);
@@ -1480,6 +1482,138 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertEqualsWithDelta(3.779, (float) $order->total, 0.00001);
         $this->assertSame(116, (int) $order->redeemed_points, '⌈٢٠٠ × ١٫١٥١ ÷ ٢⌉');
         $this->assertSame(84, $this->pointsBack($order));
+    }
+
+    /* ═══════════════════ الشاشةُ والخادمُ: المبلغُ الذي يُقبض هو المبلغُ الذي يُكتب ═══════════════════ */
+
+    /** سعرٌ تغيّر منذ فُتحت الشاشة: تقف البيعةُ بلا كتابة، ثمّ تمضي حين يؤكّد الكاشيرُ المبلغَ الصحيح — مرّةً واحدة */
+    public function test_a_screen_total_that_changed_stops_the_sale_until_the_cashier_confirms_it(): void
+    {
+        $coupon = Coupon::create(['business_id' => $this->shop->id, 'code' => 'OFF5', 'type' => 'مبلغ', 'value' => 5, 'max_uses' => 10, 'used_count' => 0, 'active' => true]);
+        $this->customer->update(['points' => 1000]);
+        $uuid = uniqid('screen', true);
+        $sale = ['client_uuid' => $uuid, 'coupon_code' => 'OFF5', 'redeem_points' => 500, 'redeem_discount' => 5];
+
+        // الشاشةُ فُتحت والباقةُ بتسعين فقرأت ٨٠، ثمّ صارت مئة فالصحيحُ ٩٠
+        $refused = $this->till($sale + ['expected_total' => 80.0])->assertStatus(422);
+        $this->assertEqualsWithDelta(90.0, $refused->json('totals.total'), 0.0001);
+        $this->assertEqualsWithDelta(80.0, $refused->json('totals.shown'), 0.0001);
+        $this->assertFalse($refused->json('totals.stale_screen'));
+        $this->assertStringContainsString('اضغط الدفع مرّةً أخرى', $refused->json('message'));
+        $this->assertSame(0, Order::where('client_uuid', $uuid)->count(), 'لم يُكتب طلب');
+        $this->assertSame(1000, (int) $this->customer->fresh()->points, 'ولم تُصرف نقطة');
+        $this->assertSame(0, (int) $coupon->fresh()->used_count, 'ولا فرصةُ كوبون');
+
+        // يؤكّد الكاشيرُ التسعين فتمضي — وإعادتُها لا تكتب ثانية
+        $this->till($sale + ['expected_total' => 90.0])->assertOk();
+        $this->till($sale + ['expected_total' => 90.0])->assertOk()->assertJson(['duplicate' => true]);
+        $this->assertSame(1, Order::where('client_uuid', $uuid)->count());
+        $this->assertSame(1, $this->redeems(), 'النقاطُ صُرفت مرّةً');
+        $this->assertSame(1, (int) $coupon->fresh()->used_count);
+    }
+
+    /** وشاشةٌ فُتحت قبل التحديث لا ترسل ما قرأته: تقف حين كان مبلغُها سيفترق وحده، وتمضي في غيره */
+    public function test_an_old_screen_is_stopped_only_when_its_total_would_differ(): void
+    {
+        $this->vat();
+        Coupon::create(['business_id' => $this->shop->id, 'code' => 'TWO', 'type' => 'مبلغ', 'value' => 2, 'min_order' => 5, 'max_uses' => 10, 'used_count' => 0, 'active' => true]);
+        $a = Product::create(['business_id' => $this->shop->id, 'name' => 'أ', 'price' => 3.5, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $b = Product::create(['business_id' => $this->shop->id, 'name' => 'ب', 'price' => 1.25, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $basket = ['items' => [['id' => $a->id, 'name' => 'أ', 'qty' => 2], ['id' => $b->id, 'name' => 'ب', 'qty' => 1]], 'coupon_code' => 'TWO'];
+
+        // القديمةُ كانت تقرأ ٦٫٥٦٣ (٠٫٣١٢٥ مجموعًا) والصحيحُ ٦٫٥٦٢ (٠٫٢٦٥ + ٠٫٠٤٧)
+        $stale = $this->till($basket)->assertStatus(422);
+        $this->assertTrue($stale->json('totals.stale_screen'));
+        $this->assertStringContainsString('أعد تحميل الصفحة', $stale->json('message'));
+        $this->assertSame(0, Order::count());
+
+        $this->till($basket + ['expected_total' => 6.562])->assertOk();
+        // وسلّةٌ لا يفترق فيها الحسابان تمضي من الشاشة القديمة كما كانت
+        $this->till(['items' => [['id' => $this->product->id, 'name' => 'باقة', 'qty' => 1]]])->assertOk();
+        $this->assertSame(2, Order::count());
+    }
+
+    /** القواعدُ كما تحملها شاشةُ الصندوق — `loyaltyRules` في `usePosCart` */
+    private function screenRules(array $override = []): array
+    {
+        $r = Loyalty::rules($this->shop->id);
+        unset($r['earn_rate']);
+
+        return array_merge($r, $override);
+    }
+
+    /** بيعةٌ اكتملت بلا اتصال: تصل من الطابور بما قُبض */
+    private function replay(float $price, int $points, float $discount, array $extra = []): Order
+    {
+        $p = Product::create(['business_id' => $this->shop->id, 'name' => 'ورد '.uniqid(), 'price' => $price, 'cost' => 0, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+
+        return $this->sell(array_merge([
+            'redeem_points' => $points, 'redeem_discount' => $discount, 'replay' => true,
+            'expected_total' => round($price - $discount, 3), 'queued_at' => now()->subMinutes(30)->getTimestampMs(),
+        ], $extra), $p);
+    }
+
+    /**
+     * ═══ بيعةٌ بلا اتصال فوق سقف اليوم: يبقى ما قُبض، ولا دين، وتُكتب مخالفةً بسببها ═══
+     *
+     * الشاشةُ حسبت بقواعد سقفُها ٧٠٪ وصاحبُ النشاط جعله ٥٠٪ قبل أن تصل.
+     */
+    public function test_an_offline_sale_over_todays_cap_keeps_what_was_paid_and_is_flagged_with_its_reason(): void
+    {
+        $this->customer->update(['points' => 5000]);
+        $order = $this->replay(20, 1200, 12, ['loyalty_rules' => $this->screenRules(['max_pct' => 70.0])]);
+
+        $this->assertEqualsWithDelta(8.0, (float) $order->total, 0.0001, 'يُكتب ما قُبض');
+        $this->assertSame('مدفوع', $order->payment_status, 'ولا دينَ على العميل');
+        $this->assertSame(1200, (int) $order->redeemed_points);
+        $r = $order->loyalty_review;
+        $this->assertSame(['over_cap'], $r['reasons']);
+        $this->assertSame('rules_changed', $r['context']);
+        $this->assertEqualsWithDelta(10.0, $r['cap'], 0.0001);
+
+        $bell = collect(Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id);
+        $this->assertSame('warning', $bell['color']);
+        $this->assertStringContainsString('مخالفةٌ ماليّة', $bell['text']);
+        $this->assertStringContainsString('فوق سقف الاستبدال', $bell['hint']);
+        $this->assertStringContainsString('تغيّرت قبل أن تصل', $bell['hint']);
+        $this->assertStringContainsString('لم يُسجَّل دينٌ', $bell['hint']);
+    }
+
+    /** وأرقامٌ لا تتّبع حتى القواعدَ التي قالت الشاشةُ إنّها حسبت بها: مشتبهٌ بها، لا تُعتمد قبل التحقّق */
+    public function test_an_offline_sale_whose_numbers_follow_no_rules_is_held_as_suspected(): void
+    {
+        $this->customer->update(['points' => 5000]);
+        // ١٢٠٠ نقطة بقواعد اليوم نفسِها تساوي ١٠ (السقف) — والشاشةُ تقول ١٥
+        $order = $this->replay(20, 1200, 15, ['loyalty_rules' => $this->screenRules()]);
+
+        $this->assertEqualsWithDelta(5.0, (float) $order->total, 0.0001, 'يُكتب ما قُبض — ولا يُطلب الفرقُ من العميل');
+        $this->assertSame('مدفوع', $order->payment_status);
+        $this->assertSame('suspected', $order->loyalty_review['context']);
+        $this->assertContains('over_cap', $order->loyalty_review['reasons']);
+
+        $bell = collect(Demo::notifications())->firstWhere('key', 'loyalty-review-'.$order->id);
+        $this->assertSame('danger', $bell['color']);
+        $this->assertStringContainsString('لا تُعتمد قبل التحقّق', $bell['text']);
+        $this->assertStringContainsString('تحقّق من البيعة مع الكاشير', $bell['hint']);
+    }
+
+    /** وطابورُ شاشةٍ أقدم لا يحمل قواعدَه: لا يُعرف السبب — وفرقُ المقبوض يُكتب كذلك */
+    public function test_an_offline_sale_without_its_rules_or_with_another_amount_is_flagged_unverified(): void
+    {
+        $this->customer->update(['points' => 5000]);
+        $order = $this->replay(20, 1200, 12);
+        $this->assertSame('unverified', $order->loyalty_review['context']);
+
+        // ما قُبض ٧٫٥ والفاتورةُ ٨ — والبيعةُ بلا نقاط
+        $order = $this->replay(8, 0, 0, ['expected_total' => 7.5, 'redeem_points' => 0, 'redeem_discount' => null]);
+        $this->assertSame(['amount_mismatch'], $order->loyalty_review['reasons']);
+        $this->assertEqualsWithDelta(7.5, $order->loyalty_review['collected'], 0.0001);
+        $this->assertEqualsWithDelta(8.0, $order->loyalty_review['recorded'], 0.0001);
+        $this->assertSame('مدفوع', $order->payment_status, 'ولا دين');
+
+        // وبيعةٌ اتّبعت قواعدَ اليوم لا تُكتب مخالفة
+        $clean = $this->replay(20, 1000, 10, ['loyalty_rules' => $this->screenRules()]);
+        $this->assertNull($clean->loyalty_review);
     }
 
     /** الكاشيرُ يستبدل في الصندوق بقواعد صاحب النشاط، ولا يغيّر القواعد — بلا قسم التسويق تُردّ */

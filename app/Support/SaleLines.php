@@ -150,6 +150,34 @@ final class SaleLines
         return Baisa::toMoney(VatLines::document($rows, Baisa::of(min($discount, $subtotal)), Vat::inclusive($this->bid()))['tax']);
     }
 
+    /**
+     * الإجماليُّ كما كانت تقرؤه شاشةُ الصندوق قبل `VatLines` — لا يُكتب، يُقارَن.
+     *
+     * كانت تجمع ضرائبَ البنود بلا تقريب ثمّ تدوّر المجموعَ مرّةً. وشاشةٌ فُتحت
+     * قبل التحديث تبقى تحسب هكذا حتى يُعاد تحميلُها، فيُسأل: أكانت ستقرأ رقمًا
+     * غيرَ الذي يُكتب؟ (`PosController::assertScreenTotal`).
+     */
+    public function legacyTotal(array $lines, float $gross, float $discount, float $delivery): float
+    {
+        $tax = 0.0;
+        $inclusive = Vat::inclusive($this->bid());
+
+        if (Vat::enabled($this->bid()) && $gross > 0) {
+            $default = $this->vatRate();
+            foreach ($lines as $l) {
+                $net = $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0);
+                $taxable = $net - ($discount * ($net / $gross));
+                $rate = $l['product'] ? $l['product']->taxRate($default) : $default;
+                $tax += $inclusive ? ($taxable * $rate) / (100 + $rate) : ($taxable * $rate) / 100;
+            }
+            $tax = round($tax, 3);
+        }
+
+        $subtotal = $inclusive ? round($gross - $tax, 3) : $gross;
+
+        return round($subtotal - $discount + $tax + $delivery, 3);
+    }
+
     public function setting(string $key, $default = null)
     {
         return Setting::where('business_id', $this->bid())->where('key', $key)->value('value') ?? $default;

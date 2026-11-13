@@ -78,6 +78,8 @@ class NormalizeNumbers
         'loyalty_redeem_min', 'loyalty_redeem_max_pct', 'loyalty_redeem_max_amount',
         // وقيمةُ خصم النقاط كما عرضها الصندوق — `PosController::resolveRedemption`
         'redeem_discount',
+        // وإجماليُّ البيعة كما قرأه الكاشير — `PosController::assertScreenTotal`
+        'expected_total',
         'wastage_percent', 'threshold', 'monthly_target',
         // ونسبةُ المحلّ من بوتيكٍ يبيع تحت سقفه — يكتبها بلوحةٍ عربيّة كغيرها
         'commission_rate',

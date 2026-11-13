@@ -10606,5 +10606,18 @@
     "تنبيه: نسبة ١٠٠٪ تعني أن كل :points نقطة تساوي الفاتورة المؤهّلة كاملة.": "Warning: a 100% rate means every :points points equal the whole eligible invoice.",
     "تنبيه: في طريقة النسبة تكبر قيمة النقاط مع الفاتورة ولا حدّ لها بالمبلغ — النقاط نفسها تخصم من فاتورة بألف ما تخصمه نسبتها من فاتورة بعشرة. ضع أقصى مبلغ خصم إن أردت حدًّا بعملة النشاط.": "Warning: in percent mode, points grow in value with the invoice and have no amount limit — the same points take their percentage off an invoice of a thousand as off one of ten. Set a maximum discount amount if you want a limit in the shop's currency.",
     "الإعداد يُحفظ كما اخترته — هذا تنبيه لا منع.": "Your settings are saved as you chose — this is a warning, not a block.",
-    "عُدّلت بنود هذه البيعة قبل أن يحفظ النظام ما اشترته نقاطها، فلا يُعرف كم يعود منها بإرجاع بعض البنود. لا تُعدَّل بنودها — ويبقى إلغاؤها كاملةً، فتعود نقاطها كلّها.": "This sale's items were edited before the system recorded what its points bought, so it cannot tell how many points a partial return should give back. Its items can't be edited — it can still be cancelled in full, which returns all of its points."
+    "عُدّلت بنود هذه البيعة قبل أن يحفظ النظام ما اشترته نقاطها، فلا يُعرف كم يعود منها بإرجاع بعض البنود. لا تُعدَّل بنودها — ويبقى إلغاؤها كاملةً، فتعود نقاطها كلّها.": "This sale's items were edited before the system recorded what its points bought, so it cannot tell how many points a partial return should give back. Its items can't be edited — it can still be cancelled in full, which returns all of its points.",
+    "برنامج النقاط أو الاستبدال مُطفأ حين وصلت فلم تُصرف نقطة.": "The points program or redemption was off when it arrived, so no points were spent.",
+    "طُلبت :requested نقطة ولم يكفِ رصيد العميل حين وصلت فصُرفت :spent.": ":requested points were requested but the customer's balance was short when it arrived, so :spent were spent.",
+    "خصم النقاط :discount فوق سقف الاستبدال اليوم :cap.": "The points discount :discount is above today's redemption cap :cap.",
+    "قُبض عند الصندوق :collected وكُتبت الفاتورة بـ:recorded.": ":collected was collected at the till and the invoice was recorded at :recorded.",
+    "خصمٌ بقيمة :gap لم تغطّه نقاط العميل بقواعد اليوم.": "A discount of :gap was not covered by the customer's points under today's rules.",
+    "السبب: الشاشة حسبت بقواعد استبدالٍ تغيّرت قبل أن تصل البيعة.": "Reason: the screen used redemption rules that changed before the sale arrived.",
+    "أرقام الشاشة لا تتّبع حتى القواعد التي قالت إنّها حسبت بها — تحقّق من البيعة مع الكاشير قبل اعتمادها.": "The screen's numbers do not follow even the rules it says it used — check this sale with the cashier before approving it.",
+    "لم تُرسل الشاشة قواعدها (أو تغيّرت الأسعار معها) فلا يُعرف سبب الفرق.": "The screen did not send its rules (or prices changed with it), so the cause of the difference is unknown.",
+    "لم يُغيَّر المبلغ المقبوض ولم يُسجَّل دينٌ على العميل.": "The amount collected was not changed and no debt was recorded on the customer.",
+    "بيعة :number وصلت بعد انقطاع وأرقامُ خصمها لا تتّبع أيَّ قواعد — لا تُعتمد قبل التحقّق": "Sale :number arrived after an outage and its discount follows no rules — do not approve it before checking",
+    "بيعة :number وصلت بعد انقطاع وفيها مخالفةٌ ماليّة تحتاج مراجعة": "Sale :number arrived after an outage with a financial exception to review",
+    "تغيّر مبلغ البيعة منذ فُتحت الشاشة: الصحيح :total لا :shown. راجعه مع العميل ثمّ اضغط الدفع مرّةً أخرى لتأكيده.": "The sale amount changed since the screen was opened: the correct amount is :total, not :shown. Review it with the customer, then press pay again to confirm it.",
+    "شاشة الصندوق قديمة وتحسب :shown، والصحيح :total. أعد تحميل الصفحة ثمّ أكمل البيع.": "This till screen is out of date and shows :shown; the correct amount is :total. Reload the page, then complete the sale."
 }

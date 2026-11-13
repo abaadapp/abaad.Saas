@@ -331,6 +331,61 @@ class Loyalty
     }
 
     /**
+     * قواعدُ النقاط كما قالت شاشةُ الصندوق إنّها حسبت بها — مقروءةً بحذر.
+     *
+     * تصل من المتصفّح مع بيعةٍ اكتملت بلا اتصال (`loyalty_rules`)، فهي ادّعاءٌ
+     * لا مرجع: تُقرأ أرقامًا محصورةً بحدودها كما تقرأ `rules` الإعدادات، وما
+     * لا يُقرأ يجعلها فراغًا. ولا تُستعمل إلّا لتسأل: أتتّبع أرقامُ الشاشة
+     * قواعدَها؟ (`follows`).
+     */
+    public static function claimedRules(mixed $raw): ?array
+    {
+        if (! is_array($raw) || ! isset($raw['points'])) {
+            return null;
+        }
+
+        $num = fn ($v) => is_numeric($v) ? (float) $v : null;
+        $mode = ($raw['mode'] ?? self::FIXED) === self::PERCENT ? self::PERCENT : self::FIXED;
+        $on = ($raw['on'] ?? true) !== false;
+
+        return [
+            'on' => $on,
+            'redeem' => $on && ($raw['redeem'] ?? true) !== false,
+            'earn_rate' => 0.0,
+            'min_points' => max(0, (int) ($num($raw['min_points'] ?? 0) ?? 0)),
+            'mode' => $mode,
+            'points' => max(1, (int) ($num($raw['points']) ?? 1)),
+            'value' => max(0.0, $num($raw['value'] ?? 0) ?? 0.0),
+            'percent' => min(100.0, max(0.0, $num($raw['percent'] ?? 0) ?? 0.0)),
+            'min_invoice' => max(0.0, $num($raw['min_invoice'] ?? 0) ?? 0.0),
+            'max_pct' => ($p = $num($raw['max_pct'] ?? null)) === null ? null : min(100.0, max(0.0, $p)),
+            'max_amount' => ($a = $num($raw['max_amount'] ?? null)) === null ? null : max(0.0, $a),
+        ];
+    }
+
+    /** أتعطي هذه القواعدُ الخصمَ نفسَه لهذه النقاط على هذه الفاتورة؟ — بالبيسة */
+    public static function follows(array $rules, int $points, float $discount, float $base, float $other): bool
+    {
+        $q = self::quote($rules, $points, $base, $other, $points);
+
+        return $q['points'] === $points && abs($q['discount'] - round($discount, 3)) <= 0.0005;
+    }
+
+    /** أهي قواعدُ الاستبدال نفسُها؟ — ما يحسب الخصمَ وحدَه، لا معدّلُ الكسب */
+    public static function sameRules(array $a, array $b): bool
+    {
+        foreach (['redeem', 'min_points', 'mode', 'points', 'value', 'percent', 'min_invoice', 'max_pct', 'max_amount'] as $k) {
+            $x = $a[$k] ?? null;
+            $y = $b[$k] ?? null;
+            if (is_numeric($x) && is_numeric($y) ? abs((float) $x - (float) $y) > 1e-9 : $x !== $y) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * أقصى ما يُخصم بالنقاط من هذه الفاتورة — بابٌ واحد يقرؤه الحسابُ والشاشة.
      *
      * ما بقي بعد الخصومات الأخرى حدٌّ لا يُرفع: لا يُخصم أكثرُ من المؤهّلة، ولا

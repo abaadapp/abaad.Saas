@@ -670,6 +670,24 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const total = roundMoney((vat?.inclusive ? roundMoney(base - taxAmount) : base) - discountAmount + taxAmount);
     const displayTotal = total * (currency.rate ?? 1);
 
+    /*
+     * ═══ ومبلغٌ أكّده الكاشيرُ بعد أن ردّ الخادمُ غيرَه — لهذه السلّة وحدها ═══
+     *
+     * توقيعُ السلّة: أصنافُها وكميّاتُها وإضافاتُها، والكوبون، والنقاط، والعميل.
+     * تتغيّر فيسقط التأكيد — مبلغٌ أُكّد لسلّةٍ لا يُقبض عن غيرها.
+     */
+    const cartSig = useMemo(
+        () =>
+            JSON.stringify([
+                items.map((i) => [i.id ?? null, i.addon_id ?? null, i.variant_id ?? null, i.qty, (i.addons ?? []).map((a) => [a.addon_id, a.qty]), i.custom ?? null]),
+                activeCoupon?.code ?? null,
+                redeemPointsUsed,
+                customerId,
+            ]),
+        [items, activeCoupon, redeemPointsUsed, customerId],
+    );
+    const [confirmedTotal, setConfirmedTotal] = useState<{ sig: string; total: number } | null>(null);
+
     const pointsToEarn = useMemo(() => {
         if (earnRate <= 0 || !selectedCustomer) return 0;
         return Math.floor(total * earnRate);
@@ -1131,6 +1149,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             error?: string;
             /** عرضُ النقاط الصحيح حين رُدّت البيعةُ لأنّه تغيّر (`RedemptionChanged`) */
             loyalty?: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings };
+            /** المبلغُ الصحيح حين رُدّت البيعةُ لأنّه غيرُ ما على الشاشة (`TotalChanged`) */
+            totals?: { total: number; shown: number; stale_screen: boolean };
         }> => {
             try {
                 const res = await fetch('/pos/checkout', {
@@ -1168,14 +1188,16 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 if (res.status === 422 || res.status === 419 || res.status === 409) {
                     let error = '';
                     let loyalty: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings } | undefined;
+                    let totals: { total: number; shown: number; stale_screen: boolean } | undefined;
                     try {
                         const d = await res.json();
                         error = Object.values(d?.errors ?? {}).flat().join(' · ') || d?.message || '';
                         loyalty = d?.loyalty ?? undefined;
+                        totals = d?.totals ?? undefined;
                     } catch {
                         /* رد بلا JSON — نكتفي برسالة عامة */
                     }
-                    return { ok: false, drop: true, error: error || t('تعذّر إتمام البيع'), loyalty };
+                    return { ok: false, drop: true, error: error || t('تعذّر إتمام البيع'), loyalty, totals };
                 }
                 return { ok: false };
             } catch {
@@ -1292,6 +1314,15 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 redeem_points: redeemPointsUsed,
                 // وما عُرض على الكاشير خصمًا لها — فإن حسب الخادمُ غيرَه ردّها ومعها العرضُ الصحيح
                 redeem_discount: redeemPointsUsed > 0 ? redeemDiscount : null,
+                /*
+                 * وما يقرؤه الكاشيرُ إجماليًّا — فإن كتب الخادمُ غيرَه ردّ البيعةَ
+                 * ومعها المبلغُ الصحيح (`assertScreenTotal`). وما أكّده الكاشيرُ
+                 * بعد ردٍّ يُرسل هو، ما دامت السلّةُ لم تتغيّر.
+                 */
+                expected_total: confirmedTotal !== null && confirmedTotal.sig === cartSig ? confirmedTotal.total : total,
+                // ومتى اكتملت عنده، وبأيّ قواعد نقاطٍ حسب — لبيعةٍ تصل بعد انقطاع (`reviewOffline`)
+                queued_at: Date.now(),
+                loyalty_rules: redeemPointsUsed > 0 ? loyaltyRules : null,
                 ...(details ?? {}),
             };
 
@@ -1348,8 +1379,20 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 setRedeemDecided(false);
                 setRedeemNotice(res.error ?? '');
             }
+            /*
+             * ═══ ومبلغٌ تغيّر: يُقال الصحيحُ ويُؤكَّد قبل أن يُقبض ═══
+             *
+             * الخادمُ لم يكتب شيئًا. يُحفظ المبلغُ الصحيح لهذه السلّة بعينها،
+             * فضغطةُ الدفع التالية تأكيدٌ له — وأيُّ تغييرٍ في السلّة يُسقطه
+             * فيُحسب من جديد. وتُجلب الأصنافُ فتلحق الشاشةُ بأسعار الخادم.
+             */
+            const totalChanged = !!(res.drop && res.totals && !res.totals.stale_screen);
+            if (totalChanged && res.totals) {
+                setConfirmedTotal({ sig: cartSig, total: res.totals.total });
+                onSynced?.();
+            }
             if (res.drop && res.error) {
-                onToast(res.error, changed ? 'warning' : 'danger');
+                onToast(res.error, changed || totalChanged ? 'warning' : 'danger');
             }
             setOnline(navigator.onLine);
 
@@ -1364,7 +1407,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 loyaltyChanged: changed,
             };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */

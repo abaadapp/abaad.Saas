@@ -227,6 +227,45 @@ class Demo
         return Money::format($value, $cur);
     }
 
+    /**
+     * سببُ مراجعة بيعةٍ وصلت بعد انقطاع — جملةً جملة، بالأرقام (`PosController::reviewOffline`).
+     *
+     * والمراجعاتُ الأقدم بلا أسباب تُقرأ كما كانت: «خصمٌ لم تغطّه النقاط».
+     *
+     * @param  array<string, mixed>  $r
+     */
+    private static function offlineReviewHint(array $r): string
+    {
+        $money = fn ($v) => self::money((float) $v);
+        $lines = [];
+
+        foreach ((array) ($r['reasons'] ?? ['not_covered']) as $reason) {
+            $lines[] = match ($reason) {
+                'program_off' => __('برنامج النقاط أو الاستبدال مُطفأ حين وصلت فلم تُصرف نقطة.'),
+                'balance_short' => __('طُلبت :requested نقطة ولم يكفِ رصيد العميل حين وصلت فصُرفت :spent.', [
+                    'requested' => (int) ($r['requested_points'] ?? 0), 'spent' => (int) ($r['spent_points'] ?? 0),
+                ]),
+                'over_cap' => __('خصم النقاط :discount فوق سقف الاستبدال اليوم :cap.', [
+                    'discount' => $money($r['discount'] ?? 0), 'cap' => $money($r['cap'] ?? 0),
+                ]),
+                'amount_mismatch' => __('قُبض عند الصندوق :collected وكُتبت الفاتورة بـ:recorded.', [
+                    'collected' => $money($r['collected'] ?? 0), 'recorded' => $money($r['recorded'] ?? 0),
+                ]),
+                default => __('خصمٌ بقيمة :gap لم تغطّه نقاط العميل بقواعد اليوم.', ['gap' => $money($r['gap'] ?? 0)]),
+            };
+        }
+
+        $lines[] = match ($r['context'] ?? null) {
+            'rules_changed' => __('السبب: الشاشة حسبت بقواعد استبدالٍ تغيّرت قبل أن تصل البيعة.'),
+            'suspected' => __('أرقام الشاشة لا تتّبع حتى القواعد التي قالت إنّها حسبت بها — تحقّق من البيعة مع الكاشير قبل اعتمادها.'),
+            'unverified' => __('لم تُرسل الشاشة قواعدها (أو تغيّرت الأسعار معها) فلا يُعرف سبب الفرق.'),
+            default => '',
+        };
+        $lines[] = __('لم يُغيَّر المبلغ المقبوض ولم يُسجَّل دينٌ على العميل.');
+
+        return implode(' ', array_filter($lines));
+    }
+
     /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */
     public static function money($value): string
     {
@@ -4848,18 +4887,17 @@ class Demo
 
         foreach ($reviews as $o) {
             $r = (array) $o->loyalty_review;
+            $suspected = ($r['context'] ?? null) === 'suspected';
 
             $add('loyalty-review-'.$o->id, [
-                'text' => __('بيعة :number وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة', ['number' => $o->number]),
-                'hint' => __('طُلبت :requested نقطة وصُرفت :spent — خصمٌ بقيمة :gap لم تغطّه نقاط العميل. لم يُغيَّر المبلغ المدفوع.', [
-                    'requested' => (int) ($r['requested_points'] ?? 0),
-                    'spent' => (int) ($r['spent_points'] ?? 0),
-                    'gap' => self::money((float) ($r['gap'] ?? 0)),
-                ]),
+                'text' => $suspected
+                    ? __('بيعة :number وصلت بعد انقطاع وأرقامُ خصمها لا تتّبع أيَّ قواعد — لا تُعتمد قبل التحقّق', ['number' => $o->number])
+                    : __('بيعة :number وصلت بعد انقطاع وفيها مخالفةٌ ماليّة تحتاج مراجعة', ['number' => $o->number]),
+                'hint' => self::offlineReviewHint($r),
                 'time' => optional($o->ordered_at ?? $o->created_at)->format('Y-m-d H:i'),
                 'section' => 'orders',
                 'icon' => 'star',
-                'color' => 'warning',
+                'color' => $suspected ? 'danger' : 'warning',
                 'url' => route('admin.orders.show', $o->number),
             ]);
         }

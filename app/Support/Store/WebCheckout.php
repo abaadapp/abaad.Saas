@@ -15,6 +15,7 @@ use App\Support\AddonStock;
 use App\Support\Books;
 use App\Support\BoutiqueDues;
 use App\Support\CouponLimits;
+use App\Support\CustomerPhone;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
 use App\Support\ImageVariants;
@@ -1321,10 +1322,19 @@ final class WebCheckout
          * يحرس. وقد نجا من الطفرات لأنّه لا يحرس شيئًا: عُطِّل فلم يتغيّر
          * شيء. فالحارسُ واحد، والقواعدُ أقربُ إلى ما يُقرأ.
          */
+        /*
+         * والنمطُ يردّ ما دون ثماني خاناتٍ قبل أن تُسأل القاعدةُ المشتركة — فكان
+         * رقمٌ عُمانيٌّ من سبعٍ يُقال له «غير صحيح» بلا سبب. فإن كان للقاعدة
+         * سببٌ قيل هو (`CustomerPhone::refusal`)، وإلّا بقي النصُّ العامّ.
+         */
+        $phoneWhy = $settling === null && is_string($payload['phone'] ?? null)
+            ? CustomerPhone::refusal($payload['phone'])
+            : null;
+
         $v = validator($payload, $rules, [
             'name.required' => __('اكتب اسمك.'),
             'phone.required' => __('اكتب رقم هاتفك.'),
-            'phone.regex' => __('رقم الهاتف غير صحيح.'),
+            'phone.regex' => $phoneWhy ?? __('رقم الهاتف غير صحيح.'),
             'date.required' => __('اختر موعد التسليم.'),
             'date.after_or_equal' => __('الموعد لا يكون في الماضي.'),
             'pay.in' => __('اختر وسيلة الدفع.'),
@@ -1348,6 +1358,10 @@ final class WebCheckout
              */
             if ($settling === null && ! $v->errors()->has('phone') && ! WhatsAppPhone::isValid((string) $payload['phone'])) {
                 $v->errors()->add('phone', __('رقم الهاتف غير صحيح.'));
+            }
+            // والرقمُ العُمانيّ ثماني خانات، والدوليّ بمفتاح دولته — القاعدةُ نفسُها في كلّ باب (`CustomerPhone`)
+            elseif ($settling === null && ! $v->errors()->has('phone') && ($why = CustomerPhone::refusal((string) $payload['phone'])) !== null) {
+                $v->errors()->add('phone', $why);
             }
 
             /*

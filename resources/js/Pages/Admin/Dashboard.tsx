@@ -24,6 +24,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
+import { CustomerPhoneReviewBanner } from '@/Components/CustomerPhoneReview';
 
 interface Order {
     id: string;
@@ -50,6 +51,8 @@ interface Order {
  */
 interface DashboardProps {
     stats: Stat[];
+    /** عملاءُ تحتاج أرقامُهم مراجعة — صفرٌ لمن لا يدخل قسم العملاء */
+    customerPhoneReview?: number;
     statCatalog: CatalogStat[];
     salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[] };
     paymentDistribution: { labels: string[]; series: number[] };
@@ -94,6 +97,9 @@ export default function Dashboard() {
                 title="لوحة التحكم"
                 subtitle={t('نظرة عامة على أداء :name', { name: context?.businessName ?? t('متجرك') })}
             />
+
+            {/* تنبيهُ بيانات العملاء — في الصفحة لا في الجرس، ويختفي بلا أرقامٍ ناقصة */}
+            <CustomerPhoneReviewBanner count={server.customerPhoneReview ?? 0} />
 
             <StatGrid stats={liveStats} storageKey="admin" catalog={statCatalog} />
             {updatedAt && (

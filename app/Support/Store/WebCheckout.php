@@ -1322,10 +1322,19 @@ final class WebCheckout
          * يحرس. وقد نجا من الطفرات لأنّه لا يحرس شيئًا: عُطِّل فلم يتغيّر
          * شيء. فالحارسُ واحد، والقواعدُ أقربُ إلى ما يُقرأ.
          */
+        /*
+         * والنمطُ يردّ ما دون ثماني خاناتٍ قبل أن تُسأل القاعدةُ المشتركة — فكان
+         * رقمٌ عُمانيٌّ من سبعٍ يُقال له «غير صحيح» بلا سبب. فإن كان للقاعدة
+         * سببٌ قيل هو (`CustomerPhone::refusal`)، وإلّا بقي النصُّ العامّ.
+         */
+        $phoneWhy = $settling === null && is_string($payload['phone'] ?? null)
+            ? CustomerPhone::refusal($payload['phone'])
+            : null;
+
         $v = validator($payload, $rules, [
             'name.required' => __('اكتب اسمك.'),
             'phone.required' => __('اكتب رقم هاتفك.'),
-            'phone.regex' => __('رقم الهاتف غير صحيح.'),
+            'phone.regex' => $phoneWhy ?? __('رقم الهاتف غير صحيح.'),
             'date.required' => __('اختر موعد التسليم.'),
             'date.after_or_equal' => __('الموعد لا يكون في الماضي.'),
             'pay.in' => __('اختر وسيلة الدفع.'),

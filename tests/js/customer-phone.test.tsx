@@ -13,13 +13,14 @@ vi.mock('@inertiajs/react', async () => {
     return { ...actual, router: { get: vi.fn() }, usePage: () => ({ props: { translations: {} } }) };
 });
 
-type ProblemCase = { raw: string | null; expect: string | null; why: string };
+type ProblemCase = { raw: string | null; expect: string | null; strict?: string | null; why: string };
 type StatusCase = { phone: string | null; contact: string | null; name: string; expect: string | null };
 
 describe('القاعدةُ المشتركة', () => {
     it('كلُّ حالةٍ تُقرأ كما يقرؤها الخادم', () => {
         for (const c of (shared as { problem: ProblemCase[] }).problem) {
-            expect(phoneProblem(c.raw), `${c.why} — ${JSON.stringify(c.raw)}`).toBe(c.expect);
+            expect(phoneProblem(c.raw), `المحفوظ: ${c.why} — ${JSON.stringify(c.raw)}`).toBe(c.expect);
+            expect(phoneProblem(c.raw, true), `الجديد: ${c.why} — ${JSON.stringify(c.raw)}`).toBe(c.strict === undefined ? c.expect : c.strict);
         }
         for (const c of (shared as { status: StatusCase[] }).status) {
             expect(phoneStatus(c.phone, c.contact, c.name), JSON.stringify(c)).toBe(c.expect);
@@ -31,6 +32,9 @@ describe('القاعدةُ المشتركة', () => {
         expect(phoneRefusal('٩١٢٣٤٥٦٧')).toBeNull();
         expect(phoneRefusal('')).toBeNull();
         expect(phoneRefusal('+971501234567')).toBeNull();
+        // ولا يمرّ عُمانيٌّ زائدٌ على أنّه دوليٌّ لطوله
+        expect(phoneRefusal('9123456789')).toContain('+ أو 00');
+        expect(phoneRefusal('+91234567')).toContain('+968');
     });
 });
 

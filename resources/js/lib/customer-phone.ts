@@ -7,12 +7,14 @@
  * قبل أن يحفظ، لا بدلًا من القاعدة. والحالاتُ المشتركة يقرؤها الطرفان من
  * `tests/fixtures/customer-phone-cases.json`.
  */
-export type PhoneProblem = 'missing' | 'short' | 'long' | 'chars' | 'foreign';
+export type PhoneProblem = 'missing' | 'short' | 'long' | 'chars' | 'foreign' | 'nocode' | 'unmarked';
 export type PhoneStatus = 'missing' | 'incomplete' | 'invalid';
 
 const OMAN = '968';
 const OMAN_DIGITS = 8;
 const WALK_IN = 'عميل نقدي';
+/** دولٌ رقمُها الدوليُّ كلُّه ثماني خانات — كـ`CustomerPhone::EIGHT_DIGIT_CODES` */
+const EIGHT_DIGIT_CODES = ['290', '500', '676', '677', '682', '686', '688'];
 const INVISIBLE = /[\u00A0\u2000-\u200F\u202A-\u202F\u205F\u2066-\u2069\u3000\uFEFF]/g;
 
 /** الأرقامُ العربيّة (٠-٩) والهنديّة الفارسيّة (۰-۹) لاتينيّةً — كـ`Digits::western` */
@@ -22,10 +24,17 @@ const western = (s: string): string =>
 const omani = (local: string): PhoneProblem | null =>
     local.length < OMAN_DIGITS ? 'short' : local.length > OMAN_DIGITS ? 'long' : null;
 
-const foreign = (digits: string): PhoneProblem | null =>
-    digits.length >= 8 && digits.length <= 15 && !digits.startsWith('0') ? null : 'foreign';
+const foreign = (digits: string): PhoneProblem | null => {
+    if (digits.startsWith('0') || digits.length < 8 || digits.length > 15) return 'foreign';
+    if (digits.length === 8) return EIGHT_DIGIT_CODES.includes(digits.slice(0, 3)) ? null : 'nocode';
+    return null;
+};
 
-export function phoneProblem(raw: string | null | undefined): PhoneProblem | null {
+/**
+ * `strict`: ما يُكتب الآن — رقمٌ بلا «+» ولا «00» ولا «968» وأكثرُ من تسع خاناتٍ يُردّ.
+ * وبلاه: ما حُفظ قبلُ — يُقرأ دوليًّا كما يقرؤه الخادم، إلّا ما يبدأ بصفر.
+ */
+export function phoneProblem(raw: string | null | undefined, strict = false): PhoneProblem | null {
     const text = western((raw ?? '').replace(INVISIBLE, ' ').trim());
     if (text === '') return 'missing';
 
@@ -38,8 +47,11 @@ export function phoneProblem(raw: string | null | undefined): PhoneProblem | nul
         return international.startsWith(OMAN) ? omani(international.slice(OMAN.length)) : foreign(international);
     }
 
+    if (digits.length > 9 && digits.startsWith(OMAN)) return omani(digits.slice(OMAN.length));
+
     if (digits.length > 9) {
-        return digits.startsWith(OMAN) ? omani(digits.slice(OMAN.length)) : foreign(digits);
+        if (strict) return 'unmarked';
+        return digits.startsWith('0') ? 'foreign' : null;
     }
 
     return omani(digits);
@@ -47,13 +59,17 @@ export function phoneProblem(raw: string | null | undefined): PhoneProblem | nul
 
 /** نصُّ الرفض — مفتاحٌ يُترجم، أو `null` لرقمٍ صالحٍ أو حقلٍ فارغ */
 export function phoneRefusal(raw: string | null | undefined): string | null {
-    switch (phoneProblem(raw)) {
+    switch (phoneProblem(raw, true)) {
         case null:
         case 'missing':
             return null;
         case 'short':
         case 'long':
             return 'رقم الهاتف العُماني يجب أن يتكون من 8 أرقام.';
+        case 'unmarked':
+            return 'رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. وإن كان الرقم لدولةٍ أخرى فاكتب + أو 00 قبل مفتاح دولته، مثل +971501234567.';
+        case 'nocode':
+            return 'هذا رقمٌ عُمانيٌّ بلا مفتاحه — اكتبه +968 ثمّ الأرقام الثمانية، أو اكتب الرقم الدولي كاملًا بمفتاح دولته.';
         case 'chars':
             return 'رقم الهاتف لا يقبل إلّا الأرقام والمسافات والشرطة، و+ في أوّله.';
         default:

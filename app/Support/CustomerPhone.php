@@ -21,10 +21,10 @@ use Illuminate\Support\Facades\DB;
  *
  * لا عمودَ للدولة في صفّ العميل. فالرقمُ بعلامةٍ دوليّة («+971…» أو «00971…»)
  * يُقرأ رقمَ دولته، ولا يُفرض عليه الثماني. وبلا علامة: «968» في أوّله
- * مفتاحُ عُمان، وتسعُ خاناتٍ فأقلّ رقمٌ عُمانيٌّ محلّيّ. وما زاد بلا علامة
- * يُردّ إن كُتب الآن (يُطلب «+» أو «00»)، ويُترك إن كان محفوظًا قبلُ —
- * فلا يمرّ رقمٌ عُمانيٌّ زائدٌ على أنّه دوليّ، ولا يُخطَّأ رقمٌ دوليٌّ قديم
- * بلا يقين. التفصيلُ في `problem`.
+ * مفتاحُ عُمان، وثماني خاناتٍ فأقلّ رقمٌ عُمانيٌّ محلّيّ. وما زاد على
+ * الثماني بلا علامة لا تُعرف دولتُه (`UNMARKED`): يُردّ إن كُتب الآن ويُطلب
+ * «+» أو «00»، ويُعرض في المراجعة إن كان محفوظًا قبلُ بحالةٍ مستقلّة —
+ * «رقم يحتاج تأكيد الدولة» — لا خطأً. التفصيلُ في `problem`.
  *
  * ═══ ولا يُكتب شيءٌ في صفّ العميل ═══
  *
@@ -52,7 +52,7 @@ final class CustomerPhone
     /** «+» أو «00» ثمّ ثماني خاناتٍ وحدها — رقمٌ عُمانيٌّ نُسي مفتاحُه في الغالب */
     public const NO_CODE = 'nocode';
 
-    /** أكثرُ من تسع خاناتٍ بلا «+» ولا «00» ولا «968» — لا يُعرف لأيّ دولة */
+    /** أكثرُ من ثماني خاناتٍ بلا «+» ولا «00» ولا «968» — لا تُعرف دولتُه */
     public const UNMARKED = 'unmarked';
 
     /**
@@ -63,17 +63,20 @@ final class CustomerPhone
      */
     private const EIGHT_DIGIT_CODES = ['290', '500', '676', '677', '682', '686', '688'];
 
-    /** حالةُ الصفّ في قائمة العملاء — ثلاثُ كلماتٍ يقرؤها صاحبُ النشاط */
+    /** حالةُ الصفّ في قائمة العملاء — أربعُ عباراتٍ يقرؤها صاحبُ النشاط */
     public const STATUS_MISSING = 'missing';
 
     public const STATUS_INCOMPLETE = 'incomplete';
 
     public const STATUS_INVALID = 'invalid';
 
+    /** «رقم يحتاج تأكيد الدولة» — ليس خطأً، بل رقمٌ لا تُعرف دولتُه بيقين */
+    public const STATUS_COUNTRY = 'country';
+
     /** علاماتُ الاتّجاه والمسافةُ غيرُ الفاصلة — تلتصق بالرقم حين يُنسخ من شاشةٍ عربيّة */
     private const INVISIBLE = '/[\x{00A0}\x{2000}-\x{200F}\x{202A}-\x{202F}\x{205F}\x{2066}-\x{2069}\x{3000}\x{FEFF}]/u';
 
-    /** مدّةُ عدّاد التنبيه — ويُمحى قبلها كلّما حُفظ عميلٌ في المتجر */
+    /** مدّةُ حفظ قائمة المراجعة — وتُمحى قبلها كلّما حُفظ عميلٌ في المتجر */
     private const TTL = 600;
 
     /**
@@ -87,15 +90,13 @@ final class CustomerPhone
      *    وغيرُه بين تسعٍ وخمس عشرة خانة، لا يبدأ بصفر. وثماني خاناتٍ وحدها
      *    بعد العلامة رقمٌ عُمانيٌّ بلا مفتاحه — إلّا لدولةٍ رقمُها كذلك.
      * 2. «968» في أوّله وأكثرُ من تسع خانات: مفتاحُ عُمان كُتب بلا «+».
-     * 3. تسعُ خاناتٍ فأقلّ بلا علامة: رقمٌ عُمانيّ، ثماني خاناتٍ بالضبط.
-     * 4. أكثرُ من تسعٍ بلا علامة: لا يُعرف لأيّ دولة.
-     *    - `$strict` (ما يُكتب الآن): يُردّ ويُطلب «+» أو «00» — فلا يمرّ
-     *      رقمٌ عُمانيٌّ زائدٌ على أنّه دوليّ لطوله.
-     *    - بلا `$strict` (ما حُفظ قبلُ): يُقرأ دوليًّا كما يقرؤه
-     *      `WhatsAppPhone::normalize` اليوم، ولا يُعدّ خطأً بلا يقين —
-     *      إلّا ما يبدأ بصفر: لا يكون دوليًّا ولا عُمانيًّا.
+     * 3. ثماني خاناتٍ فأقلّ بلا علامة: رقمٌ عُمانيّ — ودون الثماني ناقص.
+     * 4. أكثرُ من ثماني خاناتٍ بلا علامة: لا تُعرف دولتُه (`UNMARKED`). قد
+     *    يكون رقمًا عُمانيًّا زائدًا، أو دوليًّا كُتب بلا «+» — ولا سبيلَ إلى
+     *    التمييز بلا حقل دولة. فلا يُقبل إذا كُتب الآن (`refusal`)، ولا
+     *    يُعدّ خطأً إن كان محفوظًا قبلُ (`status` ⇐ «يحتاج تأكيد الدولة»).
      */
-    public static function problem(?string $raw, bool $strict = false): ?string
+    public static function problem(?string $raw): ?string
     {
         $text = trim((string) preg_replace(self::INVISIBLE, ' ', (string) $raw));
 
@@ -124,17 +125,13 @@ final class CustomerPhone
             return self::omani(substr($digits, strlen(self::OMAN)));
         }
 
-        if (strlen($digits) > 9) {
-            if ($strict) {
-                return self::UNMARKED;
-            }
-
-            return str_starts_with($digits, '0') ? self::FOREIGN : null;
-        }
-
         // رقمٌ محلّيٌّ لدولة المنصّة — وقاعدةُ الثماني لعُمان وحدها
         if ((string) config('whatsapp.default_country_code', self::OMAN) !== self::OMAN) {
             return WhatsAppPhone::isValid($digits) ? null : self::FOREIGN;
+        }
+
+        if (strlen($digits) > self::OMAN_DIGITS) {
+            return self::UNMARKED;
         }
 
         return self::omani($digits);
@@ -147,14 +144,18 @@ final class CustomerPhone
      */
     public static function refusal(?string $raw): ?string
     {
-        return match (self::problem($raw, strict: true)) {
+        return match (self::problem($raw)) {
             null, self::MISSING => null,
             self::SHORT, self::LONG => __('رقم الهاتف العُماني يجب أن يتكون من 8 أرقام.'),
-            // والجملةُ الأولى هي رسالةُ القاعدة نفسُها، والثانيةُ تدلّ صاحبَ الرقم الأجنبيّ
-            self::UNMARKED => __('رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. وإن كان الرقم لدولةٍ أخرى فاكتب + أو 00 قبل مفتاح دولته، مثل +971501234567.'),
+            /*
+             * والجملةُ الأولى رسالةُ القاعدة نفسُها، والثانيةُ تقول كيف يُكتب
+             * الرقمُ الدوليّ في النظام: بـ«+» أو «00» ثمّ مفتاح الدولة — فمن
+             * كتب رقمًا إماراتيًّا بلا علامة يعرف ما يصحّحه.
+             */
+            self::UNMARKED => __('رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. أمّا الرقم الدولي فيُكتب بـ + أو 00 ثمّ مفتاح الدولة، مثل +971501234567 أو 00971501234567.'),
             self::NO_CODE => __('هذا رقمٌ عُمانيٌّ بلا مفتاحه — اكتبه +968 ثمّ الأرقام الثمانية، أو اكتب الرقم الدولي كاملًا بمفتاح دولته.'),
             self::CHARS => __('رقم الهاتف لا يقبل إلّا الأرقام والمسافات والشرطة، و+ في أوّله.'),
-            default => __('الرقم الدولي غير صحيح — اكتبه بمفتاح دولته، مثل +971501234567.'),
+            default => __('الرقم الدولي غير صحيح — بعد + أو 00 يُكتب مفتاح الدولة ثمّ الرقم، من 9 إلى 15 خانة، مثل +971501234567.'),
         };
     }
 
@@ -164,6 +165,10 @@ final class CustomerPhone
      * والجهةُ تُعرف بمن يردّ عنها: بلا هاتفٍ ومعها رقمُ تواصل يُقرأ رقمُ
      * التواصل. و«عميل نقدي» (صفُّ العابر في بيانات بعض المتاجر) لا رقمَ له
      * بطبيعته، فلا يُعدّ ناقصًا.
+     *
+     * ورقمٌ لا تُعرف دولتُه (`UNMARKED`) حالتُه «يحتاج تأكيد الدولة» لا
+     * «غير صحيح»: لا يمنع بيعًا ولا فاتورةً ولا تعديلَ العميل، ويُصحَّح
+     * بثماني خاناتٍ أو بمفتاح دولته.
      */
     public static function status(?string $phone, ?string $contactPhone = null, ?string $name = null): ?string
     {
@@ -178,6 +183,7 @@ final class CustomerPhone
             null => null,
             self::MISSING => self::STATUS_MISSING,
             self::SHORT => self::STATUS_INCOMPLETE,
+            self::UNMARKED => self::STATUS_COUNTRY,
             default => self::STATUS_INVALID,
         };
     }
@@ -190,9 +196,25 @@ final class CustomerPhone
      * الأرقام ثماني خاناتٍ لاتينيّةٍ صحيحة، فتُستبعد في القاعدة أوّلًا ولا
      * تُقرأ — ويُقرأ الباقي بالمؤشّر صفًّا صفًّا، بأعمدته الأربعة وحدها.
      *
+     * والقائمةُ محفوظةٌ عشر دقائق (`TTL`)، يقرؤها عدّادُ اللوحة ومرشِّحُ القائمة
+     * وكلُّ صفحةٍ منه — فلا يُعاد الفحصُ مع كلّ فتحٍ أو انتقال صفحة. وتُمحى
+     * بحفظ أيّ عميلٍ في المتجر (`Customer::booted`)، فالتصحيحُ يظهر لحظتَه.
+     *
      * @return list<int>
      */
     public static function reviewIds(int $businessId): array
+    {
+        return Cache::remember(self::key($businessId), self::TTL, fn () => self::scan($businessId));
+    }
+
+    /** عددُهم لتنبيه اللوحة — من القائمة المحفوظة نفسِها */
+    public static function reviewCount(int $businessId): int
+    {
+        return count(self::reviewIds($businessId));
+    }
+
+    /** @return list<int> */
+    private static function scan(int $businessId): array
     {
         $query = DB::table('customers')
             ->where('business_id', $businessId)
@@ -215,12 +237,6 @@ final class CustomerPhone
         return $ids;
     }
 
-    /** عددُهم لتنبيه اللوحة — محفوظًا عشر دقائق، ويُمحى بحفظ أيّ عميلٍ في المتجر */
-    public static function reviewCount(int $businessId): int
-    {
-        return (int) Cache::remember(self::key($businessId), self::TTL, fn () => count(self::reviewIds($businessId)));
-    }
-
     public static function forget(int $businessId): void
     {
         Cache::forget(self::key($businessId));
@@ -228,7 +244,7 @@ final class CustomerPhone
 
     private static function key(int $businessId): string
     {
-        return 'customer-phone-review:'.$businessId;
+        return 'customer-phone-review-ids:'.$businessId;
     }
 
     /** ثماني خاناتٍ لاتينيّةٍ بلا شيءٍ معها — بلغة القاعدة، أو `null` فيُفحص كلُّ صفّ */

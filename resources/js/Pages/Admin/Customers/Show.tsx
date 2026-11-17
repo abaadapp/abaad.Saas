@@ -173,7 +173,9 @@ export default function CustomerShow() {
               ? 'رقم الهاتف المحفوظ أقصر من ثماني خانات — صحّحه من «تعديل».'
               : savedPhoneStatus === 'invalid'
                 ? 'رقم الهاتف المحفوظ لا يطابق القواعد — صحّحه من «تعديل».'
-                : '';
+                : savedPhoneStatus === 'country'
+                  ? 'الرقم محفوظ بلا مفتاح دولة وأطول من ثماني خانات — إن كان عُمانيًّا فاكتبه ثماني خانات، وإن كان لدولةٍ أخرى فاكتبه بـ + أو 00 ثمّ مفتاحها. لا يمنع البيع ولا الفاتورة.'
+                  : '';
     const address = useForm({ ...BLANK });
 
     const openAdd = () => { address.setData({ ...BLANK }); address.clearErrors(); setEditing(true); };

@@ -10625,7 +10625,6 @@
     "حفظ بلا سقف مبلغ": "Save with no amount cap",
     "رقم الهاتف العُماني يجب أن يتكون من 8 أرقام.": "Omani phone numbers must contain exactly 8 digits.",
     "رقم الهاتف لا يقبل إلّا الأرقام والمسافات والشرطة، و+ في أوّله.": "A phone number may contain only digits, spaces and hyphens, with + only at the start.",
-    "الرقم الدولي غير صحيح — اكتبه بمفتاح دولته، مثل +971501234567.": "This international number is not valid. Write it with its country code, for example +971501234567.",
     "— يُتجاهل": "— skipped",
     "تنبيه بيانات العملاء": "Customer data notice",
     "أرقام تحتاج تحديثًا": "Numbers that need updating",
@@ -10634,10 +10633,13 @@
     "رقم مفقود": "Missing number",
     "رقم غير مكتمل": "Incomplete number",
     "رقم غير صحيح": "Invalid number",
-    "الرقم العُماني ثماني خانات — ولغير عُمان اكتب مفتاح الدولة، مثل +971": "Omani numbers have 8 digits. For other countries, include the country code, for example +971",
     "لا رقم هاتف لهذا العميل — أضفه ليصل إليه ما يُرسل وتتبعه نقاطه.": "This customer has no phone number. Add one so messages reach them and their points follow them.",
     "رقم الهاتف المحفوظ أقصر من ثماني خانات — صحّحه من «تعديل».": "The saved phone number is shorter than 8 digits. Correct it from Edit.",
     "رقم الهاتف المحفوظ لا يطابق القواعد — صحّحه من «تعديل».": "The saved phone number does not match the rules. Correct it from Edit.",
-    "رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. وإن كان الرقم لدولةٍ أخرى فاكتب + أو 00 قبل مفتاح دولته، مثل +971501234567.": "Omani phone numbers must contain exactly 8 digits. For a number from another country, type + or 00 before its country code, for example +971501234567.",
-    "هذا رقمٌ عُمانيٌّ بلا مفتاحه — اكتبه +968 ثمّ الأرقام الثمانية، أو اكتب الرقم الدولي كاملًا بمفتاح دولته.": "This looks like an Omani number without its country code. Write +968 followed by the 8 digits, or write the full international number with its country code."
+    "هذا رقمٌ عُمانيٌّ بلا مفتاحه — اكتبه +968 ثمّ الأرقام الثمانية، أو اكتب الرقم الدولي كاملًا بمفتاح دولته.": "This looks like an Omani number without its country code. Write +968 followed by the 8 digits, or write the full international number with its country code.",
+    "رقم يحتاج تأكيد الدولة": "Number needs its country confirmed",
+    "رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. أمّا الرقم الدولي فيُكتب بـ + أو 00 ثمّ مفتاح الدولة، مثل +971501234567 أو 00971501234567.": "Omani phone numbers must contain exactly 8 digits. International numbers are written with + or 00 followed by the country code, for example +971501234567 or 00971501234567.",
+    "الرقم الدولي غير صحيح — بعد + أو 00 يُكتب مفتاح الدولة ثمّ الرقم، من 9 إلى 15 خانة، مثل +971501234567.": "This international number is not valid. After + or 00, write the country code and then the number, 9 to 15 digits in all, for example +971501234567.",
+    "الرقم العُماني ثماني خانات. والرقم الدولي يُكتب بـ + أو 00 ثمّ مفتاح الدولة، مثل +971501234567": "Omani numbers have 8 digits. International numbers are written with + or 00 followed by the country code, for example +971501234567",
+    "الرقم محفوظ بلا مفتاح دولة وأطول من ثماني خانات — إن كان عُمانيًّا فاكتبه ثماني خانات، وإن كان لدولةٍ أخرى فاكتبه بـ + أو 00 ثمّ مفتاحها. لا يمنع البيع ولا الفاتورة.": "This number is saved without a country code and is longer than 8 digits. If it is Omani, write its 8 digits; if it belongs to another country, write it with + or 00 followed by the country code. It does not block sales or invoices."
 }

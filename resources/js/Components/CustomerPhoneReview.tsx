@@ -51,7 +51,7 @@ export function PhoneStatusBadge({ status }: { status: PhoneStatus | null | unde
     if (!status) return null;
 
     return (
-        <Badge variant={status === 'missing' ? 'neutral' : status === 'incomplete' ? 'warning' : 'danger'} data-testid="phone-status">
+        <Badge variant={status === 'missing' ? 'neutral' : status === 'country' ? 'info' : status === 'incomplete' ? 'warning' : 'danger'} data-testid="phone-status">
             {t(PHONE_STATUS_LABEL[status])}
         </Badge>
     );

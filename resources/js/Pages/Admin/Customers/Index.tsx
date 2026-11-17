@@ -309,7 +309,7 @@ export default function CustomersIndex() {
                         <Field
                             label="رقم الهاتف"
                             required
-                            hint="الرقم العُماني ثماني خانات — ولغير عُمان اكتب مفتاح الدولة، مثل +971"
+                            hint="الرقم العُماني ثماني خانات. والرقم الدولي يُكتب بـ + أو 00 ثمّ مفتاح الدولة، مثل +971501234567"
                             error={add.errors.phone || (phoneTouched && phoneRefusal(add.data.phone) ? t(phoneRefusal(add.data.phone)!) : undefined)}
                         >
                             <Input

@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\CustomerInvoices;
 use App\Support\CustomerPhone;
 use App\Support\Ledger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -79,8 +80,7 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
     {
         foreach (self::cases()['problem'] as $c) {
             $label = $c['why'].' — '.json_encode($c['raw'], JSON_UNESCAPED_UNICODE);
-            $this->assertSame($c['expect'], CustomerPhone::problem($c['raw']), 'المحفوظ: '.$label);
-            $this->assertSame($c['strict'] ?? $c['expect'], CustomerPhone::problem($c['raw'], strict: true), 'الجديد: '.$label);
+            $this->assertSame($c['expect'], CustomerPhone::problem($c['raw']), $label);
         }
         foreach (self::cases()['status'] as $c) {
             $this->assertSame($c['expect'], CustomerPhone::status($c['phone'], $c['contact'], $c['name']), json_encode($c, JSON_UNESCAPED_UNICODE));
@@ -141,7 +141,8 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
     public function test_the_notice_counts_only_this_shops_customers_and_falls_after_a_correction(): void
     {
         $short = $this->legacy($this->shop, 'ناقص', '9123456');
-        $this->legacy($this->shop, 'زائد', '912345678');
+        $this->legacy($this->shop, 'زائد بلا مفتاح', '912345678');
+        $this->legacy($this->shop, 'زائد بمفتاحه', '+968912345678');
         $this->legacy($this->shop, 'بلا رقم', null);
         $this->legacy($this->shop, 'حروف', '9123-abc');
         $this->legacy($this->shop, 'صالح', '92345678');
@@ -152,16 +153,23 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
         $this->legacy($this->other, 'جارٌ ناقص', '123');
         $this->legacy($this->other, 'جارٌ بلا رقم', null);
 
-        $this->assertSame(4, CustomerPhone::reviewCount($this->shop->id));
+        $this->assertSame(6, CustomerPhone::reviewCount($this->shop->id));
         $this->assertSame(2, CustomerPhone::reviewCount($this->other->id));
 
         $this->actingAs($this->owner)->get(route('admin.dashboard'))
-            ->assertInertia(fn ($p) => $p->where('customerPhoneReview', 4));
+            ->assertInertia(fn ($p) => $p->where('customerPhoneReview', 6));
 
         $page = $this->actingAs($this->owner)->get(route('admin.customers.index', ['missing' => 'phone']));
-        $page->assertInertia(fn ($p) => $p->where('phoneReview', 4)->has('customers', 4));
+        $page->assertInertia(fn ($p) => $p->where('phoneReview', 6)->has('customers', 6));
         $rows = collect($page->viewData('page')['props']['customers'])->pluck('phone_status', 'name');
-        $this->assertSame(['حروف' => 'invalid', 'بلا رقم' => 'missing', 'زائد' => 'invalid', 'ناقص' => 'incomplete'], $rows->all());
+        $this->assertEquals([
+            'ناقص' => 'incomplete',
+            'زائد بلا مفتاح' => 'country',
+            'زائد بمفتاحه' => 'invalid',
+            'بلا رقم' => 'missing',
+            'حروف' => 'invalid',
+            'دوليٌّ قديمٌ بلا +' => 'country',
+        ], $rows->all());
         $this->assertFalse($rows->has('جارٌ ناقص'), 'عميلُ متجرٍ آخر');
 
         // والقائمةُ كاملةً: الصالحُ بلا حالة
@@ -172,7 +180,7 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
         $this->actingAs($this->owner)->put(route('admin.customers.update', $short), [
             'name' => 'ناقص', 'language' => 'ar', 'phone' => '91234567',
         ])->assertSessionHasNoErrors();
-        $this->assertSame(3, CustomerPhone::reviewCount($this->shop->id));
+        $this->assertSame(5, CustomerPhone::reviewCount($this->shop->id));
     }
 
     public function test_the_notice_vanishes_when_nothing_needs_review_and_is_not_offered_to_whom_cannot_open_customers(): void
@@ -206,9 +214,15 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
     public function test_thousands_of_customers_are_counted_in_one_query_without_loading_them(): void
     {
         $rows = [];
-        for ($i = 0; $i < 3000; $i++) {
+        for ($i = 0; $i < 10000; $i++) {
+            // ثلثُها مكتوبٌ بمفتاحٍ ومسافات (يُفحص في التطبيق)، وواحدٌ من كلّ مئةٍ ناقص
+            $phone = match (true) {
+                $i % 100 === 0 => '91234',
+                $i % 3 === 0 => sprintf('+968 9%03d %04d', intdiv($i, 10000), $i % 10000),
+                default => sprintf('9%07d', $i),
+            };
             $rows[] = ['business_id' => $this->shop->id, 'name' => 'عميل '.$i, 'language' => 'ar', 'points' => 0,
-                'phone' => $i % 100 === 0 ? '91234' : sprintf('9%07d', $i), 'created_at' => now(), 'updated_at' => now()];
+                'phone' => $phone, 'created_at' => now(), 'updated_at' => now()];
         }
         foreach (array_chunk($rows, 500) as $chunk) {
             DB::table('customers')->insert($chunk);
@@ -221,13 +235,23 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
         $queries = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        $this->assertSame(30, $count);
+        $this->assertSame(100, $count);
         $this->assertLessThanOrEqual(2, $queries, 'استعلامٌ واحد للعدّ (وقراءةُ الحفظ)');
-        $this->assertLessThan(2.0, $elapsed);
+        $this->assertLessThan(3.0, $elapsed);
 
-        // والمرشِّحُ يرقّم في القاعدة
-        $this->actingAs($this->owner)->get(route('admin.customers.index', ['missing' => 'phone']))
-            ->assertInertia(fn ($p) => $p->has('customers', 10)->where('pagination.total', 30));
+        // والمرشِّحُ وصفحاتُه واللوحةُ تقرأ القائمةَ المحفوظة — لا تُعيد فحصَ العملاء
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $started = microtime(true);
+        $this->actingAs($this->owner)->get(route('admin.customers.index', ['missing' => 'phone', 'page' => 2]))
+            ->assertInertia(fn ($p) => $p->has('customers', 10)->where('pagination.total', 100));
+        $this->actingAs($this->owner)->get(route('admin.dashboard'))->assertInertia(fn ($p) => $p->where('customerPhoneReview', 100));
+        $scans = collect(DB::getQueryLog())->filter(fn ($q) => str_contains($q['query'], 'contact_phone'))->count();
+        $pages = microtime(true) - $started;
+        DB::disableQueryLog();
+
+        $this->assertSame(0, $scans, 'فُحص العملاءُ ثانيةً بدل القائمة المحفوظة');
+        $this->assertLessThan(5.0, $pages);
     }
 
     /* ═════════════ الرقمُ اختياريّ، والفارغُ في التنبيه ═════════════ */
@@ -278,7 +302,7 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
     public function test_a_long_number_without_a_country_mark_is_refused_new_but_an_old_one_is_not_flagged(): void
     {
         $this->add(['phone' => '9123456789'])->assertSessionHasErrors([
-            'phone' => 'رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. وإن كان الرقم لدولةٍ أخرى فاكتب + أو 00 قبل مفتاح دولته، مثل +971501234567.',
+            'phone' => 'رقم الهاتف العُماني يجب أن يتكون من 8 أرقام. أمّا الرقم الدولي فيُكتب بـ + أو 00 ثمّ مفتاح الدولة، مثل +971501234567 أو 00971501234567.',
         ]);
         $this->add(['phone' => '971501234567'])->assertSessionHasErrors('phone');
         $this->add(['phone' => '+91234567'])->assertSessionHasErrors([
@@ -291,11 +315,59 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
             $this->add(['name' => 'دوليّ '.$i, 'phone' => $phone])->assertSessionHasNoErrors();
         }
 
-        // والمحفوظُ قبلُ بلا علامة لا يُخطَّأ بلا يقين، والعُمانيُّ بلا مفتاحه يُعدّ
-        $this->legacy($this->shop, 'دوليٌّ قديم', '971501234567');
-        $this->legacy($this->shop, 'عُمانيٌّ بلا مفتاحه', '+91234567');
-        $this->legacy($this->shop, 'محلّيٌّ أجنبيّ', '0501234567');
-        $this->assertSame(2, CustomerPhone::reviewCount($this->shop->id));
+        // والمحفوظُ قبلُ بلا علامة لا يُخطَّأ: «يحتاج تأكيد الدولة» — والعُمانيُّ بلا مفتاحه خطأ
+        $ids = [
+            'country' => $this->legacy($this->shop, 'دوليٌّ قديم', '971501234567'),
+            'invalid' => $this->legacy($this->shop, 'عُمانيٌّ بلا مفتاحه', '+91234567'),
+            'country2' => $this->legacy($this->shop, 'محلّيٌّ أجنبيّ', '0501234567'),
+        ];
+        $this->assertSame(3, CustomerPhone::reviewCount($this->shop->id));
+        $rows = collect($this->actingAs($this->owner)->get(route('admin.customers.index', ['missing' => 'phone']))
+            ->viewData('page')['props']['customers'])->pluck('phone_status', 'id');
+        $this->assertSame('country', $rows[$ids['country']]);
+        $this->assertSame('country', $rows[$ids['country2']]);
+        $this->assertSame('invalid', $rows[$ids['invalid']]);
+    }
+
+    /**
+     * «رقم يحتاج تأكيد الدولة» لا يمنع شيئًا، ولا يراه إلّا متجرُه، ويُصحَّح بمفتاحه.
+     */
+    public function test_a_number_whose_country_is_unknown_blocks_nothing_and_is_fixed_by_its_owner(): void
+    {
+        Ledger::seedChart($this->shop->id);
+        $id = $this->legacy($this->shop, 'رقمٌ بلا دولة', '971501234567');
+        $customer = Customer::find($id);
+
+        // تعديلُ الاسم والعنوان والرقمُ كما هو
+        $this->actingAs($this->owner)->put(route('admin.customers.update', $id), [
+            'name' => 'رقمٌ بلا دولة — المحدَّث', 'language' => 'ar', 'phone' => '971501234567', 'address' => 'مسقط',
+        ])->assertSessionHasNoErrors();
+
+        // والبيعُ في الصندوق
+        $branch = Branch::where('business_id', $this->shop->id)->firstOrFail();
+        $product = Product::create(['business_id' => $this->shop->id, 'name' => 'باقة', 'price' => 10, 'cost' => 4, 'quantity' => 100, 'alert_qty' => 1, 'active' => true]);
+        $this->actingAs($this->owner)->withSession(['current_branch' => $branch->id])->postJson(route('pos.checkout'), [
+            'items' => [['id' => $product->id, 'name' => $product->name, 'qty' => 1]],
+            'payment_method' => 'نقدي', 'customer_id' => $id, 'client_uuid' => 'country-sale',
+        ])->assertOk();
+
+        // وإصدارُ فاتورة العميل
+        $draft = CustomerInvoices::create($this->shop->id, $customer->fresh(), ['issued_at' => now()->toDateString()],
+            [['description' => 'باقة', 'quantity' => 1, 'unit_price' => 10]], $this->owner->id);
+        $issued = CustomerInvoices::issue($draft, $this->owner->id);
+        $this->assertNotSame('draft', $issued->fresh()->status);
+        $this->assertSame('971501234567', $customer->fresh()->phone, 'لم يُغيَّر الرقمُ القديم');
+
+        // ولا يراه متجرٌ آخر
+        $this->assertSame(0, CustomerPhone::reviewCount($this->other->id));
+        $this->assertSame(1, CustomerPhone::reviewCount($this->shop->id));
+
+        // وصاحبُه يصحّحه بمفتاح دولته — فتزول الحالة
+        $this->actingAs($this->owner)->put(route('admin.customers.update', $id), [
+            'name' => 'رقمٌ بلا دولة — المحدَّث', 'language' => 'ar', 'phone' => '+971501234567',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(0, CustomerPhone::reviewCount($this->shop->id));
+        $this->assertSame('+971501234567', $customer->fresh()->phone);
     }
 
     /* ═════════════ الأبوابُ الأخرى ═════════════ */
@@ -311,7 +383,7 @@ class AnOmaniCustomerPhoneIsEightDigitsTest extends TestCase
         ])->assertOk();
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/customers', [
-            'name' => 'شركة', 'phone' => '912345678', 'language' => 'ar',
+            'name' => 'شركة', 'phone' => '9123456', 'language' => 'ar',
         ])->assertSessionHasErrors(['phone' => 'رقم الهاتف العُماني يجب أن يتكون من 8 أرقام.']);
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/customers', [

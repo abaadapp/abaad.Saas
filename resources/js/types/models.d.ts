@@ -98,7 +98,7 @@ export interface Customer {
     /** لغةُ رسائل واتساب — `null` لمن سُجّل قبل أن تُسأل */
     language?: string | null;
     /** حالةُ الرقم في المراجعة (`CustomerPhone::status`) — `null` لرقمٍ صالح */
-    phone_status?: 'missing' | 'incomplete' | 'invalid' | null;
+    phone_status?: 'missing' | 'incomplete' | 'invalid' | 'country' | null;
     contact_phone?: string | null;
     /** الميلاد: اليومُ والشهرُ معًا، والسنةُ إن عُرفت — لا تُخترع */
     birth_day?: number | null;

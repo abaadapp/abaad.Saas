@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
 import { money } from '@/lib/format';
 import { loyaltyCap, loyaltyPercentOf, loyaltyQuote, loyaltyWorth, phpRound, type LoyaltyRules } from '@/lib/loyalty';
+import { phoneRefusal } from '@/lib/customer-phone';
 import { tillTax } from '@/lib/vat-lines';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
@@ -1092,6 +1093,12 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             }
             if (!fd.get('language')) {
                 onToast(t('اختر لغة رسائل واتساب للعميل'), 'warning');
+                return false;
+            }
+            // الرقمُ يُسأل قبل الإرسال بقاعدة الخادم نفسِها (`CustomerPhone`) — والخادمُ يسأل ثانيةً
+            const phoneWhy = phoneRefusal((fd.get('phone') || '').toString());
+            if (phoneWhy) {
+                onToast(t(phoneWhy), 'warning');
                 return false;
             }
             try {

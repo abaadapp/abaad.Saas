@@ -50,6 +50,8 @@ class CustomerController extends Controller
             'pagination' => \App\Support\Pagination::meta($customers),
             'filters' => $request->only('q', 'missing') + \App\Support\Sort::params($request, self::SORTS),
             'unlanguaged' => $unlanguaged,
+            // عملاءُ تحتاج أرقامُهم مراجعة — قراءةٌ فقط (`CustomerPhone`)
+            'phoneReview' => \App\Support\CustomerPhone::reviewCount($this->bid()),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             'stats' => [
                 ['label' => __('إجمالي العملاء'), 'value' => (string) $stats['total'], 'icon' => 'users', 'color' => 'primary'],

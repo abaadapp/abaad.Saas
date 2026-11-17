@@ -10,6 +10,7 @@ import DataTable, { type Column, type ServerPagination } from '@/Components/Data
 import Field, { Select } from '@/Components/Field';
 
 import LanguageChoice from '@/Components/LanguageChoice';
+import { CustomerPhoneReviewBanner, PhoneStatusBadge } from '@/Components/CustomerPhoneReview';
 import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -23,6 +24,7 @@ import {
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
+import { phoneRefusal } from '@/lib/customer-phone';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -39,15 +41,19 @@ interface Props {
     currentBranchId: number | null;
     /** من سُجّل قبل أن تُسأل لغتُه — جولةُ اللغة تُعرض حتى يصير صفرًا */
     unlanguaged: number;
+    /** عملاءُ تحتاج أرقامُهم مراجعة (`CustomerPhone::reviewCount`) */
+    phoneReview: number;
 }
 
 export default function CustomersIndex() {
-    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, unlanguaged, context } =
+    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, unlanguaged, phoneReview, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const [adding, setAdding] = useState(false);
     const [importing, setImporting] = useState(false);
+    // تنبيهُ الرقم بعد أن يترك الكاتبُ الحقل — لا مع كلّ خانة. والخادمُ هو المرجع
+    const [phoneTouched, setPhoneTouched] = useState(false);
 
     /**
      * حقلُ اسمٍ واحد: يُحفظ كما كُتب، بأيّ لغةٍ وبأيّ خليط، ويُقرأ هو نفسُه
@@ -116,7 +122,12 @@ export default function CustomersIndex() {
         {
             key: 'phone',
             header: 'الهاتف',
-            cell: (c) => (c.phone ? <span dir="ltr" className="text-[#4b4b4b]">{c.phone}</span> : '—'),
+            cell: (c) => (
+                <span className="flex flex-wrap items-center gap-1.5">
+                    {c.phone ? <span dir="ltr" className="text-[#4b4b4b]">{c.phone}</span> : '—'}
+                    <PhoneStatusBadge status={c.phone_status} />
+                </span>
+            ),
         },
         {
             key: 'email',
@@ -260,6 +271,7 @@ export default function CustomersIndex() {
             </div>
 
             <LanguageRoundBanner unlanguaged={unlanguaged} filtering={filters.missing === 'language'} />
+            <CustomerPhoneReviewBanner count={phoneReview ?? 0} filtering={filters.missing === 'phone'} />
 
             <Card className="overflow-hidden">
                 <DataTable
@@ -294,11 +306,17 @@ export default function CustomersIndex() {
                                 required
                             />
                         </Field>
-                        <Field label="رقم الهاتف" required error={add.errors.phone}>
+                        <Field
+                            label="رقم الهاتف"
+                            required
+                            hint="الرقم العُماني ثماني خانات — ولغير عُمان اكتب مفتاح الدولة، مثل +971"
+                            error={add.errors.phone || (phoneTouched && phoneRefusal(add.data.phone) ? t(phoneRefusal(add.data.phone)!) : undefined)}
+                        >
                             <Input
                                 type="tel"
                                 dir="ltr"
                                 value={add.data.phone}
+                                onBlur={() => setPhoneTouched(true)}
                                 onChange={(e) => add.setData('phone', e.target.value)}
                                 placeholder="+968 9xxxxxxx"
                                 required

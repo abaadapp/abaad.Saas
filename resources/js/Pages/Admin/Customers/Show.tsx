@@ -34,6 +34,8 @@ import { useTranslate } from '@/lib/i18n';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Customer } from '@/types/models';
+import { PhoneStatusBadge } from '@/Components/CustomerPhoneReview';
+import { phoneRefusal, phoneStatus } from '@/lib/customer-phone';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import {
     CollectionHistory, PurchaseHistory, type CollectionRow, type CollectionTotals, type PurchaseRow, type PurchaseTotals,
@@ -158,6 +160,20 @@ export default function CustomerShow() {
 
     /** نموذج واحد للإضافة والتعديل: address_id فارغ = عنوان جديد */
     const [editing, setEditing] = useState(false);
+
+    /*
+     * وحالةُ الرقم المحفوظ بجانب حقله — من القاعدة نفسِها التي يعدّ بها التنبيه.
+     * والرقمُ القديم لا يمنع حفظَ الاسم أو العنوان: يُسأل الرقمُ إن تغيّر وحده.
+     */
+    const savedPhoneStatus = phoneStatus(customer.phone, customer.contact_phone, customer.name);
+    const savedPhoneHint =
+        savedPhoneStatus === 'missing'
+            ? 'لا رقم هاتف لهذا العميل — أضفه ليصل إليه ما يُرسل وتتبعه نقاطه.'
+            : savedPhoneStatus === 'incomplete'
+              ? 'رقم الهاتف المحفوظ أقصر من ثماني خانات — صحّحه من «تعديل».'
+              : savedPhoneStatus === 'invalid'
+                ? 'رقم الهاتف المحفوظ لا يطابق القواعد — صحّحه من «تعديل».'
+                : '';
     const address = useForm({ ...BLANK });
 
     const openAdd = () => { address.setData({ ...BLANK }); address.clearErrors(); setEditing(true); };
@@ -294,6 +310,12 @@ export default function CustomerShow() {
                                 </li>
                             ))}
                         </ul>
+                        {savedPhoneStatus && (
+                            <p data-testid="customer-phone-problem" className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[#92400e]">
+                                <PhoneStatusBadge status={savedPhoneStatus} />
+                                {t(savedPhoneHint)}
+                            </p>
+                        )}
                     </Card>
 
                     {showInternal && (
@@ -680,8 +702,11 @@ export default function CustomerShow() {
                         )}
                         <Field
                             label="رقم الهاتف"
-                            hint="نقاط الولاء تتبع الرقم — تغييره ينقلها معه"
-                            error={edit.errors.phone}
+                            hint={savedPhoneStatus && edit.data.phone === (customer.phone ?? '') ? savedPhoneHint : 'نقاط الولاء تتبع الرقم — تغييره ينقلها معه'}
+                            error={
+                                edit.errors.phone ||
+                                (edit.data.phone !== (customer.phone ?? '') && phoneRefusal(edit.data.phone) ? t(phoneRefusal(edit.data.phone)!) : undefined)
+                            }
                         >
                             <Input dir="ltr" value={edit.data.phone} onChange={(e) => edit.setData('phone', e.target.value)} />
                         </Field>

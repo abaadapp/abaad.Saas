@@ -15,6 +15,7 @@ use App\Support\AddonStock;
 use App\Support\Books;
 use App\Support\BoutiqueDues;
 use App\Support\CouponLimits;
+use App\Support\CustomerPhone;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
 use App\Support\ImageVariants;
@@ -1348,6 +1349,10 @@ final class WebCheckout
              */
             if ($settling === null && ! $v->errors()->has('phone') && ! WhatsAppPhone::isValid((string) $payload['phone'])) {
                 $v->errors()->add('phone', __('رقم الهاتف غير صحيح.'));
+            }
+            // والرقمُ العُمانيّ ثماني خانات، والدوليّ بمفتاح دولته — القاعدةُ نفسُها في كلّ باب (`CustomerPhone`)
+            elseif ($settling === null && ! $v->errors()->has('phone') && ($why = CustomerPhone::refusal((string) $payload['phone'])) !== null) {
+                $v->errors()->add('phone', $why);
             }
 
             /*

@@ -3,6 +3,7 @@
 namespace App\Support\Lists;
 
 use App\Models\Customer;
+use App\Support\CustomerPhone;
 use App\Support\CustomerPurchases;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
@@ -43,9 +44,21 @@ final class CustomersList
          * ما اشتراه العميل فعلًا — طلباتُه المبيعة وفواتيرُه المستقلّة، لا
          * الملغى ولا سلّةً معلّقة ولا دفعةً بلا بيع. انظر `CustomerPurchases`.
          */
-        $q = CustomerPurchases::apply(Customer::where('business_id', auth()->user()->business_id ?? Demo::bid()));
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $q = CustomerPurchases::apply(Customer::where('business_id', $bid));
 
         ListFilters::customers($q, $request);
+
+        /*
+         * «أرقامٌ تحتاج تحديثًا» — من تنبيه اللوحة وشريط القائمة.
+         *
+         * المعرّفاتُ من `CustomerPhone::reviewIds` (قراءةٌ فقط، من متجره وحده)،
+         * وتُكتب أعدادًا صحيحةً في الجملة لا ربطًا: آلافُ المعرّفات لا تبلغ
+         * حدَّ الربط في SQLite. والترقيمُ بعدها في القاعدة كما هو.
+         */
+        if ((string) $request->query('missing') === 'phone') {
+            $q->whereIntegerInRaw('customers.id', CustomerPhone::reviewIds((int) $bid));
+        }
 
         return $q;
     }
@@ -75,6 +88,8 @@ final class CustomersList
             'last_purchase' => $last,
             'points' => $c->points,
             'language' => $c->language,
+            // حالةُ الرقم بجانبه: مفقود، غير مكتمل، غير صحيح — و`null` لرقمٍ صالح
+            'phone_status' => CustomerPhone::status($c->phone, $c->contact_phone, $c->name),
         ];
     }
 

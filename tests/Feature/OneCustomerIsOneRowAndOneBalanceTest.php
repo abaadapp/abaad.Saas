@@ -122,7 +122,8 @@ class OneCustomerIsOneRowAndOneBalanceTest extends TestCase
 
     public function test_a_number_that_does_not_normalise_is_still_guarded(): void
     {
-        $this->add('تحويلة', '101')->assertSessionHasNoErrors();
+        // تحويلةٌ داخليّة حُفظت قبل قاعدة الثماني — لا تُكتب اليوم من الشاشة (`CustomerPhone`)
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'تحويلة', 'phone' => '101', 'language' => 'ar']);
 
         $this->add('تحويلة ثانية', '101')->assertSessionHasErrors('phone');
 

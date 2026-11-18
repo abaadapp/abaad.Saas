@@ -67,12 +67,59 @@ final class RouteGroups
     }
 
     /**
-     * مساراتُ المجموعة — لما يُضمّ في المتصفّح حين ينتقل إلى صفحةٍ من غيرها.
+     * مساراتُ المجموعة — لجدول الصفحة، ولما يُضمّ في المتصفّح حين ينتقل إلى صفحةٍ من غيرها.
+     *
+     * ═══ ولمَ لا `new Ziggy($group)` ═══
+     *
+     * Ziggy يطابق كلَّ مسارٍ بكلّ نمطٍ واحدًا واحدًا (`Str::is`): ثمانمئة مسارٍ في
+     * خمسةٍ وثلاثين نمطًا — ملّيثانيتان في كلّ صفحةٍ تُحمَّل، أكثرُ ممّا يأخذه
+     * الجدولُ كلُّه. فتُجمع أنماطُ المجموعة (`config/ziggy.php`، المصدرُ نفسُه)
+     * في تعبيرٍ واحد يُطابَق مرّةً لكلّ مسار — والنتيجةُ ما يختاره Ziggy حرفًا
+     * بحرف (`EveryRouteAScreenCallsIsInItsGroupTest`).
      *
      * @return array<string, mixed>
      */
     public static function routes(string $group): array
     {
-        return (new Ziggy(self::ziggy($group)))->toArray()['routes'];
+        return self::table($group)['routes'];
+    }
+
+    /**
+     * جدولُ الصفحة كما يكتبه Ziggy — الرابطُ والمنفذُ والقيمُ الافتراضيّة، ومساراتُ المجموعة.
+     *
+     * @return array<string, mixed>
+     */
+    public static function table(string $group): array
+    {
+        $table = (new Ziggy)->toArray();
+
+        if ($group === self::ALL) {
+            return $table;
+        }
+
+        $patterns = (array) config("ziggy.groups.{$group}", []);
+        $regex = '#^(?:'.implode('|', array_map(
+            fn (string $p) => str_replace('\\*', '.*', preg_quote($p, '#')),
+            $patterns,
+        )).')\z#su';
+
+        $table['routes'] = $patterns === []
+            ? []
+            : array_filter($table['routes'], fn ($name) => preg_match($regex, (string) $name) === 1, ARRAY_FILTER_USE_KEY);
+
+        return $table;
+    }
+
+    /**
+     * ما يكتبه `@routes` — `const Ziggy=…` ثمّ دالّةُ `route()` من Ziggy نفسه.
+     *
+     * بلا `@routes`: ذاك يبني الجدولَ بـ`new Ziggy($group)` (انظر `routes`).
+     */
+    public static function script(string $group): string
+    {
+        $table = json_encode(self::table($group), JSON_UNESCAPED_SLASHES);
+        $function = (string) file_get_contents(base_path('vendor/tightenco/ziggy/dist/route.umd.js'));
+
+        return '<script type="text/javascript">const Ziggy='.$table.';'.$function.'</script>';
     }
 }

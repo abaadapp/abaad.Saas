@@ -20,7 +20,7 @@
     {{-- جدولُ مسارات هذه الواجهة وحدها — لا المساراتُ كلُّها في كلّ صفحة (`config/ziggy.php`، `RouteGroups`). والمتصفّحُ يضمّ مجموعةَ صفحةٍ أخرى قبل أن يرسمها (`lib/route-groups.ts`) --}}
     @php($routeGroup = \App\Support\RouteGroups::forRequest($page['component'] ?? null))
     <meta name="route-group" content="{{ $routeGroup }}">
-    @routes(\App\Support\RouteGroups::ziggy($routeGroup))
+    {!! \App\Support\RouteGroups::script($routeGroup) !!}
     @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/app.tsx'])
     @inertiaHead

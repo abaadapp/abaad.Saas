@@ -11,7 +11,6 @@ use App\Support\PosTerminal;
 use App\Support\RouteGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use Tighten\Ziggy\BladeRouteGenerator;
 use Tighten\Ziggy\Ziggy;
 
 /**
@@ -199,6 +198,20 @@ class EveryRouteAScreenCallsIsInItsGroupTest extends TestCase
         }
     }
 
+    public function test_the_fast_filter_picks_exactly_what_ziggy_picks(): void
+    {
+        foreach ([RouteGroups::GUEST, RouteGroups::POS, RouteGroups::MERCHANT] as $group) {
+            $ziggy = array_keys((new Ziggy($group))->toArray()['routes']);
+            $ours = array_keys(RouteGroups::routes($group));
+            sort($ziggy);
+            sort($ours);
+
+            $this->assertSame($ziggy, $ours, "مجموعة «{$group}» تفترق عمّا يختاره Ziggy من أنماطها نفسها");
+        }
+
+        $this->assertSame(array_keys((new Ziggy)->toArray()['routes']), array_keys(RouteGroups::routes(RouteGroups::ALL)));
+    }
+
     public function test_the_dashboard_group_carries_the_whole_till_group(): void
     {
         $merchant = array_keys(RouteGroups::routes(RouteGroups::MERCHANT));
@@ -251,8 +264,6 @@ class EveryRouteAScreenCallsIsInItsGroupTest extends TestCase
 
     private function page(string $uri): string
     {
-        BladeRouteGenerator::$generated = false;
-
         return (string) $this->get($uri)->assertOk()->getContent();
     }
 

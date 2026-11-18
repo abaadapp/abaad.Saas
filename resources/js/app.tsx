@@ -6,7 +6,7 @@ import type { ComponentType } from 'react';
 import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
 import { dropBootPayload, followIdentity } from '@/lib/identity-history';
-import { forgetOtherShops } from '@/lib/till-customers';
+import { forgetOtherShops } from '@/lib/till-customers-store';
 import { ensureRoutesFor, startRouteGroups } from '@/lib/route-groups';
 import { markTouchDevice } from '@/lib/touch';
 
@@ -89,7 +89,7 @@ createInertiaApp({
             });
             // وسجلُّ المتصفّح لا يعرض لمن جلس ما رآه من قبله — انظر `lib/identity-history`
             followIdentity(props.initialPage.props as Record<string, unknown>, router);
-            // ونسخةُ زبائن الصندوق في الجهاز لا تبقى لمتجرٍ غير متجر الجالس — انظر `lib/till-customers`
+            // ونسخةُ زبائن الصندوق في الجهاز لا تبقى لمتجرٍ غير متجر الجالس — انظر `lib/till-customers-store`
             forgetOtherShops(props.initialPage.props as Record<string, unknown>);
             router.on('success', (event) => forgetOtherShops(event.detail.page.props as Record<string, unknown>));
             // وقد قُرئت الصفحةُ الأولى — فلا تبقى خصائصُها في مصدر المستند

@@ -515,7 +515,12 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             let result = await syncCustomers(customersScope, customersCache.current ?? null);
             if (!result.complete) result = await syncCustomers(customersScope, customersCache.current ? new Map() : null);
             customersSynced.current = true;
-            // ‏والنسخةُ تُقرأ من الجهاز من جديد في الفتح القادم — لا من ذاكرة هذه الصفحة
+            /*
+             * ‏ونسخةُ الدلاء التي قُرئت من الجهاز لا تبقى في الذاكرة بجانب القائمة:
+             * كُتب ما تغيّر في الجهاز، والفتحُ القادم يقرؤه من هناك. نسختان من
+             * خمسة آلاف زبونٍ في صفحةٍ مفتوحةٍ طوال الوردية لا يحتاجهما أحد.
+             */
+            customersCache.current = null;
             setCustomers(applyTouched(result.rows.map(toPosCustomer), startedAt));
             setCustomersStatus('ready');
         } catch {

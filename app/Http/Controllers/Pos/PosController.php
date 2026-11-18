@@ -1715,6 +1715,36 @@ class PosController extends Controller
     }
 
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
+    /**
+     * ‏سجلُّ المتجر بمعرّفات بيعات الطابور: أيُّها كتبه، وبأيّ فاتورةٍ ومبلغ.
+     *
+     * ═══ لماذا ═══
+     *
+     * بيعةُ الطابور اكتملت عند الصندوق وقُبض ثمنُها. وحين يردّ الخادمُ عليها
+     * بخطأ (500 بعد الحفظ، أو انقطاعٌ بعد أن كُتبت) لا يُعرف أكتبها أم لا. فيسأل
+     * الصندوقُ هنا قبل أن يعيدها أو يحكم عليها بأنّها مردودة — والمعرّفُ فريدٌ في
+     * المتجر (`orders_business_client_uuid_unique`)، فالجوابُ قاطع.
+     *
+     * قراءةٌ لا كتابة، ومن متجر الجلسة وحده: معرّفُ متجرٍ آخر لا يُرى ولو أُرسل.
+     * والمحذوفُ والملغى «مكتوبٌ» أيضًا — لا يُعاد إرسالُه فيُكتب ثانيةً.
+     */
+    public function outboxStatus(Request $request)
+    {
+        $data = $request->validate([
+            'uuids' => ['required', 'array', 'max:100'],
+            'uuids.*' => ['required', 'string', 'max:64'],
+        ]);
+
+        $saved = DB::table('orders')
+            ->where('business_id', $this->bid())
+            ->whereIn('client_uuid', array_values(array_unique($data['uuids'])))
+            ->get(['client_uuid', 'number', 'total'])
+            ->mapWithKeys(fn ($row) => [$row->client_uuid => ['invoice' => $row->number, 'total' => round((float) $row->total, 3)]]);
+
+        return response()->json(['saved' => (object) $saved->all()], 200, [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     private function notifyNewOrder(Order $order): void
     {
         $business = Business::find($this->bid());

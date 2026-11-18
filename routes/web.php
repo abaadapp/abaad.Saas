@@ -2127,6 +2127,9 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
 
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
+    // ‏سجلُّ البيعات بمعرّفاتها — يُسأل قبل أن تُعاد بيعةٌ من الطابور أو يُحكم بردّها (`PosController::outboxStatus`)
+    Route::post('/outbox/status', [PosController::class, 'outboxStatus'])
+        ->middleware('throttle:60,1,pos-outbox-status')->name('outbox.status');
     /*
      * قيدٌ مبسّط من الدرج — مصروفٌ أو دخلٌ أو إيداعٌ بغير بيع.
      *

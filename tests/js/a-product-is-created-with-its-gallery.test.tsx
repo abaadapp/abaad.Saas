@@ -7,6 +7,8 @@ import { pageProps } from './setup';
 import ProductForm from '@/Pages/Admin/Products/partials/ProductForm';
 import Gallery, { type GalleryImage } from '@/Pages/Admin/Products/partials/Gallery';
 
+const realCrypto = globalThis.crypto;
+
 /*
  * والتصغيرُ في المتصفّح يحتاج canvas لا يملكه jsdom — فيُستبدل بما يُعرف
  * ما طُلب منه. وافتراضُه أن يعيد الملفَّ كما هو، كما يفعل حين يتعذّر.
@@ -64,9 +66,18 @@ beforeEach(() => {
     vi.mocked(router.put).mockClear();
     shrinkMock.mockReset();
     shrinkMock.mockImplementation(async (f: File) => f);
+    /*
+     * وبصمةُ الأصل تُحسب في خيطٍ آخر (`crypto.subtle`) فلا تنتهي في دورة `act` —
+     * فتُطفأ هنا كما في صفحةٍ بلا https، والرفعُ كما كان. وهي محروسةٌ وحدها في
+     * `a-picture-carries-its-originals-fingerprint`.
+     */
+    vi.stubGlobal('crypto', { getRandomValues: realCrypto.getRandomValues.bind(realCrypto), randomUUID: realCrypto.randomUUID.bind(realCrypto) });
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+});
 
 const drawCreate = (limits = LIMITS) => {
     render(<ProductForm categories={[]} currencyLabel="ر.ع" galleryMax={5} galleryLimits={limits} />);
@@ -306,6 +317,21 @@ describe('المعرضُ في التعديل', () => {
         draw(stored(4));
         fireEvent.click(within(tiles()[3]).getByRole('button', { name: 'قدّمها' }));
         expect(vi.mocked(router.put).mock.calls[1][1]).toEqual({ ids: [1, 3, 2] });
+    });
+
+    it('وبصمةُ أصل المصغَّرة تُرسَل معها بموضعها — والمرسَلةُ كما هي بلا بصمة', async () => {
+        vi.stubGlobal('crypto', realCrypto);
+        draw(stored(2));
+        shrinkMock.mockImplementation(async (f: File) => new File([new Uint8Array(200 * 1024)], f.name, { type: 'image/jpeg' }));
+
+        await pick(photo('phone.jpg', 4000), photo('light.jpg', 100));
+        await vi.waitFor(() => expect(router.post).toHaveBeenCalledTimes(1));
+
+        const data = vi.mocked(router.post).mock.calls[0][1] as FormData;
+        const originals = data.getAll('originals[]');
+        expect(originals).toHaveLength(2);
+        expect(originals[0]).toMatch(/^[0-9a-f]{64}$/);
+        expect(originals[1]).toBe('');
     });
 
     it('صورةُ الهاتف الثقيلة تُصغَّر قبل أن تُرفع إلى المعرض', async () => {

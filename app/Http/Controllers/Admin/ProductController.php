@@ -381,7 +381,14 @@ class ProductController extends Controller
          * وإن سقطت المعاملة مُحيت الملفّاتُ التي حُفظت لها — فلا يبقى على
          * القرص ما لا يشير إليه صفّ.
          */
-        $paths = ProductImages::putAll($files);
+        /*
+         * وصورةٌ في المتجر من قبل لا تُحفظ ثانيةً — يُعاد مسارُها (`ImageFingerprints`)،
+         * و«الأصلُ» بصمةُ كلّ صورةٍ قبل أن يصغّرها المتصفّح بموضعها. وما اختير
+         * مرّتين في الدفعة يُعرض مرّةً واحدة.
+         */
+        $paths = array_values(array_unique(
+            ProductImages::putAll($files, $this->bid(), array_values((array) $request->input('originals', [])), $found)
+        ));
 
         try {
             $product = \DB::transaction(function () use ($data, $paths, $composition) {
@@ -415,6 +422,9 @@ class ProductController extends Controller
             ProductImages::forgetFiles($paths);
 
             throw $e;
+        } finally {
+            // ‏وما أُعيد استعمالُه حُجز حتى تُكتب الصفوف (`ImageFingerprints::claim`) — يُرفع الحجز الآن
+            \App\Support\ImageFingerprints::settle(array_column($found, 'path'));
         }
 
         Activity::log('created', 'أضاف منتجًا: '.$data['name']);
@@ -426,7 +436,12 @@ class ProductController extends Controller
          * والعين ترى الصفّ. أمّا البقاء في نموذجٍ فارغ فيترك الإشعار وحده
          * دليلًا، ولا يُرى المنتج إلا بخطوةٍ أخرى.
          */
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم إضافة المنتج بنجاح'), 'type' => 'success']);
+        $notice = ProductImages::foundNotice($this->bid(), $found, $product->id);
+
+        return redirect()->route('admin.products.index')->with('toast', [
+            'msg' => $notice === null ? __('تم إضافة المنتج بنجاح') : __('تم إضافة المنتج بنجاح').' '.$notice,
+            'type' => 'success',
+        ]);
     }
 
     public function update(Request $request, $id)

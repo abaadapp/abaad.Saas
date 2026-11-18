@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight, ImageOff, ImagePlus, Star, Trash2 } from 'lucide-react';
 import { needsShrink, shrink } from '@/Components/StoreImageField';
+import { originalOf, shrunkWithOriginal } from '@/lib/image-fingerprint';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import {
@@ -63,7 +64,8 @@ export const PHOTO_SIDE = 1600;
 export async function prepared(files: File[], limits: UploadLimits, max: number): Promise<File[]> {
     const share = Math.min(limits.perFile, Math.floor(limits.batch / Math.max(1, max))) * 1024;
 
-    return Promise.all(files.map((f) => (needsShrink(f, share) ? shrink(f, PHOTO_SIDE) : f)));
+    // ‏وبصمةُ الأصل قبل التصغير تُرسَل معه — فيعرف المتجرُ صورةً رُفعت من قبل (`image-fingerprint`)
+    return Promise.all(files.map((f) => (needsShrink(f, share) ? shrunkWithOriginal(f, (g) => shrink(g, PHOTO_SIDE)) : f)));
 }
 
 /**
@@ -408,7 +410,10 @@ export default function Gallery({ productId, images, max, limits }: Props) {
         }
 
         const data = new FormData();
-        chosen.forEach((f) => data.append('images[]', f));
+        chosen.forEach((f) => {
+            data.append('images[]', f);
+            data.append('originals[]', originalOf(f));
+        });
 
         setError(null);
         router.post(route('admin.products.images.store', productId), data, {

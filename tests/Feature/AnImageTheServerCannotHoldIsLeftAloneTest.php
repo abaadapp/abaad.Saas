@@ -101,10 +101,10 @@ class AnImageTheServerCannotHoldIsLeftAloneTest extends TestCase
         return "\xFF\xD8\xFF\xC0\x00\x11\x08".pack('n', $h).pack('n', $w)."\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01\xFF\xD9";
     }
 
-    private function jpeg(int $w, int $h): string
+    private function jpeg(int $w, int $h, int $seed = 5): string
     {
         $im = imagecreatetruecolor($w, $h);
-        mt_srand(5);
+        mt_srand($seed);
 
         for ($y = 0; $y < $h; $y += 3) {
             for ($x = 0; $x < $w; $x += 3) {
@@ -292,10 +292,10 @@ class AnImageTheServerCannotHoldIsLeftAloneTest extends TestCase
         $saved = StoreImageUpload::store($this->shop->id, UploadedFile::fake()->createWithContent('hero.jpg', $this->jpeg(3200, 1600)));
         $this->assertSame([3200, 1600], [$saved['w'], $saved['h']]);
 
-        // ‏وحين تعود الذاكرة يعود الضغطُ كما كان
+        // ‏وحين تعود الذاكرة يعود الضغطُ كما كان — لصورةٍ أخرى: الصورةُ نفسُها رُفعت فتُعاد كما حُفظت (`ImageFingerprints`)
         $this->available(2048);
-        $this->assertStringEndsWith('.webp', ProductImages::putAll([UploadedFile::fake()->createWithContent('rose.jpg', $bytes)])[0]);
-        $this->assertSame([2560, 1280], array_values(array_slice(StoreImageUpload::store($this->shop->id, UploadedFile::fake()->createWithContent('hero.jpg', $this->jpeg(3200, 1600))), 1)));
+        $this->assertStringEndsWith('.webp', ProductImages::putAll([UploadedFile::fake()->createWithContent('rose.jpg', $this->jpeg(2000, 1499))])[0]);
+        $this->assertSame([2560, 1280], array_values(array_slice(StoreImageUpload::store($this->shop->id, UploadedFile::fake()->createWithContent('hero.jpg', $this->jpeg(3200, 1600, 2))), 1)));
     }
 
     public function test_the_estimate_averages_each_copy_over_the_images_that_got_one(): void

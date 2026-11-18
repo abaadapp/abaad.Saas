@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\RibbonShopAtCheckout;
+use Tests\Support\DistinctPhotos;
 use Tests\TestCase;
 
 /**
@@ -72,7 +73,8 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
     /** صورةٌ حقيقيّةٌ يرسمها GD — بأبعادٍ تُعرف بها بعد الحفظ */
     private function photo(string $name, int $w = 300, int $h = 200): UploadedFile
     {
-        return UploadedFile::fake()->image($name, $w, $h);
+        // ‏ولكلّ صورةٍ محتواها — صورتان سوداوان بالأبعاد نفسها صورةٌ واحدة في المتجر
+        return DistinctPhotos::make($name, $w, $h);
     }
 
     /** ما ترسله شاشةُ الإضافة — بالصور التي اختيرت */

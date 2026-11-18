@@ -1332,7 +1332,10 @@ class Demo
             ListFilters::products($query, $filter);
         }
 
-        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners) {
+        // ‏وإعدادُ الضريبة يُقرأ مرّةً للقائمة كلِّها — لا لكلّ صنف (`Vat::rateForEach`)
+        $taxOf = Vat::rateForEach(self::bid());
+
+        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners, $taxOf) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
             return [
@@ -1376,7 +1379,7 @@ class Demo
                  * يحتسب الخادم خمسة — ونسبةٌ تُقرأ هنا وتُحتسب هناك لا يجوز
                  * أن تُشتقّ بقاعدتين.
                  */
-                'tax' => Vat::rateFor($p, self::bid()),
+                'tax' => $taxOf($p),
                 /*
                  * المقاسات — الفعّالة منها وحدها.
                  *

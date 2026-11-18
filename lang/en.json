@@ -10648,5 +10648,14 @@
     "ومعها :n صور أخرى موجودة.": "And :n more pictures were already there.",
     "هذه الصورة موجودة في هذا المنتج من قبل — لم تُضف ثانيةً.": "This picture is already in this product — it was not added again.",
     "وما كان في هذا المنتج من قبل لم يُضف ثانيةً.": "Pictures already in this product were not added again.",
-    "هذه الصورة رُفعت إلى موقعك من قبل — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.": "This picture was uploaded to your website before — its saved copy was used and no second copy was saved."
+    "هذه الصورة رُفعت إلى موقعك من قبل — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.": "This picture was uploaded to your website before — its saved copy was used and no second copy was saved.",
+    "انتهت جلسة الصندوق — سجّل الدخول من جديد": "The till session has ended — sign in again",
+    "انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة": "The till session has ended — sign in so the pending orders on this device can be sent",
+    "انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز": "Till session ended — sign in to send what is on this device",
+    "سجّل الدخول": "Sign in",
+    "طلب مُعلّق رُفض وبقي على الجهاز للمراجعة: :error": "A queued order was refused and kept on this device for review: :error",
+    ":n طلب معلّق رُفض — راجعه": ":n refused queued orders — review",
+    "طلبات معلّقة رُفضت": "Refused queued orders",
+    "اكتملت على هذا الجهاز ورفضها الخادم عند الإرسال. باقية هنا ولن تُحذف — أصلح السبب ثمّ أعد إرسالها.": "They were completed on this device and refused by the server when sent. They stay here and will not be deleted — fix the cause, then send them again.",
+    "أعد الإرسال": "Send again"
 }

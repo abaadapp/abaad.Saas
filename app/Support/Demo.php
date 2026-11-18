@@ -1310,6 +1310,53 @@ class Demo
      */
     public static function products(?int $branchId = null, ?Request $filter = null): array
     {
+        return self::productRows($branchId, $filter, false);
+    }
+
+    /**
+     * ═══ أصنافُ شاشة الصندوق — ما يقرؤه الصندوقُ وحده ═══
+     *
+     * الصفُّ نفسُه الذي تبنيه `products()` لكلّ واجهة، وبالاستعلامات نفسِها —
+     * ثمّ يُسقط منه ما لا يقرؤه الصندوق (`forTill`). فما بقي فيه هو هو حرفًا:
+     * السعرُ والضريبةُ والمخزونُ والمقاساتُ والإضافاتُ وأهليّةُ البيع. والقائمةُ
+     * المشتركة (المشتريات، وما يبحث بالمعرّف) كما كانت.
+     *
+     * @param  int|null  $branchId  الفرعُ الذي يُخصم منه البيع
+     */
+    public static function tillProducts(?int $branchId): array
+    {
+        return self::productRows($branchId, null, true);
+    }
+
+    /**
+     * ‏يُسقط من صفّ الصنف ما لا يقرؤه الصندوق — ولا يغيّر قيمةً فيما يبقى.
+     *
+     * - `published` و`description_web_enabled`: للموقع. والصندوقُ يقرأ أهليّتَه
+     *   من `active` و`pos_enabled`، ونصَّ وصفه من `pos_description` (و`null`
+     *   حين لم يُفتح له — `ProductDescription::atPos`)، فلا يحتاج مفتاحَيهما.
+     * - `description_pos_enabled`: قرارُه في `pos_description` نفسِه.
+     * - `cat_label`: لا يقرؤه الصندوق؛ أقسامُه من `posCategories` وترشيحُه بـ`cat`.
+     * - `label` حين يساوي `name` حرفًا بحرف — والصندوقُ يقرأ غائبَه `name`
+     *   (`lib/till-products.ts`). لا يُستنتج من قاعدة عرض: يُسقط حيث هو هو فقط.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    public static function forTill(array $row): array
+    {
+        unset($row['published'], $row['cat_label'], $row['description_pos_enabled'], $row['description_web_enabled']);
+        if (array_key_exists('label', $row) && $row['label'] === $row['name']) {
+            unset($row['label']);
+        }
+
+        return $row;
+    }
+
+    /**
+     * @param  bool  $till  لشاشة الصندوق (`tillProducts`) — يُسقط ما لا تقرؤه
+     */
+    private static function productRows(?int $branchId, ?Request $filter, bool $till): array
+    {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
         /*
@@ -1335,17 +1382,17 @@ class Demo
         // ‏وإعدادُ الضريبة يُقرأ مرّةً للقائمة كلِّها — لا لكلّ صنف (`Vat::rateForEach`)
         $taxOf = Vat::rateForEach(self::bid());
 
-        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners, $taxOf) {
+        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners, $taxOf, $till) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
-            return [
+            $row = [
                 'id' => $p->id,
                 'name' => $p->name,
                 'name_en' => $p->name_en,
                 'label' => self::ln($p->name, $p->name_en),
                 'cat' => $p->category?->name ?? '—',
                 // والقسمُ للعرض بلغة الشاشة — `cat` يبقى كما حُفظ لمطابقة النموذج
-                'cat_label' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—',
+                'cat_label' => $till ? null : ($p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—'),
                 'price' => (float) $p->price,
                 'cost' => (float) $p->cost,
                 'qty' => $qty,
@@ -1412,6 +1459,8 @@ class Demo
                 'has_recipe' => isset($recipeOwners[$p->id]),
                 'discount' => (float) $p->discount,
             ];
+
+            return $till ? self::forTill($row) : $row;
         })->all();
     }
 

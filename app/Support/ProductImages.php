@@ -248,23 +248,44 @@ class ProductImages
      * صورتان لا يشير إليهما صفّ — أو أُنشئ المنتج بصورٍ ناقصة لا يعرف صاحبُه
      * أيّها سقط.
      *
+     * ═══ والصورةُ نفسُها لا تُحفظ مرّتين في المتجر ═══
+     *
+     * صورةٌ مطابقةٌ تمامًا لصورة منتجٍ في المتجر نفسه — أو هي نفسُها بكسلًا
+     * بكسلًا بصيغةٍ أخرى (`ImageFingerprints`) — يُعاد مسارُ الموجودة ولا يُكتب
+     * ملفٌّ ثانٍ. وتُقال في `$found` بموضعها في الدفعة ونوعِ تطابقها، فتقولها
+     * الشاشة. والملفُّ الموجود لا يُمحى بسقوط الدفعة: لا يمحو التنظيفُ إلّا ما
+     * كتبه هو.
+     *
+     * و`$businessId` يحصر المطابقةَ في المتجر — وبلا متجرٍ لا مطابقة (`null`).
+     * و`$originals` بصمةُ أصل كلّ صورةٍ قبل أن يصغّرها المتصفّح، بموضعها.
+     *
      * @param  list<UploadedFile>  $files
+     * @param  array<int, mixed>  $originals
+     * @param-out list<array{at: int, name: string, kind: string, path: string}>  $found
      * @return list<string>
      */
-    public static function putAll(array $files): array
+    public static function putAll(array $files, ?int $businessId = null, array $originals = [], ?array &$found = null): array
     {
         $paths = [];
+        $fresh = [];
+        $found = [];
+        /** بصماتُ هذه الدفعة — صورةٌ اختيرت مرّتين معًا لا صفَّ لها بعدُ يُطابَق */
+        $batch = [];
 
-        foreach ($files as $file) {
+        foreach (array_values($files) as $at => $file) {
+            $match = null;
+            $print = $businessId === null ? null : ImageFingerprints::of((string) $file->getRealPath(), $originals[$at] ?? null);
+            $twin = $print === null ? null : collect($batch)->first(fn ($b) => $b['sha'] === $print['sha'] && $print['sha'] !== null);
+
             try {
-                $path = self::put($file);
+                $path = $twin !== null ? $twin['path'] : self::put($file, $businessId, $originals[$at] ?? null, $match, $print);
             } catch (\Throwable $e) {
                 report($e);
                 $path = null;
             }
 
             if ($path === null) {
-                self::forgetFiles($paths);
+                self::forgetFiles($fresh);
 
                 throw ValidationException::withMessages([
                     'images' => __('تعذّر حفظ الصورة «:name» — لم يُحفظ شيء، فحاول مرّةً أخرى.', [
@@ -273,19 +294,69 @@ class ProductImages
                 ]);
             }
 
+            $match ??= $twin === null ? null : ['path' => $path, 'kind' => ImageFingerprints::EXACT];
+
+            if ($match !== null) {
+                $found[] = ['at' => $at, 'name' => $file->getClientOriginalName(), 'kind' => $match['kind'], 'path' => $path];
+            } else {
+                $fresh[] = $path;
+            }
+
+            if ($print !== null && $twin === null) {
+                $batch[] = ['sha' => $print['sha'], 'path' => $path];
+            }
+
             $paths[] = $path;
         }
 
         /*
          * ومصغّراتُها للقوائم بعد أن حُفظت كلُّها — لا ينتظر التاجرُ جولةً على
          * الصور القديمة. وبعدُ لا قبلُ: نسخةٌ تتعذّر لا تُسقط دفعةً حُفظت،
-         * ودفعةٌ سقطت لا تترك نسخًا (`forgetFile` يمحوها مع أصلها).
+         * ودفعةٌ سقطت لا تترك نسخًا (`forgetFile` يمحوها مع أصلها). والموجودةُ
+         * نسخُها معها منذ رُفعت.
          */
-        foreach ($paths as $path) {
+        foreach ($fresh as $path) {
             ImageVariants::makeQuietly($path);
         }
 
         return $paths;
+    }
+
+    /**
+     * ما يُقال للتاجر عن صورٍ وُجدت في متجره — أو `null` إن لم يوجد شيء.
+     *
+     * @param  list<array{at: int, name: string, kind: string, path: string}>  $found
+     */
+    public static function foundNotice(int $businessId, array $found, ?int $productId = null): ?string
+    {
+        if ($found === []) {
+            return null;
+        }
+
+        $first = $found[0];
+        $owner = self::ownerOf($businessId, $first['path'], $productId);
+
+        $line = match (true) {
+            $owner === null => __('صورةٌ اخترتَها موجودةٌ في متجرك من قبل — استُعملت نفسُها ولم تُحفظ نسخةٌ ثانية.'),
+            $first['kind'] === ImageFingerprints::PIXELS => __('الصورة «:name» هي صورةُ «:product» نفسُها بصيغةٍ أخرى — استُعملت الموجودة ولم تُحفظ نسخةٌ ثانية.', ['name' => $first['name'], 'product' => $owner]),
+            default => __('الصورة «:name» موجودةٌ من قبل في «:product» — استُعملت نفسُها ولم تُحفظ نسخةٌ ثانية.', ['name' => $first['name'], 'product' => $owner]),
+        };
+
+        return count($found) > 1
+            ? $line.' '.__('ومعها :n صور أخرى موجودة.', ['n' => count($found) - 1])
+            : $line;
+    }
+
+    /** اسمُ منتجٍ في المتجر يعرض هذه الصورة — ويُقدَّم غيرُ المنتج الذي يُرفع له */
+    private static function ownerOf(int $businessId, string $path, ?int $productId): ?string
+    {
+        $ids = DB::table('products')->where('business_id', $businessId)->where('image', $path)->pluck('id')
+            ->merge(DB::table('product_images')->where('business_id', $businessId)->where('path', $path)->pluck('product_id'))
+            ->map(fn ($id) => (int) $id)->unique()->sortBy(fn ($id) => $id === $productId ? 1 : 0)->values();
+
+        $id = $ids->first();
+
+        return $id === null ? null : DB::table('products')->where('business_id', $businessId)->where('id', $id)->value('name');
     }
 
     /**
@@ -296,11 +367,40 @@ class ProductImages
      * دفعاتٍ صغيرة (`images:optimize`)، والأصلُ باقٍ.
      *
      * و`null` حين لا يُكتب الملفّ أصلًا — والقرصُ يردّ `false` لا استثناءً.
+     *
+     * ═══ والموجودةُ في المتجر تُعاد ولا تُكتب ═══
+     *
+     * مع `$businessId` تُسأل بصمتُها أوّلًا — قبل أن تُفكّ (`ImageFingerprints`):
+     * مطابقةٌ تامّة تُعيد مسارَ الموجودة. وما لم يُطابَق يُفكّ ليُضغط، وتُسأل
+     * بكسلاتُه قبل أن يُكتب منها شيء — فإن كانت هي هي أُعيدت الموجودة ولم
+     * يُضغط شيء. و`$match` يقول ما وُجد، و`null` لصورةٍ كُتبت.
+     *
+     * @param  array{sha: ?string, orig: ?string, px: ?string, w: int, h: int, bytes: int}|null  $print
+     * @param-out array{path: string, kind: string}|null  $match
      */
-    public static function put(UploadedFile $file): ?string
+    public static function put(UploadedFile $file, ?int $businessId = null, ?string $original = null, ?array &$match = null, ?array $print = null): ?string
     {
+        $match = null;
+        $print = $businessId === null ? null : ($print ?? ImageFingerprints::of((string) $file->getRealPath(), $original));
+
+        if ($print !== null && ($match = ImageFingerprints::find($businessId, ImageFingerprints::PRODUCTS, $print)) !== null) {
+            return $match['path'];
+        }
+
+        $known = $print === null ? null : function (string $pixels) use (&$print, &$match, $businessId) {
+            $print['px'] = $pixels;
+            $match = ImageFingerprints::find($businessId, ImageFingerprints::PRODUCTS, ['px' => $pixels]);
+
+            return $match !== null;
+        };
+
         // ‏ودورٌ طال: يُحفظ الأصلُ كما رُفع ولا يُفكّ بالتوازي — ونسخُه تنتظر (`makeQuietly`)
-        $webp = ImageVariants::exclusive(fn () => self::webp($file), fn () => null);
+        $webp = ImageVariants::exclusive(fn () => self::webp($file, $known), fn () => null);
+
+        if ($match !== null) {
+            return $match['path'];
+        }
+
         $path = null;
 
         if ($webp !== null) {
@@ -312,8 +412,13 @@ class ProductImages
         }
 
         $path ??= $file->store(self::FOLDER, self::DISK);
+        $path = is_string($path) && $path !== '' ? $path : null;
 
-        return is_string($path) && $path !== '' ? $path : null;
+        if ($path !== null && $print !== null) {
+            ImageFingerprints::remember($businessId, $path, $print);
+        }
+
+        return $path;
     }
 
     /**
@@ -336,8 +441,13 @@ class ProductImages
      * الكتابة تمحو الرأس — فتُدار قبلها وإلّا ظهرت الباقةُ على جنبها. ويُقرأ
      * الرأسُ بلا امتداد `exif` (`StoreImageUpload::orientation`): قد لا يكون
      * في الخادم، فلا يسقط الرفعُ لغيابه.
+     *
+     * و`$known` يُسأل ببصمة البكسلات بعد الإدارة وقبل التصغير: إن قال «موجودة»
+     * رُدّ `null` ولم يُضغط شيء — ومن ناداه يعرف لماذا.
+     *
+     * @param  (\Closure(string): bool)|null  $known
      */
-    private static function webp(UploadedFile $file): ?string
+    private static function webp(UploadedFile $file, ?\Closure $known = null): ?string
     {
         if (! config('images.product_webp', true) || ! function_exists('imagewebp')) {
             return null;
@@ -390,6 +500,11 @@ class ProductImages
 
             if ($type === IMAGETYPE_JPEG) {
                 $image = StoreImageUpload::oriented($image, StoreImageUpload::orientation($source));
+            }
+
+            // ‏والصورةُ نفسُها بصيغةٍ أخرى تُعرف ببكسلاتها كلِّها — قبل أن تُصغَّر
+            if ($known !== null && ($pixels = ImageFingerprints::pixels($image)) !== null && $known($pixels)) {
+                return null;
             }
 
             $image = StoreImageUpload::fitted($image, self::MAX_SIDE);
@@ -545,6 +660,19 @@ class ProductImages
         ImageVariants::makeQuietly($copy);
 
         return $copy;
+    }
+
+    /**
+     * مساراتُ صور المنتج على القرص — الرئيسيةُ والمعرض، بلا روابط خارجيّة.
+     *
+     * @return list<string>
+     */
+    public static function pathsOf(Product $product): array
+    {
+        return array_values(array_filter([
+            $product->getRawOriginal('image'),
+            ...ProductImage::where('product_id', $product->id)->pluck('path')->all(),
+        ], fn ($path) => filled($path) && ! str_starts_with((string) $path, 'http')));
     }
 
     /**

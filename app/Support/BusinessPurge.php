@@ -97,7 +97,8 @@ final class BusinessPurge
     private const KEPT_DIRS = ['customer-invoices', 'expenses', 'supplier-invoices', 'receipts'];
 
     /** ملفّاتٌ تُحذف ولا تُؤرشَف — لا وزنَ محاسبيَّ لها */
-    private const DROP_DIRS = ['gift-cards/kept'];
+    /** ‏وفهرسُ بصمات صوره (`ImageFingerprints`) — دليلٌ لا سجلّ، يذهب معه */
+    private const DROP_DIRS = ['gift-cards/kept', 'image-fingerprints'];
 
     /**
      * أعمدةُ ملفّاتٍ على قرص `public` — تُقرأ قيمُها فتُحذف ملفّاتُها.

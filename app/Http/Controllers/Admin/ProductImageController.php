@@ -85,26 +85,47 @@ class ProductImageController extends Controller
          *
          * ومنتجٌ بلا صورةٍ رئيسية تصير أُولى المرفوعات رئيسيتَه (`attach`).
          */
-        $paths = ProductImages::putAll($files);
+        $saved = ProductImages::putAll($files, $this->bid(), array_values((array) $request->input('originals', [])), $found);
+        $paths = array_values(array_unique($saved));
+        $already = 0;
 
         try {
-            DB::transaction(function () use ($product, $paths) {
+            DB::transaction(function () use ($product, &$paths, &$already) {
                 $locked = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
+
+                /*
+                 * وصورةٌ يعرضها هذا المنتجُ نفسُه لا تُضاف إليه ثانيةً — تُعرف
+                 * ببصمتها فيُعاد مسارُها، فتُطرح هنا ويُقال ذلك. والعدُّ والسقفُ
+                 * بما يُضاف فعلًا.
+                 */
+                $mine = ProductImages::pathsOf($locked);
+                $already = count(array_intersect($paths, $mine));
+                $paths = array_values(array_diff($paths, $mine));
 
                 ProductImages::assertRoom($locked, count($paths));
                 ProductImages::attach($locked, $paths);
             });
         } catch (\Throwable $e) {
-            // ولا يبقى على القرص ملفٌّ لم يُكتب صفُّه
-            ProductImages::forgetFiles($paths);
+            // ولا يبقى على القرص ملفٌّ لم يُكتب صفُّه — وما يعرضه غيرُه باقٍ له
+            ProductImages::forgetFiles($saved);
 
             throw $e;
         }
 
+        if ($paths === []) {
+            return back()->with('toast', ['msg' => __('هذه الصورة موجودة في هذا المنتج من قبل — لم تُضف ثانيةً.'), 'type' => 'success']);
+        }
+
         Activity::log('updated', 'أضاف صورًا للمنتج: '.$product->name, ['subject_id' => $product->id]);
 
+        $notice = ProductImages::foundNotice($this->bid(), array_values(array_filter($found, fn ($f) => in_array($f['path'], $paths, true))), $product->id);
+
         return back()->with('toast', [
-            'msg' => trans_choice('{1}أُضيفت صورة|[2,*]أُضيفت :count صور', count($files), ['count' => count($files)]),
+            'msg' => implode(' ', array_filter([
+                trans_choice('{1}أُضيفت صورة|[2,*]أُضيفت :count صور', count($paths), ['count' => count($paths)]),
+                $notice,
+                $already > 0 ? __('وما كان في هذا المنتج من قبل لم يُضف ثانيةً.') : null,
+            ])),
             'type' => 'success',
         ]);
     }

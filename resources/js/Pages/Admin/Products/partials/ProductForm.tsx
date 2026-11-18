@@ -20,6 +20,7 @@ import BoutiqueParts, { type BoutiquePartsData } from './BoutiqueParts';
 import { CHANNEL_SUMMARY, DESCRIPTION_SUMMARY, descriptionShows, salesChannels } from './channels';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
+import { originalOf } from '@/lib/image-fingerprint';
 
 interface Props {
     categories: Category[];
@@ -292,6 +293,8 @@ export default function ProductForm({
          */
         image: null as File | null,
         images: [] as File[],
+        // ‏وبصمةُ أصل كلّ صورةٍ قبل تصغيرها، بموضعها: الرئيسيةُ ثمّ المعرض (`image-fingerprint`)
+        originals: [] as string[],
         // Inertia لا يرسل PUT مع ملف؛ التزييف هو الطريق الرسمي
         ...(editing ? { _method: 'put' } : {}),
     });
@@ -317,6 +320,7 @@ export default function ProductForm({
             ...data,
             image: next[0]?.file ?? null,
             images: next.slice(1).map((d) => d.file),
+            originals: next.map((d) => originalOf(d.file)),
         }));
         form.clearErrors('image', 'images');
     };

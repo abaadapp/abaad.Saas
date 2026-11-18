@@ -1,6 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import { ImagePlus, Loader2, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { originalOf, shrunkWithOriginal } from '@/lib/image-fingerprint';
 
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
@@ -168,6 +169,8 @@ export default function StoreImageField({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [meta, setMeta] = useState<{ w: number; h: number } | null>(null);
+    /** الصورةُ في موقع المتجر من قبل — فاستُعملت نفسُها (`ImageFingerprints`) */
+    const [found, setFound] = useState(false);
     const max = Number((usePage().props as { uploadMax?: number }).uploadMax ?? 10 * 1024 * 1024);
     const mb = (max / 1024 / 1024).toFixed(1).replace(/\.0$/, '');
     const shown = fitOf(fit);
@@ -250,13 +253,15 @@ export default function StoreImageField({
         try {
             const body = new FormData();
             body.append('image', file);
+            // ‏وبصمةُ أصلها قبل التصغير — تلميحٌ يعرف به الخادمُ صورةً في الموقع من قبل
+            if (originalOf(file)) body.append('original', originalOf(file));
             const res = await fetch(route('admin.marketing.store.image'), {
                 method: 'POST',
                 body,
                 credentials: 'same-origin',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...csrfHeaders() },
             });
-            const data = (await res.json().catch(() => null)) as { url?: string; meta?: { w: number; h: number } | null } | null;
+            const data = (await res.json().catch(() => null)) as { url?: string; meta?: { w: number; h: number } | null; found?: string | null } | null;
 
             // حقلٌ أُزيل أثناء الرفع لا يُكتب فيه — ولا في وحدةٍ حلّت محلَّه
             if (! mounted.current) return;
@@ -264,6 +269,7 @@ export default function StoreImageField({
             if (res.ok && data?.url) {
                 latest.current.onChange(data.url);
                 setMeta(data.meta ?? null);
+                setFound(Boolean(data.found));
                 setLanding({ url: data.url, asked: false });
 
                 return;
@@ -286,11 +292,12 @@ export default function StoreImageField({
         clear();
         close();
         setLanding(null);
+        setFound(false);
         open.current = uploads.begin();
 
         // وما يسعه الحدُّ يُرسَل في الحال كما هو — والكبيرُ يُصغَّر أوّلًا
         if (needsShrink(file, max)) {
-            void shrink(file).then(send);
+            void shrunkWithOriginal(file, (f) => shrink(f)).then(send);
         } else {
             void send(file);
         }
@@ -363,6 +370,11 @@ export default function StoreImageField({
                         {value && meta && (
                             <span className="text-[11px] text-[#6b7280]" data-testid={`${id}-meta`}>
                                 <bdi dir="ltr">{meta.w} × {meta.h}</bdi> · {t(shapes[shapeOf(meta.w, meta.h)])}
+                            </span>
+                        )}
+                        {value && found && (
+                            <span className="text-[11px] text-[#0f766e]" data-testid={`${id}-found`}>
+                                {t('هذه الصورة في موقعك من قبل — استُعملت نفسُها ولم تُحفظ نسخةٌ ثانية.')}
                             </span>
                         )}
                     </div>

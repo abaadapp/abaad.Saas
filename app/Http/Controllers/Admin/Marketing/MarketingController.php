@@ -974,11 +974,17 @@ class MarketingController extends Controller
         ]);
 
         // في مجلّد النشاط لا في مجلّدٍ عامّ — فنسخُ متجرٍ أو حذفُه يعرف ما يخصّه
-        $saved = StoreImageUpload::store($this->bid(), $request->file('image'));
+        // ‏و`original` بصمةُ أصلها قبل أن يصغّره المتصفّح — تلميحٌ تُطابَق به صورُ هذا المتجر وحده
+        $saved = StoreImageUpload::store($this->bid(), $request->file('image'), $request->input('original'));
 
         // والمحرّرُ يرفع بطلبٍ وحده (`fetch`) لا بزيارة — فلا يقطع حفظًا جاريًا ولا يقطعه حفظ
         if ($request->expectsJson()) {
-            return response()->json(['url' => $saved['url'], 'meta' => ['w' => $saved['w'], 'h' => $saved['h']]]);
+            return response()->json([
+                'url' => $saved['url'],
+                'meta' => ['w' => $saved['w'], 'h' => $saved['h']],
+                // ‏وصورةٌ في موقعه من قبل: رابطُها هي، ولم يُحفظ ملفٌّ ثانٍ — تقولها الشاشة
+                'found' => $saved['found'] ?? null,
+            ]);
         }
 
         return back()

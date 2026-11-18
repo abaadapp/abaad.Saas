@@ -68,6 +68,40 @@ class PosTaxParityTest extends TestCase
         return \App\Support\Vat::rateFor($p, $this->business->id);
     }
 
+    /**
+     * وإعدادُ الضريبة يُسأل مرّةً للشاشة كلِّها — لا لكلّ صنف.
+     *
+     * كانت `Vat::rateFor` تُنادى لكلّ صنفٍ فتسأل الإعدادات (والمتجرَ حين لا جواب):
+     * ألفا صنفٍ أربعةُ آلاف سؤال، ثلثُ زمن فتح الصندوق. وعددُ الأسئلة لا يكبر الآن
+     * بعدد الأصناف — والنسبةُ لكلّ صنفٍ هي هي (الاختباراتُ بعده).
+     */
+    public function test_the_screen_asks_the_shop_for_its_tax_once_not_per_product(): void
+    {
+        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
+        $count = function (): int {
+            \DB::flushQueryLog();
+            \DB::enableQueryLog();
+            Demo::products();
+            $n = count(\DB::getQueryLog());
+            \DB::disableQueryLog();
+
+            return $n;
+        };
+
+        foreach (range(1, 5) as $i) {
+            $this->product('صنف '.$i, $i % 2 ? null : 10);
+        }
+        $few = $count();
+
+        foreach (range(6, 40) as $i) {
+            $this->product('صنف '.$i, $i % 2 ? null : 10);
+        }
+
+        $this->assertSame($few, $count(), 'سؤالٌ لكلّ صنف');
+        $this->assertSame(5.0, $this->rateOnScreen('صنف 7'));
+        $this->assertSame(10.0, $this->rateOnScreen('صنف 8'));
+    }
+
     public function test_a_product_with_no_rate_of_its_own_shows_the_shop_rate_not_zero(): void
     {
         // `(float) null` كانت تكتب صفرًا حيث يحتسب الخادم نسبة المتجر

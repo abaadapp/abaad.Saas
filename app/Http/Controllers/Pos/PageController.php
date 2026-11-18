@@ -418,12 +418,20 @@ class PageController extends Controller
     private function customersWithContext(): array
     {
         $settings = CustomerFlags::settings(Demo::bid());
-        $models = \App\Models\Customer::where('business_id', Demo::bid())->get()->keyBy('id');
+        $flags = ['notes', 'alert_type', 'alert_reason', 'birth_day', 'birth_month', 'birth_year'];
 
-        return array_map(function (array $row) use ($settings, $models) {
-            $model = $models->get($row['id']);
-            unset($row['notes'], $row['alert_type'], $row['alert_reason'], $row['birth_day'], $row['birth_month'], $row['birth_year']);
-            $row['context'] = $model ? CustomerFlags::context($model, $settings) : ['alert' => null, 'birthday_in' => null, 'note' => null];
+        /*
+         * والسياقُ من الصفّ نفسِه — لا من قراءةٍ ثانيةٍ للعملاء كلِّهم.
+         *
+         * كانت تُحمَّل نماذجُ العملاء كلُّها بكلّ أعمدتها لتُقرأ منها ستّةُ حقول
+         * يحملها صفُّ `Demo::customers` أصلًا — فمتجرٌ بخمسة آلاف عميلٍ يُقرأ مرّتين
+         * عند كلّ فتحٍ للصندوق. والحقولُ الستّة بلا تحويلٍ في النموذج، فما يُقرأ من
+         * الصفّ هو ما كان يُقرأ من القاعدة.
+         */
+        return array_map(function (array $row) use ($settings, $flags) {
+            $model = (new \App\Models\Customer)->forceFill(array_intersect_key($row, array_flip($flags)));
+            $row = array_diff_key($row, array_flip($flags));
+            $row['context'] = CustomerFlags::context($model, $settings);
 
             return $row;
         }, Demo::customers());

@@ -15,6 +15,7 @@ use App\Support\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\ReadsTheTillsCustomers;
 use Tests\TestCase;
 
 /**
@@ -35,6 +36,7 @@ use Tests\TestCase;
  */
 class SupportEntersTheChosenTillNotTheBrowsersTest extends TestCase
 {
+    use ReadsTheTillsCustomers;
     use RefreshDatabase;
 
     private Business $ribbon;
@@ -152,7 +154,7 @@ class SupportEntersTheChosenTillNotTheBrowsersTest extends TestCase
         $this->assertSame($this->ribbonBranch->id, $page['props']['context']['branchId'], 'الصندوقُ على غير فرع الكاشير');
         $this->assertTrue($page['props']['auth']['impersonating'], 'لا شريطَ أحمر');
 
-        $names = collect($page['props']['customers'])->pluck('name');
+        $names = collect($this->tillCustomers())->pluck('name');
         $this->assertContains('CUSTOMER-RIBBON', $names);
         $this->assertNotContains('CUSTOMER-ZAHRA', $names, 'تسرّب زبونُ متجر الجهاز');
 
@@ -296,7 +298,7 @@ class SupportEntersTheChosenTillNotTheBrowsersTest extends TestCase
         [, $second] = $this->till();
         $this->assertSame($seebCashier->id, auth()->id());
         $this->assertSame($this->seeb->id, $second['props']['context']['branchId'], 'بقي فرعُ المتجر الأوّل');
-        $names = collect($second['props']['customers'])->pluck('name');
+        $names = collect($this->tillCustomers())->pluck('name');
         $this->assertContains('CUSTOMER-MULTI', $names);
         $this->assertNotContains('CUSTOMER-RIBBON', $names, 'عبر زبونُ المتجر الأوّل');
 

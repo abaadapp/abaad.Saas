@@ -22,6 +22,7 @@ use App\Support\WhatsAppStatus;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\ReadsTheTillsCustomers;
 use Tests\TestCase;
 
 /**
@@ -43,6 +44,7 @@ use Tests\TestCase;
  */
 class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
 {
+    use ReadsTheTillsCustomers;
     use RefreshDatabase;
 
     private Business $shop;
@@ -337,10 +339,12 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
         ]);
 
         $this->withCookie(\App\Support\PosTerminal::COOKIE, $device->id.'|'.$raw)
-            ->actingAs($this->owner())->get(route('pos.index'))
-            ->assertInertia(fn ($p) => $p
-                ->where('customers.0.language', 'en')
-                ->where('customers.1.language', null));
+            ->actingAs($this->owner())->get(route('pos.index'))->assertOk();
+
+        // ‏والزبائنُ من مزامنتهم (`TillCustomers`) — والقديمُ بلا لغةٍ يصل بلا لغة فيُسأل
+        $rows = array_map(fn ($r) => $this->asTillReadsIt($r), $this->tillCustomers());
+        $this->assertSame('en', $rows[0]['language']);
+        $this->assertNull($rows[1]['language']);
     }
 
     /* ═════════════ جولةُ اللغة على من سُجّل قبل السؤال ═════════════ */

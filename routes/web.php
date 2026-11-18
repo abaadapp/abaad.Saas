@@ -193,6 +193,9 @@ Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('d
  * nginx حيّ لا تقول شيئًا عن قاعدةٍ ساقطة، والمتجر بلا قاعدة متجرٌ ساقط.
  */
 Route::get('/health', HealthController::class)->name('health');
+// ‏مساراتُ واجهةٍ يضمّها المتصفّحُ حين ينتقل إليها بلا تحميل — انظر `config/ziggy.php`
+Route::get('/route-groups/{group}', App\Http\Controllers\RouteGroupController::class)
+    ->where('group', '[a-z]+')->middleware('throttle:60,1,route-groups')->name('routeGroups.show');
 
 /*
  * الموقع المنشور لعارضٍ خارجيّ — بلا مصادقة.
@@ -2193,6 +2196,15 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::get('/receipt/{number}/paper', [PosController::class, 'receiptPaper'])->name('receipt.paper');
     Route::get('/customers', [App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
+    /*
+     * زبائنُ الصندوق خارج صفحته: الجهازُ يحفظهم ويسأل عمّا تغيّر بصماتٍ
+     * (POST لأنّ البصمات تُرسَل في الجسم — ولا يُكتب شيء)، ويسأل عن المختار
+     * منهم حين يُختار. انظر `TillCustomers`.
+     */
+    Route::post('/till-customers/sync', [App\Http\Controllers\Pos\TillCustomerController::class, 'sync'])
+        ->middleware('throttle:60,1,pos-till-customers-sync')->name('tillCustomers.sync');
+    Route::get('/till-customers/{customer}', [App\Http\Controllers\Pos\TillCustomerController::class, 'show'])
+        ->whereNumber('customer')->middleware('throttle:240,1,pos-till-customer')->name('tillCustomers.show');
     // مناسبةٌ جديدة تُضاف من نافذة الدفع نفسها — تُحفظ للمتجر وتظهر في قائمته
     Route::post('/occasions', [PosController::class, 'storeOccasion'])->name('occasions.store');
     /*

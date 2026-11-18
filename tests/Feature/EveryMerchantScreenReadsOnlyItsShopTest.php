@@ -238,6 +238,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'pos.receipt.paper' => ['number' => 'order_number'],
         'pos.receipt.pdf' => ['number' => 'order_number'],
         'pos.receipts.show' => ['number' => 'order_number'],
+        // ‏صفُّ عميلٍ يُسأل عنه حين يُختار في الصندوق — `TillCustomers`
+        'pos.tillCustomers.show' => ['customer' => 'customer'],
     ];
 
     /**

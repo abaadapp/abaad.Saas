@@ -6,6 +6,8 @@ import type { ComponentType } from 'react';
 import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
 import { dropBootPayload, followIdentity } from '@/lib/identity-history';
+import { forgetOtherShops } from '@/lib/till-customers-store';
+import { ensureRoutesFor, startRouteGroups } from '@/lib/route-groups';
 import { markTouchDevice } from '@/lib/touch';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Abad POS';
@@ -34,17 +36,41 @@ function syncDirection(props: Record<string, unknown>): void {
 // كل صفحات Inertia تُحمّل كسولًا — لا تدخل الحزمة الأولى إلا عند زيارتها
 const pages = import.meta.glob<{ default: ComponentType }>('./Pages/**/*.tsx');
 
+/*
+ * ═══ وجدولُ المسارات مجموعةُ الواجهة — ويُضمّ إليه ما تحتاجه صفحةٌ من غيرها ═══
+ *
+ * انظر `lib/route-groups.ts`. وآخرُ رابطٍ طُلب يُحفظ: إن تعذّر جلبُ مجموعة صفحةٍ
+ * انتُقل إليها بتحميلٍ كامل (فيكتب الخادمُ جدولَها) بدل أن تُرسم وتنادي اسمًا غائبًا.
+ */
+startRouteGroups();
+let lastVisit: string | null = null;
+router.on('start', (event) => {
+    lastVisit = event.detail.visit.url.href;
+});
+
 createInertiaApp({
     title: (title) => (title ? `${title} — ${appName}` : appName),
 
-    resolve: async (name) => {
+    resolve: async (name, response) => {
         const page = pages[`./Pages/${name}.tsx`];
 
         if (!page) {
             throw new Error(`صفحة Inertia غير موجودة: ./Pages/${name}.tsx`);
         }
 
-        return (await page()).default;
+        const [module] = await Promise.all([
+            page(),
+            /*
+             * ‏ورابطُ الصفحة التي وصلت لا رابطُ الطلب: طلبٌ بـPOST (الخروج،
+             * الدخول) يُحوَّل إلى صفحةٍ أخرى، وفتحُ رابطه بـGET يُخطئ.
+             */
+            ensureRoutesFor(name).catch(() => {
+                window.location.assign(response?.url ?? lastVisit ?? window.location.href);
+                return new Promise<never>(() => {});
+            }),
+        ]);
+
+        return module.default;
     },
 
     setup({ el, App, props }) {
@@ -67,6 +93,9 @@ createInertiaApp({
             });
             // وسجلُّ المتصفّح لا يعرض لمن جلس ما رآه من قبله — انظر `lib/identity-history`
             followIdentity(props.initialPage.props as Record<string, unknown>, router);
+            // ونسخةُ زبائن الصندوق في الجهاز لا تبقى لمتجرٍ غير متجر الجالس — انظر `lib/till-customers-store`
+            forgetOtherShops(props.initialPage.props as Record<string, unknown>);
+            router.on('success', (event) => forgetOtherShops(event.detail.page.props as Record<string, unknown>));
             // وقد قُرئت الصفحةُ الأولى — فلا تبقى خصائصُها في مصدر المستند
             dropBootPayload();
             /*

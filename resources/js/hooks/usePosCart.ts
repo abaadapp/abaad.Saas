@@ -5,6 +5,7 @@ import { loyaltyCap, loyaltyPercentOf, loyaltyQuote, loyaltyWorth, phpRound, typ
 import { phoneRefusal } from '@/lib/customer-phone';
 import { tillTax } from '@/lib/vat-lines';
 import { useTranslate } from '@/lib/i18n';
+import { freshCustomer, loadCache, syncCustomers, toPosCustomer } from '@/lib/till-customers';
 import type { Currency } from '@/types';
 
 /* ------------------------------- الأنواع ------------------------------- */
@@ -224,6 +225,15 @@ export interface OutboxEntry {
     payload: Record<string, unknown>;
     at: number;
     /**
+     * متجرُ البيعة — يُكتب منذ صار للطابور جهازٌ تتبدّل عليه المتاجر.
+     *
+     * الطابورُ مفتاحٌ واحد في الجهاز، وكان يُرسَل كلُّه بجلسة من فتح الصندوق:
+     * بيعةُ متجرٍ تُرسَل بجلسة متجرٍ آخر فيردّها الخادمُ (صنفٌ ليس منه) ويُسقطها
+     * الطابور — بيعةٌ قُبض ثمنُها تضيع. فتُرسَل بيعةُ كلّ متجرٍ من صندوقه وحده،
+     * وتبقى بيعاتُ غيره محفوظةً حتى يُفتح صندوقُه. والقديمُ بلا متجر يُرسَل كما كان.
+     */
+    business?: number;
+    /**
      * ‏بيعةٌ ردّها الخادمُ لسببٍ في بياناتها (422) — نفد المخزون، أو انتهى
      * الكوبون، أو أُوقف العميل. اكتملت عند الصندوق وقُبض ثمنُها، فلا تُحذف:
      * تبقى على الجهاز بسببها، ولا تُرسل وحدَها حتى يُعاد إرسالُها باليد.
@@ -387,7 +397,15 @@ export function whatBlocksPayment(cart: {
 
 interface Options {
     products: PosProduct[];
-    customers: PosCustomer[];
+    /** قائمةٌ جاهزة — للاختبارات. والصندوقُ يمرّر `customersScope` فتُحمَّل من الجهاز وتُزامَن */
+    customers?: PosCustomer[];
+    /**
+     * متجرُ نسخة الزبائن في الجهاز (`TillCustomers`) — يقوله الخادم.
+     *
+     * بوجوده تُقرأ القائمةُ من نسخة الجهاز في الحال، ثمّ يُسأل الخادمُ عمّا تغيّر
+     * منذها. وبلا اتّصال تبقى النسخةُ ويُعاد السؤال حين يعود.
+     */
+    customersScope?: number | null;
     coupons: unknown[];
     loyalty: LoyaltySettings;
     vat?: VatSettings;
@@ -409,7 +427,7 @@ interface Options {
  * بنفس المعادلات والسلوك: الخصم، الضريبة، سقف نقاط الولاء، وطابور
  * الانقطاع (outbox) الذي يكتب البيع محليًا أولًا ثم يرفعه.
  */
-export function usePosCart({ products, customers: initialCustomers, loyalty, vat, resume, currency, onToast, onSynced }: Options) {
+export function usePosCart({ products, customers: initialCustomers, customersScope = null, loyalty, vat, resume, currency, onToast, onSynced }: Options) {
     /*
      * إشعارات الكاشير تُترجَم هنا لا في موضع العرض.
      *
@@ -439,8 +457,96 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      * الاستبدال. والنقاط مالٌ فعلي.
      */
     const [customerId, setCustomerId] = useState<number | null>(null);
-    const [customers, setCustomers] = useState<PosCustomer[]>(initialCustomers);
+    const [customers, setCustomers] = useState<PosCustomer[]>(initialCustomers ?? []);
     const [customerSearch, setCustomerSearch] = useState('');
+    /**
+     * حالُ القائمة: `loading` لم يصل شيء بعد، `cached` نسخةُ الجهاز ولم يُجب
+     * الخادم، `ready` زامنها الخادم، `offline` لا نسخةَ ولا جواب.
+     */
+    const [customersStatus, setCustomersStatus] = useState<'loading' | 'cached' | 'ready' | 'offline'>(
+        customersScope === null ? 'ready' : 'loading',
+    );
+    /*
+     * ═══ وما تغيّر هنا لا تمحوه مزامنةٌ متأخّرة ═══
+     *
+     * رصيدٌ ردّه الخادمُ بعد بيعة، ولغةٌ اختيرت، وعميلٌ أُضيف، وصفٌّ طازجٌ
+     * سُئل عنه عند اختياره — كلُّها أحدثُ من جوابِ مزامنةٍ بدأت قبلها. فتُحفظ
+     * بوقتها، وتُعاد فوق ما يصل من مزامنةٍ أقدم منها.
+     */
+    const touched = useRef(new Map<number, { at: number; patch?: Partial<PosCustomer>; added?: PosCustomer; gone?: boolean }>());
+    const applyTouched = useCallback((list: PosCustomer[], since = 0): PosCustomer[] => {
+        let out = list;
+        for (const [id, edit] of touched.current) {
+            if (edit.at < since) continue;
+            if (edit.gone) {
+                out = out.filter((c) => c.id !== id);
+            } else if (out.some((c) => c.id === id)) {
+                if (edit.patch) out = out.map((c) => (c.id === id ? { ...c, ...edit.patch } : c));
+            } else if (edit.added) {
+                out = [{ ...edit.added, ...(edit.patch ?? {}) }, ...out];
+            }
+        }
+        return out;
+    }, []);
+    const patchCustomer = useCallback((id: number, patch: Partial<PosCustomer>) => {
+        const was = touched.current.get(id);
+        touched.current.set(id, { ...was, at: Date.now(), patch: { ...(was?.patch ?? {}), ...patch }, gone: false });
+        setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    }, []);
+
+    /*
+     * ═══ القائمةُ من الجهاز أوّلًا، ثمّ ما تغيّر من الخادم ═══
+     *
+     * تُقرأ نسخةُ الجهاز فيبحث الكاشيرُ في الحال، ثمّ يُسأل الخادمُ عمّا تغيّر
+     * (`syncCustomers`). ولا جواب: تبقى النسخة ويُعاد السؤالُ حين يعود الاتّصال.
+     * وجوابٌ ناقص (دلوٌ لم تأتِ صفوفُه) يُسأل عنه كاملًا مرّةً — لا يُوهَم بنسخة.
+     */
+    const customersSynced = useRef(false);
+    const customersCache = useRef<Awaited<ReturnType<typeof loadCache>> | undefined>(undefined);
+    const syncingCustomers = useRef(false);
+    const runCustomerSync = useCallback(async () => {
+        if (customersScope === null || customersSynced.current || syncingCustomers.current) return;
+        syncingCustomers.current = true;
+        try {
+            if (customersCache.current === undefined) {
+                customersCache.current = await loadCache(customersScope);
+                const cachedRows = customersCache.current ? [...customersCache.current.values()].flatMap((b) => b.rows) : [];
+                if (cachedRows.length) {
+                    cachedRows.sort((a, b) => a.id - b.id);
+                    setCustomers(applyTouched(cachedRows.map(toPosCustomer)));
+                    setCustomersStatus('cached');
+                }
+            }
+            const startedAt = Date.now();
+            let result = await syncCustomers(customersScope, customersCache.current ?? null);
+            if (!result.complete) result = await syncCustomers(customersScope, customersCache.current ? new Map() : null);
+            customersSynced.current = true;
+            /*
+             * ‏ونسخةُ الدلاء التي قُرئت من الجهاز لا تبقى في الذاكرة بجانب القائمة:
+             * كُتب ما تغيّر في الجهاز، والفتحُ القادم يقرؤه من هناك. نسختان من
+             * خمسة آلاف زبونٍ في صفحةٍ مفتوحةٍ طوال الوردية لا يحتاجهما أحد.
+             */
+            customersCache.current = null;
+            setCustomers(applyTouched(result.rows.map(toPosCustomer), startedAt));
+            setCustomersStatus('ready');
+        } catch {
+            setCustomersStatus((now) => (now === 'loading' || now === 'offline' ? 'offline' : now));
+        } finally {
+            syncingCustomers.current = false;
+        }
+    }, [customersScope, applyTouched]);
+
+    useEffect(() => {
+        if (customersScope === null) return;
+        void runCustomerSync();
+        const again = () => void runCustomerSync();
+        window.addEventListener('online', again);
+        const beat = setInterval(again, 15000);
+        return () => {
+            window.removeEventListener('online', again);
+            clearInterval(beat);
+        };
+    }, [customersScope, runCustomerSync]);
 
     const [barcode, setBarcode] = useState('');
 
@@ -473,6 +579,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
     const [online, setOnline] = useState(() => navigator.onLine);
     const [pending, setPending] = useState<OutboxEntry[]>(readOutbox);
+    const ownEntry = useCallback(
+        (e: OutboxEntry) => customersScope === null || e.business === undefined || e.business === customersScope,
+        [customersScope],
+    );
     /** ‏ردّ الخادمُ بأنّ الجلسة انتهت (419) أو لا دخول (401) — الطابورُ ينتظر دخولًا جديدًا */
     const [sessionLost, setSessionLost] = useState(false);
     const flushing = useRef(false);
@@ -723,8 +833,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      */
     const needsLanguage = selectedCustomer !== null && !selectedCustomer.language;
     const setCustomerLanguage = useCallback((id: number, language: string) => {
-        setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, language } : c)));
-    }, []);
+        patchCustomer(id, { language });
+    }, [patchCustomer]);
 
     /*
      * الزبونُ الموقوف — يقوله الخادم في `context.alert` لا الشاشة.
@@ -1083,12 +1193,45 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
     /* ------------------------------ العملاء ------------------------------ */
 
+    const chosenId = useRef<number | null>(null);
     const selectCustomer = useCallback((name: string, id: number | null = null) => {
         setCustomer(name);
         setCustomerId(id);
         setCustomerSearch('');
         setBlockOverrideReason('');
-    }, []);
+        chosenId.current = id;
+
+        /*
+         * ═══ والمختارُ يُسأل عنه كما هو الآن — ولا يُنتظر ═══
+         *
+         * نقاطُه وحظرُه ولغتُه قد تغيّرت منذ فُتح الصندوق (بيعةٌ في جهازٍ آخر،
+         * أو تنبيهٌ كُتب في اللوحة). فيُسأل الخادم بلا أن يتوقّف البيع: يصل
+         * الجوابُ فيُكتب فوق الصفّ، ولا يصل (لا اتّصال) فيبقى ما في الجهاز.
+         * وعميلٌ حُذف منذ فُتح الصندوق يُرفع من القائمة، ويعود البيعُ نقديًّا
+         * إن كان ما زال المختار — لا يُكتب بيعٌ على عميلٍ لم يعد موجودًا.
+         */
+        if (id === null || customersScope === null || !navigator.onLine) return;
+
+        freshCustomer(id)
+            .then((row) => {
+                if (row === null) {
+                    touched.current.set(id, { at: Date.now(), gone: true });
+                    setCustomers((prev) => prev.filter((c) => c.id !== id));
+                    if (chosenId.current === id) {
+                        setCustomer(CASH_CUSTOMER);
+                        setCustomerId(null);
+                        chosenId.current = null;
+                        onToast(t('هذا العميل لم يعد موجودًا — عاد البيع نقديًّا'), 'warning');
+                    }
+                    return;
+                }
+                const fresh = toPosCustomer(row);
+                patchCustomer(id, { ...fresh, context: fresh.context });
+            })
+            .catch(() => {
+                /* لا اتّصال أو خادمٌ لم يُجب — يبقى ما في الجهاز، والبيعُ لا ينتظر */
+            });
+    }, [customersScope, onToast, patchCustomer, t]);
 
     /** يضيف عميلًا ثم يحدّده للطلب الجاري بلا إعادة تحميل تُفقد السلة */
     const addCustomer = useCallback(
@@ -1121,10 +1264,9 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                     return false;
                 }
                 const c = data.customer;
-                setCustomers((prev) => [
-                    { id: c.id, name: c.name, name_en: c.name_en ?? null, label: c.label || c.name, phone: c.phone || '', points: 0, language: c.language ?? null },
-                    ...prev,
-                ]);
+                const added: PosCustomer = { id: c.id, name: c.name, name_en: c.name_en ?? null, label: c.label || c.name, phone: c.phone || '', points: 0, language: c.language ?? null };
+                touched.current.set(c.id, { at: Date.now(), added });
+                setCustomers((prev) => [added, ...prev.filter((x) => x.id !== c.id)]);
                 setCustomer(c.name);
                 setCustomerId(c.id);
                 setCustomerSearch('');
@@ -1240,7 +1382,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         // أعاد إرسال الطلب نفسه — يردّه الخادم مقبولًا لتكرّر المعرّف، فيظهر
         // للكاشير «تمت مزامنة طلب مُعلّق» في بيعة عادية متصلة.
         // وما ردّه الخادمُ لسببٍ في بياناته ينتظر يدًا — لا يُعاد إرسالُه كلَّ نبضة
-        const queue = readOutbox().filter((e) => !inFlight.current.has(e.uuid) && !e.held);
+        const queue = readOutbox().filter((e) => !inFlight.current.has(e.uuid) && ownEntry(e) && !e.held);
         if (!queue.length) return;
 
         flushing.current = true;
@@ -1276,7 +1418,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         } finally {
             flushing.current = false;
         }
-    }, [sendOne, savePending, onToast, onSynced]);
+    }, [sendOne, savePending, onToast, onSynced, ownEntry]);
 
     /** ‏إعادةُ إرسال بيعةٍ رُدّت، باليد وبمعرّفها نفسِه — فإن كان الخادمُ كتبها ردّ فاتورتَها ولم يكتبها ثانيةً */
     const retryHeld = useCallback(
@@ -1378,7 +1520,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 ...(details ?? {}),
             };
 
-            const queue = [...readOutbox(), { uuid: id, payload, at: Date.now() }];
+            const queue = [...readOutbox(), { uuid: id, payload, at: Date.now(), ...(customersScope !== null ? { business: customersScope } : {}) }];
             savePending(queue);
 
             // مُعلَّم كجارٍ حتى لا يلتقطه نبض الطابور ويُرسله مرّة ثانية
@@ -1418,9 +1560,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                  * ومطابقةٌ بالاسم تُصيب جاره.
                  */
                 if (customerId !== null && typeof res.balance === 'number') {
-                    setCustomers((prev) =>
-                        prev.map((c) => (c.id === customerId ? { ...c, points: res.balance as number } : c)),
-                    );
+                    patchCustomer(customerId, { points: res.balance });
                 }
 
                 onSynced?.();
@@ -1435,7 +1575,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             if (changed && res.loyalty) {
                 const offer = res.loyalty;
                 if (customerId !== null) {
-                    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, points: offer.balance } : c)));
+                    patchCustomer(customerId, { points: offer.balance });
                 }
                 setLiveLoyalty(offer.settings);
                 setRedeemActive(false);
@@ -1470,7 +1610,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 loyaltyChanged: changed,
             };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, savePending, sendOne, onToast, onSynced, customersScope, patchCustomer],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -1517,11 +1657,13 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         couponCode, coupon, couponLoading,
         // سببُ الرفض — أو أنّ السلّة نزلت تحت الحدّ ولم تهدأ بعد
         couponError: couponError || (coupon && couponShort ? belowMinimum(coupon) : ''),
-        redeemActive, online,
-        // ما ينتظر الإرسال وحدَه؛ وما ردّه الخادمُ باقٍ على الجهاز في قائمته
-        pendingCount: pending.filter((e) => !e.held).length,
-        heldSales: pending.filter((e) => e.held),
+        redeemActive, online, customersStatus,
+        // ما ينتظر الإرسال وحدَه من بيعات هذا المتجر؛ وما ردّه الخادمُ باقٍ على الجهاز في قائمته
+        pendingCount: pending.filter((e) => ownEntry(e) && !e.held).length,
+        heldSales: pending.filter((e) => ownEntry(e) && e.held),
         sessionLost, retryHeld,
+        // ‏بيعاتٌ معلّقةٌ لمتجرٍ آخر على هذا الجهاز — محفوظةٌ لا تُرسَل من هنا
+        foreignPendingCount: pending.filter((e) => !ownEntry(e)).length,
         customerLabel, isWalkIn,
         // المحسوبات
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,

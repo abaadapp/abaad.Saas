@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -37,9 +37,8 @@ import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDi
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import CustomOrderCard from '@/Pages/Pos/partials/CustomOrderCard';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
-import ProductDescriptionButton from '@/Pages/Pos/partials/ProductDescriptionButton';
+import ProductGrid from '@/Pages/Pos/partials/ProductGrid';
 import { ADDONS_TAB, AddonsBar, AddonsSection, addonsLayoutOf, addonsView, shownAddons } from '@/Pages/Pos/partials/PosAddons';
-import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -65,7 +64,13 @@ interface Props {
     categories: { value: string; label: string }[];
     /** المواسمُ الجارية اليوم — مرشِّحٌ فوق الأصناف المحمَّلة، لا مصدرٌ لها */
     seasons?: { id: number; name: string; product_ids: number[] }[];
-    customers: (PosCustomer & { avatar?: string | null })[];
+    /**
+     * متجرُ نسخة الزبائن في الجهاز — والزبائنُ أنفسُهم لا يأتون مع الصفحة:
+     * يُقرؤون من الجهاز ويُزامَنون بما تغيّر (`lib/till-customers.ts`).
+     */
+    customersScope?: number | null;
+    /** قائمةٌ جاهزة بدل النسخة — لا يرسلها الخادم؛ تمرّرها الاختبارات */
+    customers?: PosCustomer[];
     addons: Addon[];
     /** كيف تُعرض الإضافات — شريطًا أم قسمًا كاملًا. انظر `PosAddonsLayout` */
     addonsLayout?: string;
@@ -111,7 +116,7 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, seasons = [], customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
+    const { products: serverProducts, categories, seasons = [], customersScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -180,6 +185,7 @@ export default function PosIndex() {
     const cart = usePosCart({
         products: cartProducts,
         customers,
+        customersScope: customers ? null : customersScope,
         coupons,
         loyalty: settings,
         vat: settings.vat,
@@ -291,6 +297,14 @@ export default function PosIndex() {
         });
     };
 
+    /*
+     * ‏ونقرةُ البطاقة بمرجعٍ ثابت — فلا تُعاد رسمُ الشبكة كلِّها (ألفا بطاقة) مع كلّ
+     * حرفٍ في بحث العميل أو بندٍ في السلّة. والمنادى أحدثُ `pick` دائمًا.
+     */
+    const pickRef = useRef(pick);
+    pickRef.current = pick;
+    const onPick = useCallback((p: (typeof products)[number]) => pickRef.current(p), []);
+
     const visibleProducts = useMemo(() => {
         // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
         const needle = q.trim().toLowerCase();
@@ -338,6 +352,12 @@ export default function PosIndex() {
                     </motion.div>
                 )}
             </AnimatePresence>
+            {/* بيعاتٌ معلّقةٌ لمتجرٍ آخر دخل هذا الجهاز — محفوظةٌ، تُرسَل من صندوق متجرها */}
+            {cart.foreignPendingCount > 0 && (
+                <p className="mx-auto mt-2 w-fit rounded-full border border-[#fde68a] bg-[#fffbeb] px-3 py-1 text-xs font-medium text-[#b45309]" data-testid="foreign-pending">
+                    {t('على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها', { n: cart.foreignPendingCount })}
+                </p>
+            )}
             {/* ‏وما ردّه الخادمُ باقٍ على الجهاز بسببه — لا يُحذف، ويُعاد باليد */}
             {cart.heldSales.length > 0 && (
                 <button
@@ -564,48 +584,7 @@ export default function PosIndex() {
                                         onClick={openCustom}
                                     />
                                 )}
-                                {visibleProducts.map((p) => (
-                                    // والوصفُ زرٌّ أخٌ للبطاقة لا داخلها: زرٌّ في زرٍّ لا يُضغط وحده
-                                    <div key={p.id} className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                pick(p)
-                                            }
-                                            className="group size-full select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow-md"
-                                        >
-                                            <div className="relative aspect-square overflow-hidden bg-gray-50">
-                                                {p.image ? (
-                                                    <img
-                                                        src={p.thumb || p.image}
-                                                        alt={p.label}
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                                    />
-                                                ) : (
-                                                    <span className="flex size-full items-center justify-center text-3xl">📦</span>
-                                                )}
-                                                <span className="absolute end-2 top-2">
-                                                    <Badge status={p.stock_status} />
-                                                </span>
-                                            </div>
-                                            <div className="p-3">
-                                                <h3 className="truncate text-sm font-semibold text-gray-800">{p.label}</h3>
-                                                <p className="mt-0.5 text-xs text-gray-400">
-                                                    {p.tracks_stock === false ? t('غير مرتبط بالمخزون') : `${t('المتوفر:')} ${p.qty}`}
-                                                </p>
-                                                <div className="mt-2 flex items-center justify-between gap-1">
-                                                    <p className="text-sm font-bold text-gray-900">{money(p.price)}</p>
-                                                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-900 transition-colors group-hover:bg-gray-900 group-hover:text-white">
-                                                        <Plus className="size-4" />
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </button>
-                                        <ProductDescriptionButton name={p.label} text={p.pos_description} />
-                                    </div>
-                                ))}
+                                <ProductGrid products={visibleProducts} currency={currency} onPick={onPick} />
                             </div>
                         )}
                     </div>
@@ -681,7 +660,16 @@ export default function PosIndex() {
                                                         )}
                                                     </button>
                                                 ))}
-                                                {cart.customerSearch.trim() && cart.filteredCustomers.length === 0 && (
+                                                {/* القائمةُ لم تصل بعد — لا «لا نتائج» عن عميلٍ موجود */}
+                                                {cart.customers.length === 0 && cart.customersStatus === 'loading' && (
+                                                    <p className="px-4 py-3 text-center text-xs text-gray-400" data-testid="customers-loading">{t('جارٍ تحميل العملاء…')}</p>
+                                                )}
+                                                {cart.customers.length === 0 && cart.customersStatus === 'offline' && (
+                                                    <p className="px-4 py-3 text-center text-xs text-amber-700" data-testid="customers-offline">
+                                                        {t('قائمة العملاء لم تصل بعد — تُحمَّل حين يعود الاتصال، والبيع النقدي متاح')}
+                                                    </p>
+                                                )}
+                                                {cart.customerSearch.trim() && cart.filteredCustomers.length === 0 && cart.customers.length > 0 && (
                                                     <p className="px-4 py-3 text-center text-xs text-gray-400">{t('لا نتائج')}</p>
                                                 )}
                                             </div>

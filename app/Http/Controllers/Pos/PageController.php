@@ -158,8 +158,12 @@ class PageController extends Controller
             'categories' => Demo::posCategories(),
             /* المواسمُ الجارية — مرشِّحٌ فوق ما حُمّل، لا يُضيف صنفًا ولا يُجيز بيعَه */
             'seasons' => Seasons::forPos(Demo::bid()),
-            // ومع كلّ زبونٍ ما يُقال عنه للكاشير — بالإعدادات، وبلا ملاحظةٍ أُطفئت
-            'customers' => $this->customersWithContext(),
+            /*
+             * والزبائنُ لا يُرسَلون مع الصفحة: يحفظهم الجهازُ ويُزامِنهم بما تغيّر
+             * (`pos.tillCustomers.sync` — `TillCustomers`). وهذا متجرُ نسختهم:
+             * نسخةٌ في الجهاز لمتجرٍ غيره تُمحى قبل أن تُقرأ.
+             */
+            'customersScope' => Demo::bid(),
             'addons' => Demo::addons(),
             /*
              * وكيف تُعرض — شريطًا (الافتراض) أم قسمًا كاملًا. صفٌّ واحد،
@@ -363,8 +367,16 @@ class PageController extends Controller
 
     public function customers(): Response
     {
+        /*
+         * أعمدةُ الشاشة وحدها (`Pos/Customers.tsx`): الاسمُ والهاتفُ والبريدُ
+         * للبحث، والطلباتُ والإنفاقُ وآخرُ فاتورةٍ والنقاطُ والإشاراتُ للجدول.
+         * والعنوانُ والرقمُ الضريبيُّ والفرعُ واللغةُ وتاريخُ آخرِ شراءٍ لا تقرؤها —
+         * تبقى لملفّ العميل في اللوحة.
+         */
+        $shown = array_flip(['id', 'name', 'name_en', 'label', 'phone', 'email', 'orders', 'total_spent', 'last_invoice', 'last_invoice_total', 'points', 'context']);
+
         return Inertia::render('Pos/Customers', [
-            'customers' => $this->customersWithContext(),
+            'customers' => array_map(fn (array $row) => array_intersect_key($row, $shown), $this->customersWithContext()),
         ]);
     }
 

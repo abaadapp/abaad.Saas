@@ -29,6 +29,7 @@ import {
 import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
+import HeldSalesDialog from '@/Pages/Pos/partials/HeldSalesDialog';
 import LanguageChoice from '@/Components/LanguageChoice';
 import MovementForm, { type Movement } from '@/Components/MovementForm';
 import CustomerContextCard from '@/Pages/Pos/partials/CustomerContextCard';
@@ -127,6 +128,7 @@ export default function PosIndex() {
     const seasonIds = useMemo(() => new Set(seasons.find((s) => s.id === season)?.product_ids ?? []), [seasons, season]);
     const [q, setQ] = useState('');
     const [payOpen, setPayOpen] = useState(false);
+    const [heldOpen, setHeldOpen] = useState(false);
     const [newCustomerOpen, setNewCustomerOpen] = useState(false);
     const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
     const [movementOpen, setMovementOpen] = useState(false);
@@ -314,19 +316,43 @@ export default function PosIndex() {
                         initial={{ opacity: 0, y: -12 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -12 }}
+                        data-testid="outbox-status"
                         className={cn(
                             'fixed start-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold shadow-lg rtl:translate-x-1/2',
-                            cart.online
+                            cart.online && !cart.sessionLost
                                 ? 'border border-[#fde68a] bg-[#fffbeb] text-[#b45309]'
                                 : 'bg-[#dc2626] text-white',
                         )}
                     >
                         {!cart.online
                             ? t('لا اتصال — البيع مستمر ويُحفَظ محليًا')
-                            : `${t('جارٍ مزامنة الطلبات المعلّقة')} (${cart.pendingCount})`}
+                            : cart.sessionLost
+                              ? `${t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز')} (${cart.pendingCount})`
+                              : `${t('جارٍ مزامنة الطلبات المعلّقة')} (${cart.pendingCount})`}
+                        {cart.online && cart.sessionLost && (
+                            // ‏الطلباتُ في الجهاز لا في الصفحة: إعادةُ تحميلها تأخذ إلى الدخول ولا تمسّها
+                            <button type="button" className="rounded-full bg-white/20 px-2.5 py-0.5 underline" onClick={() => window.location.reload()}>
+                                {t('سجّل الدخول')}
+                            </button>
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
+            {/* ‏وما ردّه الخادمُ باقٍ على الجهاز بسببه — لا يُحذف، ويُعاد باليد */}
+            {cart.heldSales.length > 0 && (
+                <button
+                    type="button"
+                    data-testid="held-sales-open"
+                    onClick={() => setHeldOpen(true)}
+                    className={cn(
+                        'fixed start-1/2 z-50 -translate-x-1/2 rounded-full border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm font-bold text-[#b91c1c] shadow-lg rtl:translate-x-1/2',
+                        !cart.online || cart.pendingCount > 0 ? 'top-14' : 'top-3',
+                    )}
+                >
+                    {t(':n طلب معلّق رُفض — راجعه', { n: cart.heldSales.length })}
+                </button>
+            )}
+            <HeldSalesDialog open={heldOpen} onOpenChange={setHeldOpen} sales={cart.heldSales} onRetry={cart.retryHeld} money={money} />
 
             {/*
                 عمودان من ٧٦٨ بكسل لا من ١٠٢٤.

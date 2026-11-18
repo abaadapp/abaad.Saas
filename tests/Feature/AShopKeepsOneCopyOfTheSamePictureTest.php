@@ -125,7 +125,7 @@ class AShopKeepsOneCopyOfTheSamePictureTest extends TestCase
 
         $this->assertCount(1, $this->stored(), 'ملفٌّ واحد على القرص');
         $this->assertSame($this->mainOf($rose), $this->mainOf($tulip));
-        $this->assertStringContainsString('موجودةٌ من قبل في «Rose»', $this->toast());
+        $this->assertStringContainsString('رُفعت من قبل إلى «Rose»', $this->toast());
     }
 
     public function test_the_same_pixels_in_another_file_are_the_same_picture(): void
@@ -164,7 +164,7 @@ class AShopKeepsOneCopyOfTheSamePictureTest extends TestCase
 
         $this->assertCount(2, $this->stored());
         $this->assertNotSame($this->mainOf($rose), $this->mainOf($tulip));
-        $this->assertStringNotContainsString('موجودة', $this->toast());
+        $this->assertStringNotContainsString('من قبل', $this->toast());
     }
 
     public function test_one_name_with_another_content_is_another_picture(): void
@@ -201,7 +201,7 @@ class AShopKeepsOneCopyOfTheSamePictureTest extends TestCase
         $this->assertCount(2, $this->stored(), 'لكلّ متجرٍ ملفُّه');
         $this->assertNotSame($this->mainOf($mine), $this->mainOf($theirs));
         $this->assertStringNotContainsString('Rose', $this->toast(), 'لا يُقال له شيءٌ عن متجرٍ غيره');
-        $this->assertStringNotContainsString('موجودة', $this->toast());
+        $this->assertStringNotContainsString('من قبل', $this->toast());
 
         // ‏وفهرسُ كلّ متجرٍ فيه صورُه وحدها
         $index = fn (Business $b) => array_keys((array) json_decode((string) Storage::disk('local')->get('image-fingerprints/'.$b->id.'/index.json'), true));

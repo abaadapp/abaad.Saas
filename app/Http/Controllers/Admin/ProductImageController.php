@@ -110,6 +110,9 @@ class ProductImageController extends Controller
             ProductImages::forgetFiles($saved);
 
             throw $e;
+        } finally {
+            // ‏وما أُعيد استعمالُه حُجز حتى تُكتب الصفوف (`ImageFingerprints::claim`) — يُرفع الحجز الآن
+            \App\Support\ImageFingerprints::settle(array_column($found, 'path'));
         }
 
         if ($paths === []) {

@@ -422,6 +422,9 @@ class ProductController extends Controller
             ProductImages::forgetFiles($paths);
 
             throw $e;
+        } finally {
+            // ‏وما أُعيد استعمالُه حُجز حتى تُكتب الصفوف (`ImageFingerprints::claim`) — يُرفع الحجز الآن
+            \App\Support\ImageFingerprints::settle(array_column($found, 'path'));
         }
 
         Activity::log('created', 'أضاف منتجًا: '.$data['name']);

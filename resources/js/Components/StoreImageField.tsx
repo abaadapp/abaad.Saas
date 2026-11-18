@@ -169,7 +169,7 @@ export default function StoreImageField({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [meta, setMeta] = useState<{ w: number; h: number } | null>(null);
-    /** الصورةُ في موقع المتجر من قبل — فاستُعملت نفسُها (`ImageFingerprints`) */
+    /** الصورةُ رُفعت إلى موقع المتجر من قبل — فاستُعملت نسختُها المحفوظة (`ImageFingerprints`) */
     const [found, setFound] = useState(false);
     const max = Number((usePage().props as { uploadMax?: number }).uploadMax ?? 10 * 1024 * 1024);
     const mb = (max / 1024 / 1024).toFixed(1).replace(/\.0$/, '');
@@ -374,7 +374,7 @@ export default function StoreImageField({
                         )}
                         {value && found && (
                             <span className="text-[11px] text-[#0f766e]" data-testid={`${id}-found`}>
-                                {t('هذه الصورة في موقعك من قبل — استُعملت نفسُها ولم تُحفظ نسخةٌ ثانية.')}
+                                {t('هذه الصورة رُفعت إلى موقعك من قبل — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.')}
                             </span>
                         )}
                     </div>

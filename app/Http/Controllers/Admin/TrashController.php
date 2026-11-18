@@ -491,8 +491,9 @@ class TrashController extends Controller
         foreach ($files as $file) {
             // رابطٌ خارجيّ لا ملفّ على قرصنا — لا يُمَسّ
             // ‏ونسخُه الأخفّ معه (`ImageVariants`) — لا تبقى نسخةٌ بلا أصل
+            // ‏ويُعاد السؤالُ تحت القفل: منتجٌ آخر أخذ الصورةَ نفسَها بين السؤال والمحو يُبقيها
             if ($file && ! str_starts_with($file, 'http')) {
-                ProductImages::forgetFile($file);
+                ProductImages::forgetFile($file, fn () => in_array($file, ProductImages::files($row), true));
             }
         }
 

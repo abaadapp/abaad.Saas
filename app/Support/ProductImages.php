@@ -286,6 +286,8 @@ class ProductImages
 
             if ($path === null) {
                 self::forgetFiles($fresh);
+                // ‏وما حُجز لهذه الدفعة يُرفع حجزُه — لا يُكتب له صفّ
+                ImageFingerprints::settle(array_column($found, 'path'));
 
                 throw ValidationException::withMessages([
                     'images' => __('تعذّر حفظ الصورة «:name» — لم يُحفظ شيء، فحاول مرّةً أخرى.', [
@@ -337,9 +339,9 @@ class ProductImages
         $owner = self::ownerOf($businessId, $first['path'], $productId);
 
         $line = match (true) {
-            $owner === null => __('صورةٌ اخترتَها موجودةٌ في متجرك من قبل — استُعملت نفسُها ولم تُحفظ نسخةٌ ثانية.'),
-            $first['kind'] === ImageFingerprints::PIXELS => __('الصورة «:name» هي صورةُ «:product» نفسُها بصيغةٍ أخرى — استُعملت الموجودة ولم تُحفظ نسخةٌ ثانية.', ['name' => $first['name'], 'product' => $owner]),
-            default => __('الصورة «:name» موجودةٌ من قبل في «:product» — استُعملت نفسُها ولم تُحفظ نسخةٌ ثانية.', ['name' => $first['name'], 'product' => $owner]),
+            $owner === null => __('صورةٌ اخترتَها رُفعت إلى متجرك من قبل — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.'),
+            $first['kind'] === ImageFingerprints::PIXELS => __('الصورة «:name» هي صورةُ «:product» نفسُها بصيغةٍ أخرى — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.', ['name' => $first['name'], 'product' => $owner]),
+            default => __('الصورة «:name» رُفعت من قبل إلى «:product» — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.', ['name' => $first['name'], 'product' => $owner]),
         };
 
         return count($found) > 1
@@ -383,13 +385,26 @@ class ProductImages
         $match = null;
         $print = $businessId === null ? null : ($print ?? ImageFingerprints::of((string) $file->getRealPath(), $original));
 
+        /*
+         * والموجودةُ تُحجز قبل أن يُعتمد عليها (`ImageFingerprints::claim`): حذفُها من
+         * منتجها في تبويبٍ آخر قبل أن تُكتب صفوفُ هذا الرفع لا يمحو ملفَّها. وما لم
+         * يُحجز (مُحي للتوّ، أو القفلُ مشغول) يُحفظ له ملفُّه كأنّه جديد.
+         */
         if ($print !== null && ($match = ImageFingerprints::find($businessId, ImageFingerprints::PRODUCTS, $print)) !== null) {
-            return $match['path'];
+            if (ImageFingerprints::claim($match['path'])) {
+                return $match['path'];
+            }
+
+            $match = null;
         }
 
         $known = $print === null ? null : function (string $pixels) use (&$print, &$match, $businessId) {
             $print['px'] = $pixels;
             $match = ImageFingerprints::find($businessId, ImageFingerprints::PRODUCTS, ['px' => $pixels]);
+
+            if ($match !== null && ! ImageFingerprints::claim($match['path'])) {
+                $match = null;
+            }
 
             return $match !== null;
         };
@@ -414,8 +429,9 @@ class ProductImages
         $path ??= $file->store(self::FOLDER, self::DISK);
         $path = is_string($path) && $path !== '' ? $path : null;
 
+        // ‏وما حُفظ يُكتب كما هو: نسخةُ عرضٍ فاقدة (WebP)، أو الملفُّ كما رُفع
         if ($path !== null && $print !== null) {
-            ImageFingerprints::remember($businessId, $path, $print);
+            ImageFingerprints::remember($businessId, $path, $print, $webp !== null ? 'converted' : 'as_uploaded');
         }
 
         return $path;
@@ -734,17 +750,20 @@ class ProductImages
     /**
      * يمحو ملفًّا من القرص — والرابط الخارجيّ ليس ملفًّا فلا يُمسّ.
      *
-     * يمحو بلا سؤال: لمن عرف أنّ لا شيء غيرَه يشير إليه (`files` لمحو منتجٍ
-     * نهائيًّا). وما سواه يمرّ بـ`release`.
+     * لمن عرف أنّ لا شيء غيرَه يشير إليه (`files` لمحو منتجٍ نهائيًّا) — و`$still`
+     * يُعيد السؤالَ تحت القفل، فصفٌّ كُتب بين السؤالين يُبقي الملف. وما سواه يمرّ
+     * بـ`release`. وملفٌّ يحجزه رفعٌ جارٍ لا يُمحى أبدًا (`ImageFingerprints::claim`).
      */
-    public static function forgetFile(?string $path): void
+    public static function forgetFile(?string $path, ?callable $still = null): void
     {
         if (blank($path) || str_starts_with($path, 'http')) {
             return;
         }
 
-        Storage::disk(self::DISK)->delete($path);
-        ImageVariants::forget($path);
+        ImageFingerprints::unlessClaimed($path, function () use ($path) {
+            Storage::disk(self::DISK)->delete($path);
+            ImageVariants::forget($path);
+        }, $still);
     }
 
     /**
@@ -763,7 +782,8 @@ class ProductImages
             return;
         }
 
-        self::forgetFile($path);
+        // ‏ويُسأل ثانيةً تحت القفل: رفعٌ أعاد استعمالَها قد كتب صفَّه بين السؤالين
+        self::forgetFile($path, fn () => ! self::inUse((string) $path));
     }
 
     /**

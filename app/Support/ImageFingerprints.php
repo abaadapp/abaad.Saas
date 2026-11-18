@@ -21,6 +21,17 @@ use Illuminate\Support\Str;
  *  • **ما يشبهها** — صورةٌ أُعيد ضغطُها أو صُغّرت أو عُدّل لونُها — ليست هي،
  *    ولا يُفعل بها شيء. فلا تحلّ صورةٌ محلَّ أخرى بتقدير.
  *
+ * ═══ البصمةُ لما رُفع، لا لما حُفظ ═══
+ *
+ * البصمتان تُحسبان لما وصل من المتجر قبل أيّ ضغط: بايتاتُه، وبكسلاتُه بعد إدارة
+ * الاتّجاه. وما يُحفظ على القرص شيءٌ آخر، ويُكتب في سطره (`stored`):
+ *  • `as_uploaded` — الملفُّ كما رُفع بايتًا ببايت (لم يُضغط: GIF، أو لم يصغر،
+ *    أو لم تكفِ الذاكرة);
+ *  • `converted` — نسخةُ عرضٍ أُعيد ترميزُها (WebP بجودة 80 للمنتج، وصورةُ الموقع
+ *    بلا رأسها): **فاقدةٌ للجودة**، فلا يُقال إنّ ملفَّها يطابق ما رُفع، ولا إنّ
+ *    بكسلاتِها هي بكسلاتُه. يُقال إنّ الصورة رُفعت من قبل، وإنّ نسختَها المحفوظة
+ *    استُعملت.
+ *
  * ═══ في المتجر نفسه، وفي مجلّده ═══
  *
  * لكلّ متجرٍ فهرسُه في القرص الخاصّ (`image-fingerprints/{id}/index.json`)، فلا
@@ -90,7 +101,7 @@ final class ImageFingerprints
      * بصمةٍ تشفيريّة، وهي أسرعُ بعشرة أضعاف (قيس: 6 ميغابكسل 110ms لا 160ms).
      * والطريقةُ تُكتب قبل البصمة: بصمتان بطريقتين لا تُقارَنان.
      *
-     * وما فوق `images.fingerprint_max_megapixels` لا بصمةَ لبكسلاته (كتابتُه
+     * وما فوق `images.fingerprint_max_megapixels` (4) لا بصمةَ لبكسلاته (كتابتُه
      * زمنٌ وقرص)، وتبقى له البصمةُ التامّة. وصورُ الهاتف تصل مصغَّرةً إلى 1600
      * أصلًا (نحو 2 ميغابكسل — قرابةَ 50ms).
      */
@@ -98,7 +109,13 @@ final class ImageFingerprints
     {
         $pixels = imagesx($image) * imagesy($image);
 
-        if ($pixels < 1 || $pixels > (float) config('images.fingerprint_max_megapixels', 8) * 1_000_000) {
+        if ($pixels < 1 || $pixels > (float) config('images.fingerprint_max_megapixels', 4) * 1_000_000) {
+            return null;
+        }
+
+        // ‏وخادمٌ مشغول (ذاكرةٌ أو حِملٌ أو طوابير — `ImageGate`) لا يُثقَل بها: هي زيادةٌ لا ضرورة،
+        // وتبقى المطابقةُ التامّة. فلا ينتظر صندوقٌ ولا دفعةٌ رفعَ صورة
+        if (ImageGate::blocked() !== null) {
             return null;
         }
 
@@ -131,7 +148,7 @@ final class ImageFingerprints
      *
      * @param  self::PRODUCTS|self::WEBSITE  $folder
      * @param  array{sha?: ?string, orig?: ?string, px?: ?string, w?: int, h?: int}  $print
-     * @return array{path: string, kind: string}|null
+     * @return array{path: string, kind: string, stored: string}|null
      */
     public static function find(int $businessId, string $folder, array $print): ?array
     {
@@ -153,7 +170,7 @@ final class ImageFingerprints
                     continue;
                 }
 
-                $hit = ['path' => $path, 'kind' => $kind];
+                $hit = ['path' => $path, 'kind' => $kind, 'stored' => (string) ($row['stored'] ?? 'converted')];
 
                 // ‏ومطابقةٌ تامّةٌ تُقدَّم على مطابقة البكسلات
                 if ($kind === self::EXACT) {
@@ -180,7 +197,7 @@ final class ImageFingerprints
      *
      * @param  array{sha?: ?string, orig?: ?string, px?: ?string, w?: int, h?: int}  $print
      */
-    public static function remember(int $businessId, string $path, array $print): bool
+    public static function remember(int $businessId, string $path, array $print, string $stored = 'converted'): bool
     {
         if (($print['sha'] ?? null) === null && ($print['px'] ?? null) === null) {
             return false;
@@ -192,6 +209,8 @@ final class ImageFingerprints
             'px' => $print['px'] ?? null,
             'w' => (int) ($print['w'] ?? 0) ?: null,
             'h' => (int) ($print['h'] ?? 0) ?: null,
+            // ‏ما على القرص: الملفُّ كما رُفع، أو نسخةُ عرضٍ فاقدة (`converted`)
+            'stored' => $stored === 'as_uploaded' ? 'as_uploaded' : 'converted',
             'at' => time(),
         ], fn ($v) => $v !== null);
 
@@ -252,8 +271,9 @@ final class ImageFingerprints
                 continue;
             }
 
+            // ‏وهنا وحدها يطابق الملفُّ المحفوظُ ما رُفع بايتًا ببايت
             if (@hash_file('sha256', $full) === $sha && self::usable($businessId, $folder, $path)) {
-                return ['path' => $path, 'kind' => self::EXACT];
+                return ['path' => $path, 'kind' => self::EXACT, 'stored' => 'as_uploaded'];
             }
         }
 
@@ -296,7 +316,11 @@ final class ImageFingerprints
 
     /**
      * أيُستعمل هذا الملفّ لهذا المتجر؟ — على القرص، صورةٌ تُقرأ، ولصورة المنتج
-     * صفٌّ في المتجر نفسه يشير إليها (والمحذوفُ في السلّة مشمول: ملفُّه باقٍ معه).
+     * منتجٌ حيٌّ في المتجر نفسه يعرضها.
+     *
+     * ومنتجٌ في سلّة المحذوفات لا تُعرض صورتُه لغيره: يُمحى نهائيًّا بعدُ، ومحوُه
+     * يمحو ما لا يعرضه غيرُه (`ProductImages::files`) — فلا تُبنى صورةٌ جديدةٌ على
+     * ملفٍّ ينتظر المحو.
      */
     private static function usable(int $businessId, string $folder, string $path): bool
     {
@@ -310,8 +334,106 @@ final class ImageFingerprints
             return true;
         }
 
-        return DB::table('products')->where('business_id', $businessId)->where('image', $path)->exists()
-            || DB::table('product_images')->where('business_id', $businessId)->where('path', $path)->exists();
+        return DB::table('products')->where('business_id', $businessId)->whereNull('deleted_at')->where('image', $path)->exists()
+            || DB::table('product_images')->join('products', 'products.id', '=', 'product_images.product_id')
+                ->where('product_images.business_id', $businessId)->whereNull('products.deleted_at')
+                ->where('product_images.path', $path)->exists();
+    }
+
+    /* ═══════════ الحجز: ملفٌّ يُعاد استعمالُه لا يُمحى قبل أن تُكتب صفوفُه ═══════════ */
+
+    /**
+     * يحجز ملفًّا موجودًا لرفعٍ سيعيد استعمالَه — ويتأكّد أنّه ما زال على القرص.
+     *
+     * بين أن يجد الرفعُ الصورةَ وأن تُكتب صفوفُه، قد يحذفها التاجرُ من منتجها
+     * الأخير في تبويبٍ آخر — وصفُّ الرفع لم يُكتب بعد، فلا يراه الحذفُ مرجعًا،
+     * فيُمحى الملفّ ويبقى المنتجُ الجديد بصورةٍ مكسورة. فالرفعُ يحجز الملفّ أوّلًا،
+     * والحذفُ لا يمحو محجوزًا (`unlessClaimed`)، والاثنان تحت قفلٍ واحد.
+     * و`false`: لم يُحجز (مُحي، أو القفلُ مشغول) — فيُحفظ للرفع ملفُّه.
+     */
+    public static function claim(string $path): bool
+    {
+        return self::striped($path, function () use ($path) {
+            $full = Storage::disk('public')->path($path);
+
+            if (! is_file($full) || (int) @filesize($full) < 1) {
+                return false;
+            }
+
+            return Storage::disk(self::DISK)->put(self::claimOf($path), (string) time());
+        }) === true;
+    }
+
+    /**
+     * يُرفع الحجز — بعد أن كُتبت صفوفُ الرفع أو سقط.
+     *
+     * @param  list<string>  $paths
+     */
+    public static function settle(array $paths): void
+    {
+        foreach (array_unique($paths) as $path) {
+            self::striped($path, fn () => Storage::disk(self::DISK)->delete(self::claimOf($path)));
+        }
+    }
+
+    /**
+     * يمحو بـ`$delete` ما لم يحجزه رفعٌ جارٍ — و`$still` يُسأل تحت القفل نفسه:
+     * أما زال الملفُّ لا يعرضه أحد؟ (صفُّ الرفع قد كُتب بين السؤال الأوّل والقفل.)
+     * وقفلٌ مشغولٌ أو حجزٌ قائم: لا محو — ملفٌّ زائدٌ خيرٌ من صورةٍ مكسورة.
+     */
+    public static function unlessClaimed(string $path, callable $delete, ?callable $still = null): bool
+    {
+        return self::striped($path, function () use ($path, $delete, $still) {
+            if (self::claimed($path)) {
+                self::note('images.delete_kept_claimed', null);
+
+                return false;
+            }
+
+            if ($still !== null && ! $still()) {
+                return false;
+            }
+
+            $delete();
+
+            return true;
+        }) === true;
+    }
+
+    /** حجزٌ قائمٌ لم تمضِ عليه عشرُ دقائق — وما بعدها رفعٌ مات ولم يرفع حجزه */
+    private static function claimed(string $path): bool
+    {
+        $full = Storage::disk(self::DISK)->path(self::claimOf($path));
+        $at = is_file($full) ? (int) @file_get_contents($full) : 0;
+
+        return $at > 0 && time() - $at < 600;
+    }
+
+    private static function claimOf(string $path): string
+    {
+        return self::ROOT.'/claims/'.sha1($path);
+    }
+
+    /**
+     * يعمل تحت قفل ملفٍّ لهذا المسار — أربعةٌ وستّون قفلًا للمسارات كلِّها، فلا
+     * يتراكم ملفُّ قفلٍ لكلّ صورة. ولا يُنتظر أكثرَ من ثانيتين؛ و`null` حين لم يُقفل.
+     */
+    private static function striped(string $path, callable $work): mixed
+    {
+        $disk = Storage::disk(self::DISK);
+        $disk->makeDirectory(self::ROOT.'/claims');
+        $handle = @fopen($disk->path(self::ROOT.'/claims/.lock-'.(crc32($path) % 64)), 'c');
+
+        if ($handle === false) {
+            return null;
+        }
+
+        try {
+            return self::locked($handle) ? $work() : null;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 
     /* ═══════════ الفهرس ═══════════ */
@@ -414,10 +536,10 @@ final class ImageFingerprints
         return $copy;
     }
 
-    private static function note(string $message, int $businessId): void
+    private static function note(string $message, ?int $businessId): void
     {
         try {
-            Log::channel('images')->warning($message, ['business' => $businessId]);
+            Log::channel('images')->warning($message, array_filter(['business' => $businessId]));
         } catch (\Throwable) {
             // ‏لا شيء
         }

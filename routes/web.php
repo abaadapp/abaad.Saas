@@ -193,6 +193,9 @@ Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('d
  * nginx حيّ لا تقول شيئًا عن قاعدةٍ ساقطة، والمتجر بلا قاعدة متجرٌ ساقط.
  */
 Route::get('/health', HealthController::class)->name('health');
+// ‏مساراتُ واجهةٍ يضمّها المتصفّحُ حين ينتقل إليها بلا تحميل — انظر `config/ziggy.php`
+Route::get('/route-groups/{group}', App\Http\Controllers\RouteGroupController::class)
+    ->where('group', '[a-z]+')->middleware('throttle:60,1,route-groups')->name('routeGroups.show');
 
 /*
  * الموقع المنشور لعارضٍ خارجيّ — بلا مصادقة.

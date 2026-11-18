@@ -7,6 +7,7 @@ import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
 import { dropBootPayload, followIdentity } from '@/lib/identity-history';
 import { forgetOtherShops } from '@/lib/till-customers';
+import { ensureRoutesFor, startRouteGroups } from '@/lib/route-groups';
 import { markTouchDevice } from '@/lib/touch';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Abad POS';
@@ -35,6 +36,18 @@ function syncDirection(props: Record<string, unknown>): void {
 // كل صفحات Inertia تُحمّل كسولًا — لا تدخل الحزمة الأولى إلا عند زيارتها
 const pages = import.meta.glob<{ default: ComponentType }>('./Pages/**/*.tsx');
 
+/*
+ * ═══ وجدولُ المسارات مجموعةُ الواجهة — ويُضمّ إليه ما تحتاجه صفحةٌ من غيرها ═══
+ *
+ * انظر `lib/route-groups.ts`. وآخرُ رابطٍ طُلب يُحفظ: إن تعذّر جلبُ مجموعة صفحةٍ
+ * انتُقل إليها بتحميلٍ كامل (فيكتب الخادمُ جدولَها) بدل أن تُرسم وتنادي اسمًا غائبًا.
+ */
+startRouteGroups();
+let lastVisit: string | null = null;
+router.on('start', (event) => {
+    lastVisit = event.detail.visit.url.href;
+});
+
 createInertiaApp({
     title: (title) => (title ? `${title} — ${appName}` : appName),
 
@@ -45,7 +58,15 @@ createInertiaApp({
             throw new Error(`صفحة Inertia غير موجودة: ./Pages/${name}.tsx`);
         }
 
-        return (await page()).default;
+        const [module] = await Promise.all([
+            page(),
+            ensureRoutesFor(name).catch(() => {
+                window.location.assign(lastVisit ?? window.location.href);
+                return new Promise<never>(() => {});
+            }),
+        ]);
+
+        return module.default;
     },
 
     setup({ el, App, props }) {

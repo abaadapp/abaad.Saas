@@ -202,7 +202,7 @@ class ProductImages
                 'sort_order' => $next + 1,
             ]);
         } catch (\Throwable $e) {
-            self::forgetFile($path);
+            self::release($path);
 
             throw $e;
         }
@@ -480,7 +480,7 @@ class ProductImages
         DB::transaction(function () use ($image) {
             $path = $image->path;
             $image->delete();
-            self::forgetFile($path);
+            self::release($path);
         });
     }
 
@@ -503,7 +503,7 @@ class ProductImages
             $product->forceFill(['image' => $heir?->path])->save();
             $heir?->delete();
 
-            self::forgetFile($path);
+            self::release($path);
 
             return $heir !== null;
         });
@@ -603,7 +603,12 @@ class ProductImages
         return array_values(array_diff($mine, $shared));
     }
 
-    /** يمحو ملفًّا من القرص — والرابط الخارجيّ ليس ملفًّا فلا يُمسّ */
+    /**
+     * يمحو ملفًّا من القرص — والرابط الخارجيّ ليس ملفًّا فلا يُمسّ.
+     *
+     * يمحو بلا سؤال: لمن عرف أنّ لا شيء غيرَه يشير إليه (`files` لمحو منتجٍ
+     * نهائيًّا). وما سواه يمرّ بـ`release`.
+     */
     public static function forgetFile(?string $path): void
     {
         if (blank($path) || str_starts_with($path, 'http')) {
@@ -615,18 +620,52 @@ class ProductImages
     }
 
     /**
-     * يمحو ملفّاتٍ حُفظت لطلبٍ لم يكتمل.
+     * يمحو الملفَّ إن لم يبقَ ما يعرضه — وإلّا تركه.
+     *
+     * صورةٌ واحدةٌ قد يعرضها منتجان في المتجر (رُفعت لهما فحُفظت مرّةً واحدة،
+     * أو نُسخ منتجٌ قبل أن يملك النسخُ ملفَّه). فحذفُها من أحدهما يحذف صفَّه
+     * وحده، ويبقى الملفُّ للآخر — وإلّا فقد منتجٌ حيٌّ صورتَه ولم يلمسه أحد.
+     *
+     * ويُسأل بعد أن كُتب ما يُحذف (الصفُّ محذوف أو العمودُ مبدَّل) — في المعاملة
+     * نفسها، فلا يُعدّ الصفُّ الذي يُحذف مرجعًا.
+     */
+    public static function release(?string $path): void
+    {
+        if (blank($path) || str_starts_with((string) $path, 'http') || self::inUse((string) $path)) {
+            return;
+        }
+
+        self::forgetFile($path);
+    }
+
+    /**
+     * أيعرض هذه الصورةَ شيءٌ حيّ؟ — منتجٌ (ولو في السلّة)، أو صورةُ معرض، أو
+     * بطاقةُ فئة، أو إعدادٌ يحمل مسارها. في كلّ المتاجر: الحذفُ لا يُخطئ بالحصر.
+     */
+    public static function inUse(string $path): bool
+    {
+        $text = 'CAST('.DB::getQueryGrammar()->wrap('value').' AS TEXT)';
+
+        return DB::table('products')->where('image', $path)->exists()
+            || DB::table('product_images')->where('path', $path)->exists()
+            || DB::table('categories')->whereIn('card_image', [$path, '/storage/'.$path])->exists()
+            || DB::table('settings')->whereRaw($text.' LIKE ?', ['%'.basename($path).'%'])->exists();
+    }
+
+    /**
+     * يمحو ملفّاتٍ حُفظت لطلبٍ لم يكتمل — ما لا يعرضه غيرُه.
      *
      * والمحوُ لا يُسقط ما بعده: ملفٌّ لا يُمحى يُترك ويُكمَل غيرُه — ويبقى
-     * الخطأُ الأصليُّ هو ما يُرفع لا خطأُ التنظيف.
+     * الخطأُ الأصليُّ هو ما يُرفع لا خطأُ التنظيف. وصورةٌ أُعيد استعمالُها من
+     * منتجٍ آخر لا تُمحى بسقوط طلبٍ لم يكتبها (`release`).
      *
      * @param  list<string>  $paths
      */
     public static function forgetFiles(array $paths): void
     {
-        foreach ($paths as $path) {
+        foreach (array_unique($paths) as $path) {
             try {
-                self::forgetFile($path);
+                self::release($path);
             } catch (\Throwable $e) {
                 report($e);
             }

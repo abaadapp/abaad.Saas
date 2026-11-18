@@ -10648,5 +10648,10 @@
     "ومعها :n صور أخرى موجودة.": "And :n more pictures were already there.",
     "هذه الصورة موجودة في هذا المنتج من قبل — لم تُضف ثانيةً.": "This picture is already in this product — it was not added again.",
     "وما كان في هذا المنتج من قبل لم يُضف ثانيةً.": "Pictures already in this product were not added again.",
-    "هذه الصورة رُفعت إلى موقعك من قبل — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.": "This picture was uploaded to your website before — its saved copy was used and no second copy was saved."
+    "هذه الصورة رُفعت إلى موقعك من قبل — استُعملت نسختُها المحفوظة ولم تُحفظ نسخةٌ ثانية.": "This picture was uploaded to your website before — its saved copy was used and no second copy was saved.",
+    "هذا العميل لم يعد موجودًا": "This customer no longer exists",
+    "هذا العميل لم يعد موجودًا — عاد البيع نقديًّا": "This customer no longer exists — the sale is back to cash",
+    "جارٍ تحميل العملاء…": "Loading customers…",
+    "قائمة العملاء لم تصل بعد — تُحمَّل حين يعود الاتصال، والبيع النقدي متاح": "The customer list hasn't arrived yet — it loads when the connection is back, and cash sales still work",
+    "على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها": "This device holds :n pending sale(s) for another shop — kept safe, and sent when that shop's till is opened"
 }

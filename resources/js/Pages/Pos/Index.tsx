@@ -64,7 +64,13 @@ interface Props {
     categories: { value: string; label: string }[];
     /** المواسمُ الجارية اليوم — مرشِّحٌ فوق الأصناف المحمَّلة، لا مصدرٌ لها */
     seasons?: { id: number; name: string; product_ids: number[] }[];
-    customers: (PosCustomer & { avatar?: string | null })[];
+    /**
+     * متجرُ نسخة الزبائن في الجهاز — والزبائنُ أنفسُهم لا يأتون مع الصفحة:
+     * يُقرؤون من الجهاز ويُزامَنون بما تغيّر (`lib/till-customers.ts`).
+     */
+    customersScope?: number | null;
+    /** قائمةٌ جاهزة بدل النسخة — لا يرسلها الخادم؛ تمرّرها الاختبارات */
+    customers?: PosCustomer[];
     addons: Addon[];
     /** كيف تُعرض الإضافات — شريطًا أم قسمًا كاملًا. انظر `PosAddonsLayout` */
     addonsLayout?: string;
@@ -110,7 +116,7 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, seasons = [], customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
+    const { products: serverProducts, categories, seasons = [], customersScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -178,6 +184,7 @@ export default function PosIndex() {
     const cart = usePosCart({
         products: cartProducts,
         customers,
+        customersScope: customers ? null : customersScope,
         coupons,
         loyalty: settings,
         vat: settings.vat,
@@ -327,6 +334,12 @@ export default function PosIndex() {
                     </motion.div>
                 )}
             </AnimatePresence>
+            {/* بيعاتٌ معلّقةٌ لمتجرٍ آخر دخل هذا الجهاز — محفوظةٌ، تُرسَل من صندوق متجرها */}
+            {cart.foreignPendingCount > 0 && (
+                <p className="mx-auto mt-2 w-fit rounded-full border border-[#fde68a] bg-[#fffbeb] px-3 py-1 text-xs font-medium text-[#b45309]" data-testid="foreign-pending">
+                    {t('على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها', { n: cart.foreignPendingCount })}
+                </p>
+            )}
 
             {/*
                 عمودان من ٧٦٨ بكسل لا من ١٠٢٤.
@@ -655,7 +668,16 @@ export default function PosIndex() {
                                                         )}
                                                     </button>
                                                 ))}
-                                                {cart.customerSearch.trim() && cart.filteredCustomers.length === 0 && (
+                                                {/* القائمةُ لم تصل بعد — لا «لا نتائج» عن عميلٍ موجود */}
+                                                {cart.customers.length === 0 && cart.customersStatus === 'loading' && (
+                                                    <p className="px-4 py-3 text-center text-xs text-gray-400" data-testid="customers-loading">{t('جارٍ تحميل العملاء…')}</p>
+                                                )}
+                                                {cart.customers.length === 0 && cart.customersStatus === 'offline' && (
+                                                    <p className="px-4 py-3 text-center text-xs text-amber-700" data-testid="customers-offline">
+                                                        {t('قائمة العملاء لم تصل بعد — تُحمَّل حين يعود الاتصال، والبيع النقدي متاح')}
+                                                    </p>
+                                                )}
+                                                {cart.customerSearch.trim() && cart.filteredCustomers.length === 0 && cart.customers.length > 0 && (
                                                     <p className="px-4 py-3 text-center text-xs text-gray-400">{t('لا نتائج')}</p>
                                                 )}
                                             </div>

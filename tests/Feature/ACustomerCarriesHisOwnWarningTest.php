@@ -23,6 +23,7 @@ use App\Support\WhatsAppEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Tests\Support\ReadsTheTillsCustomers;
 use Tests\TestCase;
 
 /**
@@ -38,6 +39,7 @@ use Tests\TestCase;
  */
 class ACustomerCarriesHisOwnWarningTest extends TestCase
 {
+    use ReadsTheTillsCustomers;
     use RefreshDatabase;
 
     private Business $shop;
@@ -106,12 +108,12 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         return $this->withCookie(PosTerminal::COOKIE, $device->id.'|'.$raw)->actingAs($as ?? $this->cashier);
     }
 
-    /** صفُّ الزبون كما يصل الصندوق */
-    private function tillRow(Customer $customer, ?User $as = null): array
+    /** صفُّ الزبون كما يصل الصندوق — من مزامنة زبائنه (`TillCustomers`) */
+    private function tillRow(Customer $customer, ?User $as = null): ?array
     {
-        $rows = $this->till($as)->get(route('pos.index'))->viewData('page')['props']['customers'];
+        $this->till($as);
 
-        return collect($rows)->firstWhere('id', $customer->id);
+        return $this->asTillReadsIt(collect($this->tillCustomers())->firstWhere('id', $customer->id));
     }
 
     /* ═════════════ الإعدادات ═════════════ */
@@ -364,7 +366,8 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('admin.customers.show', $theirs->id))->assertNotFound();
 
-        $rows = $this->till($this->owner)->get(route('pos.index'))->viewData('page')['props']['customers'];
+        $this->till($this->owner);
+        $rows = $this->tillCustomers();
         $this->assertNull(collect($rows)->firstWhere('id', $theirs->id), 'زبونُ متجرٍ آخر وصل الصندوق');
         $this->assertStringNotContainsString('سرّهم', json_encode($rows, JSON_UNESCAPED_UNICODE));
 

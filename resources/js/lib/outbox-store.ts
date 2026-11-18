@@ -60,21 +60,29 @@ function parse(raw: string | null): OutboxEntry | null {
     }
 }
 
-/** ‏القائمةُ القديمة كما هي — وما لا يُقرأ منها يبقى فيها ولا يُرمى */
-function legacyRaw(s: Storage): unknown[] {
+/**
+ * ‏القائمةُ القديمة كما هي — وما لا يُقرأ منها يبقى فيها ولا يُرمى.
+ *
+ * و`null`: فيها ما لا يُقرأ قائمةً (نصٌّ مبتور، أو غيرُ قائمة). لا يُكتب فوقه —
+ * لعلّ فيه بيعةً تُستعاد باليد — وتبقى البيعاتُ الجديدة في مفاتيحها.
+ */
+function legacyList(s: Storage): unknown[] | null {
     try {
         const list = JSON.parse(s.getItem(LEGACY_KEY) || '[]') as unknown;
 
-        return Array.isArray(list) ? list : [];
+        return Array.isArray(list) ? list : null;
     } catch {
-        return [];
+        return null;
     }
 }
+const legacyRaw = (s: Storage): unknown[] => legacyList(s) ?? [];
 
 /** ‏تُعدَّل نسخةُ القائمة القديمة — وفشلُها لا يمسّ البيعة: أصلُها في مفتاحها */
 function mirror(s: Storage, change: (list: unknown[]) => unknown[]): void {
     try {
-        const next = change(legacyRaw(s));
+        const list = legacyList(s);
+        if (list === null) return;
+        const next = change(list);
         if (next.length) s.setItem(LEGACY_KEY, JSON.stringify(next));
         else s.removeItem(LEGACY_KEY);
     } catch {

@@ -101,6 +101,16 @@ describe('المخزن', () => {
         expect(legacy()).toEqual([{ junk: true }]);
     });
 
+    it('وقائمةٌ قديمة لا تُقرأ (نصٌّ مبتور) لا يُكتب فوقها — والبيعةُ الجديدة في مفتاحها', () => {
+        localStorage.setItem(LEGACY_KEY, '[{"uuid":"cut-off","payl');
+        expect(add(sale('n'))).toBe(true);
+        drop('n');
+        add(sale('m'));
+
+        expect(localStorage.getItem(LEGACY_KEY)).toBe('[{"uuid":"cut-off","payl');
+        expect(readAll().map((e) => e.uuid)).toEqual(['m']);
+    });
+
     it('المساحة: تُجرَّب بكتابةٍ تُحذف بعدها', () => {
         expect(room()).toBe('ok');
         expect(Object.keys(localStorage)).toEqual([]);

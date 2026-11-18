@@ -469,6 +469,16 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             key: (i as CartItem).key ?? `r${idx}`,
             note: (i as CartItem).note ?? '',
             qty: i.qty ?? 1,
+            /*
+             * ‏وضريبةُ الصنف من رفّه — كما تأخذها البطاقةُ والماسح.
+             *
+             * الخادمُ يعيد البندَ المعلّق بسعره وكميّته لا بنسبته، والدفعُ
+             * يحتسب كلَّ صنفٍ بنسبته هو. فكان المعفى يعود بنسبة المتجر: الشاشةُ
+             * تقول 58.340 والخادمُ يكتب 56.557. وما لا صنفَ له على الرفّ —
+             * إضافةٌ وحدها، أو طلبٌ مخصَّص، أو صنفٌ أُوقف — يبقى بنسبة المتجر،
+             * وهي نسبتُه عند الخادم كذلك (والموقوفُ يردّه الدفع).
+             */
+            tax: i.tax ?? (i.id != null ? products.find((p) => p.id === i.id)?.tax : undefined),
         })),
     );
     const [resumeId] = useState<number | null>(resume?.id ?? null);

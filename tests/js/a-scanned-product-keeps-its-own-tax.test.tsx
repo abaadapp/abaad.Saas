@@ -29,9 +29,10 @@ const shelf = [
     product(2, 'باقة بخمسة', 19.898, 5, '6290000000001'),
 ];
 
-const open = async () => {
+const open = async (resumeCart: unknown = null) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, {
+        resumeCart,
         translations: {},
         products: shelf,
         categories: [{ value: 'الكل', label: 'الكل' }],
@@ -81,5 +82,48 @@ describe('الماسحُ والبطاقة', () => {
         expect(bar()).toBe(byCard);
         // ‏55.562 + 5% من 19.898 وحدها = 56.557 — لا 5% من المجموع كلِّه (58.340)
         expect(byCard).toContain('56.557');
+    });
+});
+
+/**
+ * ‏والسلّةُ المعلّقة تعود بضريبة كلّ صنفٍ فيها — لا بنسبة المتجر.
+ *
+ * الخادمُ (`PosController::resume`) يعيد البنودَ بأسعارها وكميّاتها ولا يعيد
+ * نسبتَها، والدفعُ يُسعّرها من جديد بنسبة كلّ صنف. فكانت الشاشةُ تضرب الصنفَ
+ * المعفى بخمسة: تقول 58.340 والخادمُ يكتب 56.557.
+ */
+describe('السلّةُ المعلّقة حين تُستأنف', () => {
+    it('تُحسب كما تُحسب الأصنافُ نفسُها بالضغط عليها', async () => {
+        const clicked = await open();
+        await click(clicked, 'باقة بلا ضريبة');
+        await click(clicked, 'باقة بخمسة');
+        const byCard = bar();
+        cleanup();
+
+        vi.resetModules();
+        await open({
+            id: 7,
+            customer: null,
+            items: [
+                { id: 1, name: 'باقة بلا ضريبة', price: 35.664, qty: 1, variant_id: null, variant_name: null, season_id: null, note: '', addons: [], custom: null },
+                { id: 2, name: 'باقة بخمسة', price: 19.898, qty: 1, variant_id: null, variant_name: null, season_id: null, note: '', addons: [], custom: null },
+            ],
+            coupon_code: null,
+        });
+
+        expect(bar()).toBe(byCard);
+        expect(bar()).toContain('56.557');
+    });
+
+    it('وبندٌ لا صنفَ له على الرفّ — إضافةٌ أو طلبٌ مخصَّص أو صنفٌ أُوقف — يبقى بنسبة المتجر كما يحسبه الخادم', async () => {
+        await open({
+            id: 8,
+            customer: null,
+            items: [{ id: 99, name: 'صنفٌ أُوقف', price: 10, qty: 1, variant_id: null, variant_name: null, season_id: null, note: '', addons: [], custom: null }],
+            coupon_code: null,
+        });
+
+        // ‏10 + 5% = 10.500
+        expect(bar()).toContain('10.500');
     });
 });

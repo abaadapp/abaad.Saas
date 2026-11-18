@@ -57,10 +57,12 @@ import {
     whatBlocksPayment,
 } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
-import type { Addon, PosCoupon, Product } from '@/types/models';
+import type { Addon, PosCoupon } from '@/types/models';
+import { fromTill, type TillProductRow } from '@/lib/till-products';
 
 interface Props {
-    products: Product[];
+    /** ‏ما يقرؤه الصندوقُ وحده من الأصناف (`Demo::tillProducts`) — يُكمَل عند الدخول (`fromTill`) */
+    products: TillProductRow[];
     categories: { value: string; label: string }[];
     /** المواسمُ الجارية اليوم — مرشِّحٌ فوق الأصناف المحمَّلة، لا مصدرٌ لها */
     seasons?: { id: number; name: string; product_ids: number[] }[];
@@ -116,9 +118,11 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, seasons = [], customersScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
+    const { products: tillRows, categories, seasons = [], customersScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // ‏الاسمُ المعروض الغائبُ هو الاسم — يُكمَل هنا مرّةً، قبل أن يقرأ الأصنافَ أيُّ مكوّن
+    const serverProducts = useMemo(() => fromTill(tillRows), [tillRows]);
 
     /**
      * الكميات الحيّة تحلّ محلّ لقطة الخادم في كل مكان يقرأ `products` —

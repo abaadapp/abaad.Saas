@@ -110,6 +110,8 @@ export default function PaymentDialog({
     const [methodError, setMethodError] = useState(false);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
+    /** ‏لم يحفظها الجهازُ ولم يكتبها الخادم — يبقى السببُ فوق الزرّ لا رسالةً تختفي */
+    const [notSaved, setNotSaved] = useState(false);
     /*
      * تفاصيل طلب الورد — مطويّةٌ افتراضيًّا.
      *
@@ -171,6 +173,7 @@ export default function PaymentDialog({
         if (open) {
             setStep('pay');
             setResult(null);
+            setNotSaved(false);
             setFlowerError(null);
             setMethod('');
             setMethodError(false);
@@ -326,6 +329,7 @@ export default function PaymentDialog({
             // ما قُبض يُثبَّت الآن — السلّةُ تُحسب من جديد بعد البيعة (`CheckoutResult.total`)
             const charged = total;
             const res = await onCheckout(method, details);
+            setNotSaved(!!res.notSaved);
 
             /*
              * ═══ وبيعةٌ رُدّت لا تُعرض «تمّ الدفع» ═══
@@ -713,6 +717,11 @@ export default function PaymentDialog({
 
                     {/* زرّ الدفع خارج المجرى: لا يُمرَّر بعيدًا مهما طال ما فوقه */}
                     <div className="shrink-0 border-t border-gray-100 px-5 pb-5 pt-4">
+                        {notSaved && (
+                            <p role="alert" data-testid="sale-not-saved" className="mb-3 rounded-xl bg-[#fef2f2] px-3 py-2 text-[12px] font-medium text-[#b91c1c]">
+                                {t('لم تُحفظ البيعة: مساحة التخزين في هذا المتصفح لا تتسع لها، ولم يؤكدها الخادم. لا تعدّها مسجّلة — أعد المحاولة حين يعود الاتصال.')}
+                            </p>
+                        )}
                         <Button variant="success" size="lg" className="w-full rounded-full touch:h-14 touch:text-base" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>

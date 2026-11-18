@@ -7,7 +7,7 @@
  *      الأولى ولم يكتبها ثانيةً (`orders_business_client_uuid_unique`).
  *   ٣. لا تُغيَّر حمولتُها: المبلغُ والأصنافُ والخصمُ كما قُبضت.
  *
- * والطابورُ نفسُه في `localStorage` بمفتاحه (`abadpos:pos:outbox`) كما كان:
+ * والطابورُ نفسُه في `localStorage`، كلُّ بيعةٍ في مفتاحها (`lib/outbox-store.ts`):
  * الكتابةُ فيه متزامنة، فبيعةٌ يُغلق بعدها المتصفّحُ فورًا محفوظة. وكلُّ حقلٍ
  * هنا اختياريّ — فطابورٌ كُتب قبل هذا الملفّ يُقرأ كما هو ولا يُعاد تهيئتُه.
  */
@@ -32,6 +32,13 @@ export interface OutboxEntry {
     last?: { status: number | null; error: string; at: number };
     /** تكرّر خطأُ الخادم حتى الحدّ: تنتظر «أعد الإرسال» باليد، ولا توقف ما خلفها */
     stuck?: boolean;
+    /**
+     * ‏آخرُ ما قاله سجلُّ الخادم عنها (`/pos/outbox/status`): `found: false` سُئل
+     * فلم يجدها. وغيابُها: لم يُسأل بعد، أو لم يُجب.
+     */
+    checked?: { at: number; found: boolean };
+    /** ‏كُتبت في مفتاحها (`lib/outbox-store.ts`) — ونسختُها في القائمة القديمة نسخةٌ لا أصل */
+    v?: 2;
 }
 
 /** ما يعنيه الردّ للبيعة — لا رقمُه */
@@ -171,4 +178,38 @@ export function fresh(entry: OutboxEntry): OutboxEntry {
     const { held: _h, attempts: _a, nextAt: _n, stuck: _s, ...rest } = entry;
 
     return rest;
+}
+
+/**
+ * ‏ما تحتاجه بيعةٌ تنتظر يدًا — ليُقال للكاشير قبل أن يضغط شيئًا.
+ *
+ * - `safe` إعادتُها لا تكتبها مرّتين: تُرسل بمعرّفها، والخادمُ يردّ فاتورتَها
+ *   الأولى إن كان كتبها. ودائمًا `true` ما دام المعرّفُ في حمولتها.
+ * - `useful` قد تُقبل إن أُعيدت الآن — أم أنّ سببَها باقٍ حتى يُصلَح.
+ * - `manager` سببُها يُصلحه مسؤولٌ مخوّل (مخزون، كوبون، عميلٌ موقوف، حدُّ آجل).
+ * - `financial` قُبض ثمنُها على غير ما يقبله الخادم (كوبونٌ انتهى، آجلٌ فوق
+ *   حدّه، سلّةٌ أُتمّت من جهازٍ آخر): «تحتاج مراجعة ماليّة». لا تسويةَ ولا شطبَ
+ *   من الصندوق — قرارُها لصاحب المتجر ولم يُتّخذ بعد.
+ */
+export interface Review {
+    safe: boolean;
+    useful: boolean;
+    manager: boolean;
+    financial: boolean;
+}
+
+export function reviewOf(entry: OutboxEntry): Review {
+    const safe = entry.payload?.client_uuid === entry.uuid;
+    if (!entry.held) return { safe, useful: true, manager: false, financial: false };
+    const fields = entry.held.fields ?? [];
+    const has = (...names: string[]) => fields.some((f) => names.some((n) => f === n || f.startsWith(`${n}.`)));
+
+    if (has('resume_id')) return { safe, useful: false, manager: true, financial: true };
+    if (has('coupon_code', 'redeem_points', 'redeem_discount', 'expected_total', 'credit', 'paid_now', 'due_at', 'credit_override_reason')) {
+        return { safe, useful: false, manager: true, financial: true };
+    }
+    if (has('customer_language')) return { safe, useful: false, manager: false, financial: false };
+
+    // ‏مخزونٌ أو صنفٌ أو عميلٌ موقوف — أو سببٌ لا يُعرف حقلُه (409 وأخواتها)
+    return { safe, useful: false, manager: true, financial: false };
 }

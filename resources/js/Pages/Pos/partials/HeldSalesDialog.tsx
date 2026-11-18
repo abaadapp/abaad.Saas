@@ -4,7 +4,7 @@ import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import type { OutboxEntry, SyncedSale } from '@/hooks/usePosCart';
 import { useTranslate } from '@/lib/i18n';
-import { localNumber, stateOf, type SaleState } from '@/lib/outbox';
+import { localNumber, reviewOf, stateOf, type SaleState } from '@/lib/outbox';
 import { cn } from '@/lib/utils';
 
 /**
@@ -65,6 +65,7 @@ export default function HeldSalesDialog({
     sessionLost = false,
     canRetry = true,
     synced = [],
+    persisted = null,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -77,6 +78,8 @@ export default function HeldSalesDialog({
     /** متّصلٌ وبجلسةٍ تملك البيع — وإلّا فإعادةُ الإرسال لا تصل */
     canRetry?: boolean;
     synced?: SyncedSale[];
+    /** ‏أذن المتصفّحُ ألّا يمحو التخزين حين تضيق المساحة — `null` لم يُسأل أو لا يعرفه */
+    persisted?: boolean | null;
 }) {
     const t = useTranslate();
     const [busy, setBusy] = useState<string | null>(null);
@@ -118,6 +121,7 @@ export default function HeldSalesDialog({
                         const reason = sale.held?.error || (state === 'stuck' || state === 'retrying' ? sale.last?.error : '') || '';
                         const resendable = needs(state);
                         const expanded = openId === sale.uuid;
+                        const review = reviewOf(sale);
 
                         return (
                             <li
@@ -144,6 +148,24 @@ export default function HeldSalesDialog({
                                     </p>
                                 )}
                                 {reason && <p className="mt-1 font-medium text-[#b91c1c]">{reason}</p>}
+                                {needs(state) && (review.financial || review.manager) && (
+                                    <p className="mt-1 flex flex-wrap gap-1">
+                                        {review.financial ? (
+                                            <span className="rounded-full bg-[#7f1d1d] px-2 py-0.5 text-xs font-bold text-white" data-testid="needs-finance">
+                                                {t('تحتاج مراجعة مالية')}
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-full bg-[#fff7ed] px-2 py-0.5 text-xs font-bold text-[#9a3412]" data-testid="needs-manager">
+                                                {t('تحتاج مسؤولًا مخوّلًا')}
+                                            </span>
+                                        )}
+                                    </p>
+                                )}
+                                <p className="mt-1 text-xs text-gray-500" data-testid="server-check">
+                                    {sale.checked
+                                        ? t('سُئل الخادم :time ولم يجدها مسجّلة', { time: time(sale.checked.at) })
+                                        : t('لم يؤكدها الخادم بعد')}
+                                </p>
                                 {sale.last && (
                                     <p className="mt-1 text-xs text-gray-500" data-testid="last-attempt">
                                         {t('آخر محاولة')}: {time(sale.last.at)} — {sale.last.status ? `${sale.last.status}` : t('لا اتصال')}
@@ -192,6 +214,13 @@ export default function HeldSalesDialog({
                                             {sale.uuid}
                                         </p>
                                         {needs(state) && <p className="font-medium text-gray-800">{t(adviceFor(sale))}</p>}
+                                        {review.safe && <p className="text-gray-700">{t('إعادة الإرسال آمنة: بالمعرّف نفسه، فلا تُكتب البيعة مرتين ولا يُخصم المخزون أو النقاط مرتين.')}</p>}
+                                        {needs(state) && !review.useful && <p className="text-gray-700">{t('لن تُقبل إن أُعيدت قبل أن يُصلَح سببها.')}</p>}
+                                        {review.financial && (
+                                            <p className="font-medium text-[#7f1d1d]" data-testid="finance-note">
+                                                {t('قُبض ثمنها على غير ما يقبله الخادم الآن. لا تسوية ولا شطب ولا تعديل مبلغ من الصندوق — قرارها لصاحب المتجر أو مسؤول مالي مخوّل.')}
+                                            </p>
+                                        )}
                                         {!canRetry && resendable && <p className="text-[#b91c1c]">{t('لا تُعاد الآن: لا اتصال، أو الجلسة لا تملك البيع.')}</p>}
                                     </div>
                                 )}
@@ -199,6 +228,17 @@ export default function HeldSalesDialog({
                         );
                     })}
                 </ul>
+
+                {/*
+                    ‏وما لا يُوعد به: البيعةُ محفوظةٌ في هذا المتصفّح وحده إلى أن يؤكّدها
+                    الخادم — بلا تخويف، وبلا وعدٍ بما لا يملكه الصندوق.
+                */}
+                {ordered.length > 0 && (
+                    <p className="px-5 pb-3 text-xs text-gray-600" data-testid="device-note">
+                        {t('هذه البيعات محفوظة في هذا المتصفح وحده إلى أن يؤكدها الخادم. إن مُسحت بيانات المتصفح أو تلف الجهاز قبل ذلك فلا يمكن استعادتها، فأبقِ المتصفح كما هو حتى تكتمل المزامنة.')}
+                        {persisted === true && ` ${t('وقد أذن المتصفح بحفظها حفظًا دائمًا، فلا يمحوها إن ضاقت مساحة الجهاز.')}`}
+                    </p>
+                )}
 
                 {synced.length > 0 && (
                     <div className="border-t px-5 pt-3 pb-5" data-testid="synced-sales">

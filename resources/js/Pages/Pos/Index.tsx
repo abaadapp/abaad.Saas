@@ -338,21 +338,16 @@ export default function PosIndex() {
                                 : 'bg-[#dc2626] text-white',
                         )}
                     >
+                        {/* ‏حالُ الاتّصال وحدها — والعددُ وقائمةُ المراجعة في التنبيه تحت الشريط، لا هنا مرّةً ثانية */}
                         {!cart.online
                             ? t('لا اتصال — البيع مستمر ويُحفَظ محليًا')
                             : cart.sessionLost
-                              ? `${t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز')} (${cart.pendingCount})`
-                              : `${t('جارٍ مزامنة الطلبات المعلّقة')} (${cart.pendingCount})`}
+                              ? t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز')
+                              : t('جارٍ مزامنة الطلبات المعلّقة')}
                         {cart.online && cart.sessionLost && (
                             // ‏الطلباتُ في الجهاز لا في الصفحة: إعادةُ تحميلها تأخذ إلى الدخول ولا تمسّها
                             <button type="button" className="rounded-full bg-white/20 px-2.5 py-0.5 underline" onClick={() => window.location.reload()}>
                                 {t('سجّل الدخول')}
-                            </button>
-                        )}
-                        {cart.pendingCount > 0 && (
-                            // ‏وقائمةُ ما على الجهاز: حالُ كلّ بيعةٍ وآخرُ محاولة
-                            <button type="button" data-testid="outbox-list-open" className="rounded-full bg-black/5 px-2.5 py-0.5 text-xs underline" onClick={() => setHeldOpen(true)}>
-                                {t('عرض')}
                             </button>
                         )}
                     </motion.div>
@@ -365,20 +360,47 @@ export default function PosIndex() {
                 </p>
             )}
             {/*
-                ‏وما يحتاج يدًا (ردّه الخادمُ أو تكرّر عليه خطؤه) باقٍ على الجهاز —
-                تنبيهٌ في مكانه فوق الشاشة لا طافٍ فوق أزرار البيع، والبيعُ يمضي تحته.
+                ‏وما على الجهاز ولم يؤكّده الخادم — تنبيهٌ واحد في مكانه فوق الشاشة، لا
+                طافٍ فوق أزرار البيع ولا نافذةٌ تتكرّر، والبيعُ يمضي تحته. يقول كم
+                بيعةً، وأن تُبقى بياناتُ المتصفّح، وحالَ الاتّصال وآخرَ محاولة — وما
+                يحتاج يدًا (ردّه الخادمُ أو تكرّر عليه خطؤه) يُعدّ وحده.
             */}
-            {cart.reviewCount > 0 && (
+            {cart.unconfirmedCount > 0 && (
                 <div
                     role="status"
-                    data-testid="review-notice"
-                    className="mx-auto mt-2 flex w-fit flex-wrap items-center justify-center gap-2 rounded-full border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-xs font-medium text-[#b91c1c]"
+                    data-testid="outbox-notice"
+                    className={cn(
+                        'mx-auto mt-2 flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border px-3 py-1.5 text-center text-xs font-medium',
+                        cart.reviewCount > 0 ? 'border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]' : 'border-[#fde68a] bg-[#fffbeb] text-[#b45309]',
+                    )}
                 >
-                    {t('توجد (:n) عمليات بيع معلقة تحتاج إلى مراجعة.', { n: cart.reviewCount })}
+                    <span>
+                        {cart.unconfirmedCount === 1
+                            ? t('يوجد لديك عملية بيع واحدة لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.')
+                            : t('يوجد لديك :n عمليات بيع لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.', { n: cart.unconfirmedCount })}
+                    </span>
+                    <span className="text-gray-600" data-testid="outbox-notice-state">
+                        {!cart.online ? t('غير متصل') : cart.sessionLost ? t('بانتظار تسجيل الدخول') : cart.forbidden ? t('المستخدم لا يملك البيع') : t('متصل')}
+                        {' · '}
+                        {cart.lastTry ? t('آخر محاولة :time', { time: new Date(cart.lastTry).toLocaleTimeString() }) : t('لم تُرسل بعد')}
+                    </span>
+                    {cart.reviewCount > 0 && (
+                        <span data-testid="review-notice" className="font-bold">
+                            {t('توجد (:n) عمليات بيع معلقة تحتاج إلى مراجعة.', { n: cart.reviewCount })}
+                        </span>
+                    )}
                     <button type="button" data-testid="held-sales-open" onClick={() => setHeldOpen(true)} className="rounded-full bg-white px-2.5 py-0.5 font-bold underline">
                         {t('مراجعة العمليات')}
                     </button>
                 </div>
+            )}
+            {/* ‏ومساحةُ الجهاز تضيق: البيعُ المتّصل يعمل، وما يُحفظ بلا اتّصال قد لا يتّسع */}
+            {cart.room !== 'ok' && (
+                <p role="status" data-testid="storage-notice" className="mx-auto mt-2 w-fit max-w-[calc(100%-2rem)] rounded-2xl border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-center text-xs font-medium text-[#b91c1c]">
+                    {cart.room === 'full'
+                        ? t('مساحة التخزين المخصصة لأبعاد في هذا المتصفح ممتلئة: البيع المتصل يعمل، لكن البيع بلا اتصال لن يُحفظ على الجهاز حتى تُرسل البيعات المعلقة.')
+                        : t('مساحة التخزين المخصصة لأبعاد في هذا المتصفح تقترب من الامتلاء: البيع بلا اتصال قد لا يُحفظ بعد قليل.')}
+                </p>
             )}
             <HeldSalesDialog
                 open={heldOpen}
@@ -390,6 +412,7 @@ export default function PosIndex() {
                 sessionLost={cart.sessionLost}
                 canRetry={cart.online && !cart.sessionLost && !cart.forbidden}
                 synced={cart.synced}
+                persisted={cart.persisted}
             />
 
             {/*

@@ -7,6 +7,7 @@ import { tillTax } from '@/lib/vat-lines';
 import { useTranslate } from '@/lib/i18n';
 import { freshCustomer, loadCache, syncCustomers, toPosCustomer } from '@/lib/till-customers';
 import { classify, dependsOn, due, entryDelay, fresh, keysOf, MAX_AUTO_ATTEMPTS, pauseDelay, withQueueLock, type OutboxEntry } from '@/lib/outbox';
+import { add as keepSale, drop as dropSale, get as storedSale, isQueueKey, keep as keepStorage, readAll as readOutbox, replace as replaceSale, room as roomLeft, type Room } from '@/lib/outbox-store';
 import type { Currency } from '@/types';
 
 /* ------------------------------- الأنواع ------------------------------- */
@@ -272,9 +273,15 @@ export interface CheckoutResult {
     loyaltyChanged?: boolean;
     /** رفضه الخادم (مخزون غير كافٍ أو صنف غير معروف) — لا يُعاد إلى الطابور */
     rejected?: boolean;
+    /**
+     * ‏لم يحفظها الجهازُ (مساحةٌ ممتلئة) ولم يكتبها الخادم: ليست بيعةً بعد.
+     *
+     * تبقى ورقةُ الدفع والسلّةُ كما هما، ويُقال للكاشير لماذا — ولا تُقال
+     * «حُفظت وستُرسل». والمحاولةُ التالية للسلّة نفسِها بمعرّفها نفسِه.
+     */
+    notSaved?: boolean;
 }
 
-const OUTBOX_KEY = 'abadpos:pos:outbox';
 /** ‏مهلةُ طلبٍ من الطابور — خادمٌ لا يردّ لا يُمسك الجولة، والبيعةُ تُعاد بمعرّفها */
 const REPLAY_TIMEOUT = 30_000;
 
@@ -389,14 +396,6 @@ function uuid(): string {
         /* بيئة غير آمنة — نلجأ للبديل */
     }
     return `cuid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function readOutbox(): OutboxEntry[] {
-    try {
-        return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]');
-    } catch {
-        return [];
-    }
 }
 
 /**
@@ -623,6 +622,24 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
     const [synced, setSynced] = useState<SyncedSale[]>([]);
     /** ‏الخادمُ كلُّه غائب (503…): لا يُطرق قبل هذا الوقت، ويطول الانتظارُ مع كلّ غياب */
     const pause = useRef({ until: 0, failures: 0 });
+    /** ‏آخرُ مرّةٍ طُرق فيها الخادم (بيعةٌ أو سؤالُ السجلّ) — يُعرض في التنبيه */
+    const [lastTry, setLastTry] = useState<number | null>(null);
+    /** ‏كم بقي في مساحة الجهاز — يُقاس عند الفتح، وحين تبقى بيعةٌ عليه، وحين تفشل كتابة */
+    const [room, setRoom] = useState<Room>('ok');
+    /** ‏هل أذن المتصفّحُ ألّا يمحو التخزين حين تضيق المساحة — `null` لم يُسأل أو لا يعرفه */
+    const [persisted, setPersisted] = useState<boolean | null>(null);
+    /**
+     * ‏سلّةٌ لم يحفظها الجهازُ ولم يكتبها الخادم: معرّفُها لمحاولتها التالية.
+     *
+     * لعلّ الخادمَ كتبها ولم يصل ردُّه (500 بعد الحفظ، أو انقطاعٌ بعده). فالضغطةُ
+     * التالية للسلّة نفسِها تُرسل بالمعرّف نفسِه، فيردّ فاتورتَها الأولى ولا
+     * يكتبها ثانية. وسلّةٌ تغيّرت بيعةٌ أخرى.
+     */
+    const unkept = useRef<{ sig: string; id: string } | null>(null);
+    // ‏والسلّةُ أُفرغت: تُرك ذلك البيع — وسلّةٌ مثلُها بعده لزبونٍ آخر بيعةٌ أخرى
+    useEffect(() => {
+        if (items.length === 0) unkept.current = null;
+    }, [items.length]);
     /*
      * ‏وآخرُ ما مرّرته الشاشة (`onToast`، `onSynced`) وآخرُ مترجم — في مرجعٍ ثابت.
      *
@@ -1328,10 +1345,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
 
     /* ------------------ صمود الانقطاع: طابور محلي (outbox) ------------------ */
 
-    const savePending = useCallback((list: OutboxEntry[]) => {
-        localStorage.setItem(OUTBOX_KEY, JSON.stringify(list));
-        setPending(list);
-    }, []);
+    /** ‏العدّادُ والقائمةُ كما على الجهاز الآن — بعد كلّ كتابة، ومن كلّ تبويب */
+    const refresh = useCallback(() => setPending(readOutbox()), []);
 
     const sendOne = useCallback(
         async (
@@ -1343,6 +1358,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         ): Promise<SendResult> => {
             const abort = timeoutMs ? new AbortController() : null;
             const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : null;
+            setLastTry(Date.now());
             try {
                 const res = await fetch('/pos/checkout', {
                     method: 'POST',
@@ -1424,6 +1440,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
      */
     const checkSaved = useCallback(async (uuids: string[]): Promise<Record<string, { invoice: string; total: number | null }> | null> => {
         if (!uuids.length) return {};
+        setLastTry(Date.now());
         try {
             const res = await fetch('/pos/outbox/status', {
                 method: 'POST',
@@ -1443,9 +1460,12 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
     /** ‏تكتب بيعةً واحدة في الطابور بعد أن يُقرأ من جديد — `null` تحذفها لأنّ الخادمَ كتبها */
     const settle = useCallback(
         (uuid: string, next: OutboxEntry | null) => {
-            savePending(readOutbox().flatMap((x) => (x.uuid === uuid ? (next ? [next] : []) : [x])));
+            // ‏بمعرّفها وحدها: لا تُقرأ القائمةُ وتُكتب كلُّها فتمحو ما كتبه تبويبٌ آخر الآن
+            if (next) replaceSale(uuid, next);
+            else dropSale(uuid);
+            refresh();
         },
-        [savePending],
+        [refresh],
     );
 
     const recordSynced = useCallback((entry: OutboxEntry, invoice: string | null, total: number | null) => {
@@ -1517,7 +1537,9 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                     at: now,
                     fields: res.fields ?? [],
                 };
-                settle(entry.uuid, { ...entry, held, last });
+                // ‏وما قاله السجلّ: أجاب فلم يجدها — أو لم يُجب، فلا يُقال «لم يجدها»
+                const checked = known ? { at: now, found: false } : entry.checked;
+                settle(entry.uuid, { ...entry, held, last, ...(checked ? { checked } : {}) });
                 onToast(t('طلب مُعلّق رُفض وبقي على الجهاز للمراجعة: :error', { error: held.error }), 'danger');
 
                 return 'continue';
@@ -1541,7 +1563,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                     return 'continue';
                 }
                 const { nextAt: _n, ...rest } = entry;
-                settle(entry.uuid, { ...rest, attempts, last, stuck: true });
+                const checked = known ? { at: now, found: false } : entry.checked;
+                settle(entry.uuid, { ...rest, attempts, last, stuck: true, ...(checked ? { checked } : {}) });
                 onToast(t('طلب مُعلّق يتكرّر عليه خطأ الخادم — بقي على الجهاز للمراجعة'), 'danger');
 
                 return 'continue';
@@ -1584,7 +1607,10 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             await withQueueLock(async () => {
                 // ‏وما فشل من قبل يُسأل عنه سجلُّ الخادم أوّلًا — لعلّه كتبه ولم يصل ردُّه
                 const retried = ready.filter((e) => (e.attempts ?? 0) > 0 || e.last);
-                const known = retried.length ? ((await checkSaved(retried.map((e) => e.uuid))) ?? {}) : {};
+                const answer = retried.length ? await checkSaved(retried.map((e) => e.uuid)) : null;
+                const known = answer ?? {};
+                const askedAt = Date.now();
+                const asked = new Set(answer ? retried.map((e) => e.uuid) : []);
                 const blocked = new Set<string>();
 
                 for (const listed of ready) {
@@ -1592,8 +1618,10 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                      * ‏والطابورُ يُقرأ من جديد قبل كلّ بيعة وكلّ كتابة: بيعةٌ تُتمّ
                      * على الشاشة أثناء هذا الإرسال تُكتب فيه، ونسخةٌ قُرئت قبلها تمحوها.
                      */
-                    const entry = readOutbox().find((x) => x.uuid === listed.uuid);
-                    if (!entry || entry.held || entry.stuck || inFlight.current.has(entry.uuid)) continue;
+                    const stored = storedSale(listed.uuid);
+                    if (!stored || stored.held || stored.stuck || inFlight.current.has(stored.uuid)) continue;
+                    // ‏سُئل عنها السجلُّ في هذه الجولة فلم يجدها — يُكتب معها ما يُكتب بعد ردّها
+                    const entry: OutboxEntry = asked.has(stored.uuid) && !known[stored.uuid] ? { ...stored, checked: { at: askedAt, found: false } } : stored;
                     if (dependsOn(entry, blocked)) {
                         keysOf(entry).forEach((k) => blocked.add(k));
                         continue;
@@ -1634,14 +1662,14 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
     const retryOne = useCallback(
         async (uuid: string) => {
             if (flushing.current || inFlight.current.has(uuid)) return;
-            const stored = readOutbox().find((x) => x.uuid === uuid);
+            const stored = storedSale(uuid);
             if (!stored || !ownEntry(stored)) return;
 
             flushing.current = true;
             let ok = false;
             try {
                 await withQueueLock(async () => {
-                    const entry = readOutbox().find((x) => x.uuid === uuid);
+                    const entry = storedSale(uuid);
                     if (!entry) return;
                     markSending(uuid, true);
                     try {
@@ -1656,8 +1684,9 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                         }
                         const res = await sendOne(entry.payload, true, REPLAY_TIMEOUT);
                         ok = !!res.ok;
-                        // ‏يدٌ أعادتها: تبدأ عدَّ محاولاتها من جديد، والبيعةُ نفسُها كما كُتبت
-                        await handleReply(fresh(entry), res, new Set());
+                        // ‏يدٌ أعادتها: تبدأ عدَّ محاولاتها من جديد، والبيعةُ نفسُها كما كُتبت — ومعها ما قاله السجلّ
+                        const asked = known ? { ...fresh(entry), checked: { at: Date.now(), found: false } } : fresh(entry);
+                        await handleReply(asked, res, new Set());
                     } finally {
                         markSending(uuid, false);
                     }
@@ -1696,6 +1725,40 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         };
     }, [flushOutbox]);
 
+    /*
+     * ‏وما كتبه تبويبٌ آخر للصندوق على هذا الجهاز يظهر هنا دون تحميل الصفحة.
+     *
+     * مئةُ بيعةٍ يُرسلها الآخرُ مئةُ حدث — فتُجمع في قراءةٍ واحدة بعد هدوئها.
+     */
+    useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const onStorage = (e: StorageEvent) => {
+            if (!isQueueKey(e.key)) return;
+            clearTimeout(timer);
+            timer = setTimeout(refresh, 150);
+        };
+        window.addEventListener('storage', onStorage);
+        setRoom(roomLeft());
+
+        return () => {
+            window.removeEventListener('storage', onStorage);
+            clearTimeout(timer);
+        };
+    }, [refresh]);
+
+    /*
+     * ‏وبيعةٌ بقيت على الجهاز: يُطلب من المتصفّح مرّةً ألّا يمحو تخزينَه حين تضيق
+     * مساحتُه (`navigator.storage.persist`). لا قبلها — طلبٌ بلا سببٍ يُزعج — ولا
+     * مع كلّ بيعة. وليس وعدًا: مسحُ بيانات المتصفّح يمحوها مهما أُذن.
+     */
+    const hasUnconfirmed = pending.some((e) => ownEntry(e));
+    const askedToKeep = useRef(false);
+    useEffect(() => {
+        if (!hasUnconfirmed || askedToKeep.current) return;
+        askedToKeep.current = true;
+        void keepStorage().then(setPersisted);
+    }, [hasUnconfirmed]);
+
     /** يحفظ البيع محليًا أولًا ثم يحاول رفعه — لا ينتظر الشبكة لإتمامه */
     const checkoutSale = useCallback(
         /*
@@ -1715,7 +1778,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 onToast(t('البيع لهذا العميل موقوف.'), 'danger');
                 return { synced: false, invoice: null, points: 0, rejected: true };
             }
-            const id = uuid();
+            // ‏سلّةٌ لم تُحفظ في محاولتها السابقة تُرسل بمعرّفها نفسِه (`unkept`)
+            const id = unkept.current?.sig === cartSig ? unkept.current.id : uuid();
             const payload = {
                 client_uuid: id,
                 items: items.map((i) => ({
@@ -1759,8 +1823,20 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 ...(details ?? {}),
             };
 
-            const queue = [...readOutbox(), { uuid: id, payload, at: Date.now(), ...(customersScope !== null ? { business: customersScope } : {}) }];
-            savePending(queue);
+            /*
+             * ═══ على الجهاز أوّلًا — ويُقرأ بعد كتابته ═══
+             *
+             * فإن انطفأ الجهازُ أو انقطع الطريقُ قبل الردّ فالبيعةُ محفوظة. ومساحةٌ
+             * ممتلئة لا توقف البيع: يُرسل كما هو، فإن كتبه الخادمُ فهو بيعٌ كأيّ بيع.
+             */
+            const kept = keepSale({ uuid: id, payload, at: Date.now(), ...(customersScope !== null ? { business: customersScope } : {}) });
+            if (kept) {
+                // ‏حُفظت بمعرّفها: سلّةٌ مثلُها بعدها بيعةٌ أخرى بمعرّفٍ جديد
+                unkept.current = null;
+                refresh();
+            }
+            // ‏ولم تتّسع لها المساحة: يُقال في الشاشة الآن، قبل أن تُحتاج بلا اتّصال
+            else setRoom(roomLeft());
 
             // مُعلَّم كجارٍ حتى لا يلتقطه نبض الطابور ويُرسله مرّة ثانية
             inFlight.current.add(id);
@@ -1772,8 +1848,28 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             }
 
             if (res.ok || res.drop) {
-                savePending(readOutbox().filter((p) => p.uuid !== id));
+                if (kept) {
+                    dropSale(id);
+                    refresh();
+                }
+                unkept.current = null;
             }
+            /*
+             * ═══ ولم يحفظها الجهازُ ولم يكتبها الخادم: ليست بيعةً بعد ═══
+             *
+             * لا تُقال «حُفظت وستُرسل». تبقى ورقةُ الدفع والسلّة، ويُقال لماذا،
+             * والضغطةُ التالية للسلّة نفسِها بمعرّفها نفسِه — فإن كان الخادمُ
+             * كتبها ولم يصل ردُّه ردّ فاتورتَها الأولى.
+             */
+            if (!kept && !res.ok && !res.drop) {
+                unkept.current = { sig: cartSig, id };
+                setOnline(navigator.onLine);
+                onToast(t('لم تُحفظ البيعة: مساحة التخزين في هذا المتصفح لا تتسع لها، ولم يؤكدها الخادم. لا تعدّها مسجّلة — أعد المحاولة حين يعود الاتصال.'), 'danger');
+
+                return { synced: false, invoice: null, points: 0, rejected: true, notSaved: true };
+            }
+            // ‏وبقيت على الجهاز تنتظر: يُقاس ما بقي من مساحته
+            if (kept && !res.ok && !res.drop) setRoom(roomLeft());
             /*
              * ‏والجلسةُ انتهت والزبونُ واقف: البيعةُ تبقى في الطابور كبيعةٍ بلا
              * اتّصال (كما يُفعل بـ401)، وتُرسل بعد الدخول بمعرّفها — لا تُردّ
@@ -1856,7 +1952,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 loyaltyChanged: changed,
             };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, savePending, sendOne, onToast, onSynced, customersScope, patchCustomer],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, refresh, sendOne, onToast, onSynced, customersScope, patchCustomer],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -1906,6 +2002,11 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         redeemActive, online, customersStatus,
         // ما ينتظر الإرسال وحدَه من بيعات هذا المتجر؛ وما ردّه الخادمُ باقٍ على الجهاز في قائمته
         pendingCount: pending.filter((e) => ownEntry(e) && !e.held && !e.stuck).length,
+        /** ‏كلُّ ما على الجهاز لمتجر الجلسة ولم يؤكّده الخادم — المعلّقةُ والمرفوضةُ والعالقة */
+        unconfirmedCount: pending.filter(ownEntry).length,
+        lastTry,
+        room,
+        persisted,
         heldSales: pending.filter((e) => ownEntry(e) && e.held),
         // ‏بيعاتُ هذا المتجر كلُّها في الطابور، وما يحتاج منها يدًا (مردودةٌ أو عالقة)
         outbox: pending.filter(ownEntry),

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Check,
@@ -21,6 +21,7 @@ import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Button } from '@/Components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -33,6 +34,7 @@ import { initials } from '@/lib/format';
 import { useOnScreenKeyboard } from '@/lib/keyboard';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
+import { readAll as salesOnDevice } from '@/lib/outbox-store';
 import ImpersonationBar from '@/Components/ImpersonationBar';
 import InvoicePrintQueue from '@/Components/InvoicePrintQueue';
 import { cn } from '@/lib/utils';
@@ -69,6 +71,25 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
     const { auth, context, flash, locale, csrf, posCashier } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
+    /*
+     * ‏الخروجُ وعلى الجهاز بيعاتٌ لم يؤكّدها الخادم: يُقال قبله لا بعده.
+     *
+     * الخروجُ لا يمسّها — تبقى في المتصفّح وتُرسل حين يدخل مستخدمٌ من المتجر
+     * نفسِه. لكنّ من يخرج قد يمسح بياناتِ المتصفّح أو يترك الجهاز، فيُقال له
+     * كم بيعةً عليه وما يحفظها. و`null`: لا سؤالَ مفتوح.
+     */
+    const [leaving, setLeaving] = useState<number | null>(null);
+    const signOut = () => {
+        const shop = auth?.user?.businessId ?? null;
+        const waiting = salesOnDevice().filter((e) => shop === null || e.business === undefined || e.business === shop).length;
+        if (waiting === 0) {
+            logout(route('logout'), csrf);
+
+            return;
+        }
+        // ‏بعد أن تُغلق القائمة — نافذةٌ تُفتح معها تُقفل الصفحة تحتها
+        setTimeout(() => setLeaving(waiting), 0);
+    };
 
     // ارتفاع لوحة المفاتيح في `--kb` — تقرؤه هذه الشاشة والنوافذ المنبثقة
     useOnScreenKeyboard();
@@ -294,7 +315,7 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                                 <Lock />
                                 {t('قفل الشاشة')}
                             </DropdownMenuItem>
-                            <DropdownMenuItem destructive onSelect={() => logout(route('logout'), csrf)}>
+                            <DropdownMenuItem destructive onSelect={signOut}>
                                 <LogOut />
                                 {t('تسجيل الخروج')}
                             </DropdownMenuItem>
@@ -308,6 +329,25 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                 (`useInvoicePrintJobs`). ولا يُرسم شيءٌ لصندوقٍ لم تُعيَّن طابعتُه.
             */}
             <InvoicePrintQueue />
+
+            <Dialog open={leaving !== null} onOpenChange={(open) => !open && setLeaving(null)}>
+                <DialogContent className="max-w-md" data-testid="logout-pending">
+                    <DialogHeader>
+                        <DialogTitle>{t('بيعات لم يؤكدها الخادم بعد')}</DialogTitle>
+                        <DialogDescription>
+                            {t('على هذا الجهاز :n من البيعات لم يؤكدها الخادم بعد. تبقى محفوظة في هذا المتصفح بعد الخروج، وتُرسل حين يدخل مستخدم من المتجر نفسه على هذا الجهاز. لا تمسح بيانات المتصفح قبل ذلك.', { n: leaving ?? 0 })}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 px-5 pb-5">
+                        <Button variant="outline" onClick={() => setLeaving(null)}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button variant="danger" data-testid="logout-anyway" onClick={() => logout(route('logout'), csrf)}>
+                            {t('تسجيل الخروج')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <main className={cn(fill ? 'min-h-0 flex-1' : 'flex-1')}>{children}</main>
 

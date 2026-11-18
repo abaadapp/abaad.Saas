@@ -69,4 +69,11 @@ describe('moving to a page of another group without reloading', () => {
         await expect(ensureRoutesFor('Admin/Dashboard', (async () => jsonRes(200, { group: 'pos', routes: {} })) as never)).rejects.toThrow();
         expect(covered('merchant')).toBe(false);
     });
+
+    it('opens the page that arrived, not the request that led to it (a POST such as logout cannot be opened)', async () => {
+        const { readFileSync } = await import('node:fs');
+        const app = readFileSync(`${process.cwd()}/resources/js/app.tsx`, 'utf8');
+        expect(app).toMatch(/resolve: async \(name, response\)/);
+        expect(app).toContain('window.location.assign(response?.url ?? lastVisit ?? window.location.href)');
+    });
 });

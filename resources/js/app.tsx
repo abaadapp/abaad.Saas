@@ -51,7 +51,7 @@ router.on('start', (event) => {
 createInertiaApp({
     title: (title) => (title ? `${title} — ${appName}` : appName),
 
-    resolve: async (name) => {
+    resolve: async (name, response) => {
         const page = pages[`./Pages/${name}.tsx`];
 
         if (!page) {
@@ -60,8 +60,12 @@ createInertiaApp({
 
         const [module] = await Promise.all([
             page(),
+            /*
+             * ‏ورابطُ الصفحة التي وصلت لا رابطُ الطلب: طلبٌ بـPOST (الخروج،
+             * الدخول) يُحوَّل إلى صفحةٍ أخرى، وفتحُ رابطه بـGET يُخطئ.
+             */
             ensureRoutesFor(name).catch(() => {
-                window.location.assign(lastVisit ?? window.location.href);
+                window.location.assign(response?.url ?? lastVisit ?? window.location.href);
                 return new Promise<never>(() => {});
             }),
         ]);

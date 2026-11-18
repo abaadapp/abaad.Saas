@@ -38,13 +38,25 @@ const queued = () => JSON.parse(localStorage.getItem(KEY) || '[]') as { uuid: st
 const entry = (uuid: string, extra: Sent = {}) => ({ uuid, at: Date.now(), payload: { client_uuid: uuid, items: [{ id: 1, name: 'باقة ورد', qty: 1 }], expected_total: 100, ...extra } });
 const refused = (message: string): Reply => ({ status: 422, body: { message, errors: { items: [message] } } });
 
-const mount = async (respond: (body: Sent, n: number) => Reply) => {
+/**
+ * ‏الخادمُ الوهميّ: `sent` بيعاتُ `/pos/checkout` وحدها، و`asked` أسئلةُ السجلّ
+ * (`/pos/outbox/status`) — ويجيب السجلُّ بما في `saved` (لا شيء افتراضًا).
+ */
+const mount = async (respond: (body: Sent, n: number) => Reply, saved: () => Record<string, { invoice: string; total: number }> = () => ({})) => {
     const sent: Sent[] = [];
+    const asked: string[][] = [];
     const onToast = vi.fn();
     vi.stubGlobal(
         'fetch',
-        vi.fn(async (_url: string, init: RequestInit) => {
+        vi.fn(async (url: string, init: RequestInit) => {
             const body = JSON.parse(String(init.body)) as Sent;
+            if (String(url).includes('/pos/outbox/status')) {
+                asked.push(body.uuids as string[]);
+                const known = saved();
+                const hit = Object.fromEntries((body.uuids as string[]).filter((u) => known[u]).map((u) => [u, known[u]]));
+
+                return { ok: true, status: 200, json: async () => ({ saved: hit }) };
+            }
             sent.push(body);
             const r = respond(body, sent.length);
 
@@ -66,7 +78,7 @@ const mount = async (respond: (body: Sent, n: number) => Reply) => {
         } as never),
     );
 
-    return { view, sent, onToast };
+    return { view, sent, asked, onToast };
 };
 
 const reconnect = async () => {

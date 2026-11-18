@@ -349,6 +349,12 @@ export default function PosIndex() {
                                 {t('سجّل الدخول')}
                             </button>
                         )}
+                        {cart.pendingCount > 0 && (
+                            // ‏وقائمةُ ما على الجهاز: حالُ كلّ بيعةٍ وآخرُ محاولة
+                            <button type="button" data-testid="outbox-list-open" className="rounded-full bg-black/5 px-2.5 py-0.5 text-xs underline" onClick={() => setHeldOpen(true)}>
+                                {t('عرض')}
+                            </button>
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -358,21 +364,33 @@ export default function PosIndex() {
                     {t('على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها', { n: cart.foreignPendingCount })}
                 </p>
             )}
-            {/* ‏وما ردّه الخادمُ باقٍ على الجهاز بسببه — لا يُحذف، ويُعاد باليد */}
-            {cart.heldSales.length > 0 && (
-                <button
-                    type="button"
-                    data-testid="held-sales-open"
-                    onClick={() => setHeldOpen(true)}
-                    className={cn(
-                        'fixed start-1/2 z-50 -translate-x-1/2 rounded-full border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm font-bold text-[#b91c1c] shadow-lg rtl:translate-x-1/2',
-                        !cart.online || cart.pendingCount > 0 ? 'top-14' : 'top-3',
-                    )}
+            {/*
+                ‏وما يحتاج يدًا (ردّه الخادمُ أو تكرّر عليه خطؤه) باقٍ على الجهاز —
+                تنبيهٌ في مكانه فوق الشاشة لا طافٍ فوق أزرار البيع، والبيعُ يمضي تحته.
+            */}
+            {cart.reviewCount > 0 && (
+                <div
+                    role="status"
+                    data-testid="review-notice"
+                    className="mx-auto mt-2 flex w-fit flex-wrap items-center justify-center gap-2 rounded-full border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-xs font-medium text-[#b91c1c]"
                 >
-                    {t(':n طلب معلّق رُفض — راجعه', { n: cart.heldSales.length })}
-                </button>
+                    {t('توجد (:n) عمليات بيع معلقة تحتاج إلى مراجعة.', { n: cart.reviewCount })}
+                    <button type="button" data-testid="held-sales-open" onClick={() => setHeldOpen(true)} className="rounded-full bg-white px-2.5 py-0.5 font-bold underline">
+                        {t('مراجعة العمليات')}
+                    </button>
+                </div>
             )}
-            <HeldSalesDialog open={heldOpen} onOpenChange={setHeldOpen} sales={cart.heldSales} onRetry={cart.retryHeld} money={money} />
+            <HeldSalesDialog
+                open={heldOpen}
+                onOpenChange={setHeldOpen}
+                sales={cart.outbox}
+                onRetry={cart.retryOne}
+                money={money}
+                sending={cart.sending}
+                sessionLost={cart.sessionLost}
+                canRetry={cart.online && !cart.sessionLost && !cart.forbidden}
+                synced={cart.synced}
+            />
 
             {/*
                 عمودان من ٧٦٨ بكسل لا من ١٠٢٤.

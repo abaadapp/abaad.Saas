@@ -6,6 +6,7 @@ import { phoneRefusal } from '@/lib/customer-phone';
 import { tillTax } from '@/lib/vat-lines';
 import { useTranslate } from '@/lib/i18n';
 import { freshCustomer, loadCache, syncCustomers, toPosCustomer } from '@/lib/till-customers';
+import { classify, dependsOn, due, entryDelay, fresh, keysOf, MAX_AUTO_ATTEMPTS, pauseDelay, withQueueLock, type OutboxEntry } from '@/lib/outbox';
 import type { Currency } from '@/types';
 
 /* ------------------------------- الأنواع ------------------------------- */
@@ -220,25 +221,23 @@ export interface ResumeCart {
     coupon_code?: string | null;
 }
 
-export interface OutboxEntry {
+/*
+ * ‏البيعةُ في الطابور وقواعدُه في `lib/outbox.ts`. ومتجرُها (`business`) يُكتب
+ * منذ صار للطابور جهازٌ تتبدّل عليه المتاجر: كانت بيعةُ متجرٍ تُرسَل بجلسة متجرٍ
+ * آخر فيردّها الخادمُ ويُسقطها الطابور. فتُرسَل بيعةُ كلّ متجرٍ من صندوقه وحده،
+ * وتبقى بيعاتُ غيره محفوظةً حتى يُفتح صندوقُه. والقديمُ بلا متجر يُرسَل كما كان.
+ */
+export type { OutboxEntry } from '@/lib/outbox';
+
+/** بيعةٌ وصلت الخادمَ في هذه الجلسة — تُعرض في قائمة المراجعة بفاتورتها ومبلغها كما كتبه */
+export interface SyncedSale {
     uuid: string;
-    payload: Record<string, unknown>;
+    invoice: string | null;
+    /** ما كتبه الخادم — قد يكون مجهولًا لردٍّ مكرَّر */
+    total: number | null;
+    /** ما قُبض عند الصندوق */
+    expected: number | null;
     at: number;
-    /**
-     * متجرُ البيعة — يُكتب منذ صار للطابور جهازٌ تتبدّل عليه المتاجر.
-     *
-     * الطابورُ مفتاحٌ واحد في الجهاز، وكان يُرسَل كلُّه بجلسة من فتح الصندوق:
-     * بيعةُ متجرٍ تُرسَل بجلسة متجرٍ آخر فيردّها الخادمُ (صنفٌ ليس منه) ويُسقطها
-     * الطابور — بيعةٌ قُبض ثمنُها تضيع. فتُرسَل بيعةُ كلّ متجرٍ من صندوقه وحده،
-     * وتبقى بيعاتُ غيره محفوظةً حتى يُفتح صندوقُه. والقديمُ بلا متجر يُرسَل كما كان.
-     */
-    business?: number;
-    /**
-     * ‏بيعةٌ ردّها الخادمُ لسببٍ في بياناتها (422) — نفد المخزون، أو انتهى
-     * الكوبون، أو أُوقف العميل. اكتملت عند الصندوق وقُبض ثمنُها، فلا تُحذف:
-     * تبقى على الجهاز بسببها، ولا تُرسل وحدَها حتى يُعاد إرسالُها باليد.
-     */
-    held?: { status: number; error: string; at: number };
 }
 
 export interface CheckoutResult {
@@ -276,6 +275,34 @@ export interface CheckoutResult {
 }
 
 const OUTBOX_KEY = 'abadpos:pos:outbox';
+/** ‏مهلةُ طلبٍ من الطابور — خادمٌ لا يردّ لا يُمسك الجولة، والبيعةُ تُعاد بمعرّفها */
+const REPLAY_TIMEOUT = 30_000;
+
+/** ‏ردُّ الخادم على بيعة — `status` رقمُه، و`null` لا ردّ (شبكة أو مهلة) */
+interface SendResult {
+    ok: boolean;
+    /** ‏ردٌّ لسببٍ في البيانات (422/409): السلّةُ أمام الكاشير تُصحَّح، والطابورُ يُبقيها للمراجعة */
+    drop?: boolean;
+    /** ‏الجلسةُ انتهت أو لا دخول (419/401): البيعةُ سليمة، وتنتظر دخولًا جديدًا */
+    session?: boolean;
+    /** ‏403: لا يملك هذا المستخدمُ أو الجهازُ البيع */
+    forbidden?: boolean;
+    status?: number | null;
+    invoice?: string;
+    points?: number;
+    redeemed?: number;
+    /** رصيدُ العميل بعد البيعة — كما في القاعدة، لا محسوبًا هنا */
+    balance?: number | null;
+    /** إجماليُّ البيعة كما كتبه الخادم */
+    total?: number;
+    error?: string;
+    /** أسماءُ الحقول التي ردّها الخادم — منها يُعرف السبب */
+    fields?: string[];
+    /** عرضُ النقاط الصحيح حين رُدّت البيعةُ لأنّه تغيّر (`RedemptionChanged`) */
+    loyalty?: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings };
+    /** المبلغُ الصحيح حين رُدّت البيعةُ لأنّه غيرُ ما على الشاشة (`TotalChanged`) */
+    totals?: { total: number; shown: number; stale_screen: boolean };
+}
 /* لا نسبة في الشيفرة: النسبة تصل من إعدادات المتجر (انظر VatSettings) */
 /*
  * وصرفُ النقاط إلى مال لم يعد ثابتًا هنا: يحدّده التاجرُ، ويُحسب الخصمُ في
@@ -585,9 +612,27 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
     );
     /** ‏ردّ الخادمُ بأنّ الجلسة انتهت (419) أو لا دخول (401) — الطابورُ ينتظر دخولًا جديدًا */
     const [sessionLost, setSessionLost] = useState(false);
+    /** ‏وردّ بأنّ هذا المستخدمَ أو الجهازَ لا يملك البيع (403) — ينتظر مستخدمًا مخوّلًا */
+    const [forbidden, setForbidden] = useState(false);
     const flushing = useRef(false);
     /** معرّفات البيوع الجارية الآن — يتخطّاها النبض فلا يعيد إرسالها */
     const inFlight = useRef(new Set<string>());
+    /** وهي نفسُها للشاشة: «قيد الإرسال» */
+    const [sending, setSending] = useState<ReadonlySet<string>>(() => new Set());
+    /** ما وصل الخادمَ في هذه الجلسة — آخرُ عشرين */
+    const [synced, setSynced] = useState<SyncedSale[]>([]);
+    /** ‏الخادمُ كلُّه غائب (503…): لا يُطرق قبل هذا الوقت، ويطول الانتظارُ مع كلّ غياب */
+    const pause = useRef({ until: 0, failures: 0 });
+    /*
+     * ‏وآخرُ ما مرّرته الشاشة (`onToast`، `onSynced`) وآخرُ مترجم — في مرجعٍ ثابت.
+     *
+     * الشاشةُ تمرّرها دوالَّ جديدةً في كلّ رسم، فكانت دالّةُ الجولة تتجدّد معها،
+     * وأثرُها يُعاد فيُطلق جولةً بعد كلّ رسم — وجولةٌ تكتب حالًا تُحدث رسمًا:
+     * جلسةٌ منتهية صارت طلبًا مع كلّ حرفٍ يُكتب في البحث. فالجولةُ ثابتة، ولا
+     * تُطلقها إلّا النبضةُ وعودةُ الشبكة.
+     */
+    const latest = useRef({ onToast, onSynced, t });
+    latest.current = { onToast, onSynced, t };
 
     /*
      * ═══ وقواعدُ ردّها الخادمُ تعلو ما قرأته الشاشةُ عند فتحها ═══
@@ -1293,26 +1338,11 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             payload: Record<string, unknown>,
             /** بيعةٌ اكتملت عند الصندوق وتُرسل من الطابور — لا تُردّ لأجل النقاط */
             replay = false,
-        ): Promise<{
-            ok: boolean;
-            /** ‏ردٌّ لسببٍ في البيانات (422/409): السلّةُ أمام الكاشير تُصحَّح، والطابورُ يُبقيها للمراجعة */
-            drop?: boolean;
-            /** ‏الجلسةُ انتهت أو لا دخول (419/401): البيعةُ سليمة، وتنتظر دخولًا جديدًا */
-            session?: boolean;
-            status?: number;
-            invoice?: string;
-            points?: number;
-            redeemed?: number;
-            /** رصيدُ العميل بعد البيعة — كما في القاعدة، لا محسوبًا هنا */
-            balance?: number | null;
-            /** إجماليُّ البيعة كما كتبه الخادم */
-            total?: number;
-            error?: string;
-            /** عرضُ النقاط الصحيح حين رُدّت البيعةُ لأنّه تغيّر (`RedemptionChanged`) */
-            loyalty?: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings };
-            /** المبلغُ الصحيح حين رُدّت البيعةُ لأنّه غيرُ ما على الشاشة (`TotalChanged`) */
-            totals?: { total: number; shown: number; stale_screen: boolean };
-        }> => {
+            /** ‏مهلةٌ لطلب الطابور: خادمٌ لا يردّ لا يُمسك الجولةَ كلَّها — والبيعةُ تُعاد بمعرّفها */
+            timeoutMs?: number,
+        ): Promise<SendResult> => {
+            const abort = timeoutMs ? new AbortController() : null;
+            const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : null;
             try {
                 const res = await fetch('/pos/checkout', {
                     method: 'POST',
@@ -1322,11 +1352,13 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                         Accept: 'application/json',
                     },
                     body: JSON.stringify(replay ? { ...payload, replay: true } : payload),
+                    ...(abort ? { signal: abort.signal } : {}),
                 });
                 if (res.ok) {
                     const d = await res.json();
                     return {
                         ok: true,
+                        status: res.status,
                         invoice: d.invoice,
                         points: d.points_earned || 0,
                         redeemed: d.points_redeemed || 0,
@@ -1349,95 +1381,302 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 if (res.status === 419 || res.status === 401) {
                     return { ok: false, session: true, status: res.status, error: t('انتهت جلسة الصندوق — سجّل الدخول من جديد') };
                 }
+                // ‏403: هذا المستخدمُ أو الجهازُ لا يملك البيع — تبقى حتى مستخدمٍ مخوّل
+                if (res.status === 403) {
+                    return { ok: false, forbidden: true, status: res.status, error: t('هذا المستخدم أو الجهاز لا يملك البيع — يدخل مستخدمٌ مخوّل') };
+                }
                 // 422 بيانات مرفوضة — إعادة المحاولة وحدها لا تُصلحها.
                 // نستخرج السبب: الخادم يرفض هنا نقص المخزون وصنفًا غير معروف،
                 // وإسقاط البيع صامتًا يترك الكاشير بلا تفسير.
-                // 409 تعارضٌ مع حال المتجر: لا تُصلحه إعادةُ المحاولة وحدها كذلك
+                // 409 تعارضٌ: لا يُحكم به قبل أن يُسأل سجلُّ الخادم (`flushOutbox`)
                 if (res.status === 422 || res.status === 409) {
                     let error = '';
+                    let fields: string[] = [];
                     let loyalty: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings } | undefined;
                     let totals: { total: number; shown: number; stale_screen: boolean } | undefined;
                     try {
                         const d = await res.json();
                         error = Object.values(d?.errors ?? {}).flat().join(' · ') || d?.message || '';
+                        fields = Object.keys(d?.errors ?? {});
                         loyalty = d?.loyalty ?? undefined;
                         totals = d?.totals ?? undefined;
                     } catch {
                         /* رد بلا JSON — نكتفي برسالة عامة */
                     }
-                    return { ok: false, drop: true, status: res.status, error: error || t('تعذّر إتمام البيع'), loyalty, totals };
+                    return { ok: false, drop: true, status: res.status, error: error || t('تعذّر إتمام البيع'), fields, loyalty, totals };
                 }
-                return { ok: false, status: res.status };
+                return { ok: false, status: res.status, error: t('خطأ في الخادم (:status)', { status: res.status }) };
             } catch {
-                return { ok: false }; // خطأ شبكة → يبقى في الطابور
+                return { ok: false, status: null, error: t('لا اتصال بالخادم') }; // خطأ شبكة → يبقى في الطابور
+            } finally {
+                if (timer) clearTimeout(timer);
             }
         },
         [],
     );
 
+    /**
+     * ‏سجلُّ الخادم بمعرّفات البيعات: أيُّها كتبها، وبأيّ فاتورةٍ ومبلغ.
+     *
+     * يُسأل قبل أن يُحكم على بيعةٍ بأنّها مردودة، وقبل أن تُعاد بيعةٌ فشلت من قبل:
+     * خادمٌ كتبها ثمّ ضاع ردُّه (500 بعد الحفظ، أو انقطاعٌ في الطريق) يقول ذلك
+     * هنا، فتُحذف من الطابور بفاتورتها ولا تُرسل ثانيةً. و`null` = لم يُعرف.
+     */
+    const checkSaved = useCallback(async (uuids: string[]): Promise<Record<string, { invoice: string; total: number | null }> | null> => {
+        if (!uuids.length) return {};
+        try {
+            const res = await fetch('/pos/outbox/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...csrfHeaders() },
+                body: JSON.stringify({ uuids }),
+            });
+            if (!res.ok) return null;
+            const d = await res.json();
+            if (!d || typeof d.saved !== 'object' || d.saved === null) return null;
+
+            return d.saved as Record<string, { invoice: string; total: number | null }>;
+        } catch {
+            return null;
+        }
+    }, []);
+
+    /** ‏تكتب بيعةً واحدة في الطابور بعد أن يُقرأ من جديد — `null` تحذفها لأنّ الخادمَ كتبها */
+    const settle = useCallback(
+        (uuid: string, next: OutboxEntry | null) => {
+            savePending(readOutbox().flatMap((x) => (x.uuid === uuid ? (next ? [next] : []) : [x])));
+        },
+        [savePending],
+    );
+
+    const recordSynced = useCallback((entry: OutboxEntry, invoice: string | null, total: number | null) => {
+        const expected = typeof entry.payload.expected_total === 'number' ? entry.payload.expected_total : null;
+        setSynced((list) => [{ uuid: entry.uuid, invoice, total, expected, at: Date.now() }, ...list.filter((s) => s.uuid !== entry.uuid)].slice(0, 20));
+    }, []);
+
+    const markSending = useCallback((uuid: string, on: boolean) => {
+        if (on) inFlight.current.add(uuid);
+        else inFlight.current.delete(uuid);
+        setSending(new Set(inFlight.current));
+    }, []);
+
+    /**
+     * ‏ما يعنيه ردُّ الخادم لبيعةٍ من الطابور — `stop` يوقف الجولة.
+     *
+     * `entry` هي البيعةُ كما تُكتب بعد الردّ (إعادةُ الإرسال باليد تمرّرها بلا
+     * أثر محاولاتها السابقة)، و`blocked` ما تتعلّق به البيعاتُ التي لم تصل بعد.
+     */
+    const handleReply = useCallback(
+        async (entry: OutboxEntry, res: SendResult, blocked: Set<string>): Promise<'continue' | 'stop'> => {
+            const { onToast, t } = latest.current;
+            const now = Date.now();
+            const last = { status: res.status ?? null, error: res.error ?? '', at: now };
+            const outcome = res.ok ? 'ok' : classify(res.status ?? null);
+
+            if (outcome === 'ok') {
+                settle(entry.uuid, null);
+                recordSynced(entry, res.invoice ?? null, res.total ?? null);
+                pause.current = { until: 0, failures: 0 };
+                setSessionLost(false);
+                setForbidden(false);
+
+                return 'continue';
+            }
+            if (outcome === 'session' || outcome === 'forbidden') {
+                // ‏البيعاتُ كلُّها باقية، وتُرسل بعد الدخول بمعرّفاتها نفسِها — ولا تُطرق البقيّةُ بجلسةٍ لا تملك البيع
+                settle(entry.uuid, { ...entry, last });
+                // ‏ولا تُطرق كلَّ نبضةٍ بجلسةٍ لا تُقبل — نصفُ دقيقة، والدخولُ يفتح صفحةً جديدة
+                pause.current = { until: now + 30_000, failures: pause.current.failures };
+                const flag = outcome === 'session' ? setSessionLost : setForbidden;
+                flag((was) => {
+                    if (!was) {
+                        onToast(
+                            outcome === 'session'
+                                ? t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة')
+                                : t('هذا المستخدم أو الجهاز لا يملك البيع — يدخل مستخدمٌ مخوّل ليُرسَل ما على الجهاز'),
+                            'danger',
+                        );
+                    }
+                    return true;
+                });
+
+                return 'stop';
+            }
+            if (outcome === 'refused' || outcome === 'conflict') {
+                // ‏سجلُّ الخادم أوّلًا: لا يُحكم على بيعةٍ بأنّها مردودةٌ أو مكرَّرة قبل أن يُسأل عنها
+                const known = await checkSaved([entry.uuid]);
+                const saved = known?.[entry.uuid];
+                if (saved) {
+                    settle(entry.uuid, null);
+                    recordSynced(entry, saved.invoice, saved.total ?? null);
+
+                    return 'continue';
+                }
+                const held = {
+                    status: res.status ?? 422,
+                    error: res.error || (outcome === 'conflict' ? t('تعارضٌ مع الخادم') : t('تعذّر إتمام البيع')),
+                    at: now,
+                    fields: res.fields ?? [],
+                };
+                settle(entry.uuid, { ...entry, held, last });
+                onToast(t('طلب مُعلّق رُفض وبقي على الجهاز للمراجعة: :error', { error: held.error }), 'danger');
+
+                return 'continue';
+            }
+            if (outcome === 'server') {
+                // ‏خطأٌ في هذه البيعة وحدها: تُعاد بتأخيرٍ يتضاعف، وما يتعلّق بها ينتظر خلفها، والمستقلّةُ تمضي
+                const attempts = (entry.attempts ?? 0) + 1;
+                if (attempts < MAX_AUTO_ATTEMPTS) {
+                    // ‏ستُعاد: ما يتعلّق بها ينتظر خلفها حفظًا للترتيب — والعالقةُ لا توقف أحدًا
+                    keysOf(entry).forEach((k) => blocked.add(k));
+                    settle(entry.uuid, { ...entry, attempts, last, nextAt: now + entryDelay(attempts) });
+
+                    return 'continue';
+                }
+                const known = await checkSaved([entry.uuid]);
+                const saved = known?.[entry.uuid];
+                if (saved) {
+                    settle(entry.uuid, null);
+                    recordSynced(entry, saved.invoice, saved.total ?? null);
+
+                    return 'continue';
+                }
+                const { nextAt: _n, ...rest } = entry;
+                settle(entry.uuid, { ...rest, attempts, last, stuck: true });
+                onToast(t('طلب مُعلّق يتكرّر عليه خطأ الخادم — بقي على الجهاز للمراجعة'), 'danger');
+
+                return 'continue';
+            }
+
+            // ‏الخادمُ كلُّه غائب أو لا اتّصال: البيعةُ كما هي، والطابورُ ينتظر مدّةً تطول ولا يُطرق كلَّ نبضة
+            settle(entry.uuid, { ...entry, last });
+            const failures = pause.current.failures + 1;
+            pause.current = { until: now + pauseDelay(failures), failures };
+
+            return 'stop';
+        },
+        [settle, recordSynced, checkSaved],
+    );
+
+    /** ‏تُعلَم الشاشةُ مرّةً لكلّ جولة — لا رسالةٌ وإعادةُ تحميلٍ للأصناف لكلّ بيعة */
+    const announce = useCallback(
+        (count: number) => {
+            if (!count) return;
+            const { onToast, onSynced, t } = latest.current;
+            onToast(count === 1 ? t('تمت مزامنة طلب مُعلّق ✓') : t('تمت مزامنة :n طلبات معلّقة ✓', { n: count }), 'success');
+            onSynced?.();
+        },
+        [],
+    );
+
     const flushOutbox = useCallback(async () => {
-        if (flushing.current || !navigator.onLine) return;
+        if (flushing.current || !navigator.onLine || Date.now() < pause.current.until) return;
         // بيعة قيد الإرسال الآن ليست بيعة عالقة: البيع يُكتب في الطابور قبل
         // إرساله (حتى لا يضيع لو انطفأ الجهاز)، فلو صادف النبض تلك النافذة
         // أعاد إرسال الطلب نفسه — يردّه الخادم مقبولًا لتكرّر المعرّف، فيظهر
         // للكاشير «تمت مزامنة طلب مُعلّق» في بيعة عادية متصلة.
         // وما ردّه الخادمُ لسببٍ في بياناته ينتظر يدًا — لا يُعاد إرسالُه كلَّ نبضة
-        const queue = readOutbox().filter((e) => !inFlight.current.has(e.uuid) && ownEntry(e) && !e.held);
-        if (!queue.length) return;
+        const ready = due(readOutbox().filter((e) => !inFlight.current.has(e.uuid) && ownEntry(e)), Date.now());
+        if (!ready.length) return;
 
         flushing.current = true;
+        let count = 0;
         try {
-            for (const entry of queue) {
-                // من الطابور: بيعةٌ اكتملت ودُفع ثمنُها — يكتبها الخادمُ كما قُبضت (`replay`)
-                const res = await sendOne(entry.payload, true);
-                /*
-                 * ‏والطابورُ يُقرأ من جديد قبل كلّ كتابة: بيعةٌ تُتمّ على الشاشة
-                 * أثناء هذا الإرسال تُكتب فيه — ونسخةٌ قُرئت قبلها تمحوها.
-                 */
-                if (res.ok) {
-                    savePending(readOutbox().filter((x) => x.uuid !== entry.uuid));
-                    setSessionLost(false);
-                    onToast(t('تمت مزامنة طلب مُعلّق ✓'), 'success');
-                    onSynced?.();
-                } else if (res.session) {
-                    // الجلسةُ انتهت: البيعاتُ كلُّها باقية، وتُرسل بعد الدخول بمعرّفاتها نفسِها
-                    setSessionLost((was) => {
-                        if (!was) onToast(t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة'), 'danger');
-                        return true;
-                    });
-                    break;
-                } else if (res.drop) {
-                    // رُفض بعد عودة الاتصال (نفد المخزون مثلًا) — يُعلَم ويبقى على الجهاز بسببه، لا يختفي
-                    const held = { status: res.status ?? 422, error: res.error ?? '', at: Date.now() };
-                    savePending(readOutbox().map((x) => (x.uuid === entry.uuid ? { ...x, held } : x)));
-                    onToast(t('طلب مُعلّق رُفض وبقي على الجهاز للمراجعة: :error', { error: held.error }), 'danger');
-                } else {
-                    break; // الشبكة ما زالت منقطعة — نعيد لاحقًا
+            await withQueueLock(async () => {
+                // ‏وما فشل من قبل يُسأل عنه سجلُّ الخادم أوّلًا — لعلّه كتبه ولم يصل ردُّه
+                const retried = ready.filter((e) => (e.attempts ?? 0) > 0 || e.last);
+                const known = retried.length ? ((await checkSaved(retried.map((e) => e.uuid))) ?? {}) : {};
+                const blocked = new Set<string>();
+
+                for (const listed of ready) {
+                    /*
+                     * ‏والطابورُ يُقرأ من جديد قبل كلّ بيعة وكلّ كتابة: بيعةٌ تُتمّ
+                     * على الشاشة أثناء هذا الإرسال تُكتب فيه، ونسخةٌ قُرئت قبلها تمحوها.
+                     */
+                    const entry = readOutbox().find((x) => x.uuid === listed.uuid);
+                    if (!entry || entry.held || entry.stuck || inFlight.current.has(entry.uuid)) continue;
+                    if (dependsOn(entry, blocked)) {
+                        keysOf(entry).forEach((k) => blocked.add(k));
+                        continue;
+                    }
+                    const saved = known[entry.uuid];
+                    if (saved) {
+                        settle(entry.uuid, null);
+                        recordSynced(entry, saved.invoice, saved.total ?? null);
+                        count++;
+                        continue;
+                    }
+
+                    // من الطابور: بيعةٌ اكتملت ودُفع ثمنُها — يكتبها الخادمُ كما قُبضت (`replay`)
+                    markSending(entry.uuid, true);
+                    let res: SendResult;
+                    try {
+                        res = await sendOne(entry.payload, true, REPLAY_TIMEOUT);
+                    } finally {
+                        markSending(entry.uuid, false);
+                    }
+                    if (res.ok) count++;
+                    if ((await handleReply(entry, res, blocked)) === 'stop') break;
                 }
-            }
+            });
         } finally {
             flushing.current = false;
+            announce(count);
         }
-    }, [sendOne, savePending, onToast, onSynced, ownEntry]);
+    }, [sendOne, checkSaved, settle, recordSynced, markSending, handleReply, announce, ownEntry]);
 
-    /** ‏إعادةُ إرسال بيعةٍ رُدّت، باليد وبمعرّفها نفسِه — فإن كان الخادمُ كتبها ردّ فاتورتَها ولم يكتبها ثانيةً */
-    const retryHeld = useCallback(
+    /**
+     * ‏إعادةُ إرسال بيعةٍ باليد (مردودةٍ أو عالقة) — بمعرّفها نفسِه وحمولتها كما قُبضت.
+     *
+     * يُسأل السجلُّ أوّلًا، ولا تُرسل والطابورُ يُرسل غيرَها (ضغطتان لا تصيران
+     * طلبين)، ولا من تبويبٍ آخر في الوقت نفسِه (`withQueueLock`). وإن ردّها
+     * الخادمُ ثانيةً بقيت بالسبب الجديد؛ وإن كتبها ردّ فاتورتَها الأولى.
+     */
+    const retryOne = useCallback(
         async (uuid: string) => {
-            savePending(
-                readOutbox().map((x) => {
-                    if (x.uuid !== uuid) return x;
-                    const { held: _held, ...rest } = x;
-                    return rest;
-                }),
-            );
-            await flushOutbox();
+            if (flushing.current || inFlight.current.has(uuid)) return;
+            const stored = readOutbox().find((x) => x.uuid === uuid);
+            if (!stored || !ownEntry(stored)) return;
+
+            flushing.current = true;
+            let ok = false;
+            try {
+                await withQueueLock(async () => {
+                    const entry = readOutbox().find((x) => x.uuid === uuid);
+                    if (!entry) return;
+                    markSending(uuid, true);
+                    try {
+                        const known = await checkSaved([uuid]);
+                        const saved = known?.[uuid];
+                        if (saved) {
+                            settle(uuid, null);
+                            recordSynced(entry, saved.invoice, saved.total ?? null);
+                            ok = true;
+
+                            return;
+                        }
+                        const res = await sendOne(entry.payload, true, REPLAY_TIMEOUT);
+                        ok = !!res.ok;
+                        // ‏يدٌ أعادتها: تبدأ عدَّ محاولاتها من جديد، والبيعةُ نفسُها كما كُتبت
+                        await handleReply(fresh(entry), res, new Set());
+                    } finally {
+                        markSending(uuid, false);
+                    }
+                });
+            } finally {
+                flushing.current = false;
+                announce(ok ? 1 : 0);
+            }
         },
-        [savePending, flushOutbox],
+        [ownEntry, markSending, checkSaved, settle, recordSynced, sendOne, handleReply, announce],
     );
+    /** الاسمُ الأوّل لإعادة الإرسال باليد — يبقى لمن يناديه */
+    const retryHeld = retryOne;
 
     useEffect(() => {
         const goOnline = () => {
             setOnline(true);
+            // ‏عادت الشبكةُ نفسُها: انتظارٌ بدأ لانقطاعها لا يُمسك الطابورَ بعدها
+            pause.current = { until: 0, failures: 0 };
             void flushOutbox();
         };
         const goOffline = () => setOnline(false);
@@ -1543,6 +1782,13 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             if (res.session) {
                 setSessionLost((was) => {
                     if (!was) onToast(t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة'), 'danger');
+                    return true;
+                });
+            }
+            // ‏ولا يملك البيعَ مَن على الصندوق (403): تبقى في الطابور كما كانت، ويُقال لماذا
+            if (res.forbidden) {
+                setForbidden((was) => {
+                    if (!was) onToast(t('هذا المستخدم أو الجهاز لا يملك البيع — يدخل مستخدمٌ مخوّل ليُرسَل ما على الجهاز'), 'danger');
                     return true;
                 });
             }
@@ -1659,9 +1905,13 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         couponError: couponError || (coupon && couponShort ? belowMinimum(coupon) : ''),
         redeemActive, online, customersStatus,
         // ما ينتظر الإرسال وحدَه من بيعات هذا المتجر؛ وما ردّه الخادمُ باقٍ على الجهاز في قائمته
-        pendingCount: pending.filter((e) => ownEntry(e) && !e.held).length,
+        pendingCount: pending.filter((e) => ownEntry(e) && !e.held && !e.stuck).length,
         heldSales: pending.filter((e) => ownEntry(e) && e.held),
-        sessionLost, retryHeld,
+        // ‏بيعاتُ هذا المتجر كلُّها في الطابور، وما يحتاج منها يدًا (مردودةٌ أو عالقة)
+        outbox: pending.filter(ownEntry),
+        reviewCount: pending.filter((e) => ownEntry(e) && (e.held || e.stuck)).length,
+        sending, synced, forbidden,
+        sessionLost, retryHeld, retryOne,
         // ‏بيعاتٌ معلّقةٌ لمتجرٍ آخر على هذا الجهاز — محفوظةٌ لا تُرسَل من هنا
         foreignPendingCount: pending.filter((e) => !ownEntry(e)).length,
         customerLabel, isWalkIn,

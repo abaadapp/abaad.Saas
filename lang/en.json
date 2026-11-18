@@ -10653,5 +10653,14 @@
     "هذا العميل لم يعد موجودًا — عاد البيع نقديًّا": "This customer no longer exists — the sale is back to cash",
     "جارٍ تحميل العملاء…": "Loading customers…",
     "قائمة العملاء لم تصل بعد — تُحمَّل حين يعود الاتصال، والبيع النقدي متاح": "The customer list hasn't arrived yet — it loads when the connection is back, and cash sales still work",
-    "على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها": "This device holds :n pending sale(s) for another shop — kept safe, and sent when that shop's till is opened"
+    "على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها": "This device holds :n pending sale(s) for another shop — kept safe, and sent when that shop's till is opened",
+    "انتهت جلسة الصندوق — سجّل الدخول من جديد": "The till session has ended — sign in again",
+    "انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة": "The till session has ended — sign in so the pending orders on this device can be sent",
+    "انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز": "Till session ended — sign in to send what is on this device",
+    "سجّل الدخول": "Sign in",
+    "طلب مُعلّق رُفض وبقي على الجهاز للمراجعة: :error": "A queued order was refused and kept on this device for review: :error",
+    ":n طلب معلّق رُفض — راجعه": ":n refused queued orders — review",
+    "طلبات معلّقة رُفضت": "Refused queued orders",
+    "اكتملت على هذا الجهاز ورفضها الخادم عند الإرسال. باقية هنا ولن تُحذف — أصلح السبب ثمّ أعد إرسالها.": "They were completed on this device and refused by the server when sent. They stay here and will not be deleted — fix the cause, then send them again.",
+    "أعد الإرسال": "Send again"
 }

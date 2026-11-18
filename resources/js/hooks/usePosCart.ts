@@ -220,7 +220,7 @@ export interface ResumeCart {
     coupon_code?: string | null;
 }
 
-interface OutboxEntry {
+export interface OutboxEntry {
     uuid: string;
     payload: Record<string, unknown>;
     at: number;
@@ -233,6 +233,12 @@ interface OutboxEntry {
      * وتبقى بيعاتُ غيره محفوظةً حتى يُفتح صندوقُه. والقديمُ بلا متجر يُرسَل كما كان.
      */
     business?: number;
+    /**
+     * ‏بيعةٌ ردّها الخادمُ لسببٍ في بياناتها (422) — نفد المخزون، أو انتهى
+     * الكوبون، أو أُوقف العميل. اكتملت عند الصندوق وقُبض ثمنُها، فلا تُحذف:
+     * تبقى على الجهاز بسببها، ولا تُرسل وحدَها حتى يُعاد إرسالُها باليد.
+     */
+    held?: { status: number; error: string; at: number };
 }
 
 export interface CheckoutResult {
@@ -577,6 +583,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         (e: OutboxEntry) => customersScope === null || e.business === undefined || e.business === customersScope,
         [customersScope],
     );
+    /** ‏ردّ الخادمُ بأنّ الجلسة انتهت (419) أو لا دخول (401) — الطابورُ ينتظر دخولًا جديدًا */
+    const [sessionLost, setSessionLost] = useState(false);
     const flushing = useRef(false);
     /** معرّفات البيوع الجارية الآن — يتخطّاها النبض فلا يعيد إرسالها */
     const inFlight = useRef(new Set<string>());
@@ -1287,7 +1295,11 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             replay = false,
         ): Promise<{
             ok: boolean;
+            /** ‏ردٌّ لسببٍ في البيانات (422/409): السلّةُ أمام الكاشير تُصحَّح، والطابورُ يُبقيها للمراجعة */
             drop?: boolean;
+            /** ‏الجلسةُ انتهت أو لا دخول (419/401): البيعةُ سليمة، وتنتظر دخولًا جديدًا */
+            session?: boolean;
+            status?: number;
             invoice?: string;
             points?: number;
             redeemed?: number;
@@ -1329,12 +1341,19 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                         total: typeof d.total === 'number' ? d.total : undefined,
                     };
                 }
-                // 419 جلسة منتهية و422 بيانات مرفوضة — إعادة المحاولة بلا فائدة.
+                /*
+                 * ‏419 جلسةٌ انتهت (انقطاعٌ أطول من عمر الجلسة، أو خروجٌ)
+                 * و401 لا دخول: لا عيبَ في البيعة نفسِها. فلا تُردّ ولا تُحذف —
+                 * تبقى في الطابور بمعرّفها حتى يدخل الكاشيرُ من جديد.
+                 */
+                if (res.status === 419 || res.status === 401) {
+                    return { ok: false, session: true, status: res.status, error: t('انتهت جلسة الصندوق — سجّل الدخول من جديد') };
+                }
+                // 422 بيانات مرفوضة — إعادة المحاولة وحدها لا تُصلحها.
                 // نستخرج السبب: الخادم يرفض هنا نقص المخزون وصنفًا غير معروف،
                 // وإسقاط البيع صامتًا يترك الكاشير بلا تفسير.
-                // 409 لا وردية مفتوحة: إعادة المحاولة لن تفتحها، والبيعة
-                // تُسقَط برسالتها كي يفتح الكاشير الوردية ثم يعيد البيع
-                if (res.status === 422 || res.status === 419 || res.status === 409) {
+                // 409 تعارضٌ مع حال المتجر: لا تُصلحه إعادةُ المحاولة وحدها كذلك
+                if (res.status === 422 || res.status === 409) {
                     let error = '';
                     let loyalty: { balance: number; points: number; discount: number; reason: string | null; settings: LoyaltySettings } | undefined;
                     let totals: { total: number; shown: number; stale_screen: boolean } | undefined;
@@ -1346,9 +1365,9 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                     } catch {
                         /* رد بلا JSON — نكتفي برسالة عامة */
                     }
-                    return { ok: false, drop: true, error: error || t('تعذّر إتمام البيع'), loyalty, totals };
+                    return { ok: false, drop: true, status: res.status, error: error || t('تعذّر إتمام البيع'), loyalty, totals };
                 }
-                return { ok: false };
+                return { ok: false, status: res.status };
             } catch {
                 return { ok: false }; // خطأ شبكة → يبقى في الطابور
             }
@@ -1362,25 +1381,36 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         // إرساله (حتى لا يضيع لو انطفأ الجهاز)، فلو صادف النبض تلك النافذة
         // أعاد إرسال الطلب نفسه — يردّه الخادم مقبولًا لتكرّر المعرّف، فيظهر
         // للكاشير «تمت مزامنة طلب مُعلّق» في بيعة عادية متصلة.
-        const queue = readOutbox().filter((e) => !inFlight.current.has(e.uuid) && ownEntry(e));
+        // وما ردّه الخادمُ لسببٍ في بياناته ينتظر يدًا — لا يُعاد إرسالُه كلَّ نبضة
+        const queue = readOutbox().filter((e) => !inFlight.current.has(e.uuid) && ownEntry(e) && !e.held);
         if (!queue.length) return;
 
         flushing.current = true;
         try {
-            let remaining = readOutbox();
             for (const entry of queue) {
                 // من الطابور: بيعةٌ اكتملت ودُفع ثمنُها — يكتبها الخادمُ كما قُبضت (`replay`)
                 const res = await sendOne(entry.payload, true);
-                if (res.ok || res.drop) {
-                    remaining = remaining.filter((x) => x.uuid !== entry.uuid);
-                    savePending(remaining);
-                    if (res.ok) {
-                        onToast(t('تمت مزامنة طلب مُعلّق ✓'), 'success');
-                        onSynced?.();
-                    } else if (res.error) {
-                        // رُفض بعد عودة الاتصال (نفد المخزون مثلًا) — يجب أن يُعلَم لا أن يختفي
-                        onToast(t('طلب مُعلّق رُفض: :error', { error: res.error }), 'danger');
-                    }
+                /*
+                 * ‏والطابورُ يُقرأ من جديد قبل كلّ كتابة: بيعةٌ تُتمّ على الشاشة
+                 * أثناء هذا الإرسال تُكتب فيه — ونسخةٌ قُرئت قبلها تمحوها.
+                 */
+                if (res.ok) {
+                    savePending(readOutbox().filter((x) => x.uuid !== entry.uuid));
+                    setSessionLost(false);
+                    onToast(t('تمت مزامنة طلب مُعلّق ✓'), 'success');
+                    onSynced?.();
+                } else if (res.session) {
+                    // الجلسةُ انتهت: البيعاتُ كلُّها باقية، وتُرسل بعد الدخول بمعرّفاتها نفسِها
+                    setSessionLost((was) => {
+                        if (!was) onToast(t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة'), 'danger');
+                        return true;
+                    });
+                    break;
+                } else if (res.drop) {
+                    // رُفض بعد عودة الاتصال (نفد المخزون مثلًا) — يُعلَم ويبقى على الجهاز بسببه، لا يختفي
+                    const held = { status: res.status ?? 422, error: res.error ?? '', at: Date.now() };
+                    savePending(readOutbox().map((x) => (x.uuid === entry.uuid ? { ...x, held } : x)));
+                    onToast(t('طلب مُعلّق رُفض وبقي على الجهاز للمراجعة: :error', { error: held.error }), 'danger');
                 } else {
                     break; // الشبكة ما زالت منقطعة — نعيد لاحقًا
                 }
@@ -1389,6 +1419,21 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             flushing.current = false;
         }
     }, [sendOne, savePending, onToast, onSynced, ownEntry]);
+
+    /** ‏إعادةُ إرسال بيعةٍ رُدّت، باليد وبمعرّفها نفسِه — فإن كان الخادمُ كتبها ردّ فاتورتَها ولم يكتبها ثانيةً */
+    const retryHeld = useCallback(
+        async (uuid: string) => {
+            savePending(
+                readOutbox().map((x) => {
+                    if (x.uuid !== uuid) return x;
+                    const { held: _held, ...rest } = x;
+                    return rest;
+                }),
+            );
+            await flushOutbox();
+        },
+        [savePending, flushOutbox],
+    );
 
     useEffect(() => {
         const goOnline = () => {
@@ -1489,6 +1534,17 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
 
             if (res.ok || res.drop) {
                 savePending(readOutbox().filter((p) => p.uuid !== id));
+            }
+            /*
+             * ‏والجلسةُ انتهت والزبونُ واقف: البيعةُ تبقى في الطابور كبيعةٍ بلا
+             * اتّصال (كما يُفعل بـ401)، وتُرسل بعد الدخول بمعرّفها — لا تُردّ
+             * فيُعيد الكاشيرُ تحميلَ الصفحة ويفقد سلّته.
+             */
+            if (res.session) {
+                setSessionLost((was) => {
+                    if (!was) onToast(t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز من طلبات معلّقة'), 'danger');
+                    return true;
+                });
             }
             if (res.ok) {
                 /*
@@ -1601,7 +1657,11 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         couponCode, coupon, couponLoading,
         // سببُ الرفض — أو أنّ السلّة نزلت تحت الحدّ ولم تهدأ بعد
         couponError: couponError || (coupon && couponShort ? belowMinimum(coupon) : ''),
-        redeemActive, online, pendingCount: pending.filter(ownEntry).length, customersStatus,
+        redeemActive, online, customersStatus,
+        // ما ينتظر الإرسال وحدَه من بيعات هذا المتجر؛ وما ردّه الخادمُ باقٍ على الجهاز في قائمته
+        pendingCount: pending.filter((e) => ownEntry(e) && !e.held).length,
+        heldSales: pending.filter((e) => ownEntry(e) && e.held),
+        sessionLost, retryHeld,
         // ‏بيعاتٌ معلّقةٌ لمتجرٍ آخر على هذا الجهاز — محفوظةٌ لا تُرسَل من هنا
         foreignPendingCount: pending.filter((e) => !ownEntry(e)).length,
         customerLabel, isWalkIn,

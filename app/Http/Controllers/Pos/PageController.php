@@ -153,8 +153,8 @@ class PageController extends Controller
         }
 
         return Inertia::render('Pos/Index', [
-            // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
-            'products' => Demo::products(Demo::activeBranchId()),
+            // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة — وما يقرؤه الصندوقُ وحده (`Demo::tillProducts`)
+            'products' => Demo::tillProducts(Demo::activeBranchId()),
             'categories' => Demo::posCategories(),
             /* المواسمُ الجارية — مرشِّحٌ فوق ما حُمّل، لا يُضيف صنفًا ولا يُجيز بيعَه */
             'seasons' => Seasons::forPos(Demo::bid()),

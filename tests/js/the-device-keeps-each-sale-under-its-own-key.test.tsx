@@ -50,14 +50,17 @@ describe('المخزن', () => {
         expect(get('old-2')?.uuid).toBe('old-2');
     });
 
-    it('ونسخةٌ في القائمة كُتبت هنا ثمّ حُذف مفتاحُها (أكّدها الخادم) لا تُقرأ — ولو أعادها تبويبٌ آخر', () => {
+    it('ولا تُتجاهل بيعةٌ في القائمة بلا مفتاح — ولو أعادها تبويبٌ بعد أن أكّدها الخادم: تُرسل فيردّ فاتورتَها', () => {
         add(sale('done'));
         const stale = localStorage.getItem(LEGACY_KEY)!;
         drop('done');
         localStorage.setItem(LEGACY_KEY, stale);
 
+        // ‏إرسالُها ثانيةً لا يكتبها مرّتين، وتجاهلُها قد يُسقط بيعةً لم تصل
+        expect(readAll().map((e) => e.uuid)).toEqual(['done']);
+        expect(get('done')?.uuid).toBe('done');
+        drop('done');
         expect(readAll()).toEqual([]);
-        expect(get('done')).toBeNull();
     });
 
     it('حالُها يتغيّر في مفتاحها ونسختِها — ولا تُعاد بيعةٌ حُذفت', () => {

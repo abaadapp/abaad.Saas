@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -36,9 +36,8 @@ import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDi
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import CustomOrderCard from '@/Pages/Pos/partials/CustomOrderCard';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
-import ProductDescriptionButton from '@/Pages/Pos/partials/ProductDescriptionButton';
+import ProductGrid from '@/Pages/Pos/partials/ProductGrid';
 import { ADDONS_TAB, AddonsBar, AddonsSection, addonsLayoutOf, addonsView, shownAddons } from '@/Pages/Pos/partials/PosAddons';
-import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -296,6 +295,14 @@ export default function PosIndex() {
         });
     };
 
+    /*
+     * ‏ونقرةُ البطاقة بمرجعٍ ثابت — فلا تُعاد رسمُ الشبكة كلِّها (ألفا بطاقة) مع كلّ
+     * حرفٍ في بحث العميل أو بندٍ في السلّة. والمنادى أحدثُ `pick` دائمًا.
+     */
+    const pickRef = useRef(pick);
+    pickRef.current = pick;
+    const onPick = useCallback((p: (typeof products)[number]) => pickRef.current(p), []);
+
     const visibleProducts = useMemo(() => {
         // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
         const needle = q.trim().toLowerCase();
@@ -551,48 +558,7 @@ export default function PosIndex() {
                                         onClick={openCustom}
                                     />
                                 )}
-                                {visibleProducts.map((p) => (
-                                    // والوصفُ زرٌّ أخٌ للبطاقة لا داخلها: زرٌّ في زرٍّ لا يُضغط وحده
-                                    <div key={p.id} className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                pick(p)
-                                            }
-                                            className="group size-full select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow-md"
-                                        >
-                                            <div className="relative aspect-square overflow-hidden bg-gray-50">
-                                                {p.image ? (
-                                                    <img
-                                                        src={p.thumb || p.image}
-                                                        alt={p.label}
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                                    />
-                                                ) : (
-                                                    <span className="flex size-full items-center justify-center text-3xl">📦</span>
-                                                )}
-                                                <span className="absolute end-2 top-2">
-                                                    <Badge status={p.stock_status} />
-                                                </span>
-                                            </div>
-                                            <div className="p-3">
-                                                <h3 className="truncate text-sm font-semibold text-gray-800">{p.label}</h3>
-                                                <p className="mt-0.5 text-xs text-gray-400">
-                                                    {p.tracks_stock === false ? t('غير مرتبط بالمخزون') : `${t('المتوفر:')} ${p.qty}`}
-                                                </p>
-                                                <div className="mt-2 flex items-center justify-between gap-1">
-                                                    <p className="text-sm font-bold text-gray-900">{money(p.price)}</p>
-                                                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-900 transition-colors group-hover:bg-gray-900 group-hover:text-white">
-                                                        <Plus className="size-4" />
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </button>
-                                        <ProductDescriptionButton name={p.label} text={p.pos_description} />
-                                    </div>
-                                ))}
+                                <ProductGrid products={visibleProducts} currency={currency} onPick={onPick} />
                             </div>
                         )}
                     </div>

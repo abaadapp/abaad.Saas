@@ -100,7 +100,8 @@ describe('بطاقةُ تخصيص الطلب', () => {
 
         const grid = src.indexOf('grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4');
         const card = src.indexOf('<CustomOrderCard');
-        const products = src.indexOf('{visibleProducts.map((p) => (');
+        // ‏والأصنافُ تُرسم في `ProductGrid` (محفوظةً بـmemo) — موضعُها في الشبكة بعد البطاقة
+        const products = src.indexOf('<ProductGrid products={visibleProducts}');
 
         expect(grid).toBeGreaterThan(0);
         expect(card).toBeGreaterThan(grid);

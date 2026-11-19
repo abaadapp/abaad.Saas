@@ -482,7 +482,18 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             tax: i.tax ?? (i.id != null ? products.find((p) => p.id === i.id)?.tax : undefined),
         })),
     );
-    const [resumeId] = useState<number | null>(resume?.id ?? null);
+    /*
+     * ‏معرّفُ السلّة المعلّقة المستأنفة — لهذه السلّة وحدها، ويُفرَّغ حين تنتهي.
+     *
+     * كان يُقرأ مرّةً عند فتح الصفحة ولا يُفرَّغ، فتحمله كلُّ بيعةٍ بعدها:
+     * دُفعت المعلّقة فيردّ الخادمُ التاليةَ «أُتمّت من جهازٍ آخر» حتى تُعاد
+     * الصفحة؛ أو أُلغيت أو عُلّقت من جديد فيقبل الخادمُ بيعةَ غيرِها **ويحذف
+     * السلّةَ المعلّقة الأصليّة** — طلبُ زبونٍ لم يُدفع يُفقد بلا أثر.
+     *
+     * فيُفرَّغ حين تُكتب البيعةُ أو تُحفظ في الطابور (`checkoutSale`)، وحين
+     * تُفرَّغ السلّة أو تُعلَّق (`clear`). ويبقى حين تُردّ: السلّةُ هي هي.
+     */
+    const [resumeId, setResumeId] = useState<number | null>(resume?.id ?? null);
     const [customer, setCustomer] = useState<string>(
         resume?.customer || new URLSearchParams(location.search).get('customer') || CASH_CUSTOMER,
     );
@@ -1052,6 +1063,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         removeCoupon();
         setRedeemActive(false);
         setRedeemDecided(false);
+        // ‏والسلّةُ المعلّقة التي استُؤنفت تبقى معلّقةً عند الخادم كما كانت — لا تُتمّها بيعةُ غيرِها
+        setResumeId(null);
     }, [removeCoupon]);
 
     /**
@@ -1865,6 +1878,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 }
                 unkept.current = null;
             }
+            // ‏كُتبت أو حُفظت في الطابور بمعرّف سلّتها المعلّقة: انتهت — وما بعدها بيعةٌ مستقلّة
+            if (res.ok || (kept && !res.drop)) setResumeId(null);
             /*
              * ═══ ولم يحفظها الجهازُ ولم يكتبها الخادم: ليست بيعةً بعد ═══
              *

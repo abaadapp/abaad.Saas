@@ -11,6 +11,8 @@ export interface GridProduct {
     id: number;
     label: string;
     price: number;
+    /** ‏ما يُباع به بعد خصم الصنف — وغيابُه `price` (شبكةٌ لا خصمَ فيها) */
+    sale_price?: number;
     image?: string | null;
     thumb?: string | null;
     qty?: number | null;
@@ -71,7 +73,13 @@ function ProductGrid<P extends GridProduct>({ products, currency, onPick }: Prop
                             {p.tracks_stock === false ? t('غير مرتبط بالمخزون') : `${t('المتوفر:')} ${p.qty}`}
                         </p>
                         <div className="mt-2 flex items-center justify-between gap-1">
-                            <p className="text-sm font-bold text-gray-900">{money(p.price)}</p>
+                            {/* ‏ما يُقبض — وقبل الخصم مشطوبًا حين يكون */}
+                            <p className="text-sm font-bold text-gray-900">
+                                {money(p.sale_price ?? p.price)}
+                                {p.sale_price !== undefined && p.sale_price < p.price && (
+                                    <span className="ms-1 text-xs font-normal text-gray-400 line-through">{money(p.price)}</span>
+                                )}
+                            </p>
                             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-900 transition-colors group-hover:bg-gray-900 group-hover:text-white">
                                 <Plus className="size-4" />
                             </span>

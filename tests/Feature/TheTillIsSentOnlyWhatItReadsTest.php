@@ -135,8 +135,19 @@ class TheTillIsSentOnlyWhatItReadsTest extends TestCase
                 }
                 $this->assertEqualsCanonicalizing($expected, array_values($dropped), "«{$row['name']}»: سقط غيرُ ما لا يقرؤه الصندوق");
 
+                /*
+                 * ‏وما زاد سعرُ البيع وحده، للمخصوم وحده — من الدالّة التي يبيع بها
+                 * الخادم (`TheTillSellsADiscountedProductAtTheServersPriceTest`).
+                 */
+                $product = Product::findOrFail($row['id']);
+                $added = array_values(array_diff(array_keys($sent), array_keys($row)));
+                $this->assertSame($product->discountRate() > 0 ? ['sale_price'] : [], $added, "«{$row['name']}»: زاد غيرُ سعر البيع");
+                if ($added) {
+                    $this->assertSame($product->sellingPrice(), $sent['sale_price']);
+                }
+
                 // ‏وما بقي هو هو حرفًا — قيمةً ونوعًا
-                foreach ($sent as $key => $value) {
+                foreach (array_diff_key($sent, ['sale_price' => true]) as $key => $value) {
                     $this->assertSame($row[$key], $value, "«{$row['name']}».{$key} تغيّر");
                 }
                 // ‏والاسمُ المعروض كما يقرؤه الصندوق (`fromTill`): الحاضرُ، أو الاسمُ حين غاب

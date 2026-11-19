@@ -9,7 +9,7 @@ import type { Addon, Product } from '@/types/models';
 import type { CartAddon } from '@/hooks/usePosCart';
 
 interface Props {
-    product: Product | null;
+    product: (Product & { sale_price?: number }) | null;
     addons: Addon[];
     money: (value: number) => string;
     onClose: () => void;
@@ -48,7 +48,8 @@ export default function ItemOptionsDialog({ product, addons, money, onClose, onC
     );
 
     const variant = variants.find((v) => v.id === variantId) ?? null;
-    const basePrice = variant ? variant.price : product.price;
+    // ‏والمقاسُ بسعره — الخادمُ لا يخصمه؛ والصنفُ بلا مقاسٍ بسعر بيعه بعد خصمه
+    const basePrice = variant ? variant.price : (product.sale_price ?? product.price);
     const addonsTotal = Object.entries(picked).reduce((sum, [id, qty]) => {
         const addon = allowed.find((a) => a.id === Number(id));
 

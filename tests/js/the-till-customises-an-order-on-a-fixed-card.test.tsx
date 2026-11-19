@@ -97,15 +97,18 @@ describe('بطاقةُ تخصيص الطلب', () => {
     /** والبطاقةُ في الشبكة لا في شريط الأقسام — يُقرأ من الشاشة نفسها */
     it('تقف في أوّل شبكة المنتجات لا في شريط الأقسام', () => {
         const src = readFileSync(resolve(process.cwd(), 'resources/js/Pages/Pos/Index.tsx'), 'utf8');
+        const grid = readFileSync(resolve(process.cwd(), 'resources/js/Pages/Pos/partials/ProductGrid.tsx'), 'utf8');
 
-        const grid = src.indexOf('grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4');
-        const card = src.indexOf('<CustomOrderCard');
-        // ‏والأصنافُ تُرسم في `ProductGrid` (محفوظةً بـmemo) — موضعُها في الشبكة بعد البطاقة
-        const products = src.indexOf('<ProductGrid products={visibleProducts}');
-
-        expect(grid).toBeGreaterThan(0);
-        expect(card).toBeGreaterThan(grid);
-        expect(products).toBeGreaterThan(card);
+        /*
+         * ‏والشبكةُ في `ProductGrid` (تُرسم صفوفُها الظاهرة وحدها في الكبير)، والبطاقةُ
+         * تصلها `leading` فتكون خانتَها الأولى — في المرسوم كلِّه وفي أوّل صفوف النافذة.
+         */
+        expect(src).toMatch(/const customCard = useMemo\([\s\S]*?<CustomOrderCard/);
+        expect(src).toContain('<ProductGrid products={visibleProducts} currency={currency} onPick={onPick} leading={customCard}');
+        expect(grid).toContain("const GRID = 'grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4'");
+        expect(grid.indexOf('{leading}')).toBeGreaterThan(grid.indexOf('className={GRID}'));
+        expect(grid.indexOf('{products.map(')).toBeGreaterThan(grid.indexOf('{leading}'));
+        expect(grid).toContain('i < lead ? <Fragment key="leading">{leading}</Fragment>');
         // ولا زرَّ منقّطًا بقي في الشريط
         expect(src).not.toContain('border-dashed border-gray-300');
     });

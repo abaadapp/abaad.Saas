@@ -10713,5 +10713,12 @@
     "هذه البيعات محفوظة في هذا المتصفح وحده إلى أن يؤكدها الخادم. إن مُسحت بيانات المتصفح أو تلف الجهاز قبل ذلك فلا يمكن استعادتها، فأبقِ المتصفح كما هو حتى تكتمل المزامنة.": "These sales are saved in this browser only until the server confirms them. If the browser data is cleared or the device is damaged before then they cannot be recovered, so keep the browser as it is until syncing completes.",
     "وقد أذن المتصفح بحفظها حفظًا دائمًا، فلا يمحوها إن ضاقت مساحة الجهاز.": "The browser has granted persistent storage, so it will not erase them if the device runs low on space.",
     "يوجد لديك :n عمليات بيع لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.": "You have :n sales that have not finished syncing. Please keep the browser data and do not clear it until they sync or are reviewed.",
-    "يوجد لديك عملية بيع واحدة لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.": "You have one sale that has not finished syncing. Please keep the browser data and do not clear it until it syncs or is reviewed."
+    "يوجد لديك عملية بيع واحدة لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.": "You have one sale that has not finished syncing. Please keep the browser data and do not clear it until it syncs or is reviewed.",
+    "هذه السلّة المعلّقة لم تعد معلّقة: أُتمّت أو حُذفت من جهازٍ آخر. لم يُعلَّق شيء، والسلّة باقية.": "This held cart is no longer held: it was checked out or deleted on another device. Nothing was held, and the cart is still here.",
+    "لا اتصال بالخادم: لم يُعلَّق الطلب، والسلة باقية كما هي.": "No connection to the server: the order was not held, and the cart is still here.",
+    "انتهت الجلسة: لم يُعلَّق الطلب، والسلة باقية. سجّل الدخول ثم أعد المحاولة.": "Your session has ended: the order was not held, and the cart is still here. Sign in, then try again.",
+    "تعذّر تعليق الطلب، والسلة باقية كما هي. أعد المحاولة.": "The order could not be held, and the cart is still here. Try again.",
+    "حُفظت التعديلات على الطلب :number": "Changes saved to order :number",
+    "أُغلقت السلة، والطلب :number باقٍ في «الطلبات المعلقة» كما كان.": "Cart closed. Order :number is still in Held orders, as it was.",
+    "تعديل الطلب المعلق :number — «تعليق» يحفظ التعديل عليه، و«إلغاء» يغلقه هنا ويبقيه في الطلبات المعلقة.": "Editing held order :number — Hold saves your changes to it; Cancel closes it here and keeps it in Held orders."
 }

@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Component, Fragment, memo, useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Plus } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
 import ProductDescriptionButton from '@/Pages/Pos/partials/ProductDescriptionButton';
@@ -132,21 +132,34 @@ function ProductGrid<P extends GridProduct>({ products, currency, onPick, leadin
     const [gap, setGap] = useState(0);
     const [rows, setRows] = useState<[number, number]>([0, FIRST_ROWS]);
 
-    /** ‏الأعمدةُ من الشبكة نفسِها، وطولُ الصفّ بين بطاقتين في صفّين متتاليين */
+    /*
+     * ‏الأعمدةُ من الشبكة نفسِها، وطولُ الصفّ بين بطاقتين في صفّين متتاليين —
+     * مرّةً لكلّ عرضٍ للشبكة، لا مع كلّ تمرير.
+     *
+     * كان يُقاس مع كلّ رسمٍ بـ`offsetTop` (بكسلٌ صحيح): طولُ الصفّ 292.4 يُقرأ
+     * 292 مرّةً و293 أخرى بحسب الصفّ المرسوم، فيتغيّر الطولُ فتتغيّر الصفوفُ
+     * فيُقاس من جديد — دوّامةٌ أسقطت الصندوقَ كلَّه أثناء التمرير («Maximum
+     * update depth»). فيُقاس بالكسر (`getBoundingClientRect`)، ولا يُعاد ما لم
+     * يتغيّر عرضُ الشبكة، وفرقٌ دون بكسلٍ ونصف لا يُكتب.
+     */
+    const measuredWidth = useRef(-1);
     const measure = useCallback(() => {
         const grid = gridRef.current;
         if (!grid) return;
+        const width = grid.clientWidth;
+        if (width === measuredWidth.current) return;
         const style = window.getComputedStyle(grid);
         const tracks = style.gridTemplateColumns.split(' ').filter((x) => x !== '' && x !== 'none').length;
         const c = Math.max(1, tracks);
         const cards = grid.querySelectorAll<HTMLElement>('[data-pos-card]');
-        const h = cards.length > c ? cards[cards.length - 1].offsetTop - cards[cards.length - 1 - c].offsetTop : 0;
+        if (cards.length <= c) return;
+        const h = cards[cards.length - 1].getBoundingClientRect().top - cards[cards.length - 1 - c].getBoundingClientRect().top;
+        if (!(h > 0)) return;
+        measuredWidth.current = width;
+        const g = parseFloat(style.rowGap) || 0;
         setCols((was) => (was === c ? was : c));
-        setGap((was) => {
-            const g = parseFloat(style.rowGap) || 0;
-            return Math.abs(was - g) < 0.5 ? was : g;
-        });
-        if (h > 0) setRowH((was) => (Math.abs(was - h) < 0.5 ? was : h));
+        setGap((was) => (Math.abs(was - g) < 0.5 ? was : g));
+        setRowH((was) => (Math.abs(was - h) < 1.5 ? was : h));
     }, []);
 
     /** ‏أيُّ الصفوف في الإطار الآن */
@@ -161,10 +174,10 @@ function ProductGrid<P extends GridProduct>({ products, currency, onPick, leadin
         setRows((was) => (was[0] === first && was[1] === last ? was : [first, last]));
     }, [scrollRef, rowH]);
 
-    // ‏يُقاس قبل الرسم، كلّما تغيّر المرسوم — والقياسُ لا يكتب ما لم يتغيّر
+    // ‏يُقاس قبل الرسم ما لم يُقس لهذا العرض بعد — والقياسُ لا يكتب ما لم يتغيّر
     useLayoutEffect(() => {
         if (windowed) measure();
-    }, [windowed, measure, rows, total, cols]);
+    }, [windowed, measure, rows, total]);
 
     // ‏ويتبع التمريرَ وتغيّرَ الإطار — بإطارٍ واحدٍ لكلّ رسم
     useLayoutEffect(() => {
@@ -225,4 +238,35 @@ function ProductGrid<P extends GridProduct>({ products, currency, onPick, leadin
     );
 }
 
-export default memo(ProductGrid) as typeof ProductGrid;
+/**
+ * ‏والنافذةُ لا تُسقط الصندوق.
+ *
+ * خطأٌ في رسم الصفوف الظاهرة كان يصل حدَّ الشاشة كلِّها («تعطّلت الشاشة»):
+ * تختفي السلّةُ والدفعُ والزبونُ الواقف. فيُحبس هنا، وتُرسم الأصنافُ كلُّها كما
+ * كانت قبل النافذة — أبطأ في الكبير، لكنّ البيعَ يمضي.
+ */
+class WindowFallback extends Component<{ children: ReactNode; whole: () => ReactNode }, { failed: boolean }> {
+    state = { failed: false };
+
+    static getDerivedStateFromError() {
+        return { failed: true };
+    }
+
+    componentDidCatch(error: unknown) {
+        console.error('[abaad] شبكةُ الأصناف رُسمت كلُّها بعد خطأٍ في رسم الظاهر منها:', error);
+    }
+
+    render() {
+        return this.state.failed ? this.props.whole() : this.props.children;
+    }
+}
+
+function GuardedGrid<P extends GridProduct>(props: Props<P>) {
+    return (
+        <WindowFallback whole={() => <ProductGrid {...props} scrollRef={undefined} />}>
+            <ProductGrid {...props} />
+        </WindowFallback>
+    );
+}
+
+export default memo(GuardedGrid) as typeof GuardedGrid;

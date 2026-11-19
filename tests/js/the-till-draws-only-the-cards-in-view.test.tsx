@@ -40,6 +40,18 @@ const grid = () => document.querySelector('[data-pos-card]')?.parentElement as H
 const cards = () => [...document.querySelectorAll('section [data-pos-card] h3')].map((h) => h.textContent);
 
 /* ‏تخطيطُ شاشةٍ لا يحسبه jsdom */
+let JITTER = 0;
+/** ‏صفٌّ بـ292.4 بكسلًا يُقرأ 292 مرّةً و293 أخرى — هكذا يقرّب المتصفّحُ `offsetTop` */
+const jitter = (row: number) => (JITTER ? (row % 2) * JITTER : 0);
+/** ‏صفُّ البطاقة في القائمة كلِّها: أوّلُ صفوف النافذة + موضعُها فيها */
+const cardRow = (el: HTMLElement) => {
+    const grid = el.parentElement;
+    if (!grid) return 0;
+    const first = Number((grid.getAttribute('data-pos-window') ?? '0-0').split('-')[0]);
+    const cells = [...grid.children].filter((c) => c.hasAttribute('data-pos-card') || c.querySelector('h3'));
+
+    return first + Math.floor(cells.indexOf(el) / COLS);
+};
 const real = { getComputedStyle: window.getComputedStyle, rect: Element.prototype.getBoundingClientRect };
 // ‏والتجسّسُ يُستعاد بعد كلّ اختبار (`restoreMocks`) — فيُعاد قبل كلٍّ منها
 const fakeGrid = () =>
@@ -55,10 +67,8 @@ beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
         configurable: true,
         get(this: HTMLElement) {
-            if (!this.hasAttribute('data-pos-card') || !this.parentElement) return 0;
-            const k = [...this.parentElement.children].filter((c) => c.hasAttribute('data-pos-card') || c.querySelector('h3')).indexOf(this);
-
-            return Math.floor(k / COLS) * ROW;
+            // ‏بكسلٌ صحيحٌ كما يقرؤه المتصفّح — والكسرُ يتبدّل بين صفٍّ وصفّ
+            return this.hasAttribute('data-pos-card') ? Math.round(cardRow(this) * ROW + jitter(cardRow(this))) : 0;
         },
     });
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
@@ -67,9 +77,12 @@ beforeAll(() => {
             return this.classList.contains('overflow-y-auto') ? VIEW : 0;
         },
     });
-    // ‏الشبكةُ تصعد في الإطار بقدر ما مُرِّر
+    // ‏الشبكةُ تصعد في الإطار بقدر ما مُرِّر، والبطاقةُ في صفّها منها
     Element.prototype.getBoundingClientRect = function (this: Element) {
-        const top = this.hasAttribute('data-pos-window') ? -(scroller()?.scrollTop ?? 0) : 0;
+        const scrolled = scroller()?.scrollTop ?? 0;
+        let top = 0;
+        if (this.hasAttribute('data-pos-window')) top = -scrolled;
+        else if (this.hasAttribute('data-pos-card')) top = -scrolled + cardRow(this as HTMLElement) * ROW + jitter(cardRow(this as HTMLElement));
 
         return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
     };
@@ -121,6 +134,7 @@ const pay = async (user: ReturnType<typeof userEvent.setup>) => {
 
 beforeEach(() => {
     vi.resetModules();
+    JITTER = 0;
     fakeGrid();
     sent = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -210,5 +224,37 @@ describe('بطاقاتُ الصندوق الظاهرة', () => {
         // ‏1 + (9999 mod 7) = 4، و5% = 4.200
         expect((sale.items as { id: number }[])[0].id).toBe(9999);
         expect(sale.expected_total).toBe(4.2);
+    });
+
+    it('وطولُ صفٍّ يقرّبه المتصفّحُ ببكسلٍ مرّةً وبآخر لا يُدخل الشبكةَ في دوّامة — ولا يُسقط الصندوق', async () => {
+        JITTER = 0.9;
+        const errors = vi.spyOn(console, 'error');
+        await open(10_000);
+        await waitFor(() => expect(document.querySelector('[data-pos-window]')).not.toBeNull());
+
+        for (const row of [10, 11, 400, 401, 1250, 2490, 3, 0]) {
+            await scrollTo(row * ROW);
+        }
+
+        // ‏النافذةُ باقيةٌ (لم تُردّ إلى الرسم كلِّه)، والصندوقُ قائم
+        expect(document.querySelector('[data-pos-window]')).not.toBeNull();
+        expect(screen.getByTestId('pos-paybar')).toBeTruthy();
+        expect(cards()[0]).toBe('منتج 1');
+        expect(errors.mock.calls.flat().join(' ')).not.toMatch(/Maximum update depth|شبكةُ الأصناف رُسمت كلُّها/);
+    });
+
+    it('وخطأٌ في رسم النافذة لا يُسقط الصندوق: تُرسم الأصنافُ كلُّها كما كانت', async () => {
+        vi.mocked(window.getComputedStyle).mockImplementation((el: Element) => {
+            if ((el as HTMLElement).hasAttribute?.('data-pos-window')) throw new Error('عطبٌ مصطنع');
+
+            return real.getComputedStyle.call(window, el);
+        });
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        await open(WINDOW_FROM + 50);
+
+        await waitFor(() => expect(cards()).toHaveLength(WINDOW_FROM + 50));
+        expect(document.querySelector('[data-pos-window]')).toBeNull();
+        expect(screen.getByTestId('pos-paybar')).toBeTruthy();
+        expect(errors.mock.calls.flat().join(' ')).toContain('شبكةُ الأصناف رُسمت كلُّها');
     });
 });

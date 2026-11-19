@@ -12,17 +12,25 @@
  *
  * فكلُّ ما يقرؤه الصندوق (السعرُ والضريبةُ والمخزونُ والمقاساتُ والإضافاتُ
  * وأهليّةُ البيع والاسمُ المعروض) يصله كما كان، قيمةً بقيمة.
+ *
+ * ويزيد عليه `sale_price`: سعرُ البيع بعد خصم الصنف كما يبيع به الخادم
+ * (`Product::sellingPrice`) — للمخصوم وحده، وغيابُه يُقرأ `price` هنا.
  */
 import type { Product } from '@/types/models';
 
 /** ‏ما لا يقرؤه الصندوق — ولا يصله */
 type NotForTill = 'published' | 'cat_label' | 'description_pos_enabled' | 'description_web_enabled';
 
-/** ‏الصنفُ كما يقرؤه الصندوق */
-export type TillProduct = Omit<Product, NotForTill>;
+/**
+ * ‏الصنفُ كما يقرؤه الصندوق.
+ *
+ * `sale_price` ما يُباع به الصنفُ نفسُه (البطاقةُ والماسحُ ونافذةُ الإضافات)،
+ * و`price` قبل الخصم — لا يُباع به. والمقاسُ بسعره، لا يُخصم.
+ */
+export type TillProduct = Omit<Product, NotForTill> & { sale_price: number };
 
-/** ‏وكما يرسله الخادم: الاسمُ المعروض غائبٌ حين يساوي الاسم */
-export type TillProductRow = Omit<TillProduct, 'label'> & { label?: string };
+/** ‏وكما يرسله الخادم: الاسمُ المعروض غائبٌ حين يساوي الاسم، وسعرُ البيع حين لا خصم */
+export type TillProductRow = Omit<TillProduct, 'label' | 'sale_price'> & { label?: string; sale_price?: number };
 
 /**
  * ‏يُكمل الاسمَ المعروض حيث غاب — في الصفوف نفسِها، فلا تُنسخ ألفا صنف.
@@ -33,6 +41,8 @@ export type TillProductRow = Omit<TillProduct, 'label'> & { label?: string };
 export function fromTill(rows: TillProductRow[]): TillProduct[] {
     for (const row of rows) {
         if (row.label === undefined) row.label = row.name;
+        // ‏ولا خصمَ على الصنف: يُباع بسعره
+        if (row.sale_price === undefined) row.sale_price = row.price;
     }
 
     return rows as TillProduct[];

@@ -6,6 +6,8 @@ export interface ProductVariantOption {
     label: string;
     price: number;
     sku: string | null;
+    /** ‏باركودُ المقاس — يُمسح فيُضاف المقاسُ نفسُه (فريدٌ بين مقاسات المتجر) */
+    barcode?: string | null;
 }
 
 export interface Product {

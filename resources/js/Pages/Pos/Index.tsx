@@ -50,6 +50,7 @@ import useLiveStock from '@/hooks/useLiveStock';
 import {
     cartLineTotal,
     usePosCart,
+    type CartAddon,
     type LoyaltySettings,
     type PosCustomer,
     type ResumeCart,
@@ -173,8 +174,8 @@ export default function PosIndex() {
                 // ‏وسطرُ السلّة بمربّعٍ ٤٨ — المصغّرةُ لا نسخةُ العرض
                 // ‏وسعرُ بيعه بعد خصم الصنف — ما يبيع به الخادم (`sale_price`)، لا ما قبله
                 id: p.id, label: p.label, price: p.sale_price, image: p.thumb || p.image,
-                // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة
-                sku: p.sku, barcode: p.barcode, stock: p.tracks_stock === false ? null : p.qty,
+                // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة (كما في سطر البطاقة)
+                sku: p.sku, barcode: p.barcode, stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
                 /*
                  * وحالُه في الصندوق — يقرؤها الماسحُ (`scanBarcode`).
                  *
@@ -300,14 +301,90 @@ export default function PosIndex() {
             return;
         }
 
+        cart.add(plainLine(p));
+    };
+
+    /** ‏سطرُ صنفٍ بلا مقاسٍ ولا إضافات — يبنيه للبطاقة والماسح معًا، فلا يفترقان */
+    const plainLine = (p: (typeof products)[number]) => ({
+        key: `p${p.id}`, id: p.id, name: p.label, price: p.sale_price,
+        image: p.thumb || p.image,
+        // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
+        stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
+        tax: p.tax,
+        season_id: seasonFor(p.id),
+    });
+
+    /**
+     * ‏سطرُ صنفٍ بمقاسه وإضافاته — يبنيه لنافذة الخيارات ولباركود المقاس معًا.
+     *
+     * المفتاح يحمل المقاس والإضافات: «بوكيه وسط + شوكولاتة» و«بوكيه وسط» بندان
+     * مختلفان، وضمُّهما تحت مفتاحٍ واحد كان سيُضيف شوكولاتةً لمن لم يطلبها حين
+     * يضغط الكاشير المنتج مرّةً ثانية.
+     */
+    const addChoice = (
+        p: (typeof products)[number],
+        choice: { variantId: number | null; variantName: string | null; price: number; addons: CartAddon[] },
+    ) => {
+        const signature = choice.addons.map((a) => `${a.addon_id}x${a.qty}`).sort().join(',');
+
         cart.add({
-            key: `p${p.id}`, id: p.id, name: p.label, price: p.sale_price,
+            key: `p${p.id}:v${choice.variantId ?? 0}:${signature}`,
+            id: p.id,
+            variant_id: choice.variantId,
+            variant_name: choice.variantName,
+            addons: choice.addons,
+            name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
+            price: choice.price,
             image: p.thumb || p.image,
-            // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
             stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
             tax: p.tax,
             season_id: seasonFor(p.id),
         });
+    };
+
+    /**
+     * ═══ الماسح: باركودُ الصنف أو رمزُه، ثمّ باركودُ المقاس أو رمزُه ═══
+     *
+     * كان يُدخل الصنفَ الممسوحَ سطرًا بسعره وإن كانت له مقاسات، فيردّه الخادمُ
+     * عند الدفع: «اختر مقاس…» — والكاشيرُ قد قبض. والمقاسُ نفسُه لا يُعرف
+     * بباركوده أصلًا.
+     *
+     *   • صنفٌ له مقاسات: تُفتح نافذتُه كما تُفتح بالضغط عليه — لا مقاسَ يُختار عنه.
+     *   • باركودُ مقاسٍ بعينه: يُضاف ذلك المقاسُ كما تُضيفه النافذة بلا إضافات.
+     *     والموقوفُ من المقاسات لا يصل الصندوقَ أصلًا (`Demo`)، فلا يُطابَق.
+     *   • صنفٌ بلا مقاس: سطرُه كسطر البطاقة (`plainLine`). وإضافاتُه اختياريّة،
+     *     فلا تُفتح لها نافذة — كما كان الماسح.
+     *
+     * وباركودُ الصنف أوّلًا: فريدٌ بين الأصناف، وباركودُ المقاس فريدٌ بين المقاسات،
+     * ولا قاعدةَ بينهما. وما لا يُباع هنا (موقوفٌ أو مغلقٌ عن الصندوق) لا يُطابَق.
+     */
+    const scan = (raw: string) => {
+        const code = raw.trim();
+        if (!code) return;
+        const lower = code.toLowerCase();
+        const is = (barcode?: string | null, sku?: string | null) =>
+            (!!barcode && String(barcode) === code) || (!!sku && String(sku).toLowerCase() === lower);
+        const sellable = products.filter((p) => p.active !== false && p.pos_enabled !== false);
+
+        const product = sellable.find((p) => is(p.barcode, p.sku));
+        if (product) {
+            cart.setBarcode('');
+            if ((product.variants?.length ?? 0) > 0) setOptionsFor(product);
+            else cart.add(plainLine(product));
+
+            return;
+        }
+        for (const p of sellable) {
+            const v = p.variants?.find((x) => is(x.barcode, x.sku));
+            if (v) {
+                cart.setBarcode('');
+                addChoice(p, { variantId: v.id, variantName: v.label, price: v.price, addons: [] });
+
+                return;
+            }
+        }
+        // ‏ولا شيءَ بهذا الرمز: ما يقوله الماسحُ كما كان
+        cart.scanBarcode(code);
     };
 
     /*
@@ -488,7 +565,7 @@ export default function PosIndex() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            cart.scanBarcode(cart.barcode);
+                                            scan(cart.barcode);
                                         }
                                     }}
                                     placeholder={t('امسح الباركود')}
@@ -1337,29 +1414,7 @@ export default function PosIndex() {
                 money={money}
                 onClose={() => setOptionsFor(null)}
                 onConfirm={(choice) => {
-                    const p = optionsFor!;
-                    /*
-                     * المفتاح يحمل المقاس والإضافات.
-                     *
-                     * «بوكيه وسط + شوكولاتة» و«بوكيه وسط» بندان مختلفان: ضمُّهما
-                     * تحت مفتاحٍ واحد كان سيُضيف شوكولاتةً لمن لم يطلبها حين
-                     * يضغط الكاشير المنتج مرّةً ثانية.
-                     */
-                    const signature = choice.addons.map((a) => `${a.addon_id}x${a.qty}`).sort().join(',');
-
-                    cart.add({
-                        key: `p${p.id}:v${choice.variantId ?? 0}:${signature}`,
-                        id: p.id,
-                        variant_id: choice.variantId,
-                        variant_name: choice.variantName,
-                        addons: choice.addons,
-                        name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
-                        price: choice.price,
-                        image: p.thumb || p.image,
-                        stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
-                        tax: p.tax,
-                        season_id: seasonFor(p.id),
-                    });
+                    addChoice(optionsFor!, choice);
                     setOptionsFor(null);
                 }}
             />

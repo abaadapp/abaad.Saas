@@ -142,6 +142,7 @@ export interface PosVariant {
     label: string;
     price: number;
     sku: string | null;
+    barcode?: string | null;
 }
 
 export interface PosProduct {

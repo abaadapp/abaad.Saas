@@ -1073,6 +1073,8 @@ class PosController extends Controller
             'coupon_code' => ['nullable', 'string', 'max:40'],
             // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا
             'kind' => ['nullable', 'in:hold,save'],
+            // ‏السلّةُ المعلّقة المستأنفة تُعلَّق في مكانها — انظر أدناه
+            'resume_id' => ['nullable', 'integer'],
             // والطلبُ المخصَّص يُعلَّق بموادّه — وإلّا عاد سطرًا بسعرٍ بلا مواد
         ] + CustomArrangement::rules('items.*.custom'));
         $saved = ($data['kind'] ?? 'hold') === 'save';
@@ -1089,25 +1091,58 @@ class PosController extends Controller
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
             $branch = $this->branch();
 
-            $order = $this->createNumbered([
-                'business_id' => $this->bid(),
-                'customer_name' => $data['customer'] ?? 'عميل نقدي',
-                'employee_name' => PosCashier::name(),
-                // المعرّف لا الاسم وحده: لوحة أداء الموظفين تجمع المبيعات
-                // على user_id، وكان لا يُكتب أصلًا فتظهر الأرقام أصفارًا
-                'user_id' => PosCashier::id(),
-                'branch_id' => $branch['id'],
-                'branch' => $branch['name'],
-                'status' => $saved ? 'محفوظ' : 'معلّق',
-                'is_held' => true,
-                'subtotal' => $subtotal,
-                'total' => $subtotal,
-                // الكود وحده يُحفظ لا قيمة خصمه: الطلب قد يُستكمل غدًا وقد
-                // يكون الكوبون انتهى أو نفدت مرات استخدامه، فيُعاد التحقق
-                // منه وقت الدفع لا وقت التعليق.
-                'coupon_code' => $data['coupon_code'] ?? null,
-                'ordered_at' => now(),
-            ], $saved ? 'SAVE-' : 'HOLD-');
+            /*
+             * ═══ والسلّةُ المستأنفة تُعلَّق في مكانها — لا نسخةً ثانية ═══
+             *
+             * كان «تعليق» سلّةٍ استُؤنفت يكتب طلبًا معلّقًا جديدًا، ويبقى الأصليُّ
+             * كما هو. فطلبُ الزبون الواحد صار طلبين في «الطلبات المعلّقة»،
+             * يُستكمل كلٌّ منهما فاتورةً: بضاعةٌ تُخصم مرّتين، وزبونٌ يُطالَب مرّتين.
+             *
+             * فتُكتب أصنافُه الجديدة على الطلب نفسِه، برقمه ومعرّفه ووقته. ويُحجز
+             * بقفلٍ كما يحجزه الدفع (`completeSale`): جهازان يستأنفانه معًا
+             * يصطفّان، فلا يصير طلبين. وإن لم يبقَ معلّقًا — دُفع أو حُذف من جهازٍ
+             * آخر — يُردّ التعليق ولا يُكتب شيء: طلبٌ جديدٌ بأصناف طلبٍ دُفع هو
+             * البيعةُ الثانية نفسُها. والسلّةُ تبقى على الشاشة.
+             */
+            if (! empty($data['resume_id'])) {
+                $order = $this->heldScope()->lockForUpdate()->find($data['resume_id']);
+
+                if (! $order) {
+                    throw ValidationException::withMessages([
+                        'resume_id' => __('هذه السلّة المعلّقة لم تعد معلّقة: أُتمّت أو حُذفت من جهازٍ آخر. لم يُعلَّق شيء، والسلّة باقية.'),
+                    ]);
+                }
+
+                // ‏وأصنافُه القديمة تُمحى بإضافاتها وموادّها (`cascadeOnDelete`) — كما يمحوها الدفعُ والحذف
+                $order->items()->delete();
+                $order->update([
+                    'customer_name' => $data['customer'] ?? 'عميل نقدي',
+                    'status' => $saved ? 'محفوظ' : 'معلّق',
+                    'subtotal' => $subtotal,
+                    'total' => $subtotal,
+                    'coupon_code' => $data['coupon_code'] ?? null,
+                ]);
+            } else {
+                $order = $this->createNumbered([
+                    'business_id' => $this->bid(),
+                    'customer_name' => $data['customer'] ?? 'عميل نقدي',
+                    'employee_name' => PosCashier::name(),
+                    // المعرّف لا الاسم وحده: لوحة أداء الموظفين تجمع المبيعات
+                    // على user_id، وكان لا يُكتب أصلًا فتظهر الأرقام أصفارًا
+                    'user_id' => PosCashier::id(),
+                    'branch_id' => $branch['id'],
+                    'branch' => $branch['name'],
+                    'status' => $saved ? 'محفوظ' : 'معلّق',
+                    'is_held' => true,
+                    'subtotal' => $subtotal,
+                    'total' => $subtotal,
+                    // الكود وحده يُحفظ لا قيمة خصمه: الطلب قد يُستكمل غدًا وقد
+                    // يكون الكوبون انتهى أو نفدت مرات استخدامه، فيُعاد التحقق
+                    // منه وقت الدفع لا وقت التعليق.
+                    'coupon_code' => $data['coupon_code'] ?? null,
+                    'ordered_at' => now(),
+                ], $saved ? 'SAVE-' : 'HOLD-');
+            }
 
             // حفظ الأصناف — بدونها لا يمكن استكمال الطلب لاحقًا. والمقاس
             // والإضافات معها: طلبٌ عُلّق بمقاسٍ وشوكولاتة يجب أن يعود كما
@@ -1178,7 +1213,7 @@ class PosController extends Controller
                 }
             }
 
-            return response()->json(['ok' => true, 'number' => $order->number]);
+            return response()->json(['ok' => true, 'number' => $order->number, 'id' => $order->id]);
         });
     }
 
@@ -1196,9 +1231,14 @@ class PosController extends Controller
      */
     private function heldOrder(int $id): Order
     {
+        return $this->heldScope()->with('items.addons')->findOrFail($id);
+    }
+
+    /** ‏السلالُ المعلّقة التي تراها هذه الجلسة: متجرُها، وفرعُها إن كان لها فرع */
+    private function heldScope(): \Illuminate\Database\Eloquent\Builder
+    {
         return Order::where('business_id', $this->bid())->where('is_held', true)
-            ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
-            ->with('items.addons')->findOrFail($id);
+            ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()));
     }
 
     public function resume($id)
@@ -1207,6 +1247,8 @@ class PosController extends Controller
 
         session()->flash('resume_cart', [
             'id' => $order->id,
+            // ‏رقمُه يُعرض فوق السلّة: الكاشير يعرف أيَّ طلبٍ يُعدّل، وأنّ «إلغاء» لا يمحوه
+            'number' => $order->number,
             'customer' => $order->customer_name,
             'items' => $order->items->load('components')->map(fn ($i) => [
                 'id' => $i->product_id,

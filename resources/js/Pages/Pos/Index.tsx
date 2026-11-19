@@ -1255,6 +1255,14 @@ export default function PosIndex() {
                             </p>
                         )}
 
+                        {/* ‏طلبٌ معلّق مستأنَف: «تعليق» يحفظ التعديل عليه، و«إلغاء» يُغلقه هنا ولا يمحوه */}
+                        {cart.resumedNumber && (
+                            <p data-testid="pos-resumed" className="flex items-center gap-2 rounded-xl bg-[#fffbeb] px-3 py-2 text-xs font-medium text-[#92400e]">
+                                <PauseCircle className="size-4 shrink-0" />
+                                {t('تعديل الطلب المعلق :number — «تعليق» يحفظ التعديل عليه، و«إلغاء» يغلقه هنا ويبقيه في الطلبات المعلقة.', { number: cart.resumedNumber })}
+                            </p>
+                        )}
+
                         {/* الإجراءات */}
                         <div className="grid grid-cols-3 gap-2 pt-1">
                             <button
@@ -1268,7 +1276,7 @@ export default function PosIndex() {
                             <button
                                 type="button"
                                 disabled={cart.items.length === 0}
-                                onClick={cart.clear}
+                                onClick={cart.cancel}
                                 className="flex flex-col items-center gap-1 rounded-full bg-[#fef2f2] py-2 text-xs font-medium text-[#dc2626] transition-colors hover:bg-[#fee2e2] disabled:opacity-40 touch:py-3"
                             >
                                 <Trash2 className="size-5" /> {t('إلغاء')}

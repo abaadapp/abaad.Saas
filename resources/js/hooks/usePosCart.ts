@@ -217,6 +217,8 @@ export interface VatSettings {
 
 export interface ResumeCart {
     id: number | null;
+    /** ‏رقمُ الطلب المعلّق (`HOLD-…`) — يُعرض فوق السلّة ما دامت هي هي */
+    number?: string | null;
     customer: string | null;
     items: Omit<CartItem, 'key' | 'note'>[];
     /** كود الخصم الذي كان مطبَّقًا وقت التعليق — يُعاد تطبيقه لا استعادة قيمته */
@@ -494,6 +496,8 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
      * تُفرَّغ السلّة أو تُعلَّق (`clear`). ويبقى حين تُردّ: السلّةُ هي هي.
      */
     const [resumeId, setResumeId] = useState<number | null>(resume?.id ?? null);
+    // ‏ورقمُه ما دام معرّفُه هو — يُفرَّغان معًا
+    const resumedNumber = resumeId != null && resumeId === resume?.id ? (resume?.number ?? null) : null;
     const [customer, setCustomer] = useState<string>(
         resume?.customer || new URLSearchParams(location.search).get('customer') || CASH_CUSTOMER,
     );
@@ -1981,43 +1985,104 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, refresh, sendOne, onToast, onSynced, customersScope, patchCustomer],
     );
 
-    /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
+    /**
+     * تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind.
+     *
+     * ═══ والسلّةُ لا تُفرَّغ إلّا حين يقول الخادمُ إنّه حفظها ═══
+     *
+     * كانت تُفرَّغ بعد الطلب أيًّا كان ردُّه، ويقول الصندوق «تم تعليق الطلب».
+     * فجلسةٌ انتهت (419) أو خطأُ خادمٍ أو رفضٌ يمحو سلّةً لم تُحفظ في أيّ مكان.
+     * وانقطاعُ الشبكة يرمي خطأً لا يُلتقط، فلا يعرف الكاشير أنّها لم تُعلَّق.
+     *
+     * ═══ والمستأنفةُ تُعلَّق في مكانها (`resume_id`) ═══
+     *
+     * كانت تُعلَّق طلبًا جديدًا ويبقى الأصليّ: طلبٌ واحد يصير اثنين، ويُستكمل
+     * كلٌّ منهما فاتورة. والخادمُ يكتبها على الطلب نفسِه برقمه، ويردّها إن
+     * لم يبقَ معلّقًا. وضغطتان على الزرّ لا تصيران طلبين.
+     */
+    const holding = useRef(false);
     const holdOrder = useCallback(
         async (kind: 'hold' | 'save') => {
-            if (!items.length) return;
-            await fetch('/pos/hold', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...csrfHeaders(),
-                    Accept: 'application/json',
-                },
-                body: JSON.stringify({
-                    items: items.map((i) => ({
-                        id: i.id ?? null,
-                        addon_id: i.addon_id ?? null,
-                        variant_id: i.variant_id ?? null,
-                        addons: (i.addons ?? []).map((a) => ({ addon_id: a.addon_id, qty: a.qty })),
-                        name: i.name,
-                        qty: i.qty,
-                        note: i.note ?? '',
-                        // وتُعلَّق بموادّها: سلّةٌ تعود ناقصةً تبيع ما لا يَنقص الرفُّ به
-                        custom: i.custom ?? null,
-                        season_id: i.season_id ?? null,
-                    })),
-                    customer,
-                    // الكوبون يُعلَّق مع الطلب: بدونه كان الكاشير يطبّق خصمًا،
-                    // يعلّق الطلب، ثم يستكمله فيدفع الزبون السعر كاملًا بلا
-                    // أن ينتبه أحد. الخادم يُعيد التحقق منه عند الدفع دائمًا.
-                    coupon_code: activeCoupon?.code ?? null,
-                    kind,
-                }),
-            });
-            clear();
-            onToast(kind === 'hold' ? t('تم تعليق الطلب') : t('تم حفظ الطلب'), kind === 'hold' ? 'warning' : 'success');
+            if (!items.length || holding.current) return;
+            holding.current = true;
+            try {
+                let res: Response;
+                try {
+                    res = await fetch('/pos/hold', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...csrfHeaders(),
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({
+                            items: items.map((i) => ({
+                                id: i.id ?? null,
+                                addon_id: i.addon_id ?? null,
+                                variant_id: i.variant_id ?? null,
+                                addons: (i.addons ?? []).map((a) => ({ addon_id: a.addon_id, qty: a.qty })),
+                                name: i.name,
+                                qty: i.qty,
+                                note: i.note ?? '',
+                                // وتُعلَّق بموادّها: سلّةٌ تعود ناقصةً تبيع ما لا يَنقص الرفُّ به
+                                custom: i.custom ?? null,
+                                season_id: i.season_id ?? null,
+                            })),
+                            customer,
+                            // الكوبون يُعلَّق مع الطلب: بدونه كان الكاشير يطبّق خصمًا،
+                            // يعلّق الطلب، ثم يستكمله فيدفع الزبون السعر كاملًا بلا
+                            // أن ينتبه أحد. الخادم يُعيد التحقق منه عند الدفع دائمًا.
+                            coupon_code: activeCoupon?.code ?? null,
+                            kind,
+                            resume_id: resumeId,
+                        }),
+                    });
+                } catch {
+                    onToast(t('لا اتصال بالخادم: لم يُعلَّق الطلب، والسلة باقية كما هي.'), 'danger');
+
+                    return;
+                }
+                if (!res.ok) {
+                    const body = (await res.json().catch(() => null)) as { message?: string; errors?: Record<string, string[]> } | null;
+                    const reason = body?.errors ? Object.values(body.errors)[0]?.[0] : undefined;
+                    onToast(
+                        reason ??
+                            (res.status === 401 || res.status === 419
+                                ? t('انتهت الجلسة: لم يُعلَّق الطلب، والسلة باقية. سجّل الدخول ثم أعد المحاولة.')
+                                : t('تعذّر تعليق الطلب، والسلة باقية كما هي. أعد المحاولة.')),
+                        'danger',
+                    );
+
+                    return;
+                }
+                const again = resumedNumber;
+                clear();
+                onToast(
+                    again
+                        ? t('حُفظت التعديلات على الطلب :number', { number: again })
+                        : kind === 'hold'
+                          ? t('تم تعليق الطلب')
+                          : t('تم حفظ الطلب'),
+                    kind === 'hold' ? 'warning' : 'success',
+                );
+            } finally {
+                holding.current = false;
+            }
         },
-        [items, customer, activeCoupon, clear, onToast, t],
+        [items, customer, activeCoupon, resumeId, resumedNumber, clear, onToast, t],
     );
+
+    /**
+     * ‏«إلغاء» — يُفرغ السلّة. والمستأنفةُ تبقى معلّقةً عند الخادم كما كانت (`clear`).
+     *
+     * فيُقال ذلك للكاشير: «إلغاء» على طلبٍ مستأنف إغلاقٌ لتعديله لا إلغاءٌ له،
+     * والطلبُ في «الطلبات المعلّقة» يُستكمل منها متى شاء.
+     */
+    const cancel = useCallback(() => {
+        const was = resumedNumber;
+        clear();
+        if (was) onToast(t('أُغلقت السلة، والطلب :number باقٍ في «الطلبات المعلقة» كما كان.', { number: was }), 'warning');
+    }, [resumedNumber, clear, onToast, t]);
 
     return {
         // الحالة
@@ -2051,7 +2116,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
         loyaltyOn: program.loyaltyEnabled !== false,
         pointsToEarn, hasStockWarning, filteredCustomers,
         // الأفعال
-        add, inc, dec, remove, setNote, clear,
+        add, inc, dec, remove, setNote, clear, cancel, resumedNumber,
         setBarcode, scanBarcode,
         setCouponCode, applyCoupon, removeCoupon,
         setRedeemActive, selectCustomer, setCustomerSearch, addCustomer, setCustomerLanguage, setBlockOverrideReason,

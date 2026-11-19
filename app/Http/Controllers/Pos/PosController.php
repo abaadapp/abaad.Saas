@@ -49,6 +49,7 @@ use App\Support\SaleLines;
 use App\Support\SalesChannel;
 use App\Support\SeasonSales;
 use App\Support\Stock;
+use App\Support\TillStock;
 use App\Support\StockLedger;
 use App\Support\TillRedemption;
 use App\Support\TotalChanged;
@@ -127,28 +128,31 @@ class PosController extends Controller
      * عشرين ثانية، والكمية هي وحدها المتحرّكة. حمولة أخفّ عشرات المرّات
      * على شبكة متجر قد تكون بطيئة.
      */
-    public function stockFeed()
+    public function stockFeed(Request $request)
     {
         // نفس مصدر الشاشة عند فتحها: رصيد الفرع النشط. تغذيةٌ تقيس شيئًا
         // آخر غير ما عُرض أول مرّة تجعل الرقم يقفز بلا سبب ظاهر.
-        $available = Stock::availabilityResolver($this->bid(), Demo::activeBranchId());
+        $branch = Demo::activeBranchId();
+        $scope = TillStock::scope($this->bid(), $branch);
 
-        $products = Product::where('business_id', $this->bid())
-            ->orderBy('id')->get(['id', 'quantity', 'alert_qty', 'tracks_stock'])
-            ->map(function ($p) use ($available) {
-                $qty = $available($p->id, (int) $p->quantity);
+        /*
+         * ‏‏وما يعرفه الصندوق يُرسَل معه — فيُجاب بما تغيّر وحده (`TillStock`).
+         *
+         * وصندوقٌ فُتح لمتجرٍ أو فرعٍ غيرِ ما في الجلسة الآن (بُدّل في تبويبٍ
+         * آخر) يُقال له ذلك ولا يُعطى كميّاتٍ ليست لما على شاشته. والجلسةُ
+         * وحدها تختار ما يُقرأ: ما يرسله الصندوقُ يُقارَن به لا غير.
+         *
+         * وGET بلا شيء — صندوقٌ بنسخةٍ أقدم — يأخذ القائمةَ كلَّها كما كان.
+         */
+        $known = $request->isMethod('post') ? $request->only(['v', 'b', 'h', 'scope']) : [];
+        if (isset($known['scope']) && $known['scope'] !== $scope) {
+            return response()->json(['scope_changed' => true, 'scope' => $scope], 409);
+        }
 
-                return [
-                    'id' => $p->id,
-                    'qty' => $qty,
-                    'stock_status' => $p->stockStatusAt($qty),
-                ];
-            })->values();
-
-        return response()->json([
-            'products' => $products,
-            'updated_at' => now()->format('H:i:s'),
-        ]);
+        return response()->json(
+            TillStock::answer(TillStock::rows($this->bid(), $branch), $known, $scope)
+            + ['updated_at' => now()->format('H:i:s')],
+        );
     }
 
     /**

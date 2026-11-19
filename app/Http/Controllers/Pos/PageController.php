@@ -20,6 +20,7 @@ use App\Support\PosAddonsLayout;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\TillActivation;
+use App\Support\TillStock;
 use App\Support\ReceiptVisibility;
 use App\Support\Vat;
 use Illuminate\Http\RedirectResponse;
@@ -164,6 +165,12 @@ class PageController extends Controller
              * نسخةٌ في الجهاز لمتجرٍ غيره تُمحى قبل أن تُقرأ.
              */
             'customersScope' => Demo::bid(),
+            /*
+             * ‏‏ومتجرُ كميّاتها وفرعُها — يُعيده الصندوقُ مع سؤاله عن المخزون، فإن
+             * بُدّل الفرعُ أو المتجر في تبويبٍ آخر قيل له ولم تُعرض عليه كميّاتُ غيره
+             * (`PosController::stockFeed`). ولا يُقرأ به شيء: الجلسةُ هي ما يُقرأ.
+             */
+            'stockScope' => TillStock::scope((int) Demo::bid(), Demo::activeBranchId()),
             'addons' => Demo::addons(),
             /*
              * وكيف تُعرض — شريطًا (الافتراض) أم قسمًا كاملًا. صفٌّ واحد،

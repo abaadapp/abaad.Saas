@@ -10720,5 +10720,7 @@
     "تعذّر تعليق الطلب، والسلة باقية كما هي. أعد المحاولة.": "The order could not be held, and the cart is still here. Try again.",
     "حُفظت التعديلات على الطلب :number": "Changes saved to order :number",
     "أُغلقت السلة، والطلب :number باقٍ في «الطلبات المعلقة» كما كان.": "Cart closed. Order :number is still in Held orders, as it was.",
-    "تعديل الطلب المعلق :number — «تعليق» يحفظ التعديل عليه، و«إلغاء» يغلقه هنا ويبقيه في الطلبات المعلقة.": "Editing held order :number — Hold saves your changes to it; Cancel closes it here and keeps it in Held orders."
+    "تعديل الطلب المعلق :number — «تعليق» يحفظ التعديل عليه، و«إلغاء» يغلقه هنا ويبقيه في الطلبات المعلقة.": "Editing held order :number — Hold saves your changes to it; Cancel closes it here and keeps it in Held orders.",
+    "فُتح متجر أو فرع آخر في تبويب آخر، فتوقف تحديث الكميات هنا. أعد فتح الصندوق لترى كميات ما تبيعه.": "Another shop or branch was opened in another tab, so stock updates stopped here. Reopen the till to see the stock of what you sell.",
+    "تعذّر آخر تحديث": "last update failed"
 }

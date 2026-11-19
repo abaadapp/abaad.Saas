@@ -2139,7 +2139,8 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::post('/movements', [App\Http\Controllers\Pos\MovementController::class, 'store'])->name('movements.store');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
-    Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
+    // ‏‏GET: الكميّاتُ كلُّها (صندوقٌ بنسخةٍ أقدم). POST: ما تغيّر عمّا يعرفه الصندوق — انظر `TillStock`
+    Route::match(['get', 'post'], '/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
     Route::get('/orders', [App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');

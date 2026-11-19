@@ -171,7 +171,8 @@ export default function PosIndex() {
         () =>
             products.map((p) => ({
                 // ‏وسطرُ السلّة بمربّعٍ ٤٨ — المصغّرةُ لا نسخةُ العرض
-                id: p.id, label: p.label, price: p.price, image: p.thumb || p.image,
+                // ‏وسعرُ بيعه بعد خصم الصنف — ما يبيع به الخادم (`sale_price`)، لا ما قبله
+                id: p.id, label: p.label, price: p.sale_price, image: p.thumb || p.image,
                 // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة
                 sku: p.sku, barcode: p.barcode, stock: p.tracks_stock === false ? null : p.qty,
                 /*
@@ -300,7 +301,7 @@ export default function PosIndex() {
         }
 
         cart.add({
-            key: `p${p.id}`, id: p.id, name: p.label, price: p.price,
+            key: `p${p.id}`, id: p.id, name: p.label, price: p.sale_price,
             image: p.thumb || p.image,
             // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
             stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,

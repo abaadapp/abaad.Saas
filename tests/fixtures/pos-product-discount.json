@@ -1,0 +1,17 @@
+{
+    "_about": "خصمُ الصنف في شاشة الصندوق وفي فاتورة الخادم — حالاتٌ واحدةٌ يقرؤها الطرفان. الخادم: tests/Feature/TheTillSellsADiscountedProductAtTheServersPriceTest.php (صفّ الصندوق ثمّ /pos/checkout). الواجهة: tests/js/a-discounted-product-sells-at-the-servers-price.test.tsx (Pos/Index). المتجر بضريبة 5%. و`sale_price` ما يحسبه الخادم (Product::sellingPrice)، و`before` ما كانت الشاشة تقوله قبل الإصلاح — والخادمُ يردّه.",
+    "products": [
+        { "key": "A", "name": "باقة بخصم", "price": 12.276, "discount": 15, "tax": null, "sale_price": 10.435, "barcode": "6290000001001" },
+        { "key": "B", "name": "باقة بخمسة مخصومة", "price": 7.777, "discount": 1.5, "tax": 5, "sale_price": 7.66, "barcode": "6290000001002" },
+        { "key": "C", "name": "باقة بلا خصم", "price": 35.664, "discount": 0, "tax": 0, "sale_price": null, "barcode": "6290000001003" },
+        { "key": "V", "name": "باقة بمقاسات مخصومة", "price": 20, "discount": 50, "tax": null, "sale_price": 10, "variants": [{ "name": "كبير", "price": 9.333 }] },
+        { "key": "X", "name": "باقة بخصم وإضافة", "price": 12.276, "discount": 15, "tax": null, "sale_price": 10.435, "addon": { "name": "شوكولاتة", "price": 2.345 } }
+    ],
+    "cases": [
+        { "name": "صنفٌ عليه 15% وضريبةٌ مضافة", "inclusive": false, "lines": [{ "key": "A", "qty": 1 }], "total": 10.957, "before": 12.89 },
+        { "name": "مخصومان وصنفٌ بلا خصم بضريبةٍ صفر", "inclusive": false, "lines": [{ "key": "A", "qty": 2 }, { "key": "B", "qty": 1 }, { "key": "C", "qty": 1 }], "total": 65.621, "before": 69.61 },
+        { "name": "الضريبةُ مشمولةٌ في السعر", "inclusive": true, "lines": [{ "key": "A", "qty": 2 }, { "key": "B", "qty": 1 }, { "key": "C", "qty": 1 }], "total": 64.194, "before": 67.993 },
+        { "name": "المقاسُ بسعره — لا يُخصم", "inclusive": false, "lines": [{ "key": "V", "qty": 1, "variant": "كبير" }], "total": 9.8, "before": 9.8 },
+        { "name": "والإضافةُ بثمنها — لا تُخصم", "inclusive": false, "lines": [{ "key": "X", "qty": 1, "addon": 1 }], "total": 13.419, "before": 15.352 }
+    ]
+}

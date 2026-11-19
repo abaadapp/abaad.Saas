@@ -395,18 +395,46 @@ export default function PosIndex() {
     pickRef.current = pick;
     const onPick = useCallback((p: (typeof products)[number]) => pickRef.current(p), []);
 
+    /*
+     * ‏«تخصيص الطلب» — بطاقةٌ ثابتةٌ في أوّل الشبكة، لا تتبع قسمًا ولا بحثًا ولا موسمًا.
+     *
+     * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في الكتالوج بهذا الوصف. وكان
+     * الكاشير يبيع أقربَ باقةٍ شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
+     * الباقة لا ما أُخذ منه فعلًا.
+     *
+     * ولا تُرسم إن أطفأ صاحبُ النشاط الطلباتِ المخصَّصة: الخادمُ لا يرسل قوالبَ حينها،
+     * والبابُ يُقفل من عنده. وهي عنصرٌ ثابتُ المرجع (ونقرتُها كذلك)، فلا تُعيد رسمَ
+     * الشبكة مع كلّ بندٍ في السلّة.
+     */
+    const openCustomRef = useRef(openCustom);
+    openCustomRef.current = openCustom;
+    const onOpenCustom = useCallback(() => openCustomRef.current(), []);
+    const customLabel = customTemplates.length === 1 ? customTemplates[0].name : t('تخصيص الطلب');
+    const customCard = useMemo(
+        () => (customTemplates.length > 0 ? <CustomOrderCard label={customLabel} onClick={onOpenCustom} /> : null),
+        [customTemplates.length, customLabel, onOpenCustom],
+    );
+    // ‏وما تُمرَّر فيه الشبكة — به تعرف صفوفَها الظاهرة
+    const gridScrollRef = useRef<HTMLDivElement>(null);
+
+    /*
+     * ‏ما يُبحث فيه عن كلّ صنف — يُبنى مرّةً لكلّ قائمة أصناف لا مع كلّ حرف.
+     *
+     * كان يُركَّب ويُصغَّر لكلّ صنفٍ في كلّ حرف: عشرةُ آلاف نصٍّ جديد للحرف الواحد.
+     */
+    const haystacks = useMemo(() => products.map((p) => `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase()), [products]);
     const visibleProducts = useMemo(() => {
         // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
         const needle = q.trim().toLowerCase();
-        return products.filter((p) => {
+        return products.filter((p, i) => {
             // الموقوفُ وما أُغلقت عنه نقطةُ البيع لا يُعرضان — والخادمُ يردّهما كذلك (`SaleLines::POS`)
             if (p.active === false || p.pos_enabled === false) return false;
             const inCat = cat === 'الكل' || cat === p.cat;
             const inSeason = season === null || seasonIds.has(p.id);
-            const inSearch = !needle || `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase().includes(needle);
+            const inSearch = !needle || haystacks[i].includes(needle);
             return inCat && inSeason && inSearch;
         });
-    }, [products, cat, q, season, seasonIds]);
+    }, [products, haystacks, cat, q, season, seasonIds]);
 
     // والبرنامجُ كما ردّه الخادمُ آخرَ مرّة — أُطفئ والصندوقُ مفتوح فيختفي سطرُه
     const loyaltyOn = cart.loyaltyOn;
@@ -686,7 +714,7 @@ export default function PosIndex() {
                     {view.bar && <AddonsBar addons={activeAddons} money={money} onAdd={cart.add} />}
 
                     {/* شبكة المنتجات */}
-                    <div className="-mx-1 flex-1 overflow-y-auto overscroll-contain px-1">
+                    <div ref={gridScrollRef} className="-mx-1 flex-1 overflow-y-auto overscroll-contain px-1">
                         {/* القسمُ الكامل فوق المنتجات في «الكل»، ووحدَه في تبويبه */}
                         {view.section && <AddonsSection addons={activeAddons} money={money} onAdd={cart.add} />}
                         {!view.products ? null : visibleProducts.length === 0 && customTemplates.length === 0 ? (
@@ -695,28 +723,8 @@ export default function PosIndex() {
                             </p>
                         ) : (
                             /* عمودان على اللوحيّ الرأسيّ: ثلاثةٌ في ٤٩٠ بكسل تجعل
-                               البطاقة أضيق من الإصبع */
-                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-                                {/*
-                                  * «تخصيص الطلب» — بطاقةٌ ثابتةٌ في أوّل الشبكة، لا تتبع
-                                  * قسمًا ولا بحثًا ولا موسمًا.
-                                  *
-                                  * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في
-                                  * الكتالوج بهذا الوصف. وكان الكاشير يبيع أقربَ باقةٍ
-                                  * شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
-                                  * الباقة لا ما أُخذ منه فعلًا.
-                                  *
-                                  * ولا تُرسم إن أطفأ صاحبُ النشاط الطلباتِ المخصَّصة:
-                                  * الخادمُ لا يرسل قوالبَ حينها، والبابُ يُقفل من عنده.
-                                  */}
-                                {customTemplates.length > 0 && (
-                                    <CustomOrderCard
-                                        label={customTemplates.length === 1 ? customTemplates[0].name : t('تخصيص الطلب')}
-                                        onClick={openCustom}
-                                    />
-                                )}
-                                <ProductGrid products={visibleProducts} currency={currency} onPick={onPick} />
-                            </div>
+                               البطاقة أضيق من الإصبع — والشبكةُ نفسُها في `ProductGrid` */
+                            <ProductGrid products={visibleProducts} currency={currency} onPick={onPick} leading={customCard} scrollRef={gridScrollRef} />
                         )}
                     </div>
                 </section>

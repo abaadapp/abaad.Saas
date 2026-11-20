@@ -1323,9 +1323,14 @@ class Demo
      *
      * @param  int|null  $branchId  الفرعُ الذي يُخصم منه البيع
      */
-    public static function tillProducts(?int $branchId): array
+    /**
+     * @param  (\Closure(\Illuminate\Database\Eloquent\Builder): mixed)|null  $only  ‏بعضُ الأصناف لا كلُّها — يُضيّق
+     *         استعلامَ الأصناف (ومقاساتِها معه)، ولا يغيّر شيئًا في صفّ ما بقي. لمزامنة الكتالوج
+     *         على الجهاز (`TillCatalog`): ما تغيّر يُبنى وحده، بالدالّة نفسِها.
+     */
+    public static function tillProducts(?int $branchId, ?\Closure $only = null): array
     {
-        return self::productRows($branchId, null, true);
+        return self::productRows($branchId, null, true, $only);
     }
 
     /**
@@ -1354,8 +1359,9 @@ class Demo
 
     /**
      * @param  bool  $till  لشاشة الصندوق (`tillProducts`) — يُسقط ما لا تقرؤه
+     * @param  (\Closure(\Illuminate\Database\Eloquent\Builder): mixed)|null  $only  ‏بعضُ الأصناف (`tillProducts`)
      */
-    private static function productRows(?int $branchId, ?Request $filter, bool $till): array
+    private static function productRows(?int $branchId, ?Request $filter, bool $till, ?\Closure $only = null): array
     {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
@@ -1366,7 +1372,14 @@ class Demo
          * ستُطلق أربعمئة استعلامٍ قبل أن تُرسم.
          */
         $variants = ProductVariant::where('business_id', self::bid())
-            ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
+            ->where('active', true)
+            // ‏‏ومقاساتُ الأصناف المطلوبة وحدها حين يُطلب بعضُها — والكلُّ كما كان
+            ->when($only !== null, function ($q) use ($only) {
+                $owners = Product::where('business_id', self::bid());
+                $only($owners);
+                $q->whereIn('product_id', $owners->select('id'));
+            })
+            ->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
         $addonMap = ProductAddons::map(self::bid());
         $allAddons = Addon::where('business_id', self::bid())->orderBy('id')->get();
         $recipeOwners = RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
@@ -1377,6 +1390,10 @@ class Demo
         // الملفّ يتبع الشاشة: مَن رشّح «نفد المخزون» وصدّر لا يريد الجرد كلّه
         if ($filter) {
             ListFilters::products($query, $filter);
+        }
+
+        if ($only) {
+            $only($query);
         }
 
         // ‏وإعدادُ الضريبة يُقرأ مرّةً للقائمة كلِّها — لا لكلّ صنف (`Vat::rateForEach`)

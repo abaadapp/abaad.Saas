@@ -2141,6 +2141,9 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
     // ‏‏GET: الكميّاتُ كلُّها (صندوقٌ بنسخةٍ أقدم). POST: ما تغيّر عمّا يعرفه الصندوق — انظر `TillStock`
     Route::match(['get', 'post'], '/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
+    // ‏‏كتالوجُ الصندوق للجهاز — ما تغيّر منذ ما حفظ (`TillCatalog`)
+    Route::post('/catalog-feed', [App\Http\Controllers\Pos\TillCatalogController::class, 'feed'])
+        ->middleware('throttle:60,1,pos-catalog-feed')->name('catalog-feed');
     Route::get('/orders', [App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');

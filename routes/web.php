@@ -559,6 +559,12 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [SettingController::class, 'testEmail'])->name('settings.testEmail');
     /*
+     * ‏‏ومفتاحُ كتالوج الصندوق على الجهاز — بابٌ وحده لا حقلٌ في النموذج العامّ: يُقيَّد
+     * من بدّله وكان ماذا وصار ماذا، ويسري من الطلب التالي بلا نشرٍ ولا `.env`
+     * (`TillCatalogSwitch`).
+     */
+    Route::post('/pos-catalog', [App\Http\Controllers\SuperAdmin\TillCatalogSwitchController::class, 'update'])->name('pos-catalog.update');
+    /*
      * ولا مفتاحَ لخرائط Google هنا: يربطها كلُّ تاجرٍ بمفتاحه من مشروعه في
      * Google Cloud (`admin.integrations.google.key`). لا مفتاحَ لأبعاد يقع على أحد.
      */

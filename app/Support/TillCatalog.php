@@ -172,6 +172,8 @@ final class TillCatalog
      *   - **إضافاتُ المتجر** صفًّا صفًّا: حالُها وقناتُها ومداها تقرّر `addon_ids`
      *     لكلّ صنف (`ProductAddons::for`).
      *   - **لغةُ الشاشة**، و**بنيةُ الكتالوج**، و**الإصدارُ المنشور**.
+     *   - **آخرُ تبديلٍ لمفتاح الكتالوج** (`TillCatalogSwitch::epoch`): ما يعود إليه
+     *     الجهازُ بعد التشغيل يُتحقَّق منه صفًّا صفًّا.
      */
     public static function context(int $businessId): string
     {
@@ -187,6 +189,8 @@ final class TillCatalog
             Vat::enabled($businessId),
             Vat::rate($businessId),
             $addons,
+            // ‏‏وآخرُ تبديلٍ للمفتاح: بعده لا يُعفى رمزٌ صدر قبله — يُقارَن الصفُّ المبنيّ نفسُه
+            TillCatalogSwitch::epoch(),
         ], self::JSON));
     }
 

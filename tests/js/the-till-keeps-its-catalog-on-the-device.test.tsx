@@ -350,6 +350,59 @@ describe('useTillCatalog — من الجهاز أوّلًا، ثمّ ما تغي
         expect(result.current.saved).toBe('off');
         expect(asked[0]).toEqual({ scope: SCOPE });
     });
+
+    /* ─── مفتاحُ المنصّة (`TillCatalogSwitch`) ─── */
+
+    it('أطفأه مديرُ المنصّة: لا يُطبَّق شيءٌ ولا يُحفظ ولا يُمحى، ولا يُسأل بعدها — وما يُعرض يبقى هو هو', async () => {
+        memory.stored = { snap: snapOf(full()), rev: 'r0' };
+        const store = await import('@/lib/till-catalog-store');
+        (store.keepOnly as ReturnType<typeof vi.fn>).mockClear();
+        let answer!: (d: CatalogReply) => void;
+        replies = [() => new Promise<CatalogReply>((ok) => (answer = ok))];
+        const { result } = await mount();
+        await waitFor(() => expect(result.current.source).toBe('device'));
+        const shown = result.current.rows;
+        await waitFor(() => expect(answer).toBeTypeOf('function'));
+        await act(async () => answer({ off: true, scope: SCOPE }));
+
+        await waitFor(() => expect(result.current.off).toBe(true));
+        expect(result.current.rows).toBe(shown);
+        expect(result.current.status).toBe('ready');
+        expect(memory.saves).toEqual([]);
+        expect(store.keepOnly).not.toHaveBeenCalled();
+        expect((memory.stored?.snap as CatalogSnapshot).v).toBe('v1');
+
+        // ‏‏ولا سؤالَ بعده: لا بعد بيعة، ولا حين يعود التبويب أو الاتّصال
+        await act(() => result.current.refresh(true));
+        window.dispatchEvent(new Event('online'));
+        document.dispatchEvent(new Event('visibilitychange'));
+        await new Promise((r) => setTimeout(r, 20));
+        expect(asked).toHaveLength(1);
+    });
+
+    it('مطفأٌ وسؤالٌ مصفوفٌ خلفه (بيعةٌ أو مبلغٌ ردّه الخادم): لا يُرسل', async () => {
+        memory.stored = { snap: snapOf(full()), rev: 'r0' };
+        let answer!: (d: CatalogReply) => void;
+        replies = [() => new Promise<CatalogReply>((ok) => (answer = ok)), full()];
+        const { result } = await mount();
+        await waitFor(() => expect(answer).toBeTypeOf('function'));
+        void result.current.refresh(true);
+        await act(async () => answer({ off: true, scope: SCOPE }));
+        await new Promise((r) => setTimeout(r, 20));
+
+        expect(result.current.off).toBe(true);
+        expect(asked).toHaveLength(1);
+    });
+
+    it('جهازٌ بلا نسخةٍ والمفتاحُ مطفأ: لا أصنافَ من الكتالوج ولا خطأ — تنتظر الشاشةُ أصنافَ الخادم', async () => {
+        replies = [{ off: true, scope: SCOPE }];
+        const { result } = await mount();
+        await waitFor(() => expect(result.current.off).toBe(true));
+
+        expect(result.current.rows).toBeNull();
+        expect(result.current.status).toBe('loading');
+        expect(memory.saves).toEqual([]);
+    });
 });
 
 /* ═══════════════ والكميّةُ من الصفحة لا من الكتالوج ═══════════════ */
@@ -396,7 +449,7 @@ describe('useLiveStock مع الكتالوج على الجهاز', () => {
 
 /* ═══════════════ الشاشةُ لا تُفتح قبل أصنافها ═══════════════ */
 
-const catalogState = vi.hoisted(() => ({ rows: null as unknown[] | null, status: 'loading' as string }));
+const catalogState = vi.hoisted(() => ({ rows: null as unknown[] | null, status: 'loading' as string, off: false }));
 vi.mock('@/hooks/useTillCatalog', async (real) => {
     const actual = (await real()) as Record<string, unknown>;
 
@@ -405,7 +458,7 @@ vi.mock('@/hooks/useTillCatalog', async (real) => {
         default: (url: string, scope: string, opts: unknown) =>
             (globalThis as Record<string, unknown>).__realCatalog
                 ? (actual.default as (...a: unknown[]) => unknown)(url, scope, opts)
-                : { rows: catalogState.rows, status: catalogState.status, source: 'device', stale: false, saved: 'yes', scopeChanged: false, refresh: vi.fn(async () => {}) },
+                : { rows: catalogState.rows, status: catalogState.status, source: 'device', stale: false, saved: 'yes', scopeChanged: false, off: catalogState.off, refresh: vi.fn(async () => {}) },
     };
 });
 vi.mock('@/Layouts/PosLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -414,6 +467,7 @@ describe('صفحةُ الصندوق والكتالوجُ على الجهاز', (
     const exempt = { ...row(1, { name: 'باقة بلا ضريبة', label: 'باقة بلا ضريبة', price: 35.664, tax: 0 }) };
     const taxed = { ...row(2, { name: 'باقة بخمسة', label: 'باقة بخمسة', price: 19.898, tax: 5 }) };
     const open = async () => {
+        catalogState.off = false;
         for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
         Object.assign(pageProps, {
             resumeCart: {
@@ -477,5 +531,55 @@ describe('صفحةُ الصندوق والكتالوجُ على الجهاز', (
 
         expect(screen.getByTestId('catalog-failed')).toBeTruthy();
         expect(router.reload).toHaveBeenCalledWith({ only: ['products'] });
+    });
+
+    it('أُطفئ والصندوقُ مفتوح: تُطلب أصنافُ الخادم مرّةً، والشاشةُ هي هي بسلّتها — ثمّ تُعرض أصنافُ الخادم', async () => {
+        catalogState.rows = [exempt, taxed];
+        catalogState.status = 'ready';
+        const { router } = await import('@inertiajs/react');
+        (router.reload as ReturnType<typeof vi.fn>).mockClear();
+        Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => true });
+        const view = await open();
+        await waitFor(() => expect(screen.getByTestId('pos-paybar').textContent).toContain('56.557'));
+        const bar = screen.getByTestId('pos-paybar');
+
+        catalogState.off = true;
+        const { default: PosIndex } = await import('@/Pages/Pos/Index');
+        view.rerender(<PosIndex />);
+        await waitFor(() => expect(router.reload).toHaveBeenCalledWith({ only: ['products'] }));
+        expect(router.reload).toHaveBeenCalledTimes(1);
+        view.rerender(<PosIndex />);
+        expect(router.reload).toHaveBeenCalledTimes(1);
+
+        // ‏‏وتصل أصنافُ الخادم — كما كانت الصفحةُ تحملها
+        (pageProps as Record<string, unknown>).products = [{ ...exempt, name: 'باقة الخادم', label: 'باقة الخادم' }, taxed];
+        view.rerender(<PosIndex />);
+        await waitFor(() => expect(view.container.textContent).toContain('باقة الخادم'));
+
+        // ‏‏الشاشةُ لم تُركَّب من جديد، والسلّةُ المستأنفةُ بمبلغها
+        expect(screen.getByTestId('pos-paybar')).toBe(bar);
+        expect(bar.textContent).toContain('56.557');
+    });
+
+    it('أُطفئ والاتّصالُ مقطوعٌ تلك اللحظة: لا يُطلب شيء — ويُطلب مرّةً حين يعود', async () => {
+        catalogState.rows = [exempt, taxed];
+        catalogState.status = 'ready';
+        const { router } = await import('@inertiajs/react');
+        (router.reload as ReturnType<typeof vi.fn>).mockClear();
+        let online = false;
+        Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => online });
+        const view = await open();
+        catalogState.off = true;
+        const { default: PosIndex } = await import('@/Pages/Pos/Index');
+        view.rerender(<PosIndex />);
+        await new Promise((r) => setTimeout(r, 20));
+        expect(router.reload).not.toHaveBeenCalled();
+        // ‏‏وما يُعرض نسخةُ الجهاز المُتحقَّقُ منها — الشاشةُ لا تُغلق
+        expect(screen.getByTestId('pos-paybar').textContent).toContain('56.557');
+
+        online = true;
+        await act(async () => window.dispatchEvent(new Event('online')));
+        await waitFor(() => expect(router.reload).toHaveBeenCalledWith({ only: ['products'] }));
+        expect(router.reload).toHaveBeenCalledTimes(1);
     });
 });

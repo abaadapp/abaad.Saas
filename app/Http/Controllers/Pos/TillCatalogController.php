@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Pos;
 use App\Http\Controllers\Controller;
 use App\Support\Demo;
 use App\Support\TillCatalog;
+use App\Support\TillCatalogSwitch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,6 +29,15 @@ class TillCatalogController extends Controller
         $theirs = $request->input('scope');
         if (! is_string($theirs) || $theirs !== $scope) {
             return $this->json(['scope_changed' => true, 'scope' => $scope], 409);
+        }
+
+        /*
+         * ‏‏والمفتاحُ مطفأٌ الآن (`TillCatalogSwitch`): لا كتالوج. يُقال للصندوق المفتوح
+         * «مطفأ» فيكفّ عن السؤال ويأخذ الأصنافَ من الخادم كما كان (`CatalogGate`)، ولا
+         * يمسّ ما في جهازه ولا سلّتَه ولا طابورَه.
+         */
+        if (! TillCatalogSwitch::on()) {
+            return $this->json(['off' => true, 'scope' => $scope]);
         }
 
         return $this->json(TillCatalog::answer((int) Demo::bid(), Demo::activeBranchId(), $scope, $request->only(['t', 'b', 'ih', 'oh', 'deep'])));

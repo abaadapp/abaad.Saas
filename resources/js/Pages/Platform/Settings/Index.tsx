@@ -14,6 +14,7 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
+import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
 
 type Settings = Record<string, string>;
 
@@ -115,12 +116,15 @@ const TABS = [
     { key: 'google', label: 'خرائط Google' },
     { key: 'ai', label: 'المساعد الذكي' },
     { key: 'archive', label: 'أرشفة البيانات' },
+    { key: 'pos', label: 'نقطة البيع' },
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog } =
         usePage<PageProps<{
             settings: Settings;
+            /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
+            posCatalog?: PosCatalogState;
             mail?: MailStatus;
             plans: SelectOption[];
             whatsapp?: SharedConnection | null;
@@ -1134,6 +1138,12 @@ export default function PlatformSettings() {
                 وتبويب «عامة» فيه «اللغة الافتراضية» وهي شيء آخر: لغة المنصة
                 لمن لم يختر بعد، لا لغة من يقرأ هذه الشاشة الآن.
             */}
+            {/*
+                ‏‏ومفتاحُ كتالوج الصندوق خارج النموذج أيضًا: له بابُه (`super-admin.pos-catalog.update`)،
+                يُقيَّد فيه من بدّله وكان ماذا وصار ماذا — لا حقلٌ يُحفظ مع غيره.
+            */}
+            {tab === 'pos' && posCatalog && <PosCatalogSwitch state={posCatalog} locale={locale} />}
+
             {tab === 'language' && (
                 <Card className="p-6">
                     <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('لغة واجهتك')}</h3>

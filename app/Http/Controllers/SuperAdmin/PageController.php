@@ -40,6 +40,7 @@ use App\Support\Purge\Vault;
 use App\Support\Roles;
 use App\Support\Search;
 use App\Support\SupportWhatsApp;
+use App\Support\TillCatalogSwitch;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppMode;
@@ -632,6 +633,12 @@ class PageController extends Controller
             'settings' => $this->platformSettings(),
             // حال البريد كما هو على الخادم — لا كما حُفظ في الشاشة
             'mail' => PlatformConfig::mailStatus(),
+            /*
+             * ‏‏ومفتاحُ كتالوج الصندوق على الجهاز كما يقرؤه الصندوقُ الآن — لا كما حُفظ وحده:
+             * إطفاءُ الخادم (`POS_CATALOG_ON_DEVICE`) يغلبه، وصفٌّ لا يُقرأ يعني «مطفأ».
+             * ومعه آخرُ ما تبدّل فيه، من سجلّ النشاط.
+             */
+            'posCatalog' => TillCatalogSwitch::state(),
             /*
              * الباقات بأسمائها لتُختار لا لتُكتب.
              *

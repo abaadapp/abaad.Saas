@@ -160,15 +160,35 @@ function CatalogGate({ scope, fallback }: { scope: string; fallback: TillProduct
     const t = useTranslate();
     const catalog = useTillCatalog(route('pos.catalog-feed'), scope);
     const askedPage = useRef(false);
+    const [online, setOnline] = useState(0);
     const failed = catalog.status === 'failed' && !catalog.rows;
+    /*
+     * ‏‏أطفأ مديرُ المنصّة الكتالوجَ والصندوقُ مفتوح (`catalog.off`): تُطلب أصنافُ الخادم مرّةً
+     * كما تُطلب حين يتعذّر الكتالوج، والشاشةُ نفسُها باقية — فلا تُمسّ السلّةُ ولا ما أُدخل
+     * فيها. وما يُعرض حتى تصل نسخةُ الجهاز المُتحقَّقُ منها، والخادمُ يتحقّق من السعر عند
+     * الدفع كما يفعل دائمًا. وانقطاعٌ في تلك اللحظة يُعاد عند عودة الاتّصال.
+     */
+    const needPage = !fallback && (failed || catalog.off);
 
     useEffect(() => {
-        if (!failed || fallback || askedPage.current || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+        if (!catalog.off || fallback) return;
+        const again = () => {
+            askedPage.current = false;
+            setOnline((n) => n + 1);
+        };
+        window.addEventListener('online', again);
+
+        return () => window.removeEventListener('online', again);
+    }, [catalog.off, fallback]);
+
+    useEffect(() => {
+        if (!needPage || askedPage.current || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
         askedPage.current = true;
         router.reload({ only: ['products'] });
-    }, [failed, fallback]);
+    }, [needPage, online]);
 
-    const rows = catalog.rows ?? fallback;
+    // ‏‏ومطفأً: أصنافُ الخادم حين تصل — هي ما كانت الصفحةُ تحمله قبل v6.600
+    const rows = catalog.off ? (fallback ?? catalog.rows) : (catalog.rows ?? fallback);
     if (rows) return <PosScreen tillRows={rows} catalog={catalog} />;
 
     return (

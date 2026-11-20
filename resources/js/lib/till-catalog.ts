@@ -41,6 +41,8 @@ export interface CatalogSnapshot {
 /** ‏جوابُ الخادم — انظر `TillCatalog::answer` */
 export interface CatalogReply {
     scope?: string;
+    /** ‏‏مفتاحُ المنصّة مطفأ (`TillCatalogSwitch`): لا كتالوج — الأصنافُ من الصفحة كما كانت */
+    off?: boolean;
     v?: string;
     t?: string;
     same?: boolean;

@@ -219,9 +219,11 @@ describe('الصندوقُ بعد البيع', () => {
         expect(onSynced).toMatch(/void liveStock\.refresh\?\.\(\)/);
         expect(onSynced).toMatch(/void catalog\?\.refresh\(\)/);
         expect(onSynced).not.toMatch(/router\.reload/);
-        // ‏‏والإعادةُ الكاملة بابٌ واحد: الكتالوجُ تعذّر وليس في الجهاز شيء (`CatalogGate`)
+        // ‏‏والإعادةُ الكاملة بابٌ واحد (`CatalogGate`)، ولسببين لا ثالثَ لهما: الكتالوجُ تعذّر وليس
+        // في الجهاز شيء، أو أطفأه مديرُ المنصّة (`catalog.off`). ولا يُعاد ما وصل: `!fallback`
         expect(page.match(/router\.reload\(\{\s*only:\s*\['products'\]/g)).toHaveLength(1);
-        expect(page).toMatch(/if \(!failed \|\| fallback \|\| askedPage\.current[^\n]*\n[^\n]*\n\s*router\.reload\(\{ only: \['products'\] \}\)/);
+        expect(page).toMatch(/const needPage = !fallback && \(failed \|\| catalog\.off\);/);
+        expect(page).toMatch(/if \(!needPage \|\| askedPage\.current[^\n]*\n[^\n]*\n\s*router\.reload\(\{ only: \['products'\] \}\)/);
         // ‏‏ونصُّ البحث من أصناف الصفحة لا من كميّاتها: تحديثُ المخزون لا يُعيد بناءه
         expect(page).toMatch(/const haystacks = useMemo\(\(\) => serverProducts\.map/);
     });

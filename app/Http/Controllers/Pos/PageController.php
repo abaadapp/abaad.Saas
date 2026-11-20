@@ -21,6 +21,7 @@ use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\TillActivation;
 use App\Support\TillCatalog;
+use App\Support\TillCatalogSwitch;
 use App\Support\TillStock;
 use App\Support\ReceiptVisibility;
 use App\Support\Vat;
@@ -155,14 +156,17 @@ class PageController extends Controller
         }
 
         /*
-         * ‏‏والأصنافُ على الجهاز (`config('pos.catalog_on_device')`): لا تُحمل مع الصفحة.
+         * ‏‏والأصنافُ على الجهاز (`TillCatalogSwitch::on`): لا تُحمل مع الصفحة.
          *
          * يقرؤها الجهازُ ممّا حفظه ويسأل عمّا تغيّر (`pos.catalog-feed` — `TillCatalog`)،
          * وجهازٌ بلا نسخةٍ يأخذها كلَّها مرّة. وتبقى هنا لمن يطلبها بعينها (`optional`):
          * إن تعذّر الكتالوجُ وليس في الجهاز شيء عادت الصفحةُ إليها كما كانت.
          * وكميّاتُها تأتي مع الصفحة (`stock`) — لا تُعرض كميّةٌ من يومِ حُفظ الكتالوج.
+         *
+         * والمفتاحُ بيد مدير المنصّة ويُقرأ في كلّ فتح: مطفأً، أو لا يُقرأ، تحمل الصفحةُ
+         * الأصنافَ كلَّها كما كانت قبل v6.600.
          */
-        $onDevice = (bool) config('pos.catalog_on_device');
+        $onDevice = TillCatalogSwitch::on();
         $stockScope = TillStock::scope((int) Demo::bid(), Demo::activeBranchId());
 
         return Inertia::render('Pos/Index', [

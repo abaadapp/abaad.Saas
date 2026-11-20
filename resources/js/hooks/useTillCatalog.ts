@@ -22,6 +22,11 @@ export interface TillCatalogState {
     saved: CatalogSaved;
     /** ‏فُتح متجرٌ أو فرعٌ أو لغةٌ أخرى في الجلسة — لا يُسأل بعدها */
     scopeChanged: boolean;
+    /**
+     * ‏‏أطفأ مديرُ المنصّة الكتالوجَ على الجهاز (`TillCatalogSwitch`) — لا يُسأل بعدها.
+     * والأصنافُ تؤخذ من الخادم كما كانت (`CatalogGate`)، ونسخةُ الجهاز لا تُمسّ.
+     */
+    off: boolean;
     /** ‏يُسأل الآن — و`deep` يطلب مقارنةَ الصفّ المبنيّ نفسِه (مبلغٌ ردّه الخادم) */
     refresh: (deep?: boolean) => Promise<void>;
 }
@@ -43,6 +48,8 @@ export interface TillCatalogState {
  * 4. **لا اتّصال:** تبقى النسخةُ كما حُفظت، ويُقال إنّها لم يُتحقَّق منها. والبيعُ
  *    بلا اتّصال كما كان: الخادمُ يحسب البيعةَ بسعره حين تصله، وما يخالفه للمراجعة.
  * 5. **متجرٌ أو فرعٌ أو لغةٌ أخرى** في الجلسة (409): لا يُطبَّق شيء ولا يُسأل بعدها.
+ * 5ب. **المفتاحُ مطفأ** (`off`): لا يُطبَّق شيء ولا يُحفظ ولا يُمحى، ولا يُسأل بعدها.
+ *     ما يُعرض يبقى حتى تصل أصنافُ الخادم (`CatalogGate`).
  * 6. يُسأل كلَّ `intervalMs`، وحين يعود التبويبُ أو الاتّصال، وبعد كلّ بيعة.
  *
  * ولا تُمسّ هنا بيعةٌ ولا طابور: الكتالوجُ في قاعدته، والمبيعاتُ المعلّقة حيث هي.
@@ -53,6 +60,7 @@ export default function useTillCatalog(url: string, scope: string, { intervalMs 
     const busy = useRef(false);
     const again = useRef<{ deep: boolean } | null>(null);
     const lost = useRef(false);
+    const switchedOff = useRef(false);
     const loaded = useRef(false);
     const [rows, setRows] = useState<TillProduct[] | null>(null);
     const [status, setStatus] = useState<TillCatalogState['status']>('loading');
@@ -60,6 +68,7 @@ export default function useTillCatalog(url: string, scope: string, { intervalMs 
     const [stale, setStale] = useState(false);
     const [saved, setSaved] = useState<CatalogSaved>('unknown');
     const [scopeChanged, setScopeChanged] = useState(false);
+    const [off, setOff] = useState(false);
 
     // ‏‏الصفُّ كما تقرؤه الشاشة هو ما يُحفظ — نسخةٌ واحدةٌ في الذاكرة لا اثنتان (`fromTill` عند الوصول)
     const publish = useCallback((s: CatalogSnapshot, from: CatalogSource) => {
@@ -82,7 +91,7 @@ export default function useTillCatalog(url: string, scope: string, { intervalMs 
 
     const sync = useCallback(
         async (deep = false): Promise<void> => {
-            if (lost.current || !loaded.current) return;
+            if (lost.current || switchedOff.current || !loaded.current) return;
             if (busy.current) {
                 again.current = { deep: deep || !!again.current?.deep };
 
@@ -111,6 +120,13 @@ export default function useTillCatalog(url: string, scope: string, { intervalMs 
                 if (d.scope !== scope) {
                     lost.current = true;
                     setScopeChanged(true);
+
+                    return;
+                }
+                // ‏‏مطفأ: لا جوابَ يُطبَّق ولا نسخةَ تُكتب أو تُمحى — والشاشةُ تأخذ أصنافَ الخادم
+                if (d.off === true) {
+                    switchedOff.current = true;
+                    setOff(true);
 
                     return;
                 }
@@ -197,5 +213,5 @@ export default function useTillCatalog(url: string, scope: string, { intervalMs 
         };
     }, [sync, intervalMs]);
 
-    return { rows, status, source, stale, saved, scopeChanged, refresh: sync };
+    return { rows, status, source, stale, saved, scopeChanged, off, refresh: sync };
 }

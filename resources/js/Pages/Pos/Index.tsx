@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     AlertTriangle,
@@ -60,10 +60,21 @@ import {
 import type { PageProps } from '@/types';
 import type { Addon, PosCoupon } from '@/types/models';
 import { fromTill, type TillProductRow } from '@/lib/till-products';
+import useTillCatalog, { type TillCatalogState } from '@/hooks/useTillCatalog';
+import type { StockReply } from '@/hooks/useLiveStock';
 
 interface Props {
-    /** ‏ما يقرؤه الصندوقُ وحده من الأصناف (`Demo::tillProducts`) — يُكمَل عند الدخول (`fromTill`) */
-    products: TillProductRow[];
+    /**
+     * ‏ما يقرؤه الصندوقُ وحده من الأصناف (`Demo::tillProducts`) — يُكمَل عند الدخول (`fromTill`).
+     *
+     * ‏‏وغائبٌ حين يكون الكتالوجُ على الجهاز (`catalog`): يُقرأ منه، ولا يُطلب إلّا إن
+     * تعذّر الكتالوجُ وليس في الجهاز شيء — فتعود الصفحةُ إليه كما كانت.
+     */
+    products?: TillProductRow[];
+    /** ‏‏الكتالوجُ على الجهاز — مفتاحُ نسخته (`TillCatalog::scope`)، أو `null` حين يُطفأ */
+    catalog?: { scope: string } | null;
+    /** ‏‏ومعه كميّاتُ الفرع الآن (`TillStock::answer` كاملًا) — لا تُعرض كميّةُ يومِ حُفظ */
+    stock?: StockReply | null;
     categories: { value: string; label: string }[];
     /** المواسمُ الجارية اليوم — مرشِّحٌ فوق الأصناف المحمَّلة، لا مصدرٌ لها */
     seasons?: { id: number; name: string; product_ids: number[] }[];
@@ -120,8 +131,66 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
     return season !== null && seasonIds.has(productId) ? season : null;
 }
 
+/**
+ * ═══ شاشةُ الصندوق — وأصنافُها من الصفحة أو من الجهاز ═══
+ *
+ * والكتالوجُ مطفأٌ (`catalog` غائب): الأصنافُ مع الصفحة كما كانت، والشاشةُ هي هي.
+ */
 export default function PosIndex() {
-    const { products: tillRows, categories, seasons = [], customersScope = null, stockScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
+    const { products, catalog } = usePage<PageProps<Props>>().props;
+
+    if (!catalog) return <PosScreen tillRows={products ?? []} catalog={null} />;
+
+    return <CatalogGate scope={catalog.scope} fallback={products ?? null} />;
+}
+
+/**
+ * ‏‏الكتالوجُ على الجهاز — ولا تُفتح الشاشةُ قبل أن تُعرف أصنافُها.
+ *
+ * ما يُقرأ من الأصناف لحظةَ فتح الشاشة يُقرأ كما كان من قائمةٍ كاملة: ضريبةُ بنود
+ * السلّة المستأنفة من رفّها (`usePosCart`)، والسلّةُ، والبحث. فلا تُركَّب الشاشةُ
+ * على قائمةٍ فارغة ثمّ تُملأ: بندٌ معفًى يُستأنف قبل أن تصل أصنافُه كان يأخذ نسبةَ
+ * المتجر. والجهازُ يقرأ نسختَه في عشرات الأجزاء من الثانية، وجهازٌ بلا نسخةٍ
+ * ينتظر الكتالوجَ مرّةً كما كان ينتظر الصفحة.
+ *
+ * وإن تعذّر الكتالوجُ وليس في الجهاز شيء: تُطلب الأصنافُ مع الصفحة كما كانت
+ * (`products`) — الطريقُ القديم لا يُغلق.
+ */
+function CatalogGate({ scope, fallback }: { scope: string; fallback: TillProductRow[] | null }) {
+    const t = useTranslate();
+    const catalog = useTillCatalog(route('pos.catalog-feed'), scope);
+    const askedPage = useRef(false);
+    const failed = catalog.status === 'failed' && !catalog.rows;
+
+    useEffect(() => {
+        if (!failed || fallback || askedPage.current || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+        askedPage.current = true;
+        router.reload({ only: ['products'] });
+    }, [failed, fallback]);
+
+    const rows = catalog.rows ?? fallback;
+    if (rows) return <PosScreen tillRows={rows} catalog={catalog} />;
+
+    return (
+        <PosLayout title={t('نقطة البيع')} fill>
+            <div data-testid="catalog-loading" className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-gray-500">
+                {failed ? (
+                    <>
+                        <p data-testid="catalog-failed">{t('تعذّر تحميل الأصناف: لا اتصال بالخادم ولا نسخة منها على هذا الجهاز.')}</p>
+                        <Button variant="outline" onClick={() => void catalog.refresh()}>
+                            {t('إعادة المحاولة')}
+                        </Button>
+                    </>
+                ) : (
+                    <p>{t('جارٍ تحميل الأصناف…')}</p>
+                )}
+            </div>
+        </PosLayout>
+    );
+}
+
+function PosScreen({ tillRows, catalog }: { tillRows: TillProductRow[]; catalog: TillCatalogState | null }) {
+    const { categories, seasons = [], customersScope = null, stockScope = null, stock = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // ‏الاسمُ المعروض الغائبُ هو الاسم — يُكمَل هنا مرّةً، قبل أن يقرأ الأصنافَ أيُّ مكوّن
@@ -130,8 +199,11 @@ export default function PosIndex() {
     /**
      * الكميات الحيّة تحلّ محلّ لقطة الخادم في كل مكان يقرأ `products` —
      * الشبكة والبحث والسلة — فلا يبقى مصدران للحقيقة في الشاشة نفسها.
+     *
+     * ‏‏ومع الكتالوج على الجهاز: كميّاتُ الفرع تأتي مع الصفحة (`stock`) وتُفرض من أوّل
+     * رسم، وتحديثُ الكتالوج لا يُعيد أصنافَه مرجعًا للكميّة — الصفحةُ وحدها تفعل.
      */
-    const liveStock = useLiveStock(route('pos.stock-feed'), serverProducts, { scope: stockScope });
+    const liveStock = useLiveStock(route('pos.stock-feed'), serverProducts, catalog ? { scope: stockScope, seed: stock, freshKey: stock } : { scope: stockScope });
     const { products, updatedAt: stockAt } = liveStock;
     const currency = context!.currency;
 
@@ -220,7 +292,13 @@ export default function PosIndex() {
          * والأسماءُ والأسعارُ لا تتغيّر بالبيع؛ الكميّةُ وحدها تتغيّر، وتأتي الآن
          * سلّتُها وحدها (`useLiveStock`).
          */
-        onSynced: () => void liveStock.refresh?.(),
+        onSynced: () => {
+            void liveStock.refresh?.();
+            // ‏‏والكتالوجُ يُسأل معه — «كما هو» في أجزاءٍ من الثانية حين لم يتغيّر شيء
+            void catalog?.refresh();
+        },
+        // ‏‏ومبلغٌ ردّه الخادم: يُفحص الكتالوجُ بالصفّ المبنيّ نفسِه، فتلحق البطاقاتُ بأسعاره
+        onPricesStale: catalog ? () => void catalog.refresh(true) : undefined,
     });
 
     /** القيمة أصلًا بالعملة الأساسية → تُحوَّل للعرض */
@@ -648,13 +726,28 @@ export default function PosIndex() {
                         <p data-testid="stock-scope-changed" className="mb-3 shrink-0 rounded-lg bg-[#fffbeb] px-3 py-1.5 text-[12px] text-[#92400e]">
                             {t('فُتح متجر أو فرع آخر في تبويب آخر، فتوقف تحديث الكميات هنا. أعد فتح الصندوق لترى كميات ما تبيعه.')}
                         </p>
+                    ) : catalog?.scopeChanged ? (
+                        <p data-testid="catalog-scope-changed" className="mb-3 shrink-0 rounded-lg bg-[#fffbeb] px-3 py-1.5 text-[12px] text-[#92400e]">
+                            {t('فُتح متجر أو فرع أو لغة أخرى في تبويب آخر، فتوقف تحديث الأصناف هنا. أعد فتح الصندوق.')}
+                        </p>
                     ) : (
-                        stockAt && (
+                        (stockAt || catalog?.stale) && (
                             <p className="mb-3 shrink-0 text-[12px] text-[#9ca3af]">
-                                {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                                {stockAt && (
+                                    <>
+                                        {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                                    </>
+                                )}
                                 {liveStock.stale && <span data-testid="stock-stale"> · {t('تعذّر آخر تحديث')}</span>}
+                                {/* ‏‏والأصنافُ من الجهاز ولم يصل سؤالُها: أسعارُها كما حُفظت، والخادمُ يحسب البيعةَ بسعره */}
+                                {catalog?.stale && <span data-testid="catalog-stale"> · {t('الأصناف كما حُفظت على الجهاز، تعذّر التحقّق منها')}</span>}
                             </p>
                         )
+                    )}
+                    {catalog?.saved === 'no' && (
+                        <p data-testid="catalog-not-saved" className="mb-3 shrink-0 text-[12px] text-[#92400e]">
+                            {t('تعذّر حفظ الأصناف على هذا الجهاز، فتُحمَّل من الخادم في كل فتح. البيع يعمل كما هو.')}
+                        </p>
                     )}
 
                     {/* تبويبات الأقسام */}

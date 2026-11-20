@@ -449,6 +449,14 @@ interface Options {
      * قديم. الخادم يرفض البيع الزائد فعلًا، لكن ما يراه الكاشير خاطئ.
      */
     onSynced?: () => void;
+    /**
+     * ‏‏يُستدعى حين يردّ الخادمُ بيعةً لأنّ مبلغَها غيرُ ما على الشاشة (`TotalChanged`).
+     *
+     * الكتالوجُ على الجهاز قد يحمل سعرًا تغيّر منذ آخر تحقّق: فيُطلب فحصُه العميق
+     * (`useTillCatalog`) لتلحق البطاقاتُ بأسعار الخادم. والمبلغُ الصحيح لهذه السلّة
+     * يُؤكَّد كما كان — لا يُعاد تسعيرُ بندٍ في السلّة بلا الكاشير.
+     */
+    onPricesStale?: () => void;
 }
 
 /**
@@ -456,7 +464,7 @@ interface Options {
  * بنفس المعادلات والسلوك: الخصم، الضريبة، سقف نقاط الولاء، وطابور
  * الانقطاع (outbox) الذي يكتب البيع محليًا أولًا ثم يرفعه.
  */
-export function usePosCart({ products, customers: initialCustomers, customersScope = null, loyalty, vat, resume, currency, onToast, onSynced }: Options) {
+export function usePosCart({ products, customers: initialCustomers, customersScope = null, loyalty, vat, resume, currency, onToast, onSynced, onPricesStale }: Options) {
     /*
      * إشعارات الكاشير تُترجَم هنا لا في موضع العرض.
      *
@@ -1965,6 +1973,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
             if (totalChanged && res.totals) {
                 setConfirmedTotal({ sig: cartSig, total: res.totals.total });
                 onSynced?.();
+                onPricesStale?.();
             }
             if (res.drop && res.error) {
                 onToast(res.error, changed || totalChanged ? 'warning' : 'danger');
@@ -1982,7 +1991,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 loyaltyChanged: changed,
             };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, refresh, sendOne, onToast, onSynced, customersScope, patchCustomer],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, redeemDiscount, total, confirmedTotal, cartSig, loyaltyRules, refresh, sendOne, onToast, onSynced, onPricesStale, customersScope, patchCustomer],
     );
 
     /**

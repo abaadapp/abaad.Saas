@@ -67,7 +67,7 @@ class TheTillKnowsEachSizeByItsBarcodeTest extends TestCase
 
     public function test_each_live_size_reaches_the_till_with_its_barcode_and_a_stopped_one_does_not(): void
     {
-        $till = collect($this->get(route('pos.index'))->assertOk()->viewData('page')['props']['products'])->keyBy('name');
+        $till = collect($this->tillProductsOf($this->get(route('pos.index'))))->keyBy('name');
 
         $sizes = collect($till['بوكيه']['variants'])->keyBy('name');
         $this->assertSame(['صغير', 'كبير'], $sizes->keys()->all(), 'المقاسُ الموقوف لا يصل — فلا يُطابَق باركودُه');

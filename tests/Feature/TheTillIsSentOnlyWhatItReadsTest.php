@@ -113,7 +113,7 @@ class TheTillIsSentOnlyWhatItReadsTest extends TestCase
     /** @return array<int, array<string, mixed>> */
     private function tillPage(): array
     {
-        return $this->get(route('pos.index'))->assertOk()->viewData('page')['props']['products'];
+        return $this->tillProductsOf($this->get(route('pos.index')));
     }
 
     public function test_the_till_gets_the_shared_rows_without_only_what_it_does_not_read_in_every_branch_and_language(): void

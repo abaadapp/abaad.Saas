@@ -113,6 +113,26 @@ abstract class TestCase extends BaseTestCase
      * جلسة المتصفّح — وهو العطب الذي جاء التفعيل ليغلقه. وهو في أكثر
      * الاختبارات شرطُ السيناريو لا موضوعُه، فيُهيَّأ هنا في سطر.
      */
+    /**
+     * ‏‏أصنافُ الصندوق كما تصل جهازَه — من الصفحة حين يُطفأ الكتالوجُ على الجهاز،
+     * ومن كتالوجه كاملًا (`pos.catalog-feed`) حين يُشعَل (`pos.catalog_on_device`).
+     *
+     * الصفُّ هو هو في الطريقين (`Demo::tillProducts`)، والطريقُ وحده يتبدّل: فما
+     * يُثبته اختبارٌ عن صفّ الصندوق يُثبته عمّا يصل الصندوقَ فعلًا.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function tillProductsOf(\Illuminate\Testing\TestResponse $page): array
+    {
+        $props = $page->assertOk()->viewData('page')['props'];
+        if (empty($props['catalog'])) {
+            return $props['products'];
+        }
+
+        // ‏‏بكوكي الجهاز كما يرسله المتصفّح (`credentials: 'same-origin'`) — فرعُه فرعُ الصفحة
+        return $this->withCredentials()->postJson(route('pos.catalog-feed'), ['scope' => $props['catalog']['scope']])->assertOk()->json('products');
+    }
+
     protected function activatePosDevice(int $businessId, ?int $branchId = null): \App\Models\PosDevice
     {
         $raw = \Illuminate\Support\Str::random(64);

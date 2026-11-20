@@ -10722,5 +10722,10 @@
     "أُغلقت السلة، والطلب :number باقٍ في «الطلبات المعلقة» كما كان.": "Cart closed. Order :number is still in Held orders, as it was.",
     "تعديل الطلب المعلق :number — «تعليق» يحفظ التعديل عليه، و«إلغاء» يغلقه هنا ويبقيه في الطلبات المعلقة.": "Editing held order :number — Hold saves your changes to it; Cancel closes it here and keeps it in Held orders.",
     "فُتح متجر أو فرع آخر في تبويب آخر، فتوقف تحديث الكميات هنا. أعد فتح الصندوق لترى كميات ما تبيعه.": "Another shop or branch was opened in another tab, so stock updates stopped here. Reopen the till to see the stock of what you sell.",
-    "تعذّر آخر تحديث": "last update failed"
+    "تعذّر آخر تحديث": "last update failed",
+    "جارٍ تحميل الأصناف…": "Loading products…",
+    "تعذّر تحميل الأصناف: لا اتصال بالخادم ولا نسخة منها على هذا الجهاز.": "Could not load products: no connection to the server and no copy on this device.",
+    "فُتح متجر أو فرع أو لغة أخرى في تبويب آخر، فتوقف تحديث الأصناف هنا. أعد فتح الصندوق.": "Another shop, branch or language was opened in another tab, so product updates stopped here. Reopen the till.",
+    "الأصناف كما حُفظت على الجهاز، تعذّر التحقّق منها": "products as saved on this device, could not be checked",
+    "تعذّر حفظ الأصناف على هذا الجهاز، فتُحمَّل من الخادم في كل فتح. البيع يعمل كما هو.": "Products could not be saved on this device, so they load from the server every time. Selling works as usual."
 }

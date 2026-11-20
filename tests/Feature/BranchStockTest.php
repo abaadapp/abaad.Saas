@@ -112,8 +112,7 @@ class BranchStockTest extends TestCase
         $this->allocate(muscat: 10, salalah: 0);
         $this->inBranch($this->salalah);
 
-        $products = $this->get(route('pos.index'))->assertOk()
-            ->viewData('page')['props']['products'];
+        $products = $this->tillProductsOf($this->get(route('pos.index')));
 
         $row = collect($products)->firstWhere('id', $this->product->id);
 

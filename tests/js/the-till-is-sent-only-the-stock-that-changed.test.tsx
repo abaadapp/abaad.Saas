@@ -214,8 +214,14 @@ describe('الصندوقُ بعد البيع', () => {
         const fs = await import('node:fs');
         const page = fs.readFileSync('resources/js/Pages/Pos/Index.tsx', 'utf8');
 
-        expect(page).toMatch(/onSynced: \(\) => void liveStock\.refresh\?\.\(\)/);
-        expect(page).not.toMatch(/router\.reload\(\{\s*only:\s*\['products'\]/);
+        // ‏‏بعد البيع يُسأل المخزونُ والكتالوجُ عمّا تغيّر — ولا تُعاد الأصنافُ كلُّها
+        const onSynced = page.match(/onSynced: \(\) => \{[\s\S]*?\n {8}\},/)?.[0] ?? '';
+        expect(onSynced).toMatch(/void liveStock\.refresh\?\.\(\)/);
+        expect(onSynced).toMatch(/void catalog\?\.refresh\(\)/);
+        expect(onSynced).not.toMatch(/router\.reload/);
+        // ‏‏والإعادةُ الكاملة بابٌ واحد: الكتالوجُ تعذّر وليس في الجهاز شيء (`CatalogGate`)
+        expect(page.match(/router\.reload\(\{\s*only:\s*\['products'\]/g)).toHaveLength(1);
+        expect(page).toMatch(/if \(!failed \|\| fallback \|\| askedPage\.current[^\n]*\n[^\n]*\n\s*router\.reload\(\{ only: \['products'\] \}\)/);
         // ‏‏ونصُّ البحث من أصناف الصفحة لا من كميّاتها: تحديثُ المخزون لا يُعيد بناءه
         expect(page).toMatch(/const haystacks = useMemo\(\(\) => serverProducts\.map/);
     });

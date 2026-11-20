@@ -93,7 +93,7 @@ class TheTillSellsADiscountedProductAtTheServersPriceTest extends TestCase
     public function test_the_till_row_carries_the_price_the_server_sells_at_and_the_shared_rows_do_not_change(): void
     {
         $this->onTill();
-        $till = collect($this->get(route('pos.index'))->assertOk()->viewData('page')['props']['products'])->keyBy('name');
+        $till = collect($this->tillProductsOf($this->get(route('pos.index'))))->keyBy('name');
 
         foreach (self::fixture()['products'] as $p) {
             $row = $till[$p['name']];

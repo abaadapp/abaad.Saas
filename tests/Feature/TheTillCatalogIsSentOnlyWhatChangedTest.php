@@ -97,7 +97,8 @@ class TheTillCatalogIsSentOnlyWhatChangedTest extends TestCase
             $body += ['t' => $known['t'], 'b' => $known['b'], 'ih' => implode('', $known['ih']), 'oh' => implode('', $known['oh'])];
         }
 
-        return $this->postJson(route('pos.catalog-feed'), $body + $extra);
+        // ‏‏بكوكي الجهاز كما يرسله المتصفّح — فرعُ الجهاز هو ما يُقرأ
+        return $this->withCredentials()->postJson(route('pos.catalog-feed'), $body + $extra);
     }
 
     /**

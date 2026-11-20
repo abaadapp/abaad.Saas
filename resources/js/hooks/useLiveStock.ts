@@ -74,6 +74,14 @@ export function applyStock(s: StockSnapshot | null, d: StockReply): { snap: Stoc
     return { snap: { v: d.v, b: s.b, h, rows }, changed: true };
 }
 
+/** ‏‏لقطةُ الصفحة — جوابٌ كاملٌ سليم، أو لا شيء */
+function snapOf(seed: StockReply | null | undefined): StockSnapshot | null {
+    if (!seed) return null;
+    const r = applyStock(null, seed);
+
+    return r === 'stale' ? null : r.snap;
+}
+
 /**
  * مخزون حيّ لشاشة البيع.
  *
@@ -100,6 +108,10 @@ export function applyStock(s: StockSnapshot | null, d: StockReply): { snap: Stoc
  * 4. سؤالٌ واحد في وقت واحد، وجوابٌ لا يُطابق ما عند الصندوق يُطرح.
  * 5. صندوقٌ فُتح لمتجرٍ أو فرعٍ غيرِ ما في الجلسة (بُدّل في تبويبٍ آخر) لا
  *    تُعرض عليه كميّاتُ غيره (`scopeChanged`).
+ * 6. ‏‏والكتالوجُ على الجهاز (`useTillCatalog`): الأصنافُ من الجهاز وكميّاتُها من يومِ
+ *    حُفظت، فتأتي الكميّاتُ مع الصفحة (`seed` — جوابُ `TillStock` كاملًا) وتُفرض
+ *    من أوّل رسم. وأصنافٌ تتبدّل بتحديث الكتالوج ليست أحدثَ كميّةً من اللقطة: ما
+ *    يُعيد الصفحةَ مرجعًا (القاعدة 2) هو تبدّلُ `freshKey` — الصفحةُ نفسُها.
  *
  * ويعيد وقت آخر استطلاع: رقمٌ يتحرّك بلا أن يُعرف عمرُه يُقرأ على أنه
  * لحظيّ، فيَعِد الكاشير الزبونَ بصنف نفد قبل عشرين ثانية. و`stale` حين لم
@@ -108,13 +120,24 @@ export function applyStock(s: StockSnapshot | null, d: StockReply): { snap: Stoc
 export default function useLiveStock<T extends HasStock>(
     url: string,
     products: T[],
-    { scope = null, intervalMs = 20000, firstMs = 1500 }: { scope?: string | null; intervalMs?: number; firstMs?: number } = {},
+    {
+        scope = null,
+        intervalMs = 20000,
+        firstMs = 1500,
+        seed = null,
+        freshKey,
+    }: { scope?: string | null; intervalMs?: number; firstMs?: number; seed?: StockReply | null; freshKey?: unknown } = {},
 ) {
     const snap = useRef<StockSnapshot | null>(null);
+    const seeded = useRef(false);
+    if (!seeded.current) {
+        seeded.current = true;
+        snap.current = snapOf(seed);
+    }
     const [version, setVersion] = useState(0);
-    // ‏‏اللقطةُ أحدثُ من أصناف الصفحة — تُفرض عليها
-    const [overlay, setOverlay] = useState(false);
-    const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+    // ‏‏اللقطةُ أحدثُ من أصناف الصفحة — تُفرض عليها (ومن أوّل رسمٍ حين جاءت مع الصفحة)
+    const [overlay, setOverlay] = useState(() => snap.current !== null);
+    const [updatedAt, setUpdatedAt] = useState<string | null>(() => (snap.current ? (seed?.updated_at ?? null) : null));
     const [stale, setStale] = useState(false);
     const [scopeChanged, setScopeChanged] = useState(false);
     const busy = useRef(false);
@@ -123,11 +146,27 @@ export default function useLiveStock<T extends HasStock>(
     const epoch = useRef(0);
 
     // كل تنقّل يجلب منتجات جديدة من الخادم — أحدث مما استطلعناه
+    // ‏‏(ومع الكتالوج على الجهاز: الصفحةُ نفسُها، ولقطتُها معها)
+    const fresh = freshKey === undefined ? products : freshKey;
+    const mounted = useRef(false);
     useEffect(() => {
+        const first = !mounted.current;
+        mounted.current = true;
+        if (first && snap.current) return;
         epoch.current++;
+        const s = snapOf(seed);
+        if (s) {
+            snap.current = s;
+            setOverlay(true);
+            setUpdatedAt(seed?.updated_at ?? null);
+            setVersion((n) => n + 1);
+
+            return;
+        }
         setOverlay(false);
         setUpdatedAt(null);
-    }, [products]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fresh]);
 
     const poll = useCallback(async (): Promise<void> => {
         if (lost.current || (typeof document !== 'undefined' && document.hidden)) return;

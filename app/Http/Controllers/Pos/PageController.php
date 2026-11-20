@@ -20,6 +20,7 @@ use App\Support\PosAddonsLayout;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\TillActivation;
+use App\Support\TillCatalog;
 use App\Support\TillStock;
 use App\Support\ReceiptVisibility;
 use App\Support\Vat;
@@ -153,9 +154,28 @@ class PageController extends Controller
             return redirect()->route('pos.setup');
         }
 
+        /*
+         * ‏‏والأصنافُ على الجهاز (`config('pos.catalog_on_device')`): لا تُحمل مع الصفحة.
+         *
+         * يقرؤها الجهازُ ممّا حفظه ويسأل عمّا تغيّر (`pos.catalog-feed` — `TillCatalog`)،
+         * وجهازٌ بلا نسخةٍ يأخذها كلَّها مرّة. وتبقى هنا لمن يطلبها بعينها (`optional`):
+         * إن تعذّر الكتالوجُ وليس في الجهاز شيء عادت الصفحةُ إليها كما كانت.
+         * وكميّاتُها تأتي مع الصفحة (`stock`) — لا تُعرض كميّةٌ من يومِ حُفظ الكتالوج.
+         */
+        $onDevice = (bool) config('pos.catalog_on_device');
+        $stockScope = TillStock::scope((int) Demo::bid(), Demo::activeBranchId());
+
         return Inertia::render('Pos/Index', [
             // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة — وما يقرؤه الصندوقُ وحده (`Demo::tillProducts`)
-            'products' => Demo::tillProducts(Demo::activeBranchId()),
+            'products' => $onDevice
+                ? Inertia::optional(fn () => Demo::tillProducts(Demo::activeBranchId()))
+                : Demo::tillProducts(Demo::activeBranchId()),
+            'catalog' => $onDevice
+                ? ['scope' => TillCatalog::scope((int) Demo::bid(), Demo::activeBranchId(), app()->getLocale())]
+                : null,
+            'stock' => $onDevice
+                ? TillStock::answer(TillStock::rows((int) Demo::bid(), Demo::activeBranchId()), [], $stockScope) + ['updated_at' => now()->format('H:i:s')]
+                : null,
             'categories' => Demo::posCategories(),
             /* المواسمُ الجارية — مرشِّحٌ فوق ما حُمّل، لا يُضيف صنفًا ولا يُجيز بيعَه */
             'seasons' => Seasons::forPos(Demo::bid()),
@@ -170,7 +190,7 @@ class PageController extends Controller
              * بُدّل الفرعُ أو المتجر في تبويبٍ آخر قيل له ولم تُعرض عليه كميّاتُ غيره
              * (`PosController::stockFeed`). ولا يُقرأ به شيء: الجلسةُ هي ما يُقرأ.
              */
-            'stockScope' => TillStock::scope((int) Demo::bid(), Demo::activeBranchId()),
+            'stockScope' => $stockScope,
             'addons' => Demo::addons(),
             /*
              * وكيف تُعرض — شريطًا (الافتراض) أم قسمًا كاملًا. صفٌّ واحد،

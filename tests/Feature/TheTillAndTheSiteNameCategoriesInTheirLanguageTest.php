@@ -148,9 +148,9 @@ class TheTillAndTheSiteNameCategoriesInTheirLanguageTest extends TestCase
     public function test_the_products_still_carry_the_value_their_tab_filters_by(): void
     {
         $this->till('en');
-        $props = $this->get(route('pos.index'))->viewData('page')['props'];
-
-        $cats = collect($props['products'])->pluck('cat', 'name')->all();
+        $page = $this->get(route('pos.index'));
+        $props = $page->viewData('page')['props'];
+        $cats = collect($this->tillProductsOf($page))->pluck('cat', 'name')->all();
 
         $this->assertSame('منتجات', $cats['صنف منتجات']);
         $this->assertSame('الإضافات', $cats['صنف الإضافات']);

@@ -6,6 +6,7 @@ import type { ComponentType } from 'react';
 import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
 import { dropBootPayload, followIdentity } from '@/lib/identity-history';
+import { forgetOtherCatalogs } from '@/lib/till-catalog-store';
 import { forgetOtherShops } from '@/lib/till-customers-store';
 import { ensureRoutesFor, startRouteGroups } from '@/lib/route-groups';
 import { markTouchDevice } from '@/lib/touch';
@@ -96,6 +97,9 @@ createInertiaApp({
             // ونسخةُ زبائن الصندوق في الجهاز لا تبقى لمتجرٍ غير متجر الجالس — انظر `lib/till-customers-store`
             forgetOtherShops(props.initialPage.props as Record<string, unknown>);
             router.on('success', (event) => forgetOtherShops(event.detail.page.props as Record<string, unknown>));
+            // ‏‏وكتالوجُ الصندوق كذلك — في قاعدته هو، لا تمسّ زبونًا ولا بيعة (`lib/till-catalog-store`)
+            forgetOtherCatalogs(props.initialPage.props as Record<string, unknown>);
+            router.on('success', (event) => forgetOtherCatalogs(event.detail.page.props as Record<string, unknown>));
             // وقد قُرئت الصفحةُ الأولى — فلا تبقى خصائصُها في مصدر المستند
             dropBootPayload();
             /*

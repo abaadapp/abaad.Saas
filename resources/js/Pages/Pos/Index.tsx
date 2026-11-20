@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { router, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     AlertTriangle,
@@ -79,6 +79,8 @@ interface Props {
     addonsLayout?: string;
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
+    /** ‏‏متجرُ كميّات الصندوق وفرعُه — يُعاد مع سؤال المخزون (`PosController::stockFeed`) */
+    stockScope?: string;
     settings: LoyaltySettings & {
         loyaltyEnabled?: boolean;
         paymentMethods?: string[];
@@ -119,7 +121,7 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
 }
 
 export default function PosIndex() {
-    const { products: tillRows, categories, seasons = [], customersScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
+    const { products: tillRows, categories, seasons = [], customersScope = null, stockScope = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // ‏الاسمُ المعروض الغائبُ هو الاسم — يُكمَل هنا مرّةً، قبل أن يقرأ الأصنافَ أيُّ مكوّن
@@ -129,7 +131,8 @@ export default function PosIndex() {
      * الكميات الحيّة تحلّ محلّ لقطة الخادم في كل مكان يقرأ `products` —
      * الشبكة والبحث والسلة — فلا يبقى مصدران للحقيقة في الشاشة نفسها.
      */
-    const { products, updatedAt: stockAt } = useLiveStock(route('pos.stock-feed'), serverProducts);
+    const liveStock = useLiveStock(route('pos.stock-feed'), serverProducts, { scope: stockScope });
+    const { products, updatedAt: stockAt } = liveStock;
     const currency = context!.currency;
 
     const [cat, setCat] = useState('الكل');
@@ -209,10 +212,15 @@ export default function PosIndex() {
             const fn = type === 'success' ? toast.success : type === 'danger' ? toast.error : type === 'warning' ? toast.warning : toast;
             fn(msg);
         },
-        // إعادة جلب قائمة المنتجات وحدها بعد البيع: يصحّح «المتوفر» دون
-        // إعادة تحميل الصفحة — reload يحافظ على حالة المكوّن والتمرير أصلًا،
-        // فتبقى السلة والفلاتر كما هي
-        onSynced: () => router.reload({ only: ['products'] }),
+        /*
+         * ‏‏وبعد البيع يُسأل عن المخزون حالًا — بما تغيّر وحده.
+         *
+         * كانت تُعاد قائمةُ الأصناف كلُّها بعد كلّ بيعة (`router.reload`): عند
+         * عشرة آلاف صنف خمسةُ ميغابايتات وثانيةٌ من الخادم لتتغيّر كميّةُ صنف.
+         * والأسماءُ والأسعارُ لا تتغيّر بالبيع؛ الكميّةُ وحدها تتغيّر، وتأتي الآن
+         * سلّتُها وحدها (`useLiveStock`).
+         */
+        onSynced: () => void liveStock.refresh?.(),
     });
 
     /** القيمة أصلًا بالعملة الأساسية → تُحوَّل للعرض */
@@ -421,8 +429,11 @@ export default function PosIndex() {
      * ‏ما يُبحث فيه عن كلّ صنف — يُبنى مرّةً لكلّ قائمة أصناف لا مع كلّ حرف.
      *
      * كان يُركَّب ويُصغَّر لكلّ صنفٍ في كلّ حرف: عشرةُ آلاف نصٍّ جديد للحرف الواحد.
+     * ويُبنى من أصناف الصفحة لا من كميّاتها: تغيّرُ كميّةٍ لا يغيّر اسمًا، فلا
+     * يُعاد بناءُ عشرة آلاف نصٍّ مع كلّ تحديثٍ للمخزون. والترتيبُ واحد
+     * (`useLiveStock` يُبقي الأصنافَ بترتيبها وعددها)، فيقرأ كلُّ صنفٍ نصَّه.
      */
-    const haystacks = useMemo(() => products.map((p) => `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase()), [products]);
+    const haystacks = useMemo(() => serverProducts.map((p) => `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase()), [serverProducts]);
     const visibleProducts = useMemo(() => {
         // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
         const needle = q.trim().toLowerCase();
@@ -633,10 +644,17 @@ export default function PosIndex() {
 
                     {/* عمر الأرقام المعروضة: «المتوفر» يُستطلَع كل 20 ثانية، ورقمٌ
                         لا يُعرف عمرُه يُقرأ على أنه لحظيّ */}
-                    {stockAt && (
-                        <p className="mb-3 shrink-0 text-[12px] text-[#9ca3af]">
-                            {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                    {liveStock.scopeChanged ? (
+                        <p data-testid="stock-scope-changed" className="mb-3 shrink-0 rounded-lg bg-[#fffbeb] px-3 py-1.5 text-[12px] text-[#92400e]">
+                            {t('فُتح متجر أو فرع آخر في تبويب آخر، فتوقف تحديث الكميات هنا. أعد فتح الصندوق لترى كميات ما تبيعه.')}
                         </p>
+                    ) : (
+                        stockAt && (
+                            <p className="mb-3 shrink-0 text-[12px] text-[#9ca3af]">
+                                {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                                {liveStock.stale && <span data-testid="stock-stale"> · {t('تعذّر آخر تحديث')}</span>}
+                            </p>
+                        )
                     )}
 
                     {/* تبويبات الأقسام */}

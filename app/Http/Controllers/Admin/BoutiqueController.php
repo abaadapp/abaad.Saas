@@ -14,6 +14,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\BoutiqueDues;
 use App\Support\BoutiqueReturns;
+use App\Support\BoutiqueSales;
 use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Search;
@@ -139,6 +140,9 @@ class BoutiqueController extends Controller
                 'returns_terms_ref' => $boutique->returns_terms_ref,
             ],
             'statement' => $statement,
+            // بوتيكاتُ المتجر لمُرشِّح «مبيعات البوتيك وفواتيره» — تُقرأ صفحتُه بطلبها (`sales`)
+            'boutiqueOptions' => Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
+                ->get(['id', 'name'])->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => (string) $b->name])->all(),
             // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
             'returns' => $this->returnsOf((int) $business->id, $boutique),
             'period' => $period,
@@ -193,6 +197,54 @@ class BoutiqueController extends Controller
                     'net' => (float) $s->net, 'paid' => $s->paid(),
                     ...self::componentsOf($s),
                 ])->all(),
+        ]);
+    }
+
+    /* ═══════════ مبيعاتُ البوتيك وفواتيرُه ═══════════ */
+
+    /*
+     * ثلاثةُ أبوابٍ للقراءة وحدها، بحارس الشاشة نفسِه: المتجرُ يؤوي بوتيكات
+     * (`shop`)، وصلاحيّةُ المنتجات على المسار. وكلُّ استعلامٍ مقيَّدٌ بمتجر
+     * الجالس — والبوتيكُ والفاتورةُ من متجرٍ آخر يُقرآن «لا شيء»
+     * (`BoutiqueSales::filters` و`invoice`). ولا حسابَ لصاحب البوتيك في
+     * النظام أصلًا: الشاشةُ لصاحب المتجر ومن أذن له.
+     */
+
+    /** صفوفُ الفواتير — صفحةً صفحة من القاعدة */
+    public function sales(Request $request)
+    {
+        $business = $this->shop();
+        $page = BoutiqueSales::rows((int) $business->id, BoutiqueSales::filters($request, (int) $business->id));
+
+        return response()->json([
+            'rows' => $page->items(),
+            'page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
+            'total' => $page->total(),
+            'per_page' => $page->perPage(),
+        ]);
+    }
+
+    /** ملخّصُ الشهر — للبوتيك المختار أو للكلّ */
+    public function salesSummary(Request $request)
+    {
+        $business = $this->shop();
+
+        return response()->json(BoutiqueSales::summary((int) $business->id, BoutiqueSales::filters($request, (int) $business->id)));
+    }
+
+    /** فاتورةٌ بما لبوتيكاتها فيها — والكاملةُ من قسم المبيعات لمن يملكه */
+    public function salesOrder(int $order)
+    {
+        $business = $this->shop();
+        $data = BoutiqueSales::invoice((int) $business->id, $order);
+        abort_if($data === null, 404);
+
+        $canOpen = (bool) auth()->user()?->allows('orders');
+
+        return response()->json($data + [
+            'can_open' => $canOpen,
+            'url' => $canOpen ? route('admin.orders.show', $data['order']['number']) : null,
         ]);
     }
 

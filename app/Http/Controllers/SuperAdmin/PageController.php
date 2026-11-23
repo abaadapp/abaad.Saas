@@ -43,6 +43,7 @@ use App\Support\SupportWhatsApp;
 use App\Support\TillCatalogSwitch;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppLinkHealth;
+use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\JsonResponse;
@@ -639,6 +640,11 @@ class PageController extends Controller
              * ومعه آخرُ ما تبدّل فيه، من سجلّ النشاط.
              */
             'posCatalog' => TillCatalogSwitch::state(),
+            /*
+             * ‏‏وكيف يربط التجّارُ الجدد واتسابهم، وجاهزيّةُ الربط بضغطة عبر تطبيق أبعاد — وآخرُ ما
+             * تبدّل فيهما. ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» (`WhatsAppMerchantLink`).
+             */
+            'whatsappLink' => WhatsAppMerchantLink::state(),
             /*
              * الباقات بأسمائها لتُختار لا لتُكتب.
              *

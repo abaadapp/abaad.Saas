@@ -21,6 +21,7 @@ use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppLog;
+use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOnboarding;
 use App\Support\WhatsAppOwnApp;
@@ -104,7 +105,7 @@ class WhatsAppController extends Controller
             'embedded' => [
                 'configured' => WhatsAppEmbeddedSignup::configured(),
                 'app_id' => (string) config('whatsapp.app_id'),
-                'config_id' => (string) config('whatsapp.config_id'),
+                'config_id' => WhatsAppMerchantLink::configId(),
                 'graph_version' => (string) config('whatsapp.api_version'),
                 'feature_type' => (string) config('whatsapp.feature_type'),
                 'session_info_version' => (string) config('whatsapp.session_info_version'),

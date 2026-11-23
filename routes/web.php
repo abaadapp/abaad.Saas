@@ -590,6 +590,12 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     /* رقمُ مبيعات أبعاد — وصلةٌ ثانيةٌ للمنصّة بغرضٍ آخر، وبابُها مستقلّ */
     Route::post('/whatsapp/sales', [WhatsAppController::class, 'connectSales'])->name('whatsapp.sales.connect');
     Route::delete('/whatsapp/sales', [WhatsAppController::class, 'disconnectSales'])->name('whatsapp.sales.disconnect');
+    /*
+     * ‏‏وكيف يربط التجّارُ الجدد واتسابهم (تطبيقُهم أو تطبيقُ أبعاد بضغطة)، ورقمُ إعداد الربط
+     * المدمج — صفّان في القاعدة يُقيَّد تبديلُهما، ويسريان من الطلب التالي (`WhatsAppMerchantLink`).
+     */
+    Route::post('/whatsapp/merchant-link', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'mode'])->name('whatsapp.merchant-link.mode');
+    Route::post('/whatsapp/merchant-link/config', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'configId'])->name('whatsapp.merchant-link.config');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])

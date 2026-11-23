@@ -656,6 +656,28 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->assertNull($this->connection());
     }
 
+    /**
+     * ‏‏ومديرُ المنصّة ينقل التجّارَ **الجدد** إلى تطبيق أبعاد (`WhatsAppMerchantLink`) — ووصلةٌ
+     * قائمةٌ على تطبيق التاجر (كوصلة RIBBON) تبقى كما هي: تُرسل برمزها وتسمع على بابها.
+     */
+    public function test_a_link_on_the_merchants_app_keeps_working_when_new_merchants_move_to_abaads_app(): void
+    {
+        $this->meta();
+        $this->link($this->owner);
+        $this->review()->assertSessionHasNoErrors();
+        $c = $this->connection();
+
+        config(['whatsapp.config_id' => '2177821789438050']);
+        $this->assertTrue(\App\Support\WhatsAppMerchantLink::set(\App\Support\WhatsAppMerchantLink::ABAAD_APP)['changed']);
+        $this->assertFalse(WhatsAppOwnApp::enabled());
+
+        $this->assertSame(WhatsAppOwnApp::TYPE, $c->fresh()->link_type);
+        $this->assertSame($c->id, WhatsAppConnections::resolve($this->shop->fresh())?->id, 'يُرسل برمزه كما كان');
+
+        $this->hook(WhatsAppOwnApp::callbackUrl($c), $this->inbound(self::PHONE, 'wamid.AFTER-MOVE'), self::SECRET)->assertOk();
+        $this->assertSame(1, WhatsAppChatMessage::where('business_id', $this->shop->id)->where('direction', WhatsAppChatMessage::IN)->count());
+    }
+
     /* ═════════════ ١٠ · المتجرُ الجديد بلا رقمٍ مشترك ولا حصص ═════════════ */
 
     public function test_a_shop_closed_to_the_shared_number_buys_no_message_packs(): void

@@ -527,7 +527,7 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
 
     return (
         <Dialog open={orderId !== null} onOpenChange={(o) => !o && onClose()}>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+            <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <FileText className="size-4" />
@@ -535,6 +535,7 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                     </DialogTitle>
                 </DialogHeader>
 
+                <div className="px-5 pb-5">
                 {failed && <p className="text-[13px] text-[#b91c1c]">{t('تعذّر تحميل الفاتورة.')}</p>}
                 {!data && !failed && <div className="h-32 animate-pulse rounded-[10px] bg-[#fafafa]" />}
 
@@ -632,6 +633,7 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                         )}
                     </div>
                 )}
+                </div>
             </DialogContent>
         </Dialog>
     );

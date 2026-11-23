@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
 import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
+import InstagramPlatformCard, { type InstagramPlatformState } from '@/Pages/Platform/Settings/partials/InstagramPlatformCard';
 import ChannelAutomationsSwitch, { type ChannelAutomationsState } from '@/Pages/Platform/Settings/partials/ChannelAutomationsSwitch';
 import WhatsAppMerchantLinkSwitch, { type WhatsAppLinkState } from './partials/WhatsAppMerchantLinkSwitch';
 
@@ -115,6 +116,7 @@ const TABS = [
     { key: 'taxes', label: 'الضريبة الافتراضية' },
     { key: 'mail', label: 'البريد' },
     { key: 'whatsapp', label: 'واتساب' },
+    { key: 'instagram', label: 'إنستقرام' },
     { key: 'google', label: 'خرائط Google' },
     { key: 'ai', label: 'المساعد الذكي' },
     { key: 'archive', label: 'أرشفة البيانات' },
@@ -122,7 +124,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, channelAutomations } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, channelAutomations, instagram } =
         usePage<PageProps<{
             settings: Settings;
             /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
@@ -130,6 +132,7 @@ export default function PlatformSettings() {
             /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
             whatsappLink?: WhatsAppLinkState;
             channelAutomations?: ChannelAutomationsState;
+            instagram?: InstagramPlatformState;
             mail?: MailStatus;
             plans: SelectOption[];
             whatsapp?: SharedConnection | null;
@@ -351,6 +354,7 @@ export default function PlatformSettings() {
             */}
             {tab === 'whatsapp' && whatsappLink && <WhatsAppMerchantLinkSwitch state={whatsappLink} locale={locale} />}
             {tab === 'whatsapp' && channelAutomations && <ChannelAutomationsSwitch state={channelAutomations} />}
+            {tab === 'instagram' && instagram && <InstagramPlatformCard state={instagram} />}
             <form onSubmit={submit}>
                 {tab === 'general' && (
                     <Card className="p-6">

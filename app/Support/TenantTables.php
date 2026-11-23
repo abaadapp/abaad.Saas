@@ -210,6 +210,11 @@ class TenantTables
         'whatsapp_order_sessions',
         // ‏‏وأتمتاتُ التاجر بالكلمات وسجلُّ تشغيلها — كتبها بيده، فتعود معه في الاستعادة
         'channel_automations', 'channel_automation_runs',
+        /*
+         * ‏‏ووصلةُ إنستقرام — تعود مع المتجر بلا رمزها (`SECRETS`): يعود الحسابُ «أعد الربط»
+         * فيربطه صاحبُه بضغطة، ولا يُنسخ إذنٌ يقرأ رسائلَ زبائنه في ملفٍّ يُنزَّل.
+         */
+        'instagram_connections',
     ];
 
     /**
@@ -298,6 +303,8 @@ class TenantTables
         'subscription_addons' => 'كتالوجُ إضافات المنصّة — ليس ملكَ متجرٍ بعينه',
         'subscription_addon_plans' => 'أماكنُ بيع الإضافات في الباقات — مثلُه',
         'plan_policy_prices' => 'أسعارُ الباقات في سياسات التسعير — مثلُها',
+        'instagram_events' => 'إشعاراتُ إنستقرام الخام قبل معالجتها — تُحذف بعد ثلاثين يومًا، ومن ملفٍّ قديمٍ تعود تعليقاتٍ يُردّ عليها ثانيةً',
+        'instagram_data_deletions' => 'طلباتُ حذف البيانات من Meta برموز تأكيدها — سجلُّ المنصّة، يبقى ولو حُذف المتجر',
         'businesses' => 'صفُّ المتجر نفسه — يُحدَّث بحقولٍ آمنة لا يُحذف ويُدرَج',
         'print_jobs' => 'طابورُ طباعةٍ عابر — استعادةُ ورقةٍ «بانتظار الطباعة» من ملفٍّ قديم تطبعها على الصندوق من جديد',
         'password_recovery_challenges' => 'محاولاتُ استرجاعِ كلمة مرور — سرّيّةٌ ومؤقّتة، لا تُكتب في ملفٍّ يُنزَّل',
@@ -402,6 +409,7 @@ class TenantTables
     public const SECRETS = [
         'users' => ['password', 'remember_token'],
         'whatsapp_connections' => ['access_token'],
+        'instagram_connections' => ['access_token'],
         /*
          * ومفاتيحُ القبض لا تخرج في ملفٍّ يُنزَّل.
          *

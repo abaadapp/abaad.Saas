@@ -10898,5 +10898,7 @@
     "منتجات المتجر التي دخلتها قطع البوتيك": "Shop products containing boutique pieces",
     "نوع العملية": "Sale type",
     "و:n بند آخر لا نصيب فيه لبوتيك": "and :n other lines with no boutique share",
-    "ينتظر ورقة تسوية": "Awaiting a settlement sheet"
+    "ينتظر ورقة تسوية": "Awaiting a settlement sheet",
+    "هذا المتجر يحتسب الضريبة، والنظام لا يحسب قطع البوتيك داخل منتجات المتجر في متجر بضريبة — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية». تفعيلها هنا قرار منفصل.": "This shop charges VAT, and the system does not count boutique pieces inside the shop's products in a VAT shop — so no \"in a set\" or \"optional add-on\" rows appear. Turning them on here is a separate decision.",
+    "حساب قطع البوتيك داخل منتجات المتجر مطفأ لهذا المتجر — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية»، وما بيع قبل تشغيله لا يُعرف. تشغيله قرار منفصل.": "Counting boutique pieces inside the shop's products is off for this shop — so no \"in a set\" or \"optional add-on\" rows appear, and what was sold before it was switched on is not known. Switching it on is a separate decision."
 }

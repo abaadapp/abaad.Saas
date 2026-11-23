@@ -397,6 +397,16 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
             'items' => [$this->line($this->set)], 'payment_method' => 'نقدي',
         ])->assertStatus(422);
         $this->assertCount(1, $this->rows()['rows']);
+        $this->assertSame('taxed', $this->summary()['pieces'], 'والشاشةُ تقول إنّ القطع لا تُحسب في متجرٍ بضريبة');
+    }
+
+    public function test_the_screen_says_when_pieces_inside_the_shops_products_are_not_counted(): void
+    {
+        $this->assertSame('on', $this->summary()['pieces']);
+
+        Business::whereKey($this->shop->id)->update(['boutique_components_enabled' => false]);
+        $this->assertSame('off', $this->summary()['pieces'], 'المفتاحُ مطفأ — يُقال ولا يُفتح');
+        $this->assertSame(1, Business::whereKey($this->shop->id)->where('boutique_components_enabled', false)->count(), 'القراءةُ لا تُشعله');
     }
 
     /* ═══════════ ٥ · الإلغاء والإرجاع ═══════════ */

@@ -288,6 +288,20 @@ final class BoutiqueSales
     /* ═══════════ الملخّص ═══════════ */
 
     /**
+     * حالُ حساب القطع داخل منتجات المتجر: `on` يُحسب، `off` المفتاحُ مطفأ،
+     * `taxed` المتجرُ يحتسب الضريبة فيرفض النظامُ هذه البيعات (`BoutiqueDues`).
+     * قراءةٌ فقط — لا تفتح شيئًا ولا تتجاوز رفضًا.
+     */
+    public static function piecesState(int $businessId): string
+    {
+        if (! BoutiqueDues::active($businessId)) {
+            return 'off';
+        }
+
+        return Vat::enabled($businessId) ? 'taxed' : 'on';
+    }
+
+    /**
      * أرقامُ الشهر للبوتيك المختار أو للكلّ — كلُّ رقمٍ من مصدره، ولا يُجمع اثنان يتداخلان.
      *
      *   - **المبيعات:** المنفردُ من `Boutiques::soldTotals` (ما بِيع ولم يُلغَ)،
@@ -403,6 +417,8 @@ final class BoutiqueSales
             'standalone' => $standalone,
             'components' => $components,
             'bundles' => $bundles,
+            // هل تُحسب قطعُ البوتيك داخل منتجات المتجر الآن؟ يُقال على الشاشة ولا يُتجاوز رفضُه
+            'pieces' => self::piecesState($businessId),
             // ما للبوتيك عن مبيعات الشهر قبل التسوية: صافي المنفرد + مستحقُّ القطع — لا إجماليُّ الباقات
             'owed' => round($standalone['net'] + $components['due'], 3),
             'settlement' => [

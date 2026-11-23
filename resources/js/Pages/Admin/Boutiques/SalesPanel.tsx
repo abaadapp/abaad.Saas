@@ -67,6 +67,7 @@ export interface SalesSummary {
     components: { bundle: number; addon: number; due: number; quantity: number };
     bundles: { lines: number; revenue: number; boutiques_due: number; shop_remaining: number };
     owed: number;
+    pieces: 'on' | 'off' | 'taxed';
     settlement: {
         sheets: number; issued: number; paid: number; unpaid: number; remaining: number;
         pending: { standalone: number; components: number; credit: number; total: number };
@@ -350,6 +351,13 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                         tone="strong"
                     />
                 </div>
+                {s.pieces !== 'on' && (
+                    <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-pieces-note">
+                        {s.pieces === 'taxed'
+                            ? t('هذا المتجر يحتسب الضريبة، والنظام لا يحسب قطع البوتيك داخل منتجات المتجر في متجر بضريبة — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية». تفعيلها هنا قرار منفصل.')
+                            : t('حساب قطع البوتيك داخل منتجات المتجر مطفأ لهذا المتجر — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية»، وما بيع قبل تشغيله لا يُعرف. تشغيله قرار منفصل.')}
+                    </p>
+                )}
             </section>
 
             <section>

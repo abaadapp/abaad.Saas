@@ -53,6 +53,7 @@ const summary: SalesSummary = {
     components: { bundle: 6, addon: 0, due: 6, quantity: 1 },
     bundles: { lines: 1, revenue: 20, boutiques_due: 6, shop_remaining: 14 },
     owed: 15.6,
+    pieces: 'on',
     settlement: { sheets: 0, issued: 0, paid: 0, unpaid: 0, remaining: 15.6, pending: { standalone: 9.6, components: 6, credit: 0, total: 15.6 } },
     returns: { notes: 0, amount: 0, reduced: 0, claims_open: 0, review: 0, shop: 0, component_credits: 0, cancelled_gross: 0 },
 };
@@ -128,6 +129,22 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(box.textContent).toContain('14.000');
         // ولا قسمَ مرتجعاتٍ حين لا مرتجعات
         expect(box.textContent).not.toContain('المرتجعات والأرصدة');
+    });
+
+    it('حسابُ القطع يُقال على الشاشة إن كان مطفأً أو مرفوضًا بالضريبة — ولا يُقال وهو يعمل', async () => {
+        const first = mount();
+        await screen.findByTestId('boutique-sales-summary');
+        expect(screen.queryByTestId('boutique-pieces-note')).toBeNull();
+        first.unmount();
+
+        respond = (url) => (url.includes('summary') ? { ...summary, pieces: 'off' } : page([]));
+        const off = mount();
+        expect((await screen.findByTestId('boutique-pieces-note')).textContent).toContain('مطفأ لهذا المتجر');
+        off.unmount();
+
+        respond = (url) => (url.includes('summary') ? { ...summary, pieces: 'taxed' } : page([]));
+        mount();
+        expect((await screen.findByTestId('boutique-pieces-note')).textContent).toContain('يحتسب الضريبة');
     });
 
     it('كلُّ مُرشِّحٍ طلبٌ للخادم، والبوتيكُ «الكلّ» لا يُرسَل', async () => {

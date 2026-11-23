@@ -41,6 +41,11 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         parent::setUp();
         $this->buildTwoShops();
         $this->markShopB();
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات مفتوحةٌ هنا (`ChannelAutomationsSwitch`): مقفلةً تردّ صفحتُها وأبوابُها ٤٠٤
+         * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
+         */
+        \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
 
         /*
          * والمتجران فُتحت فيهما روابطُ الدفع (`PaymentLinks::ready`): فتُقرأ «كل
@@ -83,6 +88,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
             ['reviews', $b['review'], 'comment', 'REVIEW'],
             ['addons', $b['addon'], 'name', 'ADDON'],
             ['product_variants', $b['variant'], 'name', 'VARIANT'],
+            ['channel_automations', $b['channel_automation'], 'name', 'AUTOMATION'],
         ];
 
         foreach ($marks as [$table, $id, $column, $tag]) {

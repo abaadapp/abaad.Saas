@@ -195,6 +195,16 @@ class WhatsAppAutoReply
             return;
         }
 
+        /*
+         * ‏‏ثمّ أتمتاتُ التاجر بالكلمات — وقبل الترحيب.
+         *
+         * زبونٌ كتب «السعر» يصله ما كتبه التاجر للسعر، لا الترحيبُ العامّ. وما لم يطابق كلمةً يبقى
+         * للترحيب كما كان (`ChannelAutomations::receive` تردّ `false`). ومتجرٌ لم تُفتح له لا يُسأل عنه.
+         */
+        if (ChannelAutomations::receive($connection, $message, $row)) {
+            return;
+        }
+
         $decision = self::decide($connection, $from, $row, (string) ($message['type'] ?? ''));
 
         if ($decision === null && ! self::claim($connection, $row)) {
@@ -246,24 +256,13 @@ class WhatsAppAutoReply
     }
 
     /**
-     * ما يمنع الردّ — و`null` تعني «لا مانع».
+     * ‏‏ما يمنع أيَّ ردٍّ آليٍّ من رقم المتجر الآن — لا الترحيبَ وحده (`ChannelAutomations` يسأله أيضًا).
      *
-     * وتُردّ **علّةً** لا `false`: «لم يُردّ» بلا سببٍ سؤالٌ بلا جواب يوم
-     * يسأل التاجر لماذا لم يردّ رقمُه.
+     * رسالةٌ خارج نافذة ميتا، وواتساب مغلقٌ للحساب أو لباقته، وربطٌ لم تُراجَع فوترتُه أو لا يعمل،
+     * وحسابُ رسائل لا يُعرف — بالترتيب الذي كان في `decide` حرفًا بحرف.
      */
-    private static function decide(WhatsAppConnection $connection, string $from, ?WhatsAppInboundMessage $row = null, string $type = ''): ?string
+    public static function blocked(WhatsAppConnection $connection, ?WhatsAppInboundMessage $row = null): ?string
     {
-        $settings = self::settings((int) $connection->business_id);
-
-        if (! $settings['enabled']) {
-            return 'disabled';
-        }
-
-        // ولا ردَّ على ما لم يكتبه زبون — تفاعلٌ أو إشعارُ نظامٍ أو «ترحيبٌ» بلا حرف
-        if (in_array(strtolower($type), self::NOT_A_MESSAGE, true)) {
-            return 'not_a_message';
-        }
-
         /*
          * ولا ردَّ خارج نافذة ميتا — رسالةٌ وصلت متأخّرة.
          *
@@ -317,6 +316,32 @@ class WhatsAppAutoReply
         // ولا يُعرف بأمان على أيّ حساب رسائل تُحتسب — لا ردّ (`WhatsAppOwnApp::sendAccount`)
         if (($account = WhatsAppOwnApp::sendAccount($connection)['problem']) !== null) {
             return $account;
+        }
+
+        return null;
+    }
+
+    /**
+     * ما يمنع الردّ — و`null` تعني «لا مانع».
+     *
+     * وتُردّ **علّةً** لا `false`: «لم يُردّ» بلا سببٍ سؤالٌ بلا جواب يوم
+     * يسأل التاجر لماذا لم يردّ رقمُه.
+     */
+    private static function decide(WhatsAppConnection $connection, string $from, ?WhatsAppInboundMessage $row = null, string $type = ''): ?string
+    {
+        $settings = self::settings((int) $connection->business_id);
+
+        if (! $settings['enabled']) {
+            return 'disabled';
+        }
+
+        // ولا ردَّ على ما لم يكتبه زبون — تفاعلٌ أو إشعارُ نظامٍ أو «ترحيبٌ» بلا حرف
+        if (in_array(strtolower($type), self::NOT_A_MESSAGE, true)) {
+            return 'not_a_message';
+        }
+
+        if (($blocked = self::blocked($connection, $row)) !== null) {
+            return $blocked;
         }
 
         if (self::text($connection, $settings, $from) === '') {
@@ -448,7 +473,7 @@ class WhatsAppAutoReply
      * يُقارَن المطبَّعُ بالمطبَّع — وهي القاعدةُ نفسُها التي يستعملها
      * `Store\WebCheckout::customer`.
      */
-    private static function languageOf(int $businessId, ?string $phone): ?string
+    public static function languageOf(int $businessId, ?string $phone): ?string
     {
         if (blank($phone)) {
             return null;

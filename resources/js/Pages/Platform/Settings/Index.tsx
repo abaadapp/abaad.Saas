@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
 import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
+import ChannelAutomationsSwitch, { type ChannelAutomationsState } from '@/Pages/Platform/Settings/partials/ChannelAutomationsSwitch';
 import WhatsAppMerchantLinkSwitch, { type WhatsAppLinkState } from './partials/WhatsAppMerchantLinkSwitch';
 
 type Settings = Record<string, string>;
@@ -121,13 +122,14 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, channelAutomations } =
         usePage<PageProps<{
             settings: Settings;
             /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
             posCatalog?: PosCatalogState;
             /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
             whatsappLink?: WhatsAppLinkState;
+            channelAutomations?: ChannelAutomationsState;
             mail?: MailStatus;
             plans: SelectOption[];
             whatsapp?: SharedConnection | null;
@@ -348,6 +350,7 @@ export default function PlatformSettings() {
                 يُقيَّد فيه من بدّله وكان ماذا وصار ماذا (`WhatsAppMerchantLink`).
             */}
             {tab === 'whatsapp' && whatsappLink && <WhatsAppMerchantLinkSwitch state={whatsappLink} locale={locale} />}
+            {tab === 'whatsapp' && channelAutomations && <ChannelAutomationsSwitch state={channelAutomations} />}
             <form onSubmit={submit}>
                 {tab === 'general' && (
                     <Card className="p-6">

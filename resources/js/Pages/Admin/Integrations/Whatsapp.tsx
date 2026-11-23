@@ -1,5 +1,5 @@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { Gauge, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Bot, Gauge, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field from '@/Components/Field';
@@ -55,6 +55,8 @@ export interface Automation {
     branches: { id: number; name: string }[];
     /** الطلباتُ الآليّة — `null` لمتجرٍ لم تأذن له المنصّة (`WhatsAppOrders::view`) */
     guided_orders?: GuidedOrdersView | null;
+    /** أتمتةُ الردود بالكلمات — `null` لمتجرٍ لم تفتحها له المنصّة (`ChannelAutomationsSwitch`) */
+    keyword_automations?: { published: number; total: number } | null;
     may_manage: boolean;
     usage: {
         used: number;
@@ -401,6 +403,28 @@ export default function IntegrationsWhatsapp() {
                 {/* والطلباتُ الآليّة لمن أذنت له المنصّة — بشروطها كلٍّ بحاله */}
                 {automation.guided_orders && (
                     <WhatsappGuidedOrders view={automation.guided_orders} mayManage={automation.may_manage} />
+                )}
+
+                {/* ‏‏وأتمتةُ الردود بالكلمات — صفحتُها، وكم منها يعمل */}
+                {automation.keyword_automations && (
+                    <SettingsSection
+                        title="أتمتة الردود بالكلمات"
+                        description="يكتب الزبون «السعر» أو «التوصيل» فيصله ردك وحده — بقوالب جاهزة."
+                        icon={Bot}
+                        status={
+                            <span className="text-[12px] text-[#6b7280] tabular-nums" data-testid="keyword-automations-count">
+                                {t(':n تعمل من :total', { n: automation.keyword_automations.published, total: automation.keyword_automations.total })}
+                            </span>
+                        }
+                        action={
+                            <Button asChild variant="outline">
+                                <Link href={route('admin.integrations.whatsapp.automations')}>
+                                    <Bot />
+                                    {t('أتمتة واتساب')}
+                                </Link>
+                            </Button>
+                        }
+                    />
                 )}
 
                 {/*

@@ -46,7 +46,7 @@ class WhatsAppOrderReplies
      *
      * @param  array<string, mixed>  $message
      */
-    public static function send(WhatsAppChat $chat, WhatsAppConnection $line, array $message, string $lang): WhatsAppChatMessage
+    public static function send(WhatsAppChat $chat, WhatsAppConnection $line, array $message, string $lang, ?string $sender = null): WhatsAppChatMessage
     {
         $record = WhatsAppChatMessage::create([
             'business_id' => $chat->business_id,
@@ -56,7 +56,8 @@ class WhatsAppOrderReplies
             'whatsapp_connection_id' => $line->id,
             'phone_number_id' => (string) $line->phone_number_id,
             'sender_user_id' => null,
-            'sender_name' => mb_substr(self::sender($lang), 0, 150),
+            // ‏‏والأتمتةُ تكتب اسمَها (`ChannelAutomations::deliver`) — ليعرف الموظّفُ أيُّها ردّ
+            'sender_name' => mb_substr($sender ?? self::sender($lang), 0, 150),
             'status' => WhatsAppStatus::QUEUED,
         ]);
 

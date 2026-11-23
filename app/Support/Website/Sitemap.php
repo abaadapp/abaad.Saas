@@ -173,8 +173,8 @@ final class Sitemap
         return $out.'</sitemapindex>'."\n";
     }
 
-    /** جذرُ عنوان المتجر الأصليّ بلا شرطةٍ أخيرة — أو null */
-    private static function root(Business $business): ?string
+    /** جذرُ عنوان المتجر الأصليّ بلا شرطةٍ أخيرة — أو null. وتقرؤه الأتمتة أيضًا (`ChannelAutomations::storeLink`) */
+    public static function root(Business $business): ?string
     {
         // والصفحةُ البسيطة أصلُها ما يخدمها — لا نطاقُ التاجر الخاصّ (`StoreSeo::simple`)
         $root = Storefront::serves($business) === Storefront::SERVES_SIMPLE

@@ -645,6 +645,8 @@ class PageController extends Controller
              * تبدّل فيهما. ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» (`WhatsAppMerchantLink`).
              */
             'whatsappLink' => WhatsAppMerchantLink::state(),
+            // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات — مقفلةٌ افتراضًا (`ChannelAutomationsSwitch`)
+            'channelAutomations' => \App\Support\ChannelAutomationsSwitch::state(),
             /*
              * الباقات بأسمائها لتُختار لا لتُكتب.
              *

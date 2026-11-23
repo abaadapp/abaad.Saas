@@ -65,7 +65,8 @@ class WhatsAppOnboarding
      */
     public static function coexistenceOpen(): bool
     {
-        return (bool) config('whatsapp.coexistence_enabled', false);
+        // ‏‏يُفتح من شاشة مدير المنصّة، وبلا قرارٍ منه ما في إعداد الخادم (`WhatsAppMerchantLink::coexistence`)
+        return WhatsAppMerchantLink::coexistence();
     }
 
     /**
@@ -254,6 +255,12 @@ class WhatsAppOnboarding
 
         Activity::log('settings', 'واتساب — ربط رقم المتجر بالتسجيل المدمج ('
             .($chosen['display_phone_number'] ?? $numberId).')');
+
+        /*
+         * ‏‏ورقمٌ بقي في تطبيق واتساب للأعمال: تُطلب جهاتُه ومحادثاتُه السابقة الآن — Meta تقبلها
+         * مرّةً واحدة خلال ٢٤ ساعة من الربط (`WhatsAppCoexistence::start`).
+         */
+        WhatsAppCoexistence::start($connection);
 
         if ($unregistered) {
             return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => true, 'webhook' => $hook['state'],

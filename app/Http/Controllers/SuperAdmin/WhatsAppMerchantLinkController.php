@@ -32,6 +32,24 @@ class WhatsAppMerchantLinkController extends Controller
         return back()->with('toast', ['msg' => $msg, 'type' => $r['changed'] ? 'success' : 'info']);
     }
 
+    public function coexistence(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+        $r = WhatsAppMerchantLink::setCoexistence((bool) $data['enabled']);
+
+        if (! $r['ok']) {
+            return back()->withErrors(['enabled' => $r['message']]);
+        }
+
+        $msg = ! $r['changed']
+            ? __('خيار البقاء في تطبيق واتساب للأعمال كما هو — لم يتغيّر شيء.')
+            : ((bool) $data['enabled']
+                ? __('فُتح للتجّار خيار البقاء في تطبيق واتساب للأعمال.')
+                : __('أُقفل على التجّار خيار البقاء في تطبيق واتساب للأعمال. الأرقام المربوطة به لا تتغيّر.'));
+
+        return back()->with('toast', ['msg' => $msg, 'type' => $r['changed'] ? 'success' : 'info']);
+    }
+
     public function configId(Request $request): RedirectResponse
     {
         $data = $request->validate(['config_id' => ['nullable', 'string', 'regex:'.WhatsAppMerchantLink::CONFIG_ID_PATTERN]]);

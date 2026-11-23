@@ -596,6 +596,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
      */
     Route::post('/whatsapp/merchant-link', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'mode'])->name('whatsapp.merchant-link.mode');
     Route::post('/whatsapp/merchant-link/config', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'configId'])->name('whatsapp.merchant-link.config');
+    // ‏‏وخيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» — يُفتح بعد نقل التجّار إلى تطبيق أبعاد (`WhatsAppMerchantLink::setCoexistence`)
+    Route::post('/whatsapp/merchant-link/coexistence', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'coexistence'])->name('whatsapp.merchant-link.coexistence');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])

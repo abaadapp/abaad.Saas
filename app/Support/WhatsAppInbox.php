@@ -1029,6 +1029,8 @@ final class WhatsAppInbox
             ->selectRaw('count(*)')
             ->whereColumn('whatsapp_chat_messages.chat_id', 'whatsapp_chats.id')
             ->where('whatsapp_chat_messages.direction', WhatsAppChatMessage::IN)
+            // ‏‏والمستوردُ من المحادثات السابقة لا يُعدّ غيرَ مقروء (`WhatsAppCoexistence::history`)
+            ->where('whatsapp_chat_messages.status', '<>', WhatsAppChatMessage::HISTORY)
             ->whereRaw('whatsapp_chat_messages.id > coalesce((select r.last_read_message_id from whatsapp_chat_reads r
                 where r.chat_id = whatsapp_chat_messages.chat_id and r.user_id = ?), 0)', [$user->id]);
     }
@@ -1039,6 +1041,7 @@ final class WhatsAppInbox
         return fn ($w) => $w->selectRaw('1')->from('whatsapp_chat_messages as u')
             ->whereColumn('u.chat_id', $chatColumn)
             ->where('u.direction', WhatsAppChatMessage::IN)
+            ->where('u.status', '<>', WhatsAppChatMessage::HISTORY)
             ->whereRaw('u.id > coalesce((select r.last_read_message_id from whatsapp_chat_reads r
                 where r.chat_id = u.chat_id and r.user_id = ?), 0)', [$user->id]);
     }
@@ -1061,6 +1064,8 @@ final class WhatsAppInbox
         return WhatsAppChatMessage::query()
             ->where('whatsapp_chat_messages.business_id', $user->business_id)
             ->where('whatsapp_chat_messages.direction', WhatsAppChatMessage::IN)
+            // ‏‏والمستوردُ من المحادثات السابقة لا يُعدّ غيرَ مقروء (`WhatsAppCoexistence::history`)
+            ->where('whatsapp_chat_messages.status', '<>', WhatsAppChatMessage::HISTORY)
             ->whereRaw('whatsapp_chat_messages.id > coalesce((select r.last_read_message_id from whatsapp_chat_reads r
                 where r.chat_id = whatsapp_chat_messages.chat_id and r.user_id = ?), 0)', [$user->id])
             ->count();
@@ -1165,10 +1170,23 @@ final class WhatsAppInbox
      */
     public static function thread(WhatsAppChat $chat, ?int $before = null): array
     {
+        /*
+         * ‏‏والصفحاتُ بالوقت لا بترتيب الكتابة: المحادثاتُ السابقة تُستورد بعد الربط
+         * (`WhatsAppCoexistence`) فمعرّفاتُها أحدثُ من رسائلَ أحدثَ منها وقتًا. وفي الرسائل
+         * العاديّة الوقتُ والمعرّفُ يسيران معًا، فلا يتغيّر شيء.
+         */
+        $cursor = $before !== null
+            ? WhatsAppChatMessage::where('chat_id', $chat->id)->whereKey($before)->value('created_at')
+            : null;
+
         $rows = WhatsAppChatMessage::where('business_id', $chat->business_id)
             ->where('chat_id', $chat->id)
-            ->when($before !== null, fn ($q) => $q->where('id', '<', $before))
+            ->when($before !== null, fn ($q) => $cursor === null
+                ? $q->where('id', '<', $before)
+                : $q->where(fn ($w) => $w->where('created_at', '<', $cursor)
+                    ->orWhere(fn ($e) => $e->where('created_at', $cursor)->where('id', '<', $before))))
             ->with('attachments')
+            ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(self::THREAD_PAGE + 1)
             ->get();
@@ -1285,7 +1303,7 @@ final class WhatsAppInbox
         return self::preview($bubble['body'] ?? $bubble['summary']);
     }
 
-    private static function preview(?string $text): string
+    public static function preview(?string $text): string
     {
         return mb_strimwidth(trim((string) preg_replace('/\s+/u', ' ', (string) $text)), 0, 190, '…');
     }

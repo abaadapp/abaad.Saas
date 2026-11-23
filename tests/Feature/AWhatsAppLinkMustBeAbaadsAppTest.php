@@ -381,6 +381,12 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
         config(['whatsapp.coexistence_enabled' => true]);
         $this->signup(['type' => 'coexistence'])->assertSessionHasNoErrors();
         $this->assertTrue($this->link()->coexistence);
+
+        // ‏‏وتُطلب جهاتُه ومحادثاتُه السابقة فور الربط — Meta تقبلها خلال ٢٤ ساعة منه وحدها (`WhatsAppCoexistence::start`).
+        // ‏‏والنداءُ هنا يُمنع (لا ردَّ مُعَدًّا له) فيُقيَّد خطؤه — وهو دليلُ أنّه خرج.
+        $sync = (array) ($this->link()->metadata['coexistence_sync'] ?? []);
+        $this->assertNotEmpty($sync['started_at'] ?? null);
+        $this->assertStringContainsString('smb_app_data', (string) ($sync['smb_app_state_sync']['error'] ?? ''));
     }
 
     public function test_the_manual_form_never_links_a_business_app_number(): void

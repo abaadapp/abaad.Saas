@@ -37,6 +37,12 @@ class WhatsAppChatMessage extends Model
 
     public const RECEIVED = 'received';
 
+    /**
+     * ‏‏رسالةُ زبونٍ من المحادثات السابقة — استوردتها مزامنةُ تطبيق واتساب للأعمال (`WhatsAppCoexistence`).
+     * تُقرأ ولا تُعدّ غيرَ مقروءة، ولا تفتح نافذةَ الردّ.
+     */
+    public const HISTORY = 'history';
+
     /** ما لا يتبدّل بعد الكتابة — هويّةُ الرسالة ونصُّها ومن كتبها */
     public const SEALED = [
         'business_id', 'chat_id', 'direction', 'body', 'media_type',

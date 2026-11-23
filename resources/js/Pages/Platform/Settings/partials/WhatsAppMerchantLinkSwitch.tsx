@@ -27,6 +27,10 @@ export interface WhatsAppLinkState {
     app_secret_ready: boolean;
     /** ‏أجاهزٌ الربطُ بضغطة؟ — الثلاثةُ معًا */
     ready: boolean;
+    /** ‏أمفتوحٌ للتجّار خيارُ البقاء في تطبيق واتساب للأعمال؟ */
+    coexistence?: boolean;
+    /** ‏حقولُ إشعارات Meta التي يحتاجها ذلك الخيار */
+    coexistence_fields?: string[];
     history: { at: string; by: string; what: string }[];
 }
 
@@ -49,7 +53,8 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
     const [busy, setBusy] = useState(false);
     const [saving, setSaving] = useState(false);
     const [configId, setConfigId] = useState(state.config_source === 'platform' ? state.config_id : '');
-    const [errors, setErrors] = useState<{ mode?: string; config_id?: string }>({});
+    const [errors, setErrors] = useState<{ mode?: string; config_id?: string; enabled?: string }>({});
+    const [coexBusy, setCoexBusy] = useState(false);
     const when = (iso: string) =>
         new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ar-OM', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Muscat' }).format(new Date(iso));
 
@@ -69,6 +74,25 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
             preserveScroll: true,
             onStart: () => setBusy(true),
             onFinish: () => setBusy(false),
+            onSuccess: () => setErrors({}),
+            onError: (e) => setErrors(e as typeof errors),
+        });
+    };
+
+    const coexOpen = state.coexistence === true;
+    const flipCoexistence = async () => {
+        const ok = await confirm({
+            title: coexOpen ? t('إقفال خيار البقاء في تطبيق واتساب للأعمال') : t('فتح خيار البقاء في تطبيق واتساب للأعمال'),
+            message: coexOpen
+                ? t('لا يظهر الخيار للتجّار الجدد. الأرقام المربوطة به تبقى كما هي.')
+                : t('يستطيع التاجر أن يُبقي رقمه في تطبيق واتساب للأعمال على هاتفه ويصل أبعاد معًا، وتُنقل جهاته ومحادثاته السابقة. تأكّد أنّ تطبيق أبعاد مشترك في حقول الإشعارات المذكورة.'),
+            action: coexOpen ? t('إقفال') : t('فتح'),
+        });
+        if (!ok) return;
+        router.post(route('super-admin.whatsapp.merchant-link.coexistence'), { enabled: !coexOpen }, {
+            preserveScroll: true,
+            onStart: () => setCoexBusy(true),
+            onFinish: () => setCoexBusy(false),
             onSuccess: () => setErrors({}),
             onError: (e) => setErrors(e as typeof errors),
         });
@@ -169,6 +193,32 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
             )}
             {errors.mode && (
                 <p className="mt-2 text-[12px] text-[#b91c1c]" data-testid="wa-link-error">{errors.mode}</p>
+            )}
+
+            {/* ‏‏وخيارُ البقاء في تطبيق واتساب للأعمال — يُفتح بعد النقل إلى تطبيق أبعاد */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3" data-testid="wa-coex">
+                <span className="text-sm text-[#111]">
+                    {t('خيار «أبقِ رقمك في تطبيق واتساب للأعمال»')}:{' '}
+                    <strong data-testid="wa-coex-state">{coexOpen ? t('مفتوح للتجّار') : t('مقفل')}</strong>
+                </span>
+                <Button
+                    data-testid="wa-coex-flip"
+                    variant={coexOpen ? 'outline' : 'primary'}
+                    loading={coexBusy}
+                    disabled={!coexOpen && (state.mode !== 'abaad_app' || !state.ready)}
+                    onClick={() => void flipCoexistence()}
+                >
+                    {coexOpen ? t('أقفله') : t('افتحه')}
+                </Button>
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="wa-coex-fields">
+                {t('يحتاج أن يكون تطبيق أبعاد عند Meta مشتركًا في حقول الإشعارات')}:{' '}
+                <span dir="ltr" className="font-medium text-[#374151]">{(state.coexistence_fields ?? []).join(' · ')}</span>{' '}
+                {t('(لوحة Meta ← WhatsApp ← Configuration).')}
+                {!coexOpen && state.mode !== 'abaad_app' && <> {t('ويُفتح بعد نقل التجّار الجدد إلى تطبيق أبعاد.')}</>}
+            </p>
+            {errors.enabled && (
+                <p className="mt-2 text-[12px] text-[#b91c1c]" data-testid="wa-coex-error">{errors.enabled}</p>
             )}
 
             {state.history.length > 0 && (

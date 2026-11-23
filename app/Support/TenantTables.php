@@ -204,6 +204,8 @@ class TenantTables
          * الخادم لا في النسخة — كمرفقات المستندات.
          */
         'whatsapp_chats', 'whatsapp_chat_messages', 'whatsapp_chat_attachments', 'whatsapp_chat_reads',
+        // وجهاتُ اتّصال التاجر من تطبيق واتساب للأعمال — تصل مرّةً بمزامنة التعايش
+        'whatsapp_contacts',
         // وطلبُ المحادثة بعد محادثته وفاتورته ورابطه — يشير إليها ثلاثتها
         'whatsapp_order_sessions',
     ];

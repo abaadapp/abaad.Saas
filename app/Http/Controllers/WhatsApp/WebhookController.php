@@ -10,6 +10,7 @@ use App\Support\CrmWhatsApp;
 use App\Support\MetaWhatsAppClient;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppCoexistence;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOwnApp;
@@ -70,7 +71,19 @@ class WebhookController extends Controller
 
         foreach ((array) $request->input('entry', []) as $entry) {
             foreach ((array) ($entry['changes'] ?? []) as $change) {
-                $this->applyChange((array) ($change['value'] ?? []));
+                $field = (string) ($change['field'] ?? 'messages');
+
+                /*
+                 * ‏‏وانفصالُ رقمٍ في تطبيق واتساب للأعمال عن أبعاد — على حساب واتساب (`entry.id`)
+                 * بلا رقم، فلا يمرّ بالباب الذي يعرف الوصلةَ برقمها (`WhatsAppCoexistence::account`).
+                 */
+                if ($field === WhatsAppCoexistence::ACCOUNT_UPDATE) {
+                    WhatsAppCoexistence::account((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []));
+
+                    continue;
+                }
+
+                $this->applyChange((array) ($change['value'] ?? []), null, $field);
             }
         }
 
@@ -128,7 +141,7 @@ class WebhookController extends Controller
 
         foreach ((array) $request->input('entry', []) as $entry) {
             foreach ((array) ($entry['changes'] ?? []) as $change) {
-                $this->applyChange((array) ($change['value'] ?? []), $connection);
+                $this->applyChange((array) ($change['value'] ?? []), $connection, (string) ($change['field'] ?? 'messages'));
             }
         }
 
@@ -147,7 +160,7 @@ class WebhookController extends Controller
     /**
      * @param  WhatsAppConnection|null  $pinned  وصلةُ عنوانٍ خاصّ — لا يُكتب منها إلّا لرقمها
      */
-    private function applyChange(array $value, ?WhatsAppConnection $pinned = null): void
+    private function applyChange(array $value, ?WhatsAppConnection $pinned = null, string $field = 'messages'): void
     {
         // الرقم الذي وصله الإشعار — به وحده تُعرف الوصلة
         $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
@@ -220,6 +233,26 @@ class WebhookController extends Controller
          * وحده (`last_inbound_saved_at`)، وما رُدّ يكتب سببه — فلا يُقال «استُقبلت»
          * عن رسالةٍ وصلت ورُدّت (`WhatsAppLinkHealth`).
          */
+        /*
+         * ‏‏وما ليس رسائلَ ولا حالاتِ تسليم لا يمرّ بالباب أدناه.
+         *
+         * إشعاراتُ رقمٍ بقي في تطبيق واتساب للأعمال (ما أرسله التاجرُ من هاتفه، ومحادثاتُه
+         * السابقة، وجهاتُ اتّصاله) لها بابُها (`WhatsAppCoexistence`). ودفعةُ وسائط التاريخ تحمل
+         * `messages` — فلو مرّت هنا لَقُرئت رسائلَ زبائنَ جديدة يُردّ عليها آليًّا.
+         */
+        if ($field !== 'messages') {
+            $connection->forceFill(['last_webhook_at' => now()])->save();
+
+            match ($field) {
+                WhatsAppCoexistence::ECHOES => WhatsAppCoexistence::echoes($connection, $value),
+                WhatsAppCoexistence::HISTORY => WhatsAppCoexistence::history($connection, $value),
+                WhatsAppCoexistence::CONTACTS => WhatsAppCoexistence::contacts($connection, $value),
+                default => null,
+            };
+
+            return;
+        }
+
         $customerWrote = collect((array) ($value['messages'] ?? []))->contains(fn ($m) => filled($m['from'] ?? null));
 
         $connection->forceFill(array_filter([

@@ -170,6 +170,8 @@ class WhatsAppLink
             'phone_number_id' => $c?->phone_number_id,
             'display_phone_number' => $c?->display_phone_number,
             'coexistence' => (bool) ($c?->coexistence),
+            // ‏‏ومزامنةُ تطبيق واتساب للأعمال — الجهاتُ والمحادثاتُ السابقة وانفصالُه (`WhatsAppCoexistence::view`)
+            'sync' => WhatsAppCoexistence::view($c),
             'connected_at' => optional($c?->connected_at)->format('Y-m-d H:i'),
             'connected_by' => $c?->connectedBy?->name,
             'last_webhook_at' => optional($c?->last_webhook_at)->format('Y-m-d H:i'),

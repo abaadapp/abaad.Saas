@@ -295,6 +295,40 @@ class WhatsAppEmbeddedSignup
     }
 
     /**
+     * يطلب من Meta مزامنةَ رقمٍ بقي في تطبيق واتساب للأعمال (التعايش): جهاتِ الاتّصال
+     * (`smb_app_state_sync`) أو المحادثاتِ السابقة (`history`).
+     *
+     * ═══ مرّةً واحدة لكلٍّ منهما، خلال ٢٤ ساعة من الربط ═══
+     *
+     * وثيقةُ Meta: «You can only perform this step once» — وإعادتُه تحتاج أن يُفصل الرقمُ
+     * ويُربط من أوّله. فالمُنادي يحجز قبل النداء (`WhatsAppCoexistence::request`)، ولا يُنادى
+     * هنا مرّتين. والردُّ معرّفُ طلبٍ (`request_id`) يُحفظ للدعم — ولا يقول إنّ التاجر وافق
+     * على مشاركة محادثاته: ذلك يقوله إشعارُ `history` حين يصل.
+     *
+     * @return array{ok:bool, request_id:?string, code:?string, message:?string}
+     */
+    public static function smbAppData(string $phoneNumberId, string $token, string $syncType): array
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->post(self::base().'/'.$phoneNumberId.'/smb_app_data', [
+                    'messaging_product' => 'whatsapp',
+                    'sync_type' => $syncType,
+                ]);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'request_id' => null, 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful() || blank($response->json('request_id'))) {
+            [$code, $message] = self::error($response->json());
+
+            return ['ok' => false, 'request_id' => null, 'code' => $code, 'message' => $message];
+        }
+
+        return ['ok' => true, 'request_id' => mb_substr((string) $response->json('request_id'), 0, 120), 'code' => null, 'message' => null];
+    }
+
+    /**
      * من يملك هذا الحساب؟ — مالكُه، ومن أُنشئ نيابةً عنه، ونوعُ ملكيّته.
      *
      * قراءةٌ لا غير. والملكيّةُ تقول من يملك الحساب لا من يدفع عنه — وسيلةُ

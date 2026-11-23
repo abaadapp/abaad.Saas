@@ -29,6 +29,17 @@ export interface WhatsappLink {
     alert_days: number | null;
     error_code: string | null;
     error_message: string | null;
+    /** مزامنةُ تطبيق واتساب للأعمال — لرقمٍ بقي فيه وحده (`App\Support\WhatsAppCoexistence::view`) */
+    sync?: CoexistenceSync | null;
+}
+
+/** حالُ مزامنة رقمٍ بقي في تطبيق واتساب للأعمال — الجهاتُ والمحادثاتُ السابقة وانفصالُه */
+export interface CoexistenceSync {
+    started_at: string | null;
+    deadline: string | null;
+    contacts: { state: 'pending' | 'requested' | 'failed' | 'expired'; count: number; error: string | null };
+    history: { state: 'pending' | 'requested' | 'importing' | 'done' | 'declined' | 'failed' | 'expired'; progress: number | null; error: string | null };
+    unlinked: { event: string; reason: string | null; at: string } | null;
 }
 
 /**
@@ -125,6 +136,83 @@ export const STEPS: Record<OnboardingKind, string[]> = {
         'تعرض Meta رمزًا: امسحه بتطبيق واتساب للأعمال في هاتفك، واختر مشاركة محادثاتك السابقة.',
     ],
 };
+
+/**
+ * مزامنةُ رقمٍ بقي في تطبيق واتساب للأعمال — جملةٌ لكلّ حال، بلا مصطلحٍ تقنيّ.
+ *
+ * Meta تقبل طلبَي الجهات والمحادثات مرّةً واحدة خلال ٢٤ ساعة من الربط، والتاريخُ يصل
+ * على دفعاتٍ ما دام التطبيقُ مفتوحًا في الهاتف — فيُقال ذلك للتاجر ما دامت المزامنةُ جارية.
+ */
+export function CoexistenceSyncBox({ sync }: { sync: CoexistenceSync }) {
+    const t = useTranslate();
+    const c = sync.contacts;
+    const h = sync.history;
+
+    const contacts =
+        c.state === 'requested'
+            ? c.count > 0
+                ? t('وصلت :n جهة اتصال', { n: String(c.count) })
+                : t('طُلبت — تصل خلال دقائق')
+            : c.state === 'failed'
+              ? t('تعذّر الطلب — نعيد المحاولة تلقائيًا')
+              : c.state === 'expired'
+                ? t('فات وقتها')
+                : t('تُطلب الآن');
+
+    const history =
+        h.state === 'importing'
+            ? t('تُنقل الآن — :p%', { p: String(h.progress ?? 0) })
+            : h.state === 'done'
+              ? t('اكتملت')
+              : h.state === 'declined'
+                ? t('لم تُشارَك من التطبيق — تبدأ المحادثات في أبعاد من الآن')
+                : h.state === 'requested'
+                  ? t('طُلبت — تصل على دفعات')
+                  : h.state === 'failed'
+                    ? t('تعذّر الطلب — نعيد المحاولة تلقائيًا')
+                    : h.state === 'expired'
+                      ? t('فات وقتها')
+                      : t('تُطلب بعد جهات الاتصال');
+
+    // ما دام شيءٌ لم يُطلب بعد أو المحادثاتُ تُنقل — وجهاتٌ قبلت Meta طلبَها تصل وحدها
+    const running = ! sync.unlinked && (c.state === 'pending' || ['pending', 'requested', 'importing'].includes(h.state));
+    const expired = c.state === 'expired' || h.state === 'expired';
+
+    return (
+        <div className="mt-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4 text-[13px]" data-testid="coex-sync">
+            <p className="mb-2 font-semibold text-[#111]">{t('مزامنة تطبيق واتساب للأعمال')}</p>
+            {sync.unlinked ? (
+                <p className="rounded-[10px] bg-[#fef2f2] px-3 py-2 text-[12px] leading-relaxed text-[#b91c1c]" data-testid="coex-unlinked">
+                    {t('انفصل الرقم عن أبعاد من جهة التطبيق')}
+                    {sync.unlinked.reason ? ` — ${t(sync.unlinked.reason)}` : ''}. {t('افتح تطبيق واتساب للأعمال على هاتفك ثمّ أعد الربط.')}
+                </p>
+            ) : (
+                <>
+                    <ul className="space-y-1.5 text-[#374151]">
+                        <li data-testid="coex-contacts" data-state={c.state}>
+                            <span className="text-[#6b7280]">{t('جهات الاتصال')}: </span>
+                            {contacts}
+                        </li>
+                        <li data-testid="coex-history" data-state={h.state}>
+                            <span className="text-[#6b7280]">{t('المحادثات السابقة')}: </span>
+                            {history}
+                        </li>
+                    </ul>
+                    {running && (
+                        <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="coex-keep-open">
+                            {t('أبقِ تطبيق واتساب للأعمال مفتوحًا على هاتفك حتى تكتمل المزامنة.')}
+                        </p>
+                    )}
+                    {expired && (
+                        <p className="mt-2 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] leading-relaxed text-[#92400e]" data-testid="coex-expired">
+                            {t('مضت 24 ساعة على الربط قبل أن تكتمل المزامنة، وMeta لا تقبلها بعدها. افصل الرقم من تطبيق واتساب للأعمال ثمّ اربطه من جديد لتُنقل جهاتك ومحادثاتك.')}
+                        </p>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
 
 interface Props {
     link: WhatsappLink;
@@ -348,6 +436,12 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                     )}
                 </dl>
             )}
+
+            {/*
+                ٢ب · مزامنةُ تطبيق واتساب للأعمال — ما وصل من جهات التاجر ومحادثاته السابقة، وما
+                يُطلب منه (أن يبقى التطبيقُ مفتوحًا)، أو لماذا انفصل الرقم.
+            */}
+            {link.sync && <CoexistenceSyncBox sync={link.sync} />}
 
             {/*
                 ٣ · إعدادُ الخادم ناقص — يُقال ولا يُترك الزرُّ يفتح نافذةً تفشل.

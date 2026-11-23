@@ -323,6 +323,14 @@ class WhatsAppAutoReply
             return 'empty_text';
         }
 
+        /*
+         * ‏‏والتاجرُ يردّ بنفسه من تطبيق واتساب للأعمال على هذا الزبون — فلا يُردّ آليًّا فوقه
+         * في المدّة نفسِها (`WhatsAppCoexistence::repliedFromPhone`).
+         */
+        if (WhatsAppCoexistence::repliedFromPhone((int) $connection->business_id, $from, (int) $settings['cooldown_hours'])) {
+            return 'replied_from_phone';
+        }
+
         $recent = WhatsAppInboundMessage::where('business_id', $connection->business_id)
             ->where('from_phone', $from)
             ->whereNotNull('replied_at')

@@ -36,6 +36,9 @@ final class WhatsAppMerchantLink
 
     public const CONFIG_KEY = 'whatsapp_es_config_id';
 
+    /** ‏‏خيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» للتجّار — `1` مفتوح و`0` مقفل */
+    public const COEXISTENCE_KEY = 'whatsapp_coexistence';
+
     public const OWN_APP = 'own_app';
 
     public const ABAAD_APP = 'abaad_app';
@@ -53,6 +56,10 @@ final class WhatsAppMerchantLink
     private const MODE_CHANGED = 'غيّر طريقة ربط واتساب للتجّار';
 
     private const CONFIG_CHANGED = 'غيّر رقم إعداد الربط المدمج';
+
+    private const COEXISTENCE_OPENED = 'فتح للتجّار خيار البقاء في تطبيق واتساب للأعمال';
+
+    private const COEXISTENCE_CLOSED = 'أقفل على التجّار خيار البقاء في تطبيق واتساب للأعمال';
 
     /** ‏‏الطريقُ الذي يسري الآن */
     public static function mode(): string
@@ -73,6 +80,54 @@ final class WhatsAppMerchantLink
         return self::mode() === self::OWN_APP;
     }
 
+    /**
+     * ‏‏أمفتوحٌ للتجّار خيارُ البقاء في تطبيق واتساب للأعمال (التعايش)؟ — من الشاشة إن قُرّر،
+     * وإلّا من الخادم (`whatsapp.coexistence_enabled`). وصفٌّ لا يُقرأ يُرجع إلى الخادم.
+     */
+    public static function coexistence(): bool
+    {
+        try {
+            $value = self::row(self::COEXISTENCE_KEY)?->value;
+        } catch (\Throwable $e) {
+            report($e);
+            $value = null;
+        }
+
+        return in_array($value, ['0', '1'], true) ? $value === '1' : (bool) config('whatsapp.coexistence_enabled', false);
+    }
+
+    /**
+     * ‏‏يفتح الخيارَ أو يقفله — ولا يُفتح والتجّارُ لا يربطون عبر تطبيق أبعاد أو الربطُ بضغطةٍ غيرُ
+     * جاهز: Meta لا تُتيح التعايش إلّا عبر مزوّدٍ تقنيّ.
+     *
+     * @return array{ok: bool, changed: bool, message: ?string}
+     */
+    public static function setCoexistence(bool $on): array
+    {
+        return DB::transaction(function () use ($on) {
+            $row = self::lockedRow(self::COEXISTENCE_KEY);
+            $was = self::coexistence();
+
+            if ($was === $on) {
+                return ['ok' => true, 'changed' => false, 'message' => null];
+            }
+
+            if ($on && (self::mode() !== self::ABAAD_APP || ! WhatsAppEmbeddedSignup::configured())) {
+                return ['ok' => false, 'changed' => false,
+                    'message' => __('يُفتح هذا الخيار بعد نقل التجّار الجدد إلى تطبيق أبعاد — Meta لا تتيحه إلّا عبر مزوّد تقنيّ.')];
+            }
+
+            $row = self::write($row, self::COEXISTENCE_KEY, $on ? '1' : '0');
+
+            Activity::log('settings', $on ? self::COEXISTENCE_OPENED : self::COEXISTENCE_CLOSED, [
+                'subject_type' => Setting::class,
+                'subject_id' => $row->id,
+            ]);
+
+            return ['ok' => true, 'changed' => true, 'message' => null];
+        });
+    }
+
     /** ‏‏رقمُ إعداد التسجيل المدمج — من الشاشة إن كُتب، وإلّا من الخادم */
     public static function configId(): string
     {
@@ -90,22 +145,23 @@ final class WhatsAppMerchantLink
      * ‏‏ما تعرضه شاشةُ مدير المنصّة: الطريقُ الساري، وجاهزيّةُ الربط بضغطة، وآخرُ ما تبدّل.
      * ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» ولا يُعرض.
      *
-     * @return array{mode: string, default: string, platform: ?string, readable: bool, config_id: string, config_source: string, app_id_ready: bool, app_secret_ready: bool, ready: bool, history: list<array{at: string, by: string, what: string}>}
+     * @return array{mode: string, default: string, platform: ?string, readable: bool, config_id: string, config_source: string, app_id_ready: bool, app_secret_ready: bool, ready: bool, coexistence: bool, coexistence_fields: list<string>, history: list<array{at: string, by: string, what: string}>}
      */
     public static function state(): array
     {
         $readable = true;
-        $modeRow = $configRow = null;
+        $modeRow = $configRow = $coexistRow = null;
         try {
             $modeRow = self::row(self::KEY);
             $configRow = self::row(self::CONFIG_KEY);
+            $coexistRow = self::row(self::COEXISTENCE_KEY);
         } catch (\Throwable $e) {
             report($e);
             $readable = false;
         }
 
         $fromScreen = preg_match(self::CONFIG_ID_PATTERN, (string) $configRow?->value) === 1;
-        $ids = array_values(array_filter([$modeRow?->id, $configRow?->id]));
+        $ids = array_values(array_filter([$modeRow?->id, $configRow?->id, $coexistRow?->id]));
 
         $history = [];
         if ($ids !== []) {
@@ -127,6 +183,9 @@ final class WhatsAppMerchantLink
             'app_id_ready' => filled(config('whatsapp.app_id')),
             'app_secret_ready' => filled(config('whatsapp.app_secret')),
             'ready' => WhatsAppEmbeddedSignup::configured(),
+            'coexistence' => self::coexistence(),
+            // ‏‏وحقولُ إشعارات Meta التي يحتاجها الخيار — تُختار في لوحة تطبيق أبعاد عند Meta
+            'coexistence_fields' => WhatsAppCoexistence::FIELDS,
             'history' => $history,
         ];
     }

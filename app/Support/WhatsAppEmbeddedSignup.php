@@ -58,7 +58,8 @@ class WhatsAppEmbeddedSignup
     {
         return filled(config('whatsapp.app_id'))
             && filled(config('whatsapp.app_secret'))
-            && filled(config('whatsapp.config_id'));
+            // ورقمُ الإعداد يُكتب من شاشة المنصّة، وإلّا فمن الخادم (`WhatsAppMerchantLink::configId`)
+            && filled(WhatsAppMerchantLink::configId());
     }
 
     private static function base(): string

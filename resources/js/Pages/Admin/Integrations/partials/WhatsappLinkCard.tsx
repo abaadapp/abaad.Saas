@@ -1,5 +1,5 @@
 import { router, useForm } from '@inertiajs/react';
-import { AlertTriangle, KeyRound, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
+import { AlertTriangle, KeyRound, MessageSquare, PlugZap, RefreshCw, Server, Smartphone, Unplug } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
@@ -95,6 +95,36 @@ export function pillFor(state: WhatsappLink['state']): SetupState {
             return 'idle';
     }
 }
+
+/** بطاقتا الربط — رقمُ API مستقلٌّ أوّلًا وهو الافتراض، والبقاءُ في تطبيق الأعمال يُختار صراحةً */
+const KINDS: { kind: OnboardingKind; icon: typeof Server; title: string; description: string }[] = [
+    {
+        kind: 'cloud_api',
+        icon: Server,
+        title: 'رقم API مخصّص للنظام',
+        description: 'رقم يعمل من أبعاد وحده، منفصل عن واتساب في هاتفك — رقم واتساب في هاتفك لا يُمس. يردّ فريقك من صندوق المحادثات.',
+    },
+    {
+        kind: 'coexistence',
+        icon: Smartphone,
+        title: 'أبقِ رقمك في تطبيق واتساب للأعمال',
+        description: 'الرقم نفسه يبقى في تطبيق واتساب للأعمال على هاتفك ويصل النظام معًا، فتردّ من الهاتف ومن أبعاد.',
+    },
+];
+
+/** ما ستطلبه Meta لكلّ طريقة — بالترتيب الذي تظهر به نافذتُها */
+export const STEPS: Record<OnboardingKind, string[]> = {
+    cloud_api: [
+        'سجّل الدخول بفيسبوك واختر حساب نشاطك، أو أنشئه باسم نشاطك وبريدك.',
+        'اكتب رقمًا لا يعمل على تطبيق واتساب الآن، وأدخل الرمز الذي يصلك برسالة أو مكالمة.',
+        'ارجع إلى هنا واكتب رمز التحقّق بخطوتين (ستّة أرقام) لتفعيل الرقم.',
+    ],
+    coexistence: [
+        'سجّل الدخول بفيسبوك واختر حساب نشاطك.',
+        'اكتب رقمك المسجّل في تطبيق واتساب للأعمال.',
+        'تعرض Meta رمزًا: امسحه بتطبيق واتساب للأعمال في هاتفك، واختر مشاركة محادثاتك السابقة.',
+    ],
+};
 
 interface Props {
     link: WhatsappLink;
@@ -334,60 +364,87 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             )}
 
             {/*
-                ٤ · نوعُ الرقم — يختاره التاجر، ولا يُفترض التعايش.
+                ٤ · كيف يربط رقمه — بطاقتان يختار منهما التاجر، ثمّ ما ستطلبه Meta خطوةً خطوة.
 
-                رقمٌ مستقلٌّ للنظام هو الافتراض: رقمُ هاتفك الذي تستعمله لا يُمسّ.
-                والتعايشُ (الرقمُ نفسُه في تطبيق الأعمال وفي النظام) يُختار صراحةً،
-                ويبقى مطفأً بسببه ما لم يُفتح على الخادم: ربطُه بلا مزامنةٍ
-                يُضيّع تاريخَ محادثاته مرّةً واحدة.
+                رقمُ API مستقلٌّ للنظام هو الافتراض: رقمُ هاتفك الذي تستعمله لا يُمسّ.
+                والبقاءُ في تطبيق واتساب للأعمال (التعايش) يُختار صراحةً، ويبقى مقفلًا
+                ما لم يُفتح على الخادم: ربطُه بلا مزامنةٍ يُضيّع تاريخَ محادثاته مرّةً واحدة.
             */}
             {! own && mayManage && config.configured && (
-                <fieldset className="mt-4 space-y-2" data-testid="link-kind">
-                    <legend className="mb-1 text-[12px] font-medium text-[#374151]">{t('نوع الرقم')}</legend>
-                    {(['cloud_api', 'coexistence'] as const).map((option) => {
-                        const locked = option === 'coexistence' && ! config.coexistence_open;
+                <div className="mt-4" data-testid="link-kind">
+                    <p className="mb-2 text-[13px] font-semibold text-[#111]">{t('كيف تريد أن تربط رقمك؟')}</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        {KINDS.map((option) => {
+                            const locked = option.kind === 'coexistence' && ! config.coexistence_open;
+                            const Icon = option.icon;
 
-                        return (
-                            <label
-                                key={option}
-                                data-testid={`link-kind-${option}`}
-                                className={cn(
-                                    'flex items-start gap-2 rounded-[10px] border px-3 py-2 text-[12px] leading-relaxed',
-                                    kind === option ? 'border-[#6d28d9] bg-[#f5f3ff]' : 'border-[var(--ui-border,#e8e8e8)]',
-                                    locked && 'cursor-not-allowed opacity-60',
-                                )}
-                            >
-                                <input
-                                    type="radio"
-                                    name="whatsapp-link-kind"
-                                    className="mt-1"
-                                    value={option}
-                                    checked={kind === option}
-                                    disabled={locked}
-                                    onChange={() => setKind(option)}
-                                />
-                                <span>
-                                    <span className="block font-medium text-[#111]">
-                                        {t(option === 'cloud_api' ? 'رقم Cloud API مستقل' : 'رقم على تطبيق واتساب للأعمال (التعايش)')}
+                            return (
+                                <label
+                                    key={option.kind}
+                                    data-testid={`link-kind-${option.kind}`}
+                                    className={cn(
+                                        'flex cursor-pointer items-start gap-3 rounded-[14px] border p-4 text-[12px] leading-relaxed transition-colors',
+                                        kind === option.kind ? 'border-[#111] bg-white shadow-[0_0_0_1px_#111]' : 'border-[var(--ui-border,#e8e8e8)] bg-white hover:bg-[#fafafa]',
+                                        locked && 'cursor-not-allowed opacity-60 hover:bg-white',
+                                    )}
+                                >
+                                    <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f4f4f5] text-[#111]">
+                                        <Icon className="size-5" />
                                     </span>
-                                    <span className="block text-[#6b7280]">
-                                        {option === 'cloud_api'
-                                            ? t('رقم مخصص للنظام منفصل عن رقم هاتفك — رقم واتساب في هاتفك لا يُمس.')
-                                            : locked
-                                              ? t('غير متاح بعد في أبعاد — يحتاج إعدادًا في تطبيق Meta ومزامنة لم تُبنَ بعد.')
-                                              : t('الرقم نفسه يبقى في تطبيق واتساب للأعمال على هاتفك ويصل النظام معًا.')}
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-center gap-2">
+                                            <span className="text-[14px] font-semibold text-[#111]">{t(option.title)}</span>
+                                            {locked && (
+                                                <span className="rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[11px] text-[#6b7280]">{t('قريبًا')}</span>
+                                            )}
+                                        </span>
+                                        <span className="mt-1 block text-[#6b7280]">
+                                            {t(locked ? 'غير متاح بعد في أبعاد — نبني مزامنة رسائل الهاتف معه.' : option.description)}
+                                        </span>
                                     </span>
-                                </span>
-                            </label>
-                        );
-                    })}
-                    {kind === 'coexistence' && (
-                        <p className="flex items-start gap-2 text-[12px] leading-relaxed text-[#6b7280]">
-                            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[#d97706]" />
-                            {t('بقاء رقمك في تطبيق واتساب للأعمال تُقرّره ميتا بحسب أهلية حسابك ونسخة تطبيقك — ونحن لا نُلغي تسجيل رقمك في كل الأحوال.')}
-                        </p>
-                    )}
-                </fieldset>
+                                    <input
+                                        type="radio"
+                                        name="whatsapp-link-kind"
+                                        className="mt-1 accent-[#111]"
+                                        value={option.kind}
+                                        checked={kind === option.kind}
+                                        disabled={locked}
+                                        onChange={() => setKind(option.kind)}
+                                    />
+                                </label>
+                            );
+                        })}
+                    </div>
+
+                    {/* ما ستطلبه Meta — ثلاثُ خطواتٍ مرقّمة لما اختاره، لا مصطلحَ تقنيًّا فيها */}
+                    <div className="mt-4 rounded-[12px] bg-[#fafafa] p-4" data-testid="link-steps" data-kind={kind}>
+                        <p className="mb-3 text-[13px] font-semibold text-[#111]">{t('ما الذي ستطلبه Meta')}</p>
+                        <ol className="space-y-3">
+                            {STEPS[kind].map((step, i) => (
+                                <li key={i} className="flex items-start gap-3 text-[13px] leading-relaxed text-[#374151]">
+                                    <span className="flex size-6 shrink-0 items-center justify-center rounded-[8px] border border-[var(--ui-border,#e8e8e8)] bg-white text-[12px] font-semibold tabular-nums">
+                                        {i + 1}
+                                    </span>
+                                    <span>{t(step)}</span>
+                                </li>
+                            ))}
+                        </ol>
+                        {kind === 'coexistence' && (
+                            <p className="mt-3 flex items-start gap-2 text-[12px] leading-relaxed text-[#6b7280]">
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[#d97706]" />
+                                {t('يتطلّب تطبيق واتساب للأعمال بالإصدار 2.24.17 أو أحدث، وتتوقّف فيه بعض الميزات مثل قوائم البثّ. وبقاء رقمك فيه تقرّره Meta بحسب أهلية حسابك — ونحن لا نُلغي تسجيل رقمك في كل الأحوال.')}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* ورسومُ Meta على التاجر نفسه — يُقال قبل الربط لا بعد أن تقف الردود */}
+                    <p className="mt-3 text-[12px] leading-relaxed text-[#6b7280]" data-testid="link-billing">
+                        {t('رسوم Meta على حسابك أنت مباشرة، لا على أبعاد: أوّل 1,000 ردّ في الشهر مجّانًا لكل رقم، وبعدها تحتاج وسيلة دفع في حسابك عند Meta لتستمر الردود. والإشعارات والحملات تُحتسب كلّ رسالة.')}{' '}
+                        <a href="https://business.facebook.com/billing_hub" target="_blank" rel="noopener noreferrer" className="font-medium text-[#111] underline underline-offset-2">
+                            {t('الفوترة في Meta')}
+                        </a>
+                    </p>
+                </div>
             )}
 
             <PageActions className="mt-5">
@@ -402,7 +459,7 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                         {({ open, busy }) => (
                             <Button type="button" onClick={open} loading={busy || sending} data-testid="connect-whatsapp">
                                 {state === 'disconnected' ? <PlugZap /> : <RefreshCw />}
-                                {t(state === 'disconnected' ? 'ربط واتساب API' : 'إعادة تفويض واتساب')}
+                                {t(state !== 'disconnected' ? 'إعادة تفويض واتساب' : kind === 'coexistence' ? 'ربط واتساب مع التطبيق' : 'ربط واتساب API')}
                             </Button>
                         )}
                     </EmbeddedSignup>

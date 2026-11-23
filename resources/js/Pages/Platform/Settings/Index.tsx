@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
 import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
+import WhatsAppMerchantLinkSwitch, { type WhatsAppLinkState } from './partials/WhatsAppMerchantLinkSwitch';
 
 type Settings = Record<string, string>;
 
@@ -120,11 +121,13 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink } =
         usePage<PageProps<{
             settings: Settings;
             /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
             posCatalog?: PosCatalogState;
+            /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
+            whatsappLink?: WhatsAppLinkState;
             mail?: MailStatus;
             plans: SelectOption[];
             whatsapp?: SharedConnection | null;
@@ -340,6 +343,11 @@ export default function PlatformSettings() {
                 </div>
             )}
 
+            {/*
+                ‏‏وطريقُ ربط واتساب للتجّار الجدد خارج النموذج وفوقه — هو أوّل قرارٍ في التبويب: بابُه `super-admin.whatsapp.merchant-link.*`،
+                يُقيَّد فيه من بدّله وكان ماذا وصار ماذا (`WhatsAppMerchantLink`).
+            */}
+            {tab === 'whatsapp' && whatsappLink && <WhatsAppMerchantLinkSwitch state={whatsappLink} locale={locale} />}
             <form onSubmit={submit}>
                 {tab === 'general' && (
                     <Card className="p-6">

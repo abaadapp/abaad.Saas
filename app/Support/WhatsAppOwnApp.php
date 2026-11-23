@@ -98,10 +98,13 @@ class WhatsAppOwnApp
         'payment_settings' => 'صفحة «الفوترة والمدفوعات» في حساب أعمال التاجر تُظهر وسيلة دفعه على هذا الحساب',
     ];
 
-    /** أيربط التجّارُ بتطبيقاتهم على هذا الخادم؟ — الافتراضُ نعم (`whatsapp.merchant_link`) */
+    /**
+     * أيربط التجّارُ الجدد بتطبيقاتهم؟ — يقرّره مديرُ المنصّة من شاشته (`WhatsAppMerchantLink`)،
+     * وبلا قرارٍ منه ما في الإعداد (`whatsapp.merchant_link`، الافتراضُ نعم).
+     */
     public static function enabled(): bool
     {
-        return config('whatsapp.merchant_link', 'own_app') === 'own_app';
+        return WhatsAppMerchantLink::ownApp();
     }
 
     public static function is(?WhatsAppConnection $connection): bool

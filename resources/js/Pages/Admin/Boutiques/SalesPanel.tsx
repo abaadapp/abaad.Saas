@@ -430,7 +430,7 @@ function ProductCell({ row, fmt }: { row: SaleRow; fmt: (v: number) => string })
 function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) => string; onOpen: (id: number) => void }) {
     const t = useTranslate();
     return (
-        <div className="hidden overflow-x-auto md:block">
+        <div className="no-scrollbar hidden overflow-x-auto md:block">
             <table className="w-full text-sm" data-testid="boutique-sales-table">
                 <thead className="bg-[#fafafa] text-[12px] text-[#6b7280]">
                     <tr>

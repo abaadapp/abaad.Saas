@@ -598,6 +598,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/whatsapp/merchant-link/config', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'configId'])->name('whatsapp.merchant-link.config');
     // ‏‏وخيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» — يُفتح بعد نقل التجّار إلى تطبيق أبعاد (`WhatsAppMerchantLink::setCoexistence`)
     Route::post('/whatsapp/merchant-link/coexistence', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'coexistence'])->name('whatsapp.merchant-link.coexistence');
+    // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات: مقفلة، أو لمتاجر تجربة، أو للجميع (`ChannelAutomationsSwitch`)
+    Route::post('/automations/switch', [App\Http\Controllers\SuperAdmin\ChannelAutomationsController::class, 'switch'])->name('automations.switch');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
@@ -1554,6 +1556,20 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
 
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
         Route::post('/whatsapp/guided-orders', [WhatsAppOnboardingController::class, 'guidedOrders'])->name('whatsapp.guidedOrders');
+
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`).
+         * وحدُّها باسمها: حدٌّ بلا اسم يشارك عدّادَ كلّ حدٍّ بلا اسمٍ للمستخدم نفسه (حدُّ الحزم خمسٌ في الساعة).
+         */
+        Route::get('/whatsapp/automations', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'index'])->name('whatsapp.automations');
+        Route::post('/whatsapp/automations', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'store'])
+            ->middleware('throttle:30,1,whatsapp-automations')->name('whatsapp.automations.store');
+        Route::put('/whatsapp/automations/{automation}', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'update'])
+            ->whereNumber('automation')->middleware('throttle:60,1,whatsapp-automations')->name('whatsapp.automations.update');
+        Route::post('/whatsapp/automations/{automation}/status', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'status'])
+            ->whereNumber('automation')->middleware('throttle:60,1,whatsapp-automations')->name('whatsapp.automations.status');
+        Route::delete('/whatsapp/automations/{automation}', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'destroy'])
+            ->whereNumber('automation')->name('whatsapp.automations.destroy');
 
         /*
          * طلبُ حزمةِ رسائلَ إضافيّة — والحدُّ خمسٌ في الساعة.

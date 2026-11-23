@@ -208,6 +208,8 @@ class TenantTables
         'whatsapp_contacts',
         // وطلبُ المحادثة بعد محادثته وفاتورته ورابطه — يشير إليها ثلاثتها
         'whatsapp_order_sessions',
+        // ‏‏وأتمتاتُ التاجر بالكلمات وسجلُّ تشغيلها — كتبها بيده، فتعود معه في الاستعادة
+        'channel_automations', 'channel_automation_runs',
     ];
 
     /**

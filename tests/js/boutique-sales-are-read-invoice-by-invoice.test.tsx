@@ -145,6 +145,11 @@ describe('مبيعات البوتيك وفواتيره', () => {
         await waitFor(() => expect(calls).toContain('/admin.boutiques.sales.summary/2027-02'));
 
         expect(salesQuery({ period: '2027-02', boutique: 'all', type: '', settle: '', q: '  ' })).toEqual({ period: '2027-02' });
+        expect(salesQuery({ period: '2027-02', boutique: 'all', type: 'all', settle: 'all', q: '' })).toEqual({ period: '2027-02' });
+        // و«الكلّ» خيارٌ له اسمٌ يُرى — لا خانةٌ فارغة
+        expect((screen.getByLabelText('نوع العملية') as HTMLSelectElement).value).toBe('bundle');
+        fireEvent.change(screen.getByLabelText('نوع العملية'), { target: { value: 'all' } });
+        await waitFor(() => expect(calls.at(-1)).toBe('/admin.boutiques.sales/2027-02/paid'));
     });
 
     it('الشهرُ شهرُ الصفحة: يُبدَّل منها لا من حالةٍ ثانية', async () => {

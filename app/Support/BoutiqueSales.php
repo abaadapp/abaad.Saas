@@ -278,7 +278,7 @@ final class BoutiqueSales
             'rate' => $rate,
             'commission' => $commission,
             'net' => round($amount - $commission, 3),
-            'credited' => round((float) $r->credited, 3),
+            'credited' => round((float) $r->credited, 3) + 0.0,
             'kept_state' => $r->kept_state,
             'settle_state' => $r->settle_state,
             'settlement' => $r->settlement_number,
@@ -389,8 +389,9 @@ final class BoutiqueSales
         // ── المرتجعاتُ والأرصدة — بيوم وقوعها، منفصلةً عن المبيعات
         $notes = BoutiqueReturn::where('business_id', $businessId)->whereIn('boutique_id', $ids ?: [0])
             ->whereBetween('returned_at', [$from, $to])->get();
+        // و`+ 0.0` تمحو «−٠»: صفرٌ سالبٌ يُطبع «-0.000» في الشاشة
         $credits = round(-(float) BoutiqueComponentDue::where('business_id', $businessId)->whereIn('boutique_id', $ids ?: [0])
-            ->where('kind', BoutiqueComponentDue::CREDIT)->whereBetween('period_at', [$from, $to])->sum('amount'), 3);
+            ->where('kind', BoutiqueComponentDue::CREDIT)->whereBetween('period_at', [$from, $to])->sum('amount'), 3) + 0.0;
         $cancelled = Order::where('business_id', $businessId)->where('is_held', false)
             ->where('status', Order::CANCELLED)->whereBetween('ordered_at', [$from, $to])->select('id');
         $cancelledGross = $ids === [] ? 0.0 : round((float) OrderItem::whereIn('order_id', $cancelled)
@@ -512,7 +513,7 @@ final class BoutiqueSales
                     'quantity' => round((float) $owed->sum('quantity'), 3),
                     'unit_price' => round((float) $first->unit_price, 3),
                     'amount' => round((float) $owed->sum('amount'), 3),
-                    'credited' => round(-(float) $g->where('kind', BoutiqueComponentDue::CREDIT)->sum('amount'), 3),
+                    'credited' => round(-(float) $g->where('kind', BoutiqueComponentDue::CREDIT)->sum('amount'), 3) + 0.0,
                     'kept_state' => $g->pluck('kept_state')->filter()->first(),
                     'settlement' => $sheet?->number,
                     'settle_state' => $sheet === null || $unsettled != 0.0 ? self::PENDING

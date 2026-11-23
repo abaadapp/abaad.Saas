@@ -139,8 +139,8 @@ export function salesQuery(f: { period: string; boutique: string; type: string; 
     return {
         period: f.period,
         ...(f.boutique !== 'all' ? { boutique: f.boutique } : {}),
-        ...(f.type ? { type: f.type } : {}),
-        ...(f.settle ? { settle: f.settle } : {}),
+        ...(f.type && f.type !== 'all' ? { type: f.type } : {}),
+        ...(f.settle && f.settle !== 'all' ? { settle: f.settle } : {}),
         ...(f.q.trim() ? { q: f.q.trim() } : {}),
         ...(f.page && f.page > 1 ? { page: f.page } : {}),
     };
@@ -160,8 +160,9 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 export default function SalesPanel({ boutiqueId, boutiques, period, periods, onPeriodChange, currency }: Props) {
     const t = useTranslate();
     const [boutique, setBoutique] = useState<string>(String(boutiqueId));
-    const [type, setType] = useState('');
-    const [settle, setSettle] = useState('');
+    // «الكلّ» قيمةٌ لا فراغ: القائمةُ المنسدلة لا تحمل قيمةً فارغة فتُرسم خانةً بيضاء
+    const [type, setType] = useState('all');
+    const [settle, setSettle] = useState('all');
     const [q, setQ] = useState('');
     const [term, setTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -231,7 +232,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
                     value={type}
                     onChange={(e) => setType(e.target.value)}
                     options={[
-                        { value: '', label: t('كل أنواع العمليات') },
+                        { value: 'all', label: t('كل أنواع العمليات') },
                         ...(Object.keys(TYPE_LABEL) as SaleType[]).map((k) => ({ value: k, label: t(TYPE_LABEL[k]) })),
                     ]}
                     aria-label={t('نوع العملية')}
@@ -240,7 +241,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
                     value={settle}
                     onChange={(e) => setSettle(e.target.value)}
                     options={[
-                        { value: '', label: t('كل حالات التسوية') },
+                        { value: 'all', label: t('كل حالات التسوية') },
                         ...(Object.keys(SETTLE_LABEL) as SettleState[]).map((k) => ({ value: k, label: t(SETTLE_LABEL[k]) })),
                     ]}
                     aria-label={t('حالة التسوية')}
@@ -448,7 +449,7 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                     {rows.map((r) => (
                         <tr key={r.key} className="border-t border-[var(--ui-border,#e8e8e8)] align-top">
                             <td className="px-3 py-2.5">
-                                <button type="button" onClick={() => onOpen(r.order_id)} className="font-medium text-[#1d4ed8] underline-offset-2 hover:underline">
+                                <button type="button" onClick={() => onOpen(r.order_id)} className="whitespace-nowrap font-medium text-[#1d4ed8] underline-offset-2 hover:underline">
                                     {r.order_number}
                                 </button>
                                 <p className="text-[11px] text-[#9ca3af] tabular-nums">{r.ordered_at}</p>
@@ -456,18 +457,16 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                             <td className="px-3 py-2.5"><ProductCell row={r} fmt={fmt} /></td>
                             <td className="px-3 py-2.5 text-[#4b4b4b]">{r.boutique}</td>
                             <td className="px-3 py-2.5"><Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_LABEL[r.type])}</Badge></td>
-                            <td className="px-3 py-2.5 text-end tabular-nums">{number(r.quantity, 3)} × {fmt(r.unit_price)}</td>
-                            <td className="px-3 py-2.5 text-end tabular-nums">{fmt(r.amount)}</td>
-                            <td className="px-3 py-2.5 text-end tabular-nums text-[#047857]">
+                            <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{number(r.quantity, 3)} × {fmt(r.unit_price)}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{fmt(r.amount)}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums text-[#047857]">
                                 {r.type === 'standalone' ? <>{fmt(r.commission)} <span className="text-[11px] text-[#9ca3af]">({number(r.rate ?? 0, 2)}%)</span></> : t('لا عمولة')}
                             </td>
-                            <td className="px-3 py-2.5 text-end font-medium tabular-nums text-[#6d28d9]">{fmt(r.net)}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-end font-medium tabular-nums text-[#6d28d9]">{fmt(r.net)}</td>
                             <td className="space-y-1 px-3 py-2.5">
                                 <InvoiceStateBadge row={r} />
-                                <div>
-                                    <Badge variant={SETTLE_VARIANT[r.settle_state]}>{t(SETTLE_LABEL[r.settle_state])}</Badge>
-                                    {r.settlement && <span className="ms-1 text-[11px] text-[#9ca3af]">{r.settlement}</span>}
-                                </div>
+                                <Badge variant={SETTLE_VARIANT[r.settle_state]} className="whitespace-nowrap">{t(SETTLE_LABEL[r.settle_state])}</Badge>
+                                {r.settlement && <p className="whitespace-nowrap text-[11px] text-[#9ca3af]">{r.settlement}</p>}
                             </td>
                         </tr>
                     ))}

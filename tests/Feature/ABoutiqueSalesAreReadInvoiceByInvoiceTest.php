@@ -226,6 +226,10 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertEquals([$st['gross'], $st['commission'], $st['net']], [$s['standalone']['gross'], $s['standalone']['commission'], $s['standalone']['net']]);
         $this->assertEquals(9.6, $s['owed']);
         $this->assertEquals(0, $s['components']['due']);
+
+        // ولا «−٠» يُطبع في الشاشة: الصفرُ صفر
+        $raw = $this->actingAs($this->owner)->getJson(route('admin.boutiques.sales.summary', ['period' => self::PERIOD]))->getContent();
+        $this->assertDoesNotMatchRegularExpression('/[:\[,]-0(\.0+)?[,}\]]/', $raw);
     }
 
     /* ═══════════ ٢ · القطعة داخل منتج المتجر ═══════════ */

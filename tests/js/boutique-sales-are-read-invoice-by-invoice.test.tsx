@@ -54,6 +54,7 @@ const summary: SalesSummary = {
     bundles: { lines: 1, revenue: 20, boutiques_due: 6, shop_remaining: 14 },
     owed: 15.6,
     pieces: 'on',
+    rounding: { lines_commission: 2.4, report_commission: 2.4, report_difference: 0, lines_pending_net: 9.6, sheet_pending_net: 9.6, sheet_difference: 0 },
     settlement: { sheets: 0, issued: 0, paid: 0, unpaid: 0, remaining: 15.6, pending: { standalone: 9.6, components: 6, credit: 0, total: 15.6 } },
     returns: { notes: 0, amount: 0, reduced: 0, claims_open: 0, review: 0, shop: 0, component_credits: 0, cancelled_gross: 0 },
 };
@@ -223,7 +224,7 @@ describe('مبيعات البوتيك وفواتيره', () => {
         ],
         shares: {
             boutiques: [{ id: 5, name: 'بوتيك لمى', standalone_gross: 0, commission: 0, standalone_net: 0, components_due: 6, owed: 6 }],
-            shop: 34, lines_total: 40, reconciles: true, ...shares,
+            shop: 34, lines_total: 40, reconciles: true, void: false, ...shares,
         },
         totals: { standalone_gross: 0, commission: 0, standalone_net: 0, components_due: 6, owed: 6 },
         edits: [], can_open: false, url: null,
@@ -263,6 +264,29 @@ describe('مبيعات البوتيك وفواتيره', () => {
 
         await openInvoice(invoice({ tax_basis: 'unknown' }, { reconciles: false }));
         expect(screen.getByTestId('boutique-invoice-mismatch').textContent).toContain('راجعها قبل اعتماد الأنصبة');
+    });
+
+    it('فرقُ التقريب بين البنود ودالّتي النظام يُعرض بعينه — ولا يُعرض صفرًا', async () => {
+        const first = mount();
+        await screen.findByTestId('boutique-sales-summary');
+        expect(screen.queryByTestId('boutique-rounding-note')).toBeNull();
+        first.unmount();
+
+        respond = (url) => (url.includes('summary')
+            ? { ...summary, rounding: { lines_commission: 0.875, report_commission: 0.874, report_difference: -0.001, lines_pending_net: 6.118, sheet_pending_net: 6.119, sheet_difference: 0.001 } }
+            : page([]));
+        mount();
+        const note = await screen.findByTestId('boutique-rounding-note');
+        expect(note.textContent).toContain('لم يُعدَّل أي مبلغ');
+        expect(note.textContent).toContain('0.875');
+        expect(note.textContent).toContain('0.874');
+        expect(note.textContent).toContain('6.119');
+        expect(note.textContent).toContain('المعتمد للدفع الورقة');
+    });
+
+    it('الفاتورةُ الملغاة تُعرض ببنودها ولا نصيبَ فيها', async () => {
+        await openInvoice(invoice({ invoice_state: 'cancelled' }, { void: true, shop: 0, boutiques: [] }));
+        expect(screen.getByTestId('boutique-invoice-void').textContent).toContain('ولا نصيب فيها لأحد');
     });
 
     it('الملخّصُ يقول إنّ ما قبل الورقة ليس تسويةً نهائية، وينبّه على فواتير الضريبة', async () => {

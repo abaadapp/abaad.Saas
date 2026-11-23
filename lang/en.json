@@ -11034,5 +11034,11 @@
     "عمولة المتجر محسوبة من مبلغ البند قبل الضريبة المضافة. الخصم والضريبة والتوصيل لا تُوزَّع على الجهات.": "The shop's commission is taken from the line amount before the added VAT. The discount, VAT and delivery are not split between the parties.",
     "الخصم والتوصيل لا يُوزَّعان على الجهات. والأنصبة للمتابعة حتى تصدر ورقة التسوية وتُراجع.": "The discount and delivery are not split between the parties. The shares are for follow-up until a settlement sheet is issued and reviewed.",
     "المبالغ قبل صدور ورقة التسوية للمتابعة وليست تسوية نهائية — المعتمد ما في ورقة التسوية بعد مراجعتها.": "Amounts before a settlement sheet is issued are for follow-up, not a final settlement — what counts is the reviewed settlement sheet.",
-    "في هذا الشهر :n فاتورة فيها ضريبة. العمولة محسوبة من مبلغ البند كما سُجّل: شامل الضريبة إن كانت الأسعار شاملة، وقبلها إن كانت مضافة. هذه السياسة القائمة ولم تُعتمد بعد — راجعها قبل اعتبار هذه المبالغ نهائية.": ":n invoices this month carry VAT. The commission is taken from the line amount as recorded: including VAT when prices include it, before it when it is added. This is the existing policy and has not been approved yet — review it before treating these amounts as final."
+    "في هذا الشهر :n فاتورة فيها ضريبة. العمولة محسوبة من مبلغ البند كما سُجّل: شامل الضريبة إن كانت الأسعار شاملة، وقبلها إن كانت مضافة. هذه السياسة القائمة ولم تُعتمد بعد — راجعها قبل اعتبار هذه المبالغ نهائية.": ":n invoices this month carry VAT. The commission is taken from the line amount as recorded: including VAT when prices include it, before it when it is added. This is the existing policy and has not been approved yet — review it before treating these amounts as final.",
+    "مطابقة التقريب (لم يُعدَّل أي مبلغ)": "Rounding check (no amount was changed)",
+    "العمولة هنا لكل بند بالبيسة: :lines": "Commission here, per line in baisa: :lines",
+    "تقرير مبيعات البوتيك يقرّبها على المجموع: :report (فرق :d)": "The boutique sales report rounds it on the total: :report (difference :d)",
+    "ورقة التسوية لما لم يُسوَّ تحسب صافي البوتيك :sheet مقابل :lines هنا (فرق :d) — المعتمد للدفع الورقة حتى يُقرَّر.": "For what is not settled yet, the settlement sheet works out the boutique's net as :sheet against :lines here (difference :d) — the sheet is what gets paid until this is decided.",
+    "الفاتورة ملغاة — بنودها كما سُجّلت، ولا نصيب فيها لأحد.": "The invoice is cancelled — its lines are shown as recorded, and no one has a share in it.",
+    "صنف مستبدل": "Replaced item"
 }

@@ -68,6 +68,11 @@ export interface SalesSummary {
     bundles: { lines: number; revenue: number; boutiques_due: number; shop_remaining: number };
     owed: number;
     pieces: 'on' | 'off' | 'taxed';
+    /** مطابقةُ التقريب بالبيسة: الفرقُ موجبٌ حين تقول دالّةُ النظام أكثر */
+    rounding: {
+        lines_commission: number; report_commission: number; report_difference: number;
+        lines_pending_net: number; sheet_pending_net: number; sheet_difference: number;
+    };
     settlement: {
         sheets: number; issued: number; paid: number; unpaid: number; remaining: number;
         pending: { standalone: number; components: number; credit: number; total: number };
@@ -104,6 +109,8 @@ export interface InvoiceDetails {
         shop: number;
         lines_total: number;
         reconciles: boolean;
+        /** فاتورةٌ ملغاة: بنودُها كما سُجّلت، ولا نصيبَ فيها لأحد */
+        void: boolean;
     };
     totals: { standalone_gross: number; commission: number; standalone_net: number; components_due: number; owed: number };
     edits: { kind: string; subject: string | null; qty_before: number | null; qty_after: number | null; reason: string | null; at: string | null }[];
@@ -363,6 +370,23 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                 <p className="mt-2 text-[12px] leading-5 text-[#6b7280]" data-testid="boutique-not-final-note">
                     {t('المبالغ قبل صدور ورقة التسوية للمتابعة وليست تسوية نهائية — المعتمد ما في ورقة التسوية بعد مراجعتها.')}
                 </p>
+                {(s.rounding.report_difference !== 0 || s.rounding.sheet_difference !== 0) && (
+                    <div className="mt-2 rounded-md border border-dashed border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-rounding-note">
+                        <p className="font-semibold">{t('مطابقة التقريب (لم يُعدَّل أي مبلغ)')}</p>
+                        <p>
+                            {t('العمولة هنا لكل بند بالبيسة: :lines', { lines: fmt(s.rounding.lines_commission) })}
+                            {s.rounding.report_difference !== 0 &&
+                                <> · {t('تقرير مبيعات البوتيك يقرّبها على المجموع: :report (فرق :d)', { report: fmt(s.rounding.report_commission), d: fmt(s.rounding.report_difference) })}</>}
+                        </p>
+                        {s.rounding.sheet_difference !== 0 && (
+                            <p>
+                                {t('ورقة التسوية لما لم يُسوَّ تحسب صافي البوتيك :sheet مقابل :lines هنا (فرق :d) — المعتمد للدفع الورقة حتى يُقرَّر.', {
+                                    sheet: fmt(s.rounding.sheet_pending_net), lines: fmt(s.rounding.lines_pending_net), d: fmt(s.rounding.sheet_difference),
+                                })}
+                            </p>
+                        )}
+                    </div>
+                )}
                 {s.standalone.taxed_orders > 0 && (
                     <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-tax-note">
                         {t('في هذا الشهر :n فاتورة فيها ضريبة. العمولة محسوبة من مبلغ البند كما سُجّل: شامل الضريبة إن كانت الأسعار شاملة، وقبلها إن كانت مضافة. هذه السياسة القائمة ولم تُعتمد بعد — راجعها قبل اعتبار هذه المبالغ نهائية.', { n: number(s.standalone.taxed_orders) })}
@@ -671,6 +695,12 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                 </li>
                             </ul>
                         </div>
+
+                        {data.shares.void && (
+                            <p className="rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="boutique-invoice-void">
+                                {t('الفاتورة ملغاة — بنودها كما سُجّلت، ولا نصيب فيها لأحد.')}
+                            </p>
+                        )}
 
                         {!data.shares.reconciles && (
                             <p className="rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="boutique-invoice-mismatch">

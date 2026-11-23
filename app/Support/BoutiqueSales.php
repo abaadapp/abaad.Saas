@@ -10,6 +10,7 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderEdit;
 use App\Models\OrderItem;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -247,14 +248,57 @@ final class BoutiqueSales
             }])->all();
     }
 
+    /* ═══════════ البيسة ═══════════ */
+
+    /*
+     * قاعدةُ التقريب في هذا القسم — واحدةٌ في الصفّ والفاتورة والملخّص:
+     *
+     *   عمولةُ البند = مبلغُ البند كما سُجّل × نسبتُه ساعةَ البيع، مدوَّرةً إلى
+     *   أقرب بيسة، والنصفُ إلى أعلى. وصافي البوتيك = مبلغُ البند − عمولتُه.
+     *   والمجاميعُ جمعُ بيساتٍ صحيحة — لا تُقرَّب مرّةً ثانية.
+     *
+     * والحسابُ بأعدادٍ صحيحة لا بالكسر العائم: ١٫٠٠٥ × ١٠٪ = ٠٫١٠٠٥ تمامًا،
+     * فعمولتُه ٠٫١٠١. والكسرُ العائم يراها ٠٫١٠٠٤٩٩… فيُنزلها ٠٫١٠٠ — وهذا ما
+     * تفعله `Boutiques::statement` (ورقةُ التسوية) اليوم. لا يُغيَّر هنا: الفرقُ
+     * يُعرض في الملخّص (`rounding`) ويُرفع قرارًا، ولا يُخفى.
+     */
+
+    /** مبلغٌ بالبيسات — العمودُ بثلاث منازل، فالضربُ في ألفٍ ثمّ التقريبُ إلى عددٍ صحيح لا يخطئ */
+    private static function baisa(float|int|string|null $x): int
+    {
+        return (int) round((float) $x * 1000);
+    }
+
+    /** النسبةُ بأجزاءٍ من مئةٍ من المئة — العمودُ بمنزلتين (١٢٫٥٪ ← ١٢٥٠) */
+    private static function rateHundredths(float|int|string|null $rate): int
+    {
+        return (int) round((float) $rate * 100);
+    }
+
+    /** عمولةُ بندٍ بالبيسات — نصفٌ إلى أعلى (وبعيدًا عن الصفر للسالب)، بلا كسرٍ عائم */
+    public static function commissionBaisa(int $totalBaisa, int $rateHundredths): int
+    {
+        $x = $totalBaisa * $rateHundredths;
+
+        return $x >= 0 ? intdiv($x + 5000, 10000) : -intdiv(-$x + 5000, 10000);
+    }
+
+    /** البيساتُ ريالاتٍ للإرسال — و`+ 0.0` تمحو «−٠» */
+    private static function money(int $baisa): float
+    {
+        return Baisa::toMoney($baisa) + 0.0;
+    }
+
     /** الصفُّ كما يُرسَل — أرقامٌ بثلاث خانات، والعمولةُ بنسبة البند ساعةَ بيعه */
     private static function present(object $r, array $states): array
     {
-        $amount = round((float) $r->amount, 3);
+        $amountB = self::baisa($r->amount);
+        $amount = self::money($amountB);
         $standalone = $r->type === self::STANDALONE;
-        $rate = $standalone ? round((float) ($r->rate ?? 0), 2) : null;
-        // والتقريبُ على البند كما يُقرّب الكشفُ سطرَه — `Boutiques::statement`
-        $commission = $standalone ? round($amount * $rate / 100, 3) : 0.0;
+        $rateH = $standalone ? self::rateHundredths($r->rate ?? 0) : 0;
+        $rate = $standalone ? $rateH / 100 : null;
+        $commissionB = $standalone ? self::commissionBaisa($amountB, $rateH) : 0;
+        $commission = self::money($commissionB);
 
         return [
             'key' => $r->type.':'.$r->ref_id,
@@ -277,7 +321,7 @@ final class BoutiqueSales
             'amount' => $amount,
             'rate' => $rate,
             'commission' => $commission,
-            'net' => round($amount - $commission, 3),
+            'net' => self::money($amountB - $commissionB),
             'credited' => round((float) $r->credited, 3) + 0.0,
             'kept_state' => $r->kept_state,
             'settle_state' => $r->settle_state,
@@ -294,7 +338,7 @@ final class BoutiqueSales
      * (`*`) يقرآن، ومن خُصّصت صلاحيّاتُه يدويًّا يقرأ إن أُعطي «المصروفات».
      * ودورُ المبيعات والمخزون يفتحان شاشة البوتيك بالمنتجات ولا يقرآن هذا.
      */
-    public static function mayRead(?\App\Models\User $user): bool
+    public static function mayRead(?User $user): bool
     {
         return $user !== null && $user->allows('expenses');
     }
@@ -334,15 +378,43 @@ final class BoutiqueSales
             ->orderBy('id')->get();
         $ids = $boutiques->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-        // ── المنفرد: الدالّةُ نفسُها التي يقرأ بها النظامُ مبيعاتِ البوتيك
-        $standalone = ['gross' => 0.0, 'commission' => 0.0, 'net' => 0.0, 'quantity' => 0.0, 'lines' => 0];
+        /*
+         * ── المنفرد: البنودُ نفسُها التي يقرؤها النظام (`Boutiques::soldLines`)،
+         * محسوبةً بالبيسة لكلّ بند (القاعدة أعلاه) في القاعدة نفسها — بلا تحميل
+         * البنود. وبجانبها ما تقوله دالّتا النظام لنفس الشهر، ليُرى الفرقُ لا ليُخفى:
+         * تقريرُ المبيعات (`soldTotals`) يقرّب المجموعَ مرّةً، وورقةُ التسوية
+         * (`statement`) تقرّب كلَّ صنفٍ بكسرٍ عائم.
+         */
+        $lineB = 'CAST(ROUND(order_items.total * 1000) AS BIGINT)';
+        $commissionB = '('.$lineB.' * CAST(ROUND(COALESCE(order_items.boutique_rate, 0) * 100) AS BIGINT) + 5000) / 10000';
+        $grossB = 0;
+        $commB = 0;
+        $pendingNetB = 0;
+        $reportCommB = 0;
+        $quantity = 0.0;
+        $lines = 0;
         foreach ($boutiques as $b) {
-            $t = Boutiques::soldTotals($businessId, $b, $from, null, null, $to);
-            foreach (['gross', 'commission', 'net', 'quantity'] as $k) {
-                $standalone[$k] = round($standalone[$k] + $t[$k], 3);
-            }
-            $standalone['lines'] += $t['lines'];
+            $row = Boutiques::soldLines($businessId, $b, $from, $to)
+                ->selectRaw("COALESCE(SUM($lineB), 0) as gross_b")
+                ->selectRaw("COALESCE(SUM($commissionB), 0) as commission_b")
+                ->selectRaw("COALESCE(SUM(CASE WHEN order_items.boutique_settlement_id IS NULL THEN $lineB - ($commissionB) ELSE 0 END), 0) as pending_net_b")
+                ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
+                ->selectRaw('COUNT(*) as line_count')
+                ->toBase()->first();
+            $grossB += (int) $row->gross_b;
+            $commB += (int) $row->commission_b;
+            $pendingNetB += (int) $row->pending_net_b;
+            $quantity = round($quantity + (float) $row->quantity, 3);
+            $lines += (int) $row->line_count;
+            $reportCommB += self::baisa(Boutiques::soldTotals($businessId, $b, $from, null, null, $to)['commission']);
         }
+        $standalone = [
+            'gross' => self::money($grossB),
+            'commission' => self::money($commB),
+            'net' => self::money($grossB - $commB),
+            'quantity' => $quantity,
+            'lines' => $lines,
+        ];
 
         $sold = Order::where('business_id', $businessId)->sold()->whereBetween('ordered_at', [$from, $to])->select('id');
         $standalone['orders'] = $ids === [] ? 0 : (int) OrderItem::whereIn('order_id', $sold)
@@ -411,8 +483,10 @@ final class BoutiqueSales
         }
 
         $pending = ['standalone' => 0.0, 'components' => 0.0, 'credit' => 0.0, 'total' => 0.0];
+        $sheetNetB = 0;
         foreach ($boutiques as $b) {
             $st = Boutiques::statement($businessId, (int) $b->id, $f['period']);
+            $sheetNetB += self::baisa($st['net']);
             $pending['standalone'] = round($pending['standalone'] + $st['net'], 3);
             $pending['components'] = round($pending['components'] + $st['components']['net'], 3);
             $pending['credit'] = round($pending['credit'] + $st['components']['credit'], 3);
@@ -440,6 +514,18 @@ final class BoutiqueSales
             'pieces' => self::piecesState($businessId),
             // ما للبوتيك عن مبيعات الشهر قبل التسوية: صافي المنفرد + مستحقُّ القطع — لا إجماليُّ الباقات
             'owed' => round($standalone['net'] + $components['due'], 3),
+            /*
+             * مطابقةُ التقريب — بالبيسة، والفرقُ موجبٌ حين تقول دالّةُ النظام أكثر.
+             * لا يُعدَّل بها مبلغ: تُعرض حين لا تكون صفرًا، والمعتمدُ للدفع الورقة.
+             */
+            'rounding' => [
+                'lines_commission' => self::money($commB),
+                'report_commission' => self::money($reportCommB),
+                'report_difference' => self::money($reportCommB - $commB),
+                'lines_pending_net' => self::money($pendingNetB),
+                'sheet_pending_net' => self::money($sheetNetB),
+                'sheet_difference' => self::money($sheetNetB - $pendingNetB),
+            ],
             'settlement' => [
                 'sheets' => $sheets->count(),
                 'issued' => $issued,
@@ -517,14 +603,15 @@ final class BoutiqueSales
             ];
 
             if ($item->boutique_id !== null) {
-                $rate = round((float) ($item->boutique_rate ?? 0), 2);
-                $commission = round((float) $item->total * $rate / 100, 3);
+                $rateH = self::rateHundredths($item->boutique_rate ?? 0);
+                $totalB = self::baisa($item->total);
+                $commissionB = self::commissionBaisa($totalB, $rateH);
                 $sheet = $sheets->get($item->boutique_settlement_id);
                 $line['boutique'] = [
                     'name' => (string) $item->boutique_name,
-                    'rate' => $rate,
-                    'commission' => $commission,
-                    'net' => round((float) $item->total - $commission, 3),
+                    'rate' => $rateH / 100,
+                    'commission' => self::money($commissionB),
+                    'net' => self::money($totalB - $commissionB),
                     'settlement' => $sheet?->number,
                     'settle_state' => $sheet === null ? self::PENDING
                         : ($sheet->expense?->status === Expense::PAID ? self::PAID : self::ISSUED),
@@ -560,7 +647,8 @@ final class BoutiqueSales
                 $line['shop_remaining'] = round($line['total'] + $line['addons_total'] - $line['dues'], 3);
             }
 
-            $line['shop_share'] = round($line['total'] + $line['addons_total'] - $line['dues'] - ($line['boutique']['net'] ?? 0), 3);
+            $line['shop_share'] = self::money(self::baisa($line['total']) + self::baisa($line['addons_total'])
+                - self::baisa($line['dues']) - self::baisa($line['boutique']['net'] ?? 0));
             $lines[] = $line;
         }
 
@@ -572,31 +660,43 @@ final class BoutiqueSales
          * على الفاتورة كما سُجّلت لا يُوزَّع منها شيء.
          */
         $parties = [];
+        $blank = fn (int $id, string $name) => ['id' => $id, 'name' => $name, 'gross' => 0, 'commission' => 0, 'components' => 0];
         foreach ($standalone as $item) {
             $id = (int) $item->boutique_id;
-            $parties[$id] ??= ['id' => $id, 'name' => (string) $item->boutique_name, 'standalone_gross' => 0.0, 'commission' => 0.0, 'standalone_net' => 0.0, 'components_due' => 0.0];
-            $rate = round((float) ($item->boutique_rate ?? 0), 2);
-            $c = round((float) $item->total * $rate / 100, 3);
-            $parties[$id]['standalone_gross'] += round((float) $item->total, 3);
-            $parties[$id]['commission'] += $c;
-            $parties[$id]['standalone_net'] += round((float) $item->total - $c, 3);
+            $parties[$id] ??= $blank($id, (string) $item->boutique_name);
+            $totalB = self::baisa($item->total);
+            $parties[$id]['gross'] += $totalB;
+            $parties[$id]['commission'] += self::commissionBaisa($totalB, self::rateHundredths($item->boutique_rate ?? 0));
         }
         foreach ($dues->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL]) as $d) {
             $id = (int) $d->boutique_id;
-            $parties[$id] ??= ['id' => $id, 'name' => (string) $d->boutique_name, 'standalone_gross' => 0.0, 'commission' => 0.0, 'standalone_net' => 0.0, 'components_due' => 0.0];
-            $parties[$id]['components_due'] += (float) $d->amount;
+            $parties[$id] ??= $blank($id, (string) $d->boutique_name);
+            $parties[$id]['components'] += self::baisa($d->amount);
         }
         ksort($parties);
-        $parties = array_values(array_map(fn (array $p) => [
-            'id' => $p['id'], 'name' => $p['name'],
-            'standalone_gross' => round($p['standalone_gross'], 3),
-            'commission' => round($p['commission'], 3),
-            'standalone_net' => round($p['standalone_net'], 3),
-            'components_due' => round($p['components_due'], 3),
-            'owed' => round($p['standalone_net'] + $p['components_due'], 3),
-        ], $parties));
-        $linesTotal = round((float) collect($lines)->sum(fn ($l) => $l['total'] + $l['addons_total']), 3);
-        $boutiquesOwed = round((float) collect($parties)->sum('owed'), 3);
+
+        /*
+         * وفاتورةٌ ملغاة لا نصيبَ فيها لأحد: بنودُها تُعرض كما سُجّلت، وأنصبتُها
+         * أصفار — كما لا يحسبها الملخّصُ ولا الكشف. وقطعُها عُكس مستحقُّها أصلًا.
+         */
+        $void = (string) $order->status === Order::CANCELLED;
+        $owedB = 0;
+        $parties = array_values(array_map(function (array $p) use ($void, &$owedB) {
+            $net = $void ? 0 : $p['gross'] - $p['commission'];
+            $components = $void ? 0 : $p['components'];
+            $owedB += $net + $components;
+
+            return [
+                'id' => $p['id'], 'name' => $p['name'],
+                'standalone_gross' => self::money($void ? 0 : $p['gross']),
+                'commission' => self::money($void ? 0 : $p['commission']),
+                'standalone_net' => self::money($net),
+                'components_due' => self::money($components),
+                'owed' => self::money($net + $components),
+            ];
+        }, $parties));
+        $linesB = (int) collect($lines)->sum(fn ($l) => self::baisa($l['total']) + self::baisa($l['addons_total']));
+        $linesTotal = self::money($linesB);
         $tax = round((float) $order->tax, 3);
         $fee = round((float) $order->delivery_fee, 3);
         $total = round((float) $order->total, 3);
@@ -610,8 +710,8 @@ final class BoutiqueSales
          * وما لم يطابق أيًّا منهما فـ`unknown`: تُراجع الفاتورة ولا يُعتمد نصيبُها.
          * وعمولةُ البوتيك من مبلغ البند كما سُجّل — فهي تتبع هذا الموضع.
          */
-        $inside = abs(round($linesTotal - $discount + $fee, 3) - $total) < 0.0005;
-        $added = abs(round($linesTotal - $discount + $tax + $fee, 3) - $total) < 0.0005;
+        $inside = $linesB - self::baisa($discount) + self::baisa($fee) === self::baisa($total);
+        $added = $linesB - self::baisa($discount) + self::baisa($tax) + self::baisa($fee) === self::baisa($total);
         $basis = match (true) {
             $tax <= 0 => $inside ? 'none' : 'unknown',
             $inside => 'inside',
@@ -629,9 +729,8 @@ final class BoutiqueSales
             ])->values()->all();
 
         $state = self::invoiceStates([(int) $order->id])[(int) $order->id] ?? self::ACTIVE;
-        $gross = round((float) $standalone->sum('total'), 3);
-        $commission = round((float) collect($lines)->sum(fn ($l) => $l['boutique']['commission'] ?? 0), 3);
-        $componentsDue = round((float) $dues->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL])->sum('amount'), 3);
+        // مجاميعُ الجهات نفسِها — لا حسابٌ ثانٍ قد يفترق عنها
+        $sumOf = fn (string $k) => self::money((int) collect($parties)->sum(fn ($p) => self::baisa($p[$k])));
 
         return [
             'order' => [
@@ -650,17 +749,18 @@ final class BoutiqueSales
             'lines' => $lines,
             'shares' => [
                 'boutiques' => $parties,
-                'shop' => round($linesTotal - $boutiquesOwed, 3),
+                'shop' => self::money($void ? 0 : $linesB - $owedB),
+                'void' => $void,
                 'lines_total' => $linesTotal,
                 // البنودُ تطابق إجماليَّ الفاتورة المسجَّل؟ — وإلّا فالفاتورةُ تُراجع ولا يُعتمد نصيبُها
                 'reconciles' => $basis !== 'unknown',
             ],
             'totals' => [
-                'standalone_gross' => $gross,
-                'commission' => $commission,
-                'standalone_net' => round($gross - $commission, 3),
-                'components_due' => $componentsDue,
-                'owed' => round($gross - $commission + $componentsDue, 3),
+                'standalone_gross' => $sumOf('standalone_gross'),
+                'commission' => $sumOf('commission'),
+                'standalone_net' => $sumOf('standalone_net'),
+                'components_due' => $sumOf('components_due'),
+                'owed' => $sumOf('owed'),
             ],
             'edits' => $edits,
         ];

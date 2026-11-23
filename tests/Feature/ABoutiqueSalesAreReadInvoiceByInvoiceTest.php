@@ -23,9 +23,9 @@ use App\Support\Boutiques;
 use App\Support\Ledger;
 use App\Support\OrderCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Inertia\Testing\AssertableInertia as Assert;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -519,6 +519,29 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
 
     /* ═══════════ ٥ · الإلغاء والإرجاع ═══════════ */
 
+    public function test_a_cancelled_invoice_of_several_boutiques_keeps_its_lines_and_owes_nobody(): void
+    {
+        $order = $this->sell([$this->line($this->plain), $this->line($this->silver), $this->line($this->perfume), $this->line($this->duo)]);
+        $before = OrderItem::where('order_id', $order->id)->orderBy('id')->get(['name', 'quantity', 'price', 'total', 'boutique_id', 'boutique_rate'])->toArray();
+        $this->actingAs($this->owner);
+        OrderCorrection::cancel($order->fresh(), 'الزبون ألغى', boutiqueReturned: true);
+
+        $inv = $this->invoice($order);
+        $this->assertSame('cancelled', $inv['order']['invoice_state']);
+        $this->assertCount(4, $inv['lines'], 'البنودُ كما سُجّلت');
+        $this->assertTrue($inv['shares']['void']);
+        $this->assertEquals([0, 0], collect($inv['shares']['boutiques'])->pluck('owed')->all());
+        $this->assertEquals(0, $inv['shares']['shop']);
+        $this->assertEquals(0, $inv['totals']['owed']);
+
+        $s = $this->summary();
+        $this->assertEquals(0, $s['owed']);
+        $this->assertEquals(0, $s['standalone']['gross']);
+        $this->assertEquals(0, $s['components']['due']);
+        $this->assertEquals(18, $s['returns']['cancelled_gross'], 'المنفردان ٦ + ١٢ — يُعرضان ملغيَين لا مبيعًا');
+        $this->assertSame($before, OrderItem::where('order_id', $order->id)->orderBy('id')->get(['name', 'quantity', 'price', 'total', 'boutique_id', 'boutique_rate'])->toArray(), 'القراءةُ لا تمسّ سجلَّ البيع');
+    }
+
     public function test_a_cancelled_invoice_is_shown_cancelled_and_counted_nowhere(): void
     {
         $order = $this->sell([$this->line($this->silver), $this->line($this->set)]);
@@ -654,7 +677,7 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
 
     /* ═══════════ ٨ · التقريب ═══════════ */
 
-    public function test_rounding_is_three_places_per_line_and_the_summary_is_the_systems_own(): void
+    public function test_rounding_is_one_rule_in_whole_baisa_and_the_systems_difference_is_shown_not_hidden(): void
     {
         $this->lama->update(['commission_rate' => 12.5]);
         $odd = $this->product('قطعة كسريّة', 0.333, boutique: $this->lama->id);
@@ -666,15 +689,72 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertCount(7, $rows);
         foreach ($rows as $r) {
             $this->assertEquals(0.999, $r['amount']);
-            $this->assertEquals(0.125, $r['commission'], 'ثلاثُ خاناتٍ على البند');
+            $this->assertEquals(0.125, $r['commission'], '٠٫١٢٤٨٧٥ ← أقربُ بيسة');
             $this->assertEquals(0.874, $r['net']);
         }
 
         $s = $this->summary();
-        $totals = Boutiques::soldTotals($this->shop->id, $this->lama, Carbon::parse('2027-02-01'), null, null, Carbon::parse('2027-02-28 23:59:59'));
-        $this->assertEquals($totals['commission'], $s['standalone']['commission'], 'الملخّصُ هو `soldTotals` نفسُها');
         $this->assertEquals(6.993, $s['standalone']['gross']);
-        $this->assertLessThanOrEqual(0.0035 + 1e-9, abs($rows->sum('commission') - $s['standalone']['commission']), 'الفرقُ بين تقريب البنود والمجموع أجزاءٌ من الألف');
+        $this->assertEquals(0.875, $s['standalone']['commission'], 'الملخّصُ جمعُ عمولات البنود نفسِها — لا قاعدةٌ ثانية');
+        $this->assertEquals(6.118, $s['standalone']['net']);
+        $this->assertEquals(round($rows->sum('commission'), 3), $s['standalone']['commission']);
+
+        // ودالّتا النظام تُقرّبان على المجموع — فرقُ البيسة يُعرض بعينه
+        $this->assertEquals(0.875, $s['rounding']['lines_commission']);
+        $this->assertEquals(0.874, $s['rounding']['report_commission'], 'تقريرُ المبيعات: ٦٫٩٩٣ × ١٢٫٥٪ مرّةً واحدة');
+        $this->assertEquals(-0.001, $s['rounding']['report_difference']);
+        $this->assertEquals(6.118, $s['rounding']['lines_pending_net']);
+        $this->assertEquals(6.119, $s['rounding']['sheet_pending_net'], 'ورقةُ التسوية تقرّب الصنفَ مجموعًا');
+        $this->assertEquals(0.001, $s['rounding']['sheet_difference']);
+    }
+
+    public function test_half_a_baisa_rounds_up_without_floating_point_and_the_sheets_float_is_reported(): void
+    {
+        $this->lama->update(['commission_rate' => 12.5]);
+        $half = $this->product('نصف بيسة', 0.004, boutique: $this->lama->id);
+        $a = $this->product('قطعة ١٫٠٠٥', 1.005, boutique: $this->reem->id);
+        $b = $this->product('قطعة ١٫٠١٥', 1.015, boutique: $this->reem->id);
+        $big = $this->product('قطعة كبيرة', 99999.999, boutique: $this->reem->id);
+        $this->sell([$this->line($half), $this->line($a), $this->line($b), $this->line($big)]);
+
+        $rows = collect($this->rows()['rows'])->keyBy('product');
+        $this->assertEquals(0.001, $rows['نصف بيسة']['commission'], '٠٫٠٠٠٥ تمامًا ← نصفٌ إلى أعلى');
+        $this->assertEquals(0.003, $rows['نصف بيسة']['net']);
+        $this->assertEquals(0.101, $rows['قطعة ١٫٠٠٥']['commission'], '٠٫١٠٠٥ تمامًا — لا ٠٫١٠٠٤٩٩… العائمة');
+        $this->assertEquals(0.904, $rows['قطعة ١٫٠٠٥']['net']);
+        $this->assertEquals(0.102, $rows['قطعة ١٫٠١٥']['commission']);
+        $this->assertEquals(10000.0, $rows['قطعة كبيرة']['commission'], '٩٩٩٩٫٩٩٩٩ ← ١٠٠٠٠');
+        $this->assertEquals(89999.999, $rows['قطعة كبيرة']['net']);
+
+        $reem = $this->summary(['boutique' => (string) $this->reem->id]);
+        $this->assertEquals(10000.203, $reem['standalone']['commission'], '٠٫١٠١ + ٠٫١٠٢ + ١٠٠٠٠');
+        $this->assertEquals(round(1.005 + 1.015 + 99999.999 - 10000.203, 3), $reem['standalone']['net']);
+
+        // وورقةُ التسوية اليوم تضرب بالكسر العائم: ٠٫١٠٠ و٠٫١٠١ — بيستان للبوتيك فوق الحساب الصحيح.
+        // لا يُصلَح هنا (تغييرٌ في مبلغ الورقة) — يُعرض فرقًا ويُرفع قرارًا
+        $sheet = Boutiques::statement($this->shop->id, $this->reem->id, self::PERIOD);
+        $this->assertEquals(10000.201, $sheet['commission'], 'إن تغيّر هذا فقد أُصلحت الورقة — حدِّث الاختبار والتقرير');
+        $this->assertEquals(0.002, $reem['rounding']['sheet_difference']);
+        $this->assertEquals(round($sheet['net'], 3), $reem['rounding']['sheet_pending_net']);
+
+        // والفاتورةُ: الأنصبةُ بالبيسة تجمع إلى البنود بلا كسر
+        $inv = $this->invoice(Order::where('business_id', $this->shop->id)->latest('id')->firstOrFail());
+        $owed = collect($inv['shares']['boutiques'])->sum(fn ($p) => (int) round($p['owed'] * 1000));
+        $this->assertSame((int) round($inv['shares']['lines_total'] * 1000), $owed + (int) round($inv['shares']['shop'] * 1000));
+        $this->assertEquals(0.001 + 0.101 + 0.102 + 10000.0, $inv['totals']['commission']);
+        $this->assertTrue($inv['shares']['reconciles']);
+    }
+
+    public function test_an_old_line_without_a_rate_has_no_commission_and_the_rate_is_the_lines_own(): void
+    {
+        $order = $this->sell([$this->line($this->silver)]);
+        OrderItem::where('order_id', $order->id)->update(['boutique_rate' => null]);
+        $this->lama->update(['commission_rate' => 50]);
+
+        $r = $this->rows()['rows'][0];
+        $this->assertEquals(0, $r['commission']);
+        $this->assertEquals(6, $r['net']);
+        $this->assertEquals(0, $this->summary()['standalone']['commission'], 'نسبةُ اليوم لا تُسقَط على بيعٍ مضى');
     }
 
     /* ═══════════ ٩ · المرشّحات ═══════════ */
@@ -716,6 +796,19 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         // وفاتورةُ المتجر نفسِه بلا نصيبٍ لبوتيك لا تُقرأ من هذا الباب
         $plain = $this->sell([['id' => $this->plain->id, 'name' => 'باقة بسيطة', 'qty' => 1, 'price' => 20]]);
         $this->actingAs($this->owner)->getJson(route('admin.boutiques.sales.order', $plain->id))->assertNotFound();
+
+        // ورقمُ بوتيك الجار في رابط الشاشة نفسها لا يفتحها — ولا رقمٌ لا وجود له، ولا نصٌّ مكانه
+        $this->actingAs($this->owner)->get(route('admin.boutiques.show', $otherBoutique->id))->assertNotFound();
+        $this->actingAs($this->owner)->getJson('/admin/products/boutiques/sales/orders/'.($theirs->id + 100000))->assertNotFound();
+        $this->actingAs($this->owner)->getJson('/admin/products/boutiques/sales/orders/abc')->assertNotFound();
+        $this->assertSame(1, $this->rows(['boutique' => 'abc'])['total'], 'معرّفٌ غير رقميّ يُقرأ «الكلّ» من متجره');
+
+        // والجارُ لا يرى من متجر سعود شيئًا بالعكس
+        $mine = Order::where('business_id', $this->shop->id)->firstOrFail();
+        $this->actingAs($otherOwner)->getJson(route('admin.boutiques.sales.order', $mine->id))->assertNotFound();
+        $this->actingAs($otherOwner)->get(route('admin.boutiques.show', $this->lama->id))->assertNotFound();
+        $seen = $this->actingAs($otherOwner)->getJson(route('admin.boutiques.sales', ['period' => self::PERIOD, 'boutique' => (string) $this->lama->id]))->assertOk()->json();
+        $this->assertSame(['قطعة الجار'], collect($seen['rows'])->pluck('product')->all());
     }
 
     public function test_the_doors_answer_only_to_who_may_open_the_boutiques_screen(): void

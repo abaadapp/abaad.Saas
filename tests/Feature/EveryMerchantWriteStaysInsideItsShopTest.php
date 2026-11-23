@@ -38,6 +38,11 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
         // ومستحقّاتُ مكوّنات البوتيك مفتوحةٌ للمتجرين: بلاها تُردّ أبوابُها بـ404 قبل أن يُسأل عن الملكيّة
         \Illuminate\Support\Facades\DB::table('businesses')->whereIn('id', [$this->a->id, $this->b->id])
             ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true]);
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات مفتوحةٌ هنا (`ChannelAutomationsSwitch`): مقفلةً تردّ صفحتُها وأبوابُها ٤٠٤
+         * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
+         */
+        \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
     }
 
     /**
@@ -254,6 +259,9 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.close', ['chat' => 'whatsapp_chat']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendLink', ['chat' => 'whatsapp_chat']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendPaid', ['chat' => 'whatsapp_chat']],
+                ['أتمتة واتساب', 'put', 'admin.integrations.whatsapp.automations.update', ['automation' => 'channel_automation']],
+                ['أتمتة واتساب', 'post', 'admin.integrations.whatsapp.automations.status', ['automation' => 'channel_automation'], [], ['status' => 'paused']],
+                ['أتمتة واتساب', 'delete', 'admin.integrations.whatsapp.automations.destroy', ['automation' => 'channel_automation']],
             ],
             'website' => [
                 ['صفحات الموقع', 'put', 'admin.website.pages.update', ['id' => 'page']],

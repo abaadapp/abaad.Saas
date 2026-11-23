@@ -48,6 +48,12 @@ class EveryScreenOpensTest extends TestCase
          */
         $business->update(['boutiques_enabled' => true]);
 
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات مفتوحةٌ هنا (`ChannelAutomationsSwitch`): مقفلةً تردّ صفحتُها وأبوابُها ٤٠٤
+         * قبل أن يُسأل سؤالُ هذا الكنس — فتمرّ بلا حارس.
+         */
+        \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+
         $this->owner = $business->users()->where('role', 'admin')->firstOrFail();
 
         $platform = Business::create(['name' => 'المنصّة', 'type' => 'عام', 'status' => 'نشط']);

@@ -1553,14 +1553,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
         Route::post('/whatsapp/guided-orders', [WhatsAppOnboardingController::class, 'guidedOrders'])->name('whatsapp.guidedOrders');
 
-        /* ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`) */
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`).
+         * وحدُّها باسمها: حدٌّ بلا اسم يشارك عدّادَ كلّ حدٍّ بلا اسمٍ للمستخدم نفسه (حدُّ الحزم خمسٌ في الساعة).
+         */
         Route::get('/whatsapp/automations', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'index'])->name('whatsapp.automations');
         Route::post('/whatsapp/automations', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'store'])
-            ->middleware('throttle:30,1')->name('whatsapp.automations.store');
+            ->middleware('throttle:30,1,whatsapp-automations')->name('whatsapp.automations.store');
         Route::put('/whatsapp/automations/{automation}', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'update'])
-            ->whereNumber('automation')->middleware('throttle:60,1')->name('whatsapp.automations.update');
+            ->whereNumber('automation')->middleware('throttle:60,1,whatsapp-automations')->name('whatsapp.automations.update');
         Route::post('/whatsapp/automations/{automation}/status', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'status'])
-            ->whereNumber('automation')->middleware('throttle:60,1')->name('whatsapp.automations.status');
+            ->whereNumber('automation')->middleware('throttle:60,1,whatsapp-automations')->name('whatsapp.automations.status');
         Route::delete('/whatsapp/automations/{automation}', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'destroy'])
             ->whereNumber('automation')->name('whatsapp.automations.destroy');
 

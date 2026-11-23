@@ -67,6 +67,8 @@ interface Props {
     catalog: { rows: PickRow[]; more: boolean };
     /** بوتيكاتُ المتجر لمُرشِّح «مبيعات البوتيك وفواتيره» */
     boutiqueOptions?: { value: number; label: string }[];
+    /** القسمُ لصاحب المتجر ومن أذن له بالمال — والخادمُ يردّ غيرهما أيضًا */
+    canSeeSales?: boolean;
     q: string;
 }
 
@@ -77,7 +79,7 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, settlement, history, products, catalog, q, ledger, returns, context, boutiqueOptions } =
+    const { boutique, statement, period, periods, settlement, history, products, catalog, q, ledger, returns, context, boutiqueOptions, canSeeSales } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -258,14 +260,16 @@ export default function BoutiqueShow() {
                 مبيعاتُ البوتيك وفواتيرُه — كلُّ بيعٍ بفاتورته: منفردًا، أو قطعةً
                 داخل منتج المتجر. وشهرُها شهرُ الشاشة نفسُه: مُبدِّلٌ واحد للصفحة.
             */}
-            <SalesPanel
-                boutiqueId={boutique.id}
-                boutiques={boutiqueOptions ?? [{ value: boutique.id, label: boutique.name }]}
-                period={period}
-                periods={periods}
-                onPeriodChange={go}
-                currency={currency}
-            />
+            {canSeeSales && (
+                <SalesPanel
+                    boutiqueId={boutique.id}
+                    boutiques={boutiqueOptions?.length ? boutiqueOptions : [{ value: boutique.id, label: boutique.name }]}
+                    period={period}
+                    periods={periods}
+                    onPeriodChange={go}
+                    currency={currency}
+                />
+            )}
 
             {/*
                 أصنافُ البوتيك — ما يحمله اليوم، لا ما بِيع منه في شهر.

@@ -1,7 +1,7 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import SalesPanel, { salesQuery, type SaleRow, type SalesPage, type SalesSummary } from '@/Pages/Admin/Boutiques/SalesPanel';
+import SalesPanel, { salesQuery, type InvoiceDetails, type SaleRow, type SalesPage, type SalesSummary } from '@/Pages/Admin/Boutiques/SalesPanel';
 
 /* قائمةُ Radix لا تُختار في jsdom — فتُرسم قائمةً أصليّة بالعقد نفسِه */
 vi.mock('@/Components/Field', async () => {
@@ -49,7 +49,7 @@ const row = (over: Partial<SaleRow> = {}): SaleRow => ({
 });
 
 const summary: SalesSummary = {
-    standalone: { gross: 12, commission: 2.4, net: 9.6, quantity: 2, lines: 1, orders: 1 },
+    standalone: { gross: 12, commission: 2.4, net: 9.6, quantity: 2, lines: 1, orders: 1, taxed_orders: 0 },
     components: { bundle: 6, addon: 0, due: 6, quantity: 1 },
     bundles: { lines: 1, revenue: 20, boutiques_due: 6, shop_remaining: 14 },
     owed: 15.6,
@@ -211,33 +211,69 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(table.parentElement!.className).toContain('md:block');
     });
 
-    it('تفاصيلُ الفاتورة: للبوتيكات ستّة، ويبقى للمتجر أربعة عشر قبل الخصم', async () => {
-        respond = (url) => {
-            if (url.includes('summary')) return summary;
-            if (url.includes('sales.order')) {
-                return {
-                    order: { id: 11, number: 'INV-0011', ordered_at: '2027-02-10 10:00', status: 'مكتمل', invoice_state: 'active', subtotal: 20, discount: 5, total: 15, other_lines: 1 },
-                    lines: [{
-                        id: 1, name: 'طقم الفضّة', variant: null, quantity: 1, price: 20, total: 20, addons_total: 0, boutique: null,
-                        pieces: [{ boutique: 'بوتيك لمى', product: 'قطعة فضّة', type: 'bundle', addon: null, quantity: 1, unit_price: 6, amount: 6, credited: 0, kept_state: null, settlement: null, settle_state: 'pending' }],
-                        dues: 6, shop_remaining: 14,
-                    }],
-                    totals: { standalone_gross: 0, commission: 0, standalone_net: 0, components_due: 6, owed: 6 },
-                    edits: [], can_open: false, url: null,
-                };
-            }
-            return page([row()]);
-        };
+    const invoice = (over: Partial<InvoiceDetails['order']> = {}, shares: Partial<InvoiceDetails['shares']> = {}): InvoiceDetails => ({
+        order: { id: 11, number: 'INV-0011', ordered_at: '2027-02-10 10:00', status: 'مكتمل', invoice_state: 'active', subtotal: 40, discount: 5, tax: 0, delivery_fee: 0, total: 35, tax_basis: 'none', ...over },
+        lines: [
+            {
+                id: 1, name: 'طقم الفضّة', variant: null, quantity: 1, price: 20, total: 20, addons_total: 0, boutique: null,
+                pieces: [{ boutique: 'بوتيك لمى', product: 'قطعة فضّة', type: 'bundle', addon: null, quantity: 1, unit_price: 6, amount: 6, credited: 0, kept_state: null, settlement: null, settle_state: 'pending' }],
+                dues: 6, shop_remaining: 14, shop_share: 14,
+            },
+            { id: 2, name: 'باقة بسيطة', variant: null, quantity: 1, price: 20, total: 20, addons_total: 0, boutique: null, pieces: [], dues: 0, shop_remaining: null, shop_share: 20 },
+        ],
+        shares: {
+            boutiques: [{ id: 5, name: 'بوتيك لمى', standalone_gross: 0, commission: 0, standalone_net: 0, components_due: 6, owed: 6 }],
+            shop: 34, lines_total: 40, reconciles: true, ...shares,
+        },
+        totals: { standalone_gross: 0, commission: 0, standalone_net: 0, components_due: 6, owed: 6 },
+        edits: [], can_open: false, url: null,
+    });
+
+    const openInvoice = async (data: InvoiceDetails) => {
+        respond = (url) => (url.includes('summary') ? summary : url.includes('sales.order') ? data : page([row()]));
         mount();
         const table = await screen.findByTestId('boutique-sales-table');
         fireEvent.click(within(table).getByText('INV-0011'));
-        const box = await screen.findByTestId('boutique-invoice');
+        return screen.findByTestId('boutique-invoice');
+    };
+
+    it('تفاصيلُ الفاتورة: بنودُها كلُّها، ونصيبُ كلّ جهةٍ يجمع إلى مجموع البنود', async () => {
+        const box = await openInvoice(invoice());
         expect(calls).toContain('/admin.boutiques.sales.order/11');
-        expect(box.textContent).toContain('خصم 5.000 ر.ع يتحمّله المتجر');
         expect(box.textContent).toContain('ويبقى للمتجر من إيراد البند 14.000');
-        expect(box.textContent).toContain('و1 بند آخر لا نصيب فيه لبوتيك');
+        expect(box.textContent).toContain('منتج المتجر — لا نصيب فيه لبوتيك');
+        const header = screen.getByTestId('boutique-invoice-header');
+        expect(header.textContent).toContain('خصم الفاتورة (على المتجر)');
+        expect(header.textContent).toContain('35.000');
+        const shares = screen.getByTestId('boutique-invoice-shares');
+        expect(shares.textContent).toContain('بوتيك لمى');
+        expect(shares.textContent).toContain('6.000');
+        expect(shares.textContent).toContain('34.000');
+        expect(shares.textContent).toContain('40.000');
+        expect(screen.queryByTestId('boutique-invoice-mismatch')).toBeNull();
         // ومن لا يملك قسم المبيعات لا يُعطى رابطَ الفاتورة الكاملة
         expect(screen.queryByText('فتح الفاتورة كاملة')).toBeNull();
+    });
+
+    it('الضريبةُ ضمن الأسعار تُقال، والفاتورةُ التي لا تطابق تُراجَع ولا تُعتمد', async () => {
+        const inside = await openInvoice(invoice({ tax: 1.286, tax_basis: 'inside', total: 27 }));
+        expect(screen.getByTestId('boutique-invoice-header').textContent).toContain('الضريبة (ضمن الأسعار)');
+        expect(inside.textContent).toContain('وهو هنا شامل الضريبة');
+        cleanup();
+
+        await openInvoice(invoice({ tax_basis: 'unknown' }, { reconciles: false }));
+        expect(screen.getByTestId('boutique-invoice-mismatch').textContent).toContain('راجعها قبل اعتماد الأنصبة');
+    });
+
+    it('الملخّصُ يقول إنّ ما قبل الورقة ليس تسويةً نهائية، وينبّه على فواتير الضريبة', async () => {
+        const first = mount();
+        expect((await screen.findByTestId('boutique-not-final-note')).textContent).toContain('وليست تسوية نهائية');
+        expect(screen.queryByTestId('boutique-tax-note')).toBeNull();
+        first.unmount();
+
+        respond = (url) => (url.includes('summary') ? { ...summary, standalone: { ...summary.standalone, taxed_orders: 3 } } : page([]));
+        mount();
+        expect((await screen.findByTestId('boutique-tax-note')).textContent).toContain('في هذا الشهر 3 فاتورة فيها ضريبة');
     });
 
     it('خطأُ الخادم يُقال ولا يُعرض صفرًا', async () => {

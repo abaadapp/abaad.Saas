@@ -63,7 +63,7 @@ export interface SalesPage {
 }
 
 export interface SalesSummary {
-    standalone: { gross: number; commission: number; net: number; quantity: number; lines: number; orders: number };
+    standalone: { gross: number; commission: number; net: number; quantity: number; lines: number; orders: number; taxed_orders: number };
     components: { bundle: number; addon: number; due: number; quantity: number };
     bundles: { lines: number; revenue: number; boutiques_due: number; shop_remaining: number };
     owed: number;
@@ -87,7 +87,9 @@ interface Piece {
 export interface InvoiceDetails {
     order: {
         id: number; number: string; ordered_at: string | null; status: string; invoice_state: InvoiceState;
-        subtotal: number; discount: number; total: number; other_lines: number;
+        subtotal: number; discount: number; tax: number; delivery_fee: number; total: number;
+        /** أين الضريبة من أسعار البنود — مقروءةً من الفاتورة نفسها */
+        tax_basis: 'none' | 'inside' | 'added' | 'unknown';
     };
     lines: {
         id: number; name: string; variant: string | null; quantity: number; price: number; total: number; addons_total: number;
@@ -95,7 +97,14 @@ export interface InvoiceDetails {
         pieces: Piece[];
         dues: number;
         shop_remaining: number | null;
+        shop_share: number;
     }[];
+    shares: {
+        boutiques: { id: number; name: string; standalone_gross: number; commission: number; standalone_net: number; components_due: number; owed: number }[];
+        shop: number;
+        lines_total: number;
+        reconciles: boolean;
+    };
     totals: { standalone_gross: number; commission: number; standalone_net: number; components_due: number; owed: number };
     edits: { kind: string; subject: string | null; qty_before: number | null; qty_after: number | null; reason: string | null; at: string | null }[];
     can_open: boolean;
@@ -351,6 +360,14 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                         tone="strong"
                     />
                 </div>
+                <p className="mt-2 text-[12px] leading-5 text-[#6b7280]" data-testid="boutique-not-final-note">
+                    {t('المبالغ قبل صدور ورقة التسوية للمتابعة وليست تسوية نهائية — المعتمد ما في ورقة التسوية بعد مراجعتها.')}
+                </p>
+                {s.standalone.taxed_orders > 0 && (
+                    <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-tax-note">
+                        {t('في هذا الشهر :n فاتورة فيها ضريبة. العمولة محسوبة من مبلغ البند كما سُجّل: شامل الضريبة إن كانت الأسعار شاملة، وقبلها إن كانت مضافة. هذه السياسة القائمة ولم تُعتمد بعد — راجعها قبل اعتبار هذه المبالغ نهائية.', { n: number(s.standalone.taxed_orders) })}
+                    </p>
+                )}
                 {s.pieces !== 'on' && (
                     <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-pieces-note">
                         {s.pieces === 'taxed'
@@ -551,9 +568,24 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                         <div className="flex flex-wrap items-center gap-2 text-[#6b7280]">
                             <span className="tabular-nums">{data.order.ordered_at}</span>
                             <InvoiceStateBadge row={{ invoice_state: data.order.invoice_state, order_status: data.order.status }} />
-                            <span>{t('إجمالي الفاتورة :total', { total: fmt(data.order.total) })}</span>
-                            {data.order.discount > 0 && <span>{t('خصم :amount يتحمّله المتجر', { amount: fmt(data.order.discount) })}</span>}
                         </div>
+
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-[10px] bg-[#fafafa] p-3 tabular-nums sm:grid-cols-3" data-testid="boutique-invoice-header">
+                            <div><dt className="text-[12px] text-[#6b7280]">{t('مجموع البنود')}</dt><dd>{fmt(data.shares.lines_total)}</dd></div>
+                            {data.order.discount > 0 && (
+                                <div><dt className="text-[12px] text-[#6b7280]">{t('خصم الفاتورة (على المتجر)')}</dt><dd>−{fmt(data.order.discount)}</dd></div>
+                            )}
+                            {data.order.tax > 0 && (
+                                <div>
+                                    <dt className="text-[12px] text-[#6b7280]">{data.order.tax_basis === 'inside' ? t('الضريبة (ضمن الأسعار)') : t('الضريبة (مضافة)')}</dt>
+                                    <dd>{fmt(data.order.tax)}</dd>
+                                </div>
+                            )}
+                            {data.order.delivery_fee > 0 && (
+                                <div><dt className="text-[12px] text-[#6b7280]">{t('التوصيل')}</dt><dd>{fmt(data.order.delivery_fee)}</dd></div>
+                            )}
+                            <div><dt className="text-[12px] text-[#6b7280]">{t('إجمالي الفاتورة')}</dt><dd className="font-semibold text-[#111]">{fmt(data.order.total)}</dd></div>
+                        </dl>
 
                         {data.lines.map((l) => (
                             <div key={l.id} className="rounded-[10px] border border-[var(--ui-border,#e8e8e8)] p-3">
@@ -567,6 +599,10 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                         {l.addons_total > 0 && <> + {t('إضافات :amount', { amount: fmt(l.addons_total) })}</>}
                                     </span>
                                 </div>
+
+                                {!l.boutique && l.pieces.length === 0 && (
+                                    <p className="mt-1 text-[12px] text-[#6b7280]">{t('منتج المتجر — لا نصيب فيه لبوتيك')}</p>
+                                )}
 
                                 {l.boutique && (
                                     <p className="mt-1 text-[#4b4b4b]">
@@ -606,15 +642,49 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                             </div>
                         ))}
 
-                        {data.order.other_lines > 0 && (
-                            <p className="text-[12px] text-[#9ca3af]">{t('و:n بند آخر لا نصيب فيه لبوتيك', { n: number(data.order.other_lines) })}</p>
+                        <div className="rounded-[10px] border border-[var(--ui-border,#e8e8e8)]" data-testid="boutique-invoice-shares">
+                            <p className="border-b border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] font-semibold text-[#4b4b4b]">
+                                {t('نصيب كل جهة من بنود الفاتورة')}
+                            </p>
+                            <ul className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                {data.shares.boutiques.map((b) => (
+                                    <li key={b.id} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+                                        <span>
+                                            {b.name}
+                                            <span className="block text-[12px] text-[#6b7280]">
+                                                {t('صافي المنفرد :net + مستحق القطع :pieces', { net: fmt(b.standalone_net), pieces: fmt(b.components_due) })}
+                                            </span>
+                                        </span>
+                                        <span className="font-medium tabular-nums text-[#6d28d9]">{fmt(b.owed)}</span>
+                                    </li>
+                                ))}
+                                <li className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+                                    <span>
+                                        {t('المتجر')}
+                                        <span className="block text-[12px] text-[#6b7280]">{t('منتجاته وعمولته وباقي باقاته — قبل خصم الفاتورة')}</span>
+                                    </span>
+                                    <span className="font-medium tabular-nums text-[#047857]">{fmt(data.shares.shop)}</span>
+                                </li>
+                                <li className="flex justify-between gap-2 bg-[#fafafa] px-3 py-2 font-semibold tabular-nums">
+                                    <span>{t('مجموع البنود')}</span>
+                                    <span>{fmt(data.shares.lines_total)}</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        {!data.shares.reconciles && (
+                            <p className="rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="boutique-invoice-mismatch">
+                                {t('بنود الفاتورة لا تطابق إجماليها المسجّل — راجعها قبل اعتماد الأنصبة.')}
+                            </p>
                         )}
 
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            <Tile label={t('صافي المنفرد للبوتيك')} value={fmt(data.totals.standalone_net)} tone="theirs" />
-                            <Tile label={t('مستحق القطع')} value={fmt(data.totals.components_due)} tone="theirs" />
-                            <Tile label={t('للبوتيكات من هذه الفاتورة')} value={fmt(data.totals.owed)} tone="strong" />
-                        </div>
+                        <p className="text-[12px] leading-5 text-[#6b7280]">
+                            {data.order.tax_basis === 'inside'
+                                ? t('عمولة المتجر محسوبة من مبلغ البند كما سُجّل، وهو هنا شامل الضريبة. الخصم والتوصيل لا يُوزَّعان على الجهات.')
+                                : data.order.tax_basis === 'added'
+                                  ? t('عمولة المتجر محسوبة من مبلغ البند قبل الضريبة المضافة. الخصم والضريبة والتوصيل لا تُوزَّع على الجهات.')
+                                  : t('الخصم والتوصيل لا يُوزَّعان على الجهات. والأنصبة للمتابعة حتى تصدر ورقة التسوية وتُراجع.')}
+                        </p>
 
                         {data.edits.length > 0 && (
                             <div>

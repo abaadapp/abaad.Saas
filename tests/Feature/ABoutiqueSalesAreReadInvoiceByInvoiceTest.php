@@ -23,6 +23,7 @@ use App\Support\Boutiques;
 use App\Support\Ledger;
 use App\Support\OrderCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -335,6 +336,65 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertEquals(['standalone_gross' => 6, 'commission' => 1.2, 'standalone_net' => 4.8, 'components_due' => 6, 'owed' => 10.8], $inv['totals']);
     }
 
+    public function test_a_shop_product_and_a_boutique_piece_in_one_invoice_each_get_their_share(): void
+    {
+        $order = $this->sell([$this->line($this->plain), $this->line($this->silver, 2)]);
+
+        $rows = $this->rows()['rows'];
+        $this->assertCount(1, $rows, 'منتجُ المتجر ليس صفًّا في مبيعات البوتيك');
+        $this->assertEquals(12, $rows[0]['amount']);
+
+        $inv = $this->invoice($order);
+        $this->assertCount(2, $inv['lines'], 'الفاتورةُ ببنودها كلّها');
+        $shopLine = collect($inv['lines'])->firstWhere('name', 'باقة بسيطة');
+        $this->assertNull($shopLine['boutique']);
+        $this->assertEquals(20, $shopLine['shop_share']);
+        $this->assertEquals(2.4, collect($inv['lines'])->firstWhere('name', 'قطعة فضّة')['shop_share'], 'العمولةُ وحدها للمتجر من بند البوتيك');
+
+        $this->assertEquals([[
+            'id' => $this->lama->id, 'name' => 'بوتيك لمى', 'standalone_gross' => 12, 'commission' => 2.4,
+            'standalone_net' => 9.6, 'components_due' => 0, 'owed' => 9.6,
+        ]], $inv['shares']['boutiques']);
+        $this->assertEquals(22.4, $inv['shares']['shop']);
+        $this->assertEquals(32, $inv['shares']['lines_total']);
+        $this->assertTrue($inv['shares']['reconciles']);
+        $this->assertEquals($inv['order']['subtotal'], $inv['shares']['lines_total']);
+        $this->assertEquals(32, $inv['order']['total'], 'إجماليُّ الفاتورة كما سُجّل — لا يُضاعف ولا يُعاد حسابه');
+        $this->assertSame('none', $inv['order']['tax_basis']);
+    }
+
+    public function test_pieces_of_several_boutiques_in_one_invoice_are_each_their_own_and_the_invoice_is_never_counted_twice(): void
+    {
+        $order = $this->sell([$this->line($this->silver), $this->line($this->perfume), $this->line($this->duo)]);
+
+        $rows = collect($this->rows()['rows']);
+        $this->assertCount(4, $rows, 'منفردان وقطعتا الطقم');
+        $this->assertSame([$order->number], $rows->pluck('order_number')->unique()->values()->all());
+
+        $inv = $this->invoice($order);
+        $shares = collect($inv['shares']['boutiques'])->keyBy('name');
+        $this->assertEquals(['standalone_gross' => 6, 'commission' => 1.2, 'standalone_net' => 4.8, 'components_due' => 6, 'owed' => 10.8],
+            collect($shares['بوتيك لمى'])->only(['standalone_gross', 'commission', 'standalone_net', 'components_due', 'owed'])->all());
+        $this->assertEquals(['standalone_gross' => 12, 'commission' => 1.2, 'standalone_net' => 10.8, 'components_due' => 12, 'owed' => 22.8],
+            collect($shares['بوتيك ريم'])->only(['standalone_gross', 'commission', 'standalone_net', 'components_due', 'owed'])->all());
+        $this->assertEquals(14.4, $inv['shares']['shop'], 'عمولتان ٢٫٤ + باقي الطقم ١٢');
+        $this->assertEquals(48, $inv['shares']['lines_total']);
+        $this->assertEquals(48, round($inv['shares']['shop'] + $shares->sum('owed'), 3), 'مجموعُ الجهات = مجموعُ البنود');
+        $this->assertTrue($inv['shares']['reconciles']);
+
+        // والملخّصُ لكلّ بوتيكٍ وحده يجمع إلى ملخّص الكلّ — لا يدخل الطقمُ مرّتين
+        $all = $this->summary();
+        $lama = $this->summary(['boutique' => (string) $this->lama->id]);
+        $reem = $this->summary(['boutique' => (string) $this->reem->id]);
+        $this->assertEquals(10.8, $lama['owed']);
+        $this->assertEquals(22.8, $reem['owed']);
+        $this->assertEquals(33.6, $all['owed']);
+        $this->assertEquals(18, $all['standalone']['gross']);
+        $this->assertEquals(18, $all['components']['due']);
+        $this->assertEquals(1, $all['bundles']['lines'], 'الطقمُ بندٌ واحد ولو فيه بوتيكان');
+        $this->assertEquals(30, $all['bundles']['revenue']);
+    }
+
     /* ═══════════ ٣ · اللقطة ═══════════ */
 
     public function test_a_price_or_rate_changed_after_the_sale_changes_nothing_that_was_sold(): void
@@ -407,6 +467,54 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         Business::whereKey($this->shop->id)->update(['boutique_components_enabled' => false]);
         $this->assertSame('off', $this->summary()['pieces'], 'المفتاحُ مطفأ — يُقال ولا يُفتح');
         $this->assertSame(1, Business::whereKey($this->shop->id)->where('boutique_components_enabled', false)->count(), 'القراءةُ لا تُشعله');
+    }
+
+    public static function addedOrInside(): array
+    {
+        return ['ضريبةٌ مضافة' => ['exclusive', 'added'], 'ضريبةٌ ضمن الأسعار' => ['inclusive', 'inside']];
+    }
+
+    #[DataProvider('addedOrInside')]
+    public function test_an_invoice_with_a_discount_vat_and_a_partial_return_keeps_every_share_whole(string $mode, string $basis): void
+    {
+        Setting::where('business_id', $this->shop->id)->where('key', 'vat_enabled')->update(['value' => '1']);
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'vat_rate', 'value' => '5']);
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'tax_mode', 'value' => $mode]);
+        Coupon::create(['business_id' => $this->shop->id, 'code' => 'MINUS5', 'type' => 'مبلغ', 'value' => 5, 'active' => true]);
+
+        $order = $this->sell([$this->line($this->plain), $this->line($this->silver, 3)], ['coupon_code' => 'MINUS5']);
+        $this->actingAs($this->owner);
+        $piece = OrderItem::where('order_id', $order->id)->whereNotNull('boutique_id')->firstOrFail();
+        OrderCorrection::setQuantity($order->fresh(), $piece, 2, 'رُدّت قطعة');
+        $order->refresh();
+
+        $rows = $this->rows()['rows'];
+        $this->assertCount(1, $rows);
+        $this->assertSame('partial', $rows[0]['invoice_state']);
+        $this->assertEquals(2, $rows[0]['quantity']);
+        $this->assertEquals(12, $rows[0]['amount'], 'سعرُ البيع × ما بقي — لا الخصمُ ولا الضريبةُ تُقتطع منه');
+        $this->assertEquals(2.4, $rows[0]['commission']);
+        $this->assertEquals(9.6, $rows[0]['net']);
+
+        $s = $this->summary();
+        $st = Boutiques::statement($this->shop->id, $this->lama->id, self::PERIOD);
+        $this->assertEquals([$st['gross'], $st['commission'], $st['net']], [$s['standalone']['gross'], $s['standalone']['commission'], $s['standalone']['net']], 'كما يقرؤه كشفُ الحساب');
+        $this->assertEquals(12, $s['standalone']['gross']);
+        $this->assertSame(1, $s['standalone']['taxed_orders'], 'الشاشةُ تقول إنّ في الشهر فاتورةً بضريبة');
+
+        $inv = $this->invoice($order);
+        $this->assertSame($basis, $inv['order']['tax_basis'], 'موضعُ الضريبة يُقرأ من الفاتورة نفسها');
+        $this->assertEquals(5, $inv['order']['discount']);
+        $this->assertGreaterThan(0, $inv['order']['tax']);
+        $this->assertEquals(round((float) $order->total, 3), $inv['order']['total']);
+        $this->assertEquals(9.6, $inv['shares']['boutiques'][0]['owed']);
+        $this->assertTrue($inv['shares']['reconciles'], 'البنودُ بعد الإرجاع تطابق إجماليَّ الفاتورة');
+        $this->assertEquals(32, $inv['shares']['lines_total']);
+        // والمجموعُ الفرعيُّ المسجَّل صافٍ من الضريبة في الأسعار الشاملة — فلا يُقرأ منه موضعُها
+        $this->assertEquals($mode === 'inclusive' ? round(32 - (float) $order->tax, 3) : 32.0, round((float) $order->subtotal, 3));
+        $this->assertEquals($mode === 'inclusive' ? 27 : round(27 + (float) $order->tax, 3), $inv['order']['total']);
+        $this->assertEquals(22.4, $inv['shares']['shop'], 'الخصمُ والضريبةُ على الفاتورة لا على الجهات');
+        $this->assertNotEmpty($inv['edits']);
     }
 
     /* ═══════════ ٥ · الإلغاء والإرجاع ═══════════ */
@@ -617,11 +725,7 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
             'role' => 'cashier', 'status' => 'نشط', 'permissions' => ['pos']]);
         $order = Order::where('business_id', $this->shop->id)->firstOrFail();
 
-        foreach ([
-            route('admin.boutiques.sales', ['period' => self::PERIOD]),
-            route('admin.boutiques.sales.summary', ['period' => self::PERIOD]),
-            route('admin.boutiques.sales.order', $order->id),
-        ] as $url) {
+        foreach ($this->doors($order) as $url) {
             $res = $this->actingAs($cashier)->getJson($url);
             $this->assertContains($res->status(), [302, 403], 'بابٌ ماليٌّ مفتوحٌ لمن لا يملك قسم المنتجات: '.$url);
         }
@@ -632,6 +736,59 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->actingAs($bareOwner)->getJson(route('admin.boutiques.sales', ['period' => self::PERIOD]))->assertNotFound();
 
         $this->actingAs($this->owner)->get(route('admin.boutiques.show', $this->lama->id))->assertOk();
+    }
+
+    public function test_only_the_owner_and_who_he_trusted_with_money_read_the_section(): void
+    {
+        $order = $this->sell([$this->line($this->silver)]);
+        $staff = fn (string $email, string $role, ?array $permissions) => User::create([
+            'business_id' => $this->shop->id, 'name' => $email, 'email' => $email, 'password' => bcrypt('x'),
+            'role' => $role, 'status' => 'نشط', 'permissions' => $permissions,
+        ]);
+
+        $refused = [
+            // يفتح شاشةَ البوتيك بالمنتجات ليُدخل أصنافه — ولا يقرأ عمولةً ولا مستحقًّا
+            'موظفُ مبيعاتٍ بدوره' => $staff('sales@abaad.om', 'sales', null),
+            'صاحبُ بوتيكٍ أُعطي حسابًا لأصنافه' => $staff('lama@abaad.om', 'sales', ['dashboard', 'products']),
+            'محاسبٌ لا يفتح المنتجات' => $staff('accountant@abaad.om', 'accountant', null),
+        ];
+        foreach ($refused as $who => $user) {
+            foreach ($this->doors($order) as $url) {
+                $this->assertContains($this->actingAs($user)->getJson($url)->status(), [302, 403], $who.' قرأ '.$url);
+            }
+        }
+        foreach (['موظفُ مبيعاتٍ بدوره', 'صاحبُ بوتيكٍ أُعطي حسابًا لأصنافه'] as $who) {
+            $this->actingAs($refused[$who])->get(route('admin.boutiques.show', $this->lama->id))->assertOk()
+                ->assertInertia(fn (Assert $page) => $page->where('canSeeSales', false)->where('boutiqueOptions', []));
+        }
+
+        $allowed = [
+            'المالك' => $this->owner,
+            'المدير' => $staff('manager@abaad.om', 'manager', null),
+            'موظفٌ أذن له المالكُ بالمصروفات' => $staff('finance@abaad.om', 'sales', ['dashboard', 'products', 'expenses']),
+        ];
+        foreach ($allowed as $who => $user) {
+            foreach ($this->doors($order) as $url) {
+                $this->assertSame(200, $this->actingAs($user)->getJson($url)->status(), $who.' رُدّ عن '.$url);
+            }
+            $this->actingAs($user)->get(route('admin.boutiques.show', $this->lama->id))->assertOk()
+                ->assertInertia(fn (Assert $page) => $page->where('canSeeSales', true)->has('boutiqueOptions', 2));
+        }
+
+        // ومالكُ متجرٍ آخر — ولو كان صاحبَ بوتيكٍ هنا — لا يقرأ فاتورةً من هذا المتجر
+        [, $stranger] = $this->shopWith('متجر لمى', 'lama.shop@abaad.om');
+        $this->actingAs($stranger)->getJson(route('admin.boutiques.sales.order', $order->id))->assertNotFound();
+        $this->assertSame(0, $this->actingAs($stranger)->getJson(route('admin.boutiques.sales', ['period' => self::PERIOD]))->assertOk()->json('total'));
+    }
+
+    /** @return list<string> */
+    private function doors(Order $order): array
+    {
+        return [
+            route('admin.boutiques.sales', ['period' => self::PERIOD]),
+            route('admin.boutiques.sales.summary', ['period' => self::PERIOD]),
+            route('admin.boutiques.sales.order', $order->id),
+        ];
     }
 
     /* ═══════════ ١١ · قراءةٌ لا كتابة ═══════════ */
@@ -654,6 +811,47 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertSame(0, BoutiqueSettlement::count());
         $this->assertSame(1, BoutiqueComponentDue::count());
         $this->assertSame(0, Expense::count());
+    }
+
+    public function test_filters_search_and_pages_never_change_the_total(): void
+    {
+        foreach (range(1, 10) as $_) {
+            $this->sell([$this->line($this->silver)]);
+            $this->sell([$this->line($this->set)]);
+            $this->sell([$this->line($this->plain, 1, 1)]);
+        }
+
+        $base = $this->summary();
+        foreach ([['type' => 'standalone'], ['type' => 'bundle'], ['type' => 'addon'], ['settle' => 'pending'], ['settle' => 'paid'],
+            ['q' => 'فضّة'], ['q' => 'لا شيء بهذا الاسم'], ['page' => '2']] as $params) {
+            $this->assertEquals($base, $this->summary($params), 'الملخّصُ تغيّر بـ'.json_encode($params, JSON_UNESCAPED_UNICODE));
+        }
+
+        // ومشيُ الصفحات كلّها: كلُّ صفٍّ مرّةً واحدة، ومجموعُها مجموعُ الملخّص
+        $first = $this->rows();
+        $this->assertSame(30, $first['total']);
+        $this->assertSame(2, $first['last_page']);
+        $keys = [];
+        $amount = 0.0;
+        $byType = ['standalone' => 0.0, 'bundle' => 0.0, 'addon' => 0.0];
+        foreach (range(1, $first['last_page']) as $n) {
+            foreach ($this->rows(['page' => (string) $n])['rows'] as $r) {
+                $keys[] = $r['key'];
+                $amount += $r['amount'];
+                $byType[$r['type']] += $r['amount'];
+            }
+        }
+        $this->assertCount(30, $keys);
+        $this->assertCount(30, array_unique($keys), 'صفٌّ في صفحتين');
+        $this->assertEquals(round($base['standalone']['gross'] + $base['components']['due'], 3), round($amount, 3));
+        $this->assertEquals($base['standalone']['gross'], round($byType['standalone'], 3));
+        $this->assertEquals($base['components']['bundle'], round($byType['bundle'], 3));
+        $this->assertEquals($base['components']['addon'], round($byType['addon'], 3));
+
+        // والمُرشَّحُ يقصّ الصفوف ولا يقصّ الملخّص
+        $this->assertSame(10, $this->rows(['type' => 'standalone'])['total']);
+        $this->assertSame(30, $this->rows(['q' => 'فضّة'])['total'], 'القطعةُ باسمها: منفردةً وفي الطقم وإضافةً');
+        $this->assertSame(10, $this->rows(['q' => 'طقم'])['total'], 'وباسم المنتج الذي دخلته');
     }
 
     /* ═══════════ ١٢ · الأداء ═══════════ */
@@ -725,6 +923,7 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertEquals(30000, $s['bundles']['revenue']);
         $this->assertEquals(21000, $s['bundles']['shop_remaining']);
         $this->assertLessThan(60, $count);
+        $this->assertEquals($s, $this->summary(['type' => 'bundle', 'q' => 'BULK-1', 'page' => '7']), 'المُرشِّحُ والصفحةُ لا يغيّران الإجمالي');
 
         // سقفٌ واسع يكشف الانهيار لا التذبذب — والأرقامُ الفعليّة تُطبع في التقرير
         $this->assertLessThan(5.0, $rowsTime, 'صفحةُ الفواتير بطيئة');

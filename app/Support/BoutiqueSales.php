@@ -288,6 +288,18 @@ final class BoutiqueSales
     /* ═══════════ الملخّص ═══════════ */
 
     /**
+     * من يقرأ مبيعات البوتيك وعمولاتها ومستحقّاتها؟ صاحبُ المتجر ومن أذن له
+     * بالمال: صلاحيّةُ المصروفات — وهي التي يقرّر بها الشاشةُ نفسُها مرتجعاتِ
+     * البوتيك (`reviewReturn`)، ومستحقُّ البوتيك مصروفٌ عليه. فالمالكُ والمدير
+     * (`*`) يقرآن، ومن خُصّصت صلاحيّاتُه يدويًّا يقرأ إن أُعطي «المصروفات».
+     * ودورُ المبيعات والمخزون يفتحان شاشة البوتيك بالمنتجات ولا يقرآن هذا.
+     */
+    public static function mayRead(?\App\Models\User $user): bool
+    {
+        return $user !== null && $user->allows('expenses');
+    }
+
+    /**
      * حالُ حساب القطع داخل منتجات المتجر: `on` يُحسب، `off` المفتاحُ مطفأ،
      * `taxed` المتجرُ يحتسب الضريبة فيرفض النظامُ هذه البيعات (`BoutiqueDues`).
      * قراءةٌ فقط — لا تفتح شيئًا ولا تتجاوز رفضًا.
@@ -334,6 +346,13 @@ final class BoutiqueSales
 
         $sold = Order::where('business_id', $businessId)->sold()->whereBetween('ordered_at', [$from, $to])->select('id');
         $standalone['orders'] = $ids === [] ? 0 : (int) OrderItem::whereIn('order_id', $sold)
+            ->whereIn('boutique_id', $ids)->distinct()->count('order_id');
+        /*
+         * فواتيرُ الشهر التي فيها ضريبةٌ وبندُ بوتيك: عمولتُها من مبلغ البند كما
+         * سُجّل — شاملًا الضريبة إن كانت الأسعارُ شاملة. سياسةٌ قائمة لم تُعتمد
+         * بعد، فتُقال على الشاشة ولا تُغيَّر هنا.
+         */
+        $standalone['taxed_orders'] = $ids === [] ? 0 : (int) OrderItem::whereIn('order_id', (clone $sold)->where('tax', '>', 0))
             ->whereIn('boutique_id', $ids)->distinct()->count('order_id');
 
         // ── القطع: ما بقي مستحقًّا في شهر استحقاقه — المستحقُّ وعكسُه يتقاصّان
@@ -480,9 +499,6 @@ final class BoutiqueSales
         $lines = [];
         foreach ($items as $item) {
             $pieces = $dues->where('order_item_id', $item->id);
-            if ($item->boutique_id === null && $pieces->isEmpty()) {
-                continue;
-            }
 
             $line = [
                 'id' => (int) $item->id,
@@ -496,6 +512,8 @@ final class BoutiqueSales
                 'pieces' => [],
                 'dues' => 0.0,
                 'shop_remaining' => null,
+                // ما يبقى للمتجر من البند قبل خصم الفاتورة: كلُّه لبندٍ من منتجاته
+                'shop_share' => 0.0,
             ];
 
             if ($item->boutique_id !== null) {
@@ -542,8 +560,64 @@ final class BoutiqueSales
                 $line['shop_remaining'] = round($line['total'] + $line['addons_total'] - $line['dues'], 3);
             }
 
+            $line['shop_share'] = round($line['total'] + $line['addons_total'] - $line['dues'] - ($line['boutique']['net'] ?? 0), 3);
             $lines[] = $line;
         }
+
+        /*
+         * نصيبُ كلّ جهةٍ من بنود الفاتورة — لا من إجماليّها مرّتين.
+         * البوتيكُ: صافي ما بيع منه منفردًا + ثمنُ قطعه في منتجات المتجر.
+         * والمتجرُ: ما بقي من البنود بعدهم — منتجاتُه، وعمولتُه، وباقي باقاته.
+         * فمجموعُ الجهات = مجموعُ البنود بالبناء، والخصمُ والضريبةُ والتوصيل
+         * على الفاتورة كما سُجّلت لا يُوزَّع منها شيء.
+         */
+        $parties = [];
+        foreach ($standalone as $item) {
+            $id = (int) $item->boutique_id;
+            $parties[$id] ??= ['id' => $id, 'name' => (string) $item->boutique_name, 'standalone_gross' => 0.0, 'commission' => 0.0, 'standalone_net' => 0.0, 'components_due' => 0.0];
+            $rate = round((float) ($item->boutique_rate ?? 0), 2);
+            $c = round((float) $item->total * $rate / 100, 3);
+            $parties[$id]['standalone_gross'] += round((float) $item->total, 3);
+            $parties[$id]['commission'] += $c;
+            $parties[$id]['standalone_net'] += round((float) $item->total - $c, 3);
+        }
+        foreach ($dues->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL]) as $d) {
+            $id = (int) $d->boutique_id;
+            $parties[$id] ??= ['id' => $id, 'name' => (string) $d->boutique_name, 'standalone_gross' => 0.0, 'commission' => 0.0, 'standalone_net' => 0.0, 'components_due' => 0.0];
+            $parties[$id]['components_due'] += (float) $d->amount;
+        }
+        ksort($parties);
+        $parties = array_values(array_map(fn (array $p) => [
+            'id' => $p['id'], 'name' => $p['name'],
+            'standalone_gross' => round($p['standalone_gross'], 3),
+            'commission' => round($p['commission'], 3),
+            'standalone_net' => round($p['standalone_net'], 3),
+            'components_due' => round($p['components_due'], 3),
+            'owed' => round($p['standalone_net'] + $p['components_due'], 3),
+        ], $parties));
+        $linesTotal = round((float) collect($lines)->sum(fn ($l) => $l['total'] + $l['addons_total']), 3);
+        $boutiquesOwed = round((float) collect($parties)->sum('owed'), 3);
+        $tax = round((float) $order->tax, 3);
+        $fee = round((float) $order->delivery_fee, 3);
+        $total = round((float) $order->total, 3);
+        $discount = round((float) $order->discount, 3);
+        /*
+         * أين الضريبة من أسعار البنود؟ تُقرأ من الفاتورة نفسها لا من إعداد اليوم،
+         * ولا من «المجموع الفرعيّ»: في الأسعار الشاملة يُكتب صافيًا من الضريبة
+         * (بنودٌ ٣٢ ← مجموعٌ فرعيٌّ ٣٠٫٧١٤). فالسؤالُ مطابقةُ البنود للإجماليّ:
+         *   البنود − الخصم + التوصيل = الإجماليّ          ← داخل الأسعار (`inside`)
+         *   البنود − الخصم + الضريبة + التوصيل = الإجماليّ ← مضافةٌ فوقها (`added`)
+         * وما لم يطابق أيًّا منهما فـ`unknown`: تُراجع الفاتورة ولا يُعتمد نصيبُها.
+         * وعمولةُ البوتيك من مبلغ البند كما سُجّل — فهي تتبع هذا الموضع.
+         */
+        $inside = abs(round($linesTotal - $discount + $fee, 3) - $total) < 0.0005;
+        $added = abs(round($linesTotal - $discount + $tax + $fee, 3) - $total) < 0.0005;
+        $basis = match (true) {
+            $tax <= 0 => $inside ? 'none' : 'unknown',
+            $inside => 'inside',
+            $added => 'added',
+            default => 'unknown',
+        };
 
         $edits = OrderEdit::where('order_id', $order->id)->orderBy('id')->get()
             ->filter(fn (OrderEdit $e) => in_array($e->kind, [OrderEdit::LINE, OrderEdit::ADDON, OrderEdit::REPLACE_LINE, OrderEdit::CANCEL], true))
@@ -567,11 +641,20 @@ final class BoutiqueSales
                 'status' => (string) $order->status,
                 'invoice_state' => $state,
                 'subtotal' => round((float) $order->subtotal, 3),
-                'discount' => round((float) $order->discount, 3),
-                'total' => round((float) $order->total, 3),
-                'other_lines' => $items->count() - count($lines),
+                'discount' => $discount,
+                'tax' => $tax,
+                'delivery_fee' => $fee,
+                'total' => $total,
+                'tax_basis' => $basis,
             ],
             'lines' => $lines,
+            'shares' => [
+                'boutiques' => $parties,
+                'shop' => round($linesTotal - $boutiquesOwed, 3),
+                'lines_total' => $linesTotal,
+                // البنودُ تطابق إجماليَّ الفاتورة المسجَّل؟ — وإلّا فالفاتورةُ تُراجع ولا يُعتمد نصيبُها
+                'reconciles' => $basis !== 'unknown',
+            ],
             'totals' => [
                 'standalone_gross' => $gross,
                 'commission' => $commission,

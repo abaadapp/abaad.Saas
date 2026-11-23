@@ -140,9 +140,14 @@ class BoutiqueController extends Controller
                 'returns_terms_ref' => $boutique->returns_terms_ref,
             ],
             'statement' => $statement,
-            // بوتيكاتُ المتجر لمُرشِّح «مبيعات البوتيك وفواتيره» — تُقرأ صفحتُه بطلبها (`sales`)
-            'boutiqueOptions' => Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
-                ->get(['id', 'name'])->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => (string) $b->name])->all(),
+            /*
+             * «مبيعات البوتيك وفواتيره» لصاحب المتجر ومن أذن له بالمال وحده
+             * (`BoutiqueSales::mayRead`). ومن لا يملكه لا تصله قائمةُ البوتيكات
+             * ولا يُرسم له القسم — والأبوابُ الثلاثة تردّه هي أيضًا (٤٠٣).
+             */
+            'canSeeSales' => $seesSales = BoutiqueSales::mayRead(auth()->user()),
+            'boutiqueOptions' => $seesSales ? Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
+                ->get(['id', 'name'])->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => (string) $b->name])->all() : [],
             // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
             'returns' => $this->returnsOf((int) $business->id, $boutique),
             'period' => $period,
@@ -203,17 +208,26 @@ class BoutiqueController extends Controller
     /* ═══════════ مبيعاتُ البوتيك وفواتيرُه ═══════════ */
 
     /*
-     * ثلاثةُ أبوابٍ للقراءة وحدها، بحارس الشاشة نفسِه: المتجرُ يؤوي بوتيكات
-     * (`shop`)، وصلاحيّةُ المنتجات على المسار. وكلُّ استعلامٍ مقيَّدٌ بمتجر
-     * الجالس — والبوتيكُ والفاتورةُ من متجرٍ آخر يُقرآن «لا شيء»
-     * (`BoutiqueSales::filters` و`invoice`). ولا حسابَ لصاحب البوتيك في
-     * النظام أصلًا: الشاشةُ لصاحب المتجر ومن أذن له.
+     * ثلاثةُ أبوابٍ للقراءة وحدها. حارسُها ثلاثُ طبقات: المتجرُ يؤوي بوتيكات
+     * (`shop`)، وصلاحيّةُ المنتجات على المسار (لتُفتح شاشةُ البوتيك أصلًا)،
+     * ثمّ إذنُ المال (`BoutiqueSales::mayRead`) — فمن مُنح المنتجاتِ ليُدخل
+     * أصناف بوتيك، أو صاحبُ بوتيكٍ أُعطي حسابًا ليرتّب قطعه، لا يقرأ عمولاتٍ
+     * ولا مستحقّاتٍ ولا فواتير. وكلُّ استعلامٍ مقيَّدٌ بمتجر الجالس — والبوتيكُ
+     * والفاتورةُ من متجرٍ آخر يُقرآن «لا شيء» (`filters` و`invoice`).
      */
+
+    private function salesShop(): Business
+    {
+        $business = $this->shop();
+        abort_unless(BoutiqueSales::mayRead(auth()->user()), 403);
+
+        return $business;
+    }
 
     /** صفوفُ الفواتير — صفحةً صفحة من القاعدة */
     public function sales(Request $request)
     {
-        $business = $this->shop();
+        $business = $this->salesShop();
         $page = BoutiqueSales::rows((int) $business->id, BoutiqueSales::filters($request, (int) $business->id));
 
         return response()->json([
@@ -228,7 +242,7 @@ class BoutiqueController extends Controller
     /** ملخّصُ الشهر — للبوتيك المختار أو للكلّ */
     public function salesSummary(Request $request)
     {
-        $business = $this->shop();
+        $business = $this->salesShop();
 
         return response()->json(BoutiqueSales::summary((int) $business->id, BoutiqueSales::filters($request, (int) $business->id)));
     }
@@ -236,7 +250,7 @@ class BoutiqueController extends Controller
     /** فاتورةٌ بما لبوتيكاتها فيها — والكاملةُ من قسم المبيعات لمن يملكه */
     public function salesOrder(int $order)
     {
-        $business = $this->shop();
+        $business = $this->salesShop();
         $data = BoutiqueSales::invoice((int) $business->id, $order);
         abort_if($data === null, 404);
 

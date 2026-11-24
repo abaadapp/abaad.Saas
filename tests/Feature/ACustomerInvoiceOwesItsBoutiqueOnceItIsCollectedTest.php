@@ -245,6 +245,33 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
         $this->assertSame(0, BoutiqueInvoiceLine::count());
     }
 
+    /** وكلُّ واحدٍ من المانعين يكفي وحده: الفاتورةُ تغطّي طلبًا، أو البندُ مولودٌ من بند طلب */
+    public function test_each_of_the_two_guards_against_counting_an_order_again_stands_alone(): void
+    {
+        $this->actingAs($this->owner)->postJson('/pos/checkout', [
+            'items' => [['id' => $this->silver->id, 'name' => $this->silver->name, 'qty' => 2, 'price' => 6]],
+            'payment_method' => 'نقدي', 'client_uuid' => 'till-two-guards',
+        ])->assertOk();
+        $order = Order::with('items')->firstOrFail();
+
+        // تغطّي الطلبَ وبنودُها بلا رقم بنده
+        $covering = $this->invoice([[$this->silver, 2]], issue: false);
+        $covering->orders()->attach($order->id);
+        CustomerInvoices::issue($covering, $this->owner->id);
+        $this->assertSame(0, BoutiqueInvoiceLine::count(), 'فاتورةٌ تغطّي طلبًا كُتبت لها لقطة');
+
+        // ولا تغطّيه، وبندُها مولودٌ من بنده
+        $born = $this->invoice([[$this->silver, 2]], issue: false);
+        $born->items()->update(['order_item_id' => $order->items->first()->id]);
+        CustomerInvoices::issue($born, $this->owner->id);
+        $this->assertSame(0, BoutiqueInvoiceLine::count(), 'بندٌ بيع في طلبٍ كُتبت له لقطة');
+
+        foreach ([$covering, $born] as $invoice) {
+            $this->pay($invoice, 12);
+        }
+        $this->assertStands($this->lama, 9.6, 0.0, 'الطلبُ وحده');
+    }
+
     public function test_a_shops_addon_on_a_boutique_piece_and_the_shops_own_lines_are_the_shops(): void
     {
         $addon = \App\Models\Addon::create(['business_id' => $this->shop->id, 'name' => 'تغليف', 'price' => 3, 'active' => true, 'scope' => \App\Models\Addon::SCOPE_ALL]);

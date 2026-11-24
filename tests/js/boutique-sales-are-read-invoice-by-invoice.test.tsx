@@ -56,7 +56,7 @@ const summary: SalesSummary = {
     pieces: 'on',
     hosting: true,
     pieces_recorded: false,
-    rounding: { lines_commission: 2.4, report_commission: 2.4, report_difference: 0, lines_pending_net: 9.6, sheet_pending_net: 9.6, sheet_difference: 0 },
+    old_sheets: { count: 0, difference: 0 },
     settlement: { sheets: 0, issued: 0, paid: 0, unpaid: 0, remaining: 15.6, pending: { standalone: 9.6, components: 6, credit: 0, total: 15.6 } },
     returns: { notes: 0, amount: 0, reduced: 0, claims_open: 0, review: 0, shop: 0, component_credits: 0, cancelled_gross: 0 },
 };
@@ -412,22 +412,18 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(screen.getByTestId('boutique-invoice-mismatch').textContent).toContain('راجعها قبل اعتماد الأنصبة');
     });
 
-    it('فرقُ التقريب بين البنود ودالّتي النظام يُعرض بعينه — ولا يُعرض صفرًا', async () => {
+    it('ورقةٌ صدرت قبل توحيد التقريب يُقال فرقُها عن بنودها — ولا يُقال حين لا شيء', async () => {
         const first = mount();
         await screen.findByTestId('boutique-sales-summary');
         expect(screen.queryByTestId('boutique-rounding-note')).toBeNull();
         first.unmount();
 
-        respond = (url) => (url.includes('summary')
-            ? { ...summary, rounding: { lines_commission: 0.875, report_commission: 0.874, report_difference: -0.001, lines_pending_net: 6.118, sheet_pending_net: 6.119, sheet_difference: 0.001 } }
-            : page([]));
+        respond = (url) => (url.includes('summary') ? { ...summary, old_sheets: { count: 2, difference: 0.003 } } : page([]));
         mount();
-        const note = await screen.findByTestId('boutique-rounding-note');
-        expect(note.textContent).toContain('لم يُعدَّل أي مبلغ');
-        expect(note.textContent).toContain('0.875');
-        expect(note.textContent).toContain('0.874');
-        expect(note.textContent).toContain('6.119');
-        expect(note.textContent).toContain('المعتمد للدفع الورقة');
+        const note = (await screen.findByTestId('boutique-rounding-note')).textContent ?? '';
+        expect(note).toContain('2 ورقة');
+        expect(note).toContain('0.003');
+        expect(note).toContain('الورقة كما صدرت');
     });
 
     it('الفاتورةُ الملغاة تُعرض ببنودها ولا نصيبَ فيها', async () => {

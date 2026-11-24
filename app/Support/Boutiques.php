@@ -240,8 +240,8 @@ final class Boutiques
     /**
      * أرقامُ النطاق من بنوده — إجماليٌّ وعمولةٌ وصافٍ وكميّة.
      *
-     * والعمولةُ بنسبة كلّ بندٍ ساعةَ بيعه: `SUM(total × boutique_rate ÷ 100)`.
-     * ولأصناف المحلّ لا عمولةَ ولا مستحقّ — فهما صفر.
+     * والعمولةُ والصافي لكلّ بندٍ بنسبته ساعةَ بيعه ثمّ الجمع — `BoutiqueMoney::sql`، كما
+     * في الكشف والورقة. ولأصناف المحلّ لا عمولةَ ولا مستحقّ — فهما صفر.
      *
      * وللبوتيك معها بنودُه في فواتير العملاء بلا طلب — بلقطتها، وبيوم الفاتورة
      * (`BoutiqueInvoiceDues::sold`). وهي بلا قناة: تُقرأ حين لا تُختار قناة.
@@ -260,19 +260,17 @@ final class Boutiques
     ): array {
         $row = self::soldLines($businessId, $scope, $start, $end, $branchId, $channel)
             ->selectRaw('COALESCE(SUM(order_items.total), 0) as gross')
-            /*
-             * و`100.0` لا `100`: SQLite تقسم العددين الصحيحين قسمةً صحيحة — بندٌ
-             * باثني عشر بنسبة عشرين كانت عمولتُه ٢ لا ٢٫٤. وPostgreSQL تقسم
-             * عشريًّا في الحالين، فالإنتاجُ لم يتأثّر؛ والصحيحُ واحدٌ على المحرّكين.
-             */
-            ->selectRaw('COALESCE(SUM(order_items.total * COALESCE(order_items.boutique_rate, 0) / 100.0), 0) as commission')
+            // بيساتٌ صحيحة لكلّ بند: لا تقسم SQLite عددين صحيحين فتُسقط الكسر، ولا يُقرَّب المجموعُ مرّةً فيخالف الورقة
+            ->selectRaw('COALESCE(SUM('.BoutiqueMoney::sql()['commission'].'), 0) as commission_b')
+            ->selectRaw('COALESCE(SUM('.BoutiqueMoney::sql()['net'].'), 0) as net_b')
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
             ->selectRaw('COUNT(DISTINCT order_items.order_id) as order_count')
             ->selectRaw('COUNT(*) as line_count')
             ->toBase()->first();
 
         $gross = round((float) $row->gross, 3);
-        $commission = $scope === self::OWN ? 0.0 : round((float) $row->commission, 3);
+        $commission = $scope === self::OWN ? 0.0 : Baisa::toMoney((int) $row->commission_b);
+        $net = $scope === self::OWN ? 0.0 : Baisa::toMoney((int) $row->net_b);
 
         $sold = $scope === self::OWN || ($channel !== null && $channel !== '') ? null
             : BoutiqueInvoiceDues::sold($businessId, (int) $scope->id, $start, $end, $branchId);
@@ -286,7 +284,7 @@ final class Boutiques
         return [
             'gross' => $gross,
             'commission' => $commission,
-            'net' => $scope === self::OWN ? 0.0 : round($gross - $commission, 3),
+            'net' => round($net + ($invoiced['net'] ?? 0.0), 3),
             'quantity' => round((float) $row->quantity + ($invoiced['quantity'] ?? 0.0), 3),
             'orders' => (int) $row->order_count,
             'lines' => (int) $row->line_count + ($invoiced['lines'] ?? 0),
@@ -305,7 +303,7 @@ final class Boutiques
      * بوتيكٍ لا صنفَ له فيه.
      *
      * @param  array<int, array{product?: \App\Models\Product|null}>  $lines
-     * @return array<int, array{id: int, name: string, rate: float}|null>
+     * @return array<int, array{id: int, name: string, rate: float, vat: ?float}|null>
      */
     public static function attribute(int $businessId, array $lines): array
     {
@@ -319,6 +317,7 @@ final class Boutiques
 
         $boutiques = Boutique::where('business_id', $businessId)
             ->whereIn('id', $ids->all())->get()->keyBy('id');
+        $rule = BoutiqueMoney::rule($businessId);
 
         $out = [];
         foreach (array_values($lines) as $i => $l) {
@@ -329,6 +328,8 @@ final class Boutiques
                 // الاسمُ لقطةٌ كذلك: بوتيكٌ يُغادر ويُحذف لا يُفقد كشفًا صدر معناه
                 'name' => (string) $b->name,
                 'rate' => round((float) $b->commission_rate, 2),
+                // وما يُخرَج من سعره قبل العمولة — `null` في القاعدة القائمة (`BoutiqueMoney`)
+                'vat' => BoutiqueMoney::vatInside($businessId, $l['product'] ?? null, $rule),
             ];
         }
 
@@ -343,19 +344,20 @@ final class Boutiques
      *
      * وتكلفتُه صفرٌ: الأمانةُ لا تُكلّف المحلَّ شيئًا — انظر `CONSIGNED_COST`.
      *
-     * @param  array{id: int, name: string, rate: float}|null  $at
+     * @param  array{id: int, name: string, rate: float, vat?: ?float}|null  $at
      * @return array<string, mixed>
      */
     public static function itemColumns(?array $at, float $cost): array
     {
         if ($at === null) {
-            return ['boutique_id' => null, 'boutique_name' => null, 'boutique_rate' => null, 'cost' => $cost];
+            return ['boutique_id' => null, 'boutique_name' => null, 'boutique_rate' => null, 'boutique_vat_rate' => null, 'cost' => $cost];
         }
 
         return [
             'boutique_id' => $at['id'],
             'boutique_name' => $at['name'],
             'boutique_rate' => $at['rate'],
+            'boutique_vat_rate' => $at['vat'] ?? null,
             'cost' => self::CONSIGNED_COST,
         ];
     }
@@ -453,7 +455,7 @@ final class Boutiques
             ->orderBy('orders.ordered_at')
             ->get([
                 'order_items.product_id', 'order_items.name', 'order_items.variant_name',
-                'order_items.quantity', 'order_items.total', 'order_items.boutique_rate',
+                'order_items.quantity', 'order_items.total', 'order_items.boutique_rate', 'order_items.boutique_vat_rate',
                 'orders.ordered_at',
             ]);
 
@@ -484,40 +486,43 @@ final class Boutiques
                 'rate' => $rate,
                 'source' => self::FROM_ORDERS,
                 'quantity' => 0.0,
-                'gross' => 0.0,
-                'commission' => 0.0,
-                'net' => 0.0,
+                // بالبيسات حتّى تكتمل، ثمّ ريالات
+                'gross' => 0,
+                'vat' => 0,
+                'commission' => 0,
+                'net' => 0,
             ];
 
+            /*
+             * والتقريبُ على البند — ثمّ جمعُ بيساتٍ صحيحة (`BoutiqueMoney`).
+             *
+             * كان الصنفُ يُجمع ثمّ يُقرَّب بالكسر العائم: ورقةٌ لا يجمعها من يجمع بنودَها،
+             * وتقريرٌ يقرّب المجموعَ كلَّه فيقول غيرَهما. وصارت الثلاثةُ رقمًا واحدًا.
+             */
+            $part = BoutiqueMoney::item($r);
             $lines[$key]['quantity'] += (float) $r->quantity;
-            $lines[$key]['gross'] += (float) $r->total;
+            foreach (['gross', 'vat', 'commission', 'net'] as $k) {
+                $lines[$key][$k] += $part[$k];
+            }
         }
 
-        $gross = 0.0;
-        $commission = 0.0;
+        $totals = ['gross' => 0, 'vat' => 0, 'commission' => 0, 'net' => 0];
         $quantity = 0.0;
 
         foreach ($lines as $k => $l) {
-            // والتقريبُ على السطر لا على المجموع: السطرُ هو ما يُراجَع ويُجمَع بيدٍ
-            $lineGross = round($l['gross'], 3);
-            $lineCommission = round($lineGross * $l['rate'] / 100, 3);
-
-            $lines[$k]['gross'] = $lineGross;
-            $lines[$k]['commission'] = $lineCommission;
-            $lines[$k]['net'] = round($lineGross - $lineCommission, 3);
             $lines[$k]['quantity'] = round($l['quantity'], 3);
-
-            $gross += $lineGross;
-            $commission += $lineCommission;
             $quantity += $lines[$k]['quantity'];
+            foreach (array_keys($totals) as $sum) {
+                $totals[$sum] += $l[$sum];
+                $lines[$k][$sum] = Baisa::toMoney($l[$sum]);
+            }
         }
 
         /*
          * ═══ وبنودُ الفواتير بلقطتها — لا تُعاد حسبتُها هنا ═══
          *
-         * عمولةُ كلّ بندٍ وصافيه كُتبا ساعةَ الإصدار بالبيسة، فيُجمعان كما هما ناقصًا
-         * ما رُدّ. وسطرُها غيرُ سطر الطلبات ولو تشابه الصنفُ والنسبة: ذاك يُقرَّب على
-         * المجموع، وهذا مجموعُ ما قُرِّب.
+         * عمولةُ كلّ بندٍ وصافيه كُتبا ساعةَ الإصدار بالقاعدة نفسِها، فيُجمعان كما هما
+         * ناقصًا ما رُدّ. وسطرُها غيرُ سطر الطلبات: مصدرُه غيرُ مصدره.
          */
         foreach ($invoiced as $l) {
             $rate = round((float) $l->rate, 2);
@@ -530,21 +535,22 @@ final class Boutiques
                 'source' => self::FROM_INVOICES,
                 'quantity' => 0.0,
                 'gross' => 0.0,
+                'vat' => 0.0,
                 'commission' => 0.0,
                 'net' => 0.0,
             ];
-            $part = [
-                'quantity' => round((float) $l->quantity - (float) $l->returned_quantity, 3),
-                'gross' => round((float) $l->gross - (float) $l->returned_gross, 3),
-                'commission' => round((float) $l->commission - (float) $l->returned_commission, 3),
-                'net' => round((float) $l->net - (float) $l->returned_net, 3),
-            ];
-            foreach ($part as $k => $v) {
-                $lines[$key][$k] = round($lines[$key][$k] + $v, 3);
+            $left = round((float) $l->quantity - (float) $l->returned_quantity, 3);
+            $lines[$key]['quantity'] = round($lines[$key]['quantity'] + $left, 3);
+            $quantity += $left;
+            $part = [];
+            foreach (['gross', 'commission', 'net'] as $k) {
+                $part[$k] = BoutiqueMoney::baisa($l->{$k}) - BoutiqueMoney::baisa($l->{'returned_'.$k});
             }
-            $gross += $part['gross'];
-            $commission += $part['commission'];
-            $quantity += $part['quantity'];
+            $part['vat'] = $part['gross'] - $part['commission'] - $part['net'];
+            foreach ($part as $k => $v) {
+                $totals[$k] += $v;
+                $lines[$key][$k] = Baisa::toMoney(BoutiqueMoney::baisa($lines[$key][$k]) + $v);
+            }
         }
 
         $lines = array_values($lines);
@@ -575,12 +581,14 @@ final class Boutiques
             'partial' => ! self::isClosed($period),
             'lines' => $lines,
             'quantity' => round($quantity, 3),
-            'gross' => round($gross, 3),
-            'commission' => round($commission, 3),
-            'net' => round($gross - $commission, 3),
+            'gross' => Baisa::toMoney($totals['gross']),
+            // ضريبةٌ داخل الأسعار أُخرجت قبل العمولة — صفرٌ في القاعدة القائمة
+            'vat' => Baisa::toMoney($totals['vat']),
+            'commission' => Baisa::toMoney($totals['commission']),
+            'net' => Baisa::toMoney($totals['net']),
             'lines_count' => count($lines),
             'components' => $components,
-            'payable' => round($gross - $commission + $components['net'], 3),
+            'payable' => round(Baisa::toMoney($totals['net']) + $components['net'], 3),
             // وما صدرت فواتيرُه ولم يكتمل تحصيلُها — خبرٌ لا يُجمع: لا تحمله ورقةٌ بعد
             'awaiting' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::awaiting($businessId, $boutiqueId)),
             // وما حملته ورقةٌ ثمّ أُلغي تحصيلُ فاتورته — يُراجَع بيد
@@ -734,10 +742,13 @@ final class Boutiques
                 'covered_from' => $statement['from_at'],
                 'covered_to' => $statement['to_at'],
                 'gross' => $statement['gross'],
+                'vat' => $statement['vat'],
                 'commission' => $statement['commission'],
                 'net' => $statement['net'],
                 'lines_count' => $statement['lines_count'],
                 'kind' => BoutiqueSettlement::SETTLEMENT,
+                // ومرتجعُها بعدها يُحسب بقاعدتها (`BoutiqueReturns::share`)
+                'rounding' => BoutiqueMoney::LINE,
                 'components_due' => $components['due'],
                 'components_credit' => $components['credit'],
                 'components_net' => $components['net'],
@@ -808,9 +819,8 @@ final class Boutiques
      * للنشاط كلِّه ويُقال في تقرير الفروع «عامٌّ غير موزّع» — لا يُنسب إلى
      * فرعٍ لم يبعه.
      *
-     * وصافي الفرع يُحسب كما يُحسب الكشف: إجماليُّ الصنف ونسبتُه مقرّبًا على
-     * السطر (`statement`). وما يبقى من تقريب السطور — أجزاءٌ من الألف —
-     * يُضمّ إلى أكبر الفروع، فيساوي المجموعُ صافيَ الورقة بالبيسة.
+     * وصافي الفرع جمعُ صافي بنوده بالبيسة (`BoutiqueMoney`)، فيساوي مجموعُ الفروع صافيَ
+     * الورقة بالبناء.
      *
      * وبندُ فاتورة العميل بفرع فاتورته وصافيه كما كُتب.
      *
@@ -820,37 +830,24 @@ final class Boutiques
      */
     private static function branchScope(array $ids, array $invoiceLines, float $net): ?array
     {
-        $groups = [];
+        $mils = [];
         $rows = OrderItem::query()->whereIn('order_items.id', $ids)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->get(['orders.branch_id', 'order_items.product_id', 'order_items.name', 'order_items.variant_name', 'order_items.total', 'order_items.boutique_rate']);
-
-        foreach ($rows as $r) {
-            $rate = round((float) ($r->boutique_rate ?? 0), 2);
-            $key = ((int) $r->product_id).'|'.$r->name.'|'.($r->variant_name ?? '').'|'.$rate;
-            $branch = (int) ($r->branch_id ?? 0);
-
-            $groups[$branch][$key] ??= ['gross' => 0.0, 'rate' => $rate];
-            $groups[$branch][$key]['gross'] += (float) $r->total;
-        }
-
+            ->get(['orders.branch_id', 'order_items.total', 'order_items.boutique_rate', 'order_items.boutique_vat_rate']);
         $invoiced = $invoiceLines === [] ? collect() : BoutiqueInvoiceLine::whereIn('id', $invoiceLines)
             ->groupBy('branch_id')->selectRaw('branch_id, SUM(settled_net) as net')->get();
 
-        if (($groups === [] && $invoiced->isEmpty()) || isset($groups[0]) || $invoiced->contains(fn ($l) => $l->branch_id === null)) {
-            return null;
+        foreach ($rows as $r) {
+            $branch = (int) ($r->branch_id ?? 0);
+            $mils[$branch] = ($mils[$branch] ?? 0) + BoutiqueMoney::item($r)['net'];
+        }
+        foreach ($invoiced as $l) {
+            $branch = (int) ($l->branch_id ?? 0);
+            $mils[$branch] = ($mils[$branch] ?? 0) + BoutiqueMoney::baisa($l->net);
         }
 
-        $mils = [];
-        foreach ($invoiced as $l) {
-            $mils[(int) $l->branch_id] = Baisa::of((float) $l->net);
-        }
-        foreach ($groups as $branch => $lines) {
-            $mils[$branch] ??= 0;
-            foreach ($lines as $l) {
-                $gross = round($l['gross'], 3);
-                $mils[$branch] += (int) round(($gross - round($gross * $l['rate'] / 100, 3)) * 1000);
-            }
+        if ($mils === [] || isset($mils[0])) {
+            return null;
         }
 
         if (count($mils) === 1) {

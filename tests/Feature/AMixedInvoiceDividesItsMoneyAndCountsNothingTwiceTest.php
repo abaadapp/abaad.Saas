@@ -738,10 +738,10 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         foreach ($boutiques as $b) {
             $s = $this->summary(['boutique' => (string) $b->id]);
             $totals = Boutiques::soldTotals($this->shop->id, $b, Carbon::parse('2027-02-01'), null, null, Carbon::parse('2027-02-28 23:59:59'));
-            $this->assertEquals($totals['commission'], $s['rounding']['report_commission'], "تقريرُ المبيعات — {$b->name}");
+            $this->assertEquals([$totals['commission'], $totals['net']], [$s['standalone']['commission'], $s['standalone']['net']], "تقريرُ المبيعات — {$b->name}");
             $this->assertEquals($totals['gross'], $s['standalone']['gross']);
             $st = Boutiques::statement($this->shop->id, $b->id, self::PERIOD);
-            $this->assertEquals($st['net'], $s['rounding']['sheet_pending_net'], "ما ينتظر الورقة — {$b->name}");
+            $this->assertEquals($st['net'], $s['settlement']['pending']['standalone'], "ما ينتظر الورقة — {$b->name}");
             $this->assertEquals($st['payable'], $s['settlement']['pending']['total']);
             $rowsSum += self::baisa($s['standalone']['commission']);
         }

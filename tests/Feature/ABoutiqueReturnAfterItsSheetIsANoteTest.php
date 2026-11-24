@@ -559,7 +559,27 @@ class ABoutiqueReturnAfterItsSheetIsANoteTest extends TestCase
         $odd = $this->product('عطر صغير', 3.333, $this->boutique->id);
         $orders = [$this->sell(1, null, $odd), $this->sell(1, null, $odd), $this->sell(1, null, $odd)];
         $sheet = $this->issue();
-        $this->assertSame(8.249, (float) $sheet->net);
+        // كلُّ بندٍ بتقريبه: 3.333 ← عمولة 0.583 وصافٍ 2.750 — وثلاثتُها 8.250
+        $this->assertSame([8.25, 'line'], [(float) $sheet->net, $sheet->rounding]);
+
+        foreach ($orders as $order) {
+            Carbon::setTestNow('2027-03-10 12:00:00');
+            OrderCorrection::cancel($order->fresh(), 'مرتجع', null, [$this->line($order, $odd)->id => ['sellable' => 1]]);
+        }
+
+        $this->assertSame([2.75, 2.75, 2.75], $this->notes()->map(fn ($n) => (float) $n->amount)->all());
+        $this->assertSame(0.0, $this->owed());
+    }
+
+    /** ورقةٌ صدرت قبل توحيد التقريب: جمعت الصنفَ ثمّ قرّبته (8.249) — ومرتجعُها بقاعدتها هي، فيجمع إليها */
+    public function test_a_sheet_issued_before_the_one_rounding_is_returned_by_its_own_rule(): void
+    {
+        $this->terms(BoutiqueReturns::TERMS_SELLABLE);
+        $this->boutique->update(['commission_rate' => 17.5]);
+        $odd = $this->product('عطر صغير', 3.333, $this->boutique->id);
+        $orders = [$this->sell(1, null, $odd), $this->sell(1, null, $odd), $this->sell(1, null, $odd)];
+        $sheet = $this->issue();
+        $this->asOld($sheet, 1.75, 8.249);
 
         foreach ($orders as $order) {
             Carbon::setTestNow('2027-03-10 12:00:00');
@@ -567,6 +587,39 @@ class ABoutiqueReturnAfterItsSheetIsANoteTest extends TestCase
         }
 
         $this->assertSame([2.75, 2.749, 2.75], $this->notes()->map(fn ($n) => (float) $n->amount)->all());
+        $this->assertSame(0.0, $this->owed());
+        $this->assertSame([8.249, null], [(float) $sheet->fresh()->net, $sheet->fresh()->rounding], 'الورقةُ القديمة كما صدرت');
+    }
+
+    /** ورقةٌ كما كانت تصدر قبل توحيد التقريب — بمصروفها وقيدها */
+    private function asOld(BoutiqueSettlement $sheet, float $commission, float $net): void
+    {
+        DB::table('boutique_settlements')->where('id', $sheet->id)->update(['rounding' => null, 'commission' => $commission, 'net' => $net]);
+        DB::table('expenses')->where('id', $sheet->expense_id)->update(['amount' => $net]);
+        $entry = JournalEntry::where('business_id', $this->shop->id)->where('source', Boutiques::ACCRUAL)->where('sourceable_id', $sheet->id)->sole();
+        DB::table('journal_lines')->where('journal_entry_id', $entry->id)->where('debit', '>', 0)->update(['debit' => $net]);
+        DB::table('journal_lines')->where('journal_entry_id', $entry->id)->where('credit', '>', 0)->update(['credit' => $net]);
+    }
+
+    /** بندٌ حملته ورقةٌ جديدة: نقص في يومه، ثمّ أُلغي ما بقي على ثلاثة أحوال — الأجزاءُ صافي البند */
+    public function test_a_line_returned_in_every_way_adds_up_to_its_share_of_the_new_sheet(): void
+    {
+        $this->terms(BoutiqueReturns::TERMS_ALL);
+        $this->boutique->update(['commission_rate' => 17.5]);
+        $odd = $this->product('عطر صغير', 3.333, $this->boutique->id);
+        $order = $this->sell(7, null, $odd);
+        $sheet = $this->issue('2027-02', '2027-02-10 11:00:00');
+        // 23.331 ← عمولة 4.083 وصافٍ 19.248
+        $this->assertSame(19.248, (float) $sheet->net);
+
+        OrderCorrection::setQuantity($order->fresh(), $this->line($order, $odd), 4, 'أعاد ثلاثًا', 'refunded', 'نقدي');
+        Carbon::setTestNow('2027-03-10 12:00:00');
+        OrderCorrection::cancel($order->fresh(), 'مرتجع', null, [$this->line($order, $odd)->id => ['sellable' => 1, 'damaged' => 2]]);
+        foreach ($this->notes()->where('status', BoutiqueReturn::AWAITING) as $note) {
+            BoutiqueReturns::receive($note, (int) $note->quantity, 0, 'استُلمت');
+        }
+
+        $this->assertSame(19.248, round((float) $this->notes()->sum('amount'), 3));
         $this->assertSame(0.0, $this->owed());
     }
 

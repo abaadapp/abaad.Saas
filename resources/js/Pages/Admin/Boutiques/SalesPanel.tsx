@@ -85,11 +85,8 @@ export interface SalesSummary {
     hosting: boolean;
     /** مستحقُّ قطعٍ كُتب قبل إطفاء حسابها — معروضٌ محسوب ولم يُحذف */
     pieces_recorded: boolean;
-    /** مطابقةُ التقريب بالبيسة: الفرقُ موجبٌ حين تقول دالّةُ النظام أكثر */
-    rounding: {
-        lines_commission: number; report_commission: number; report_difference: number;
-        lines_pending_net: number; sheet_pending_net: number; sheet_difference: number;
-    };
+    /** أوراقٌ صدرت قبل توحيد القاعدة وفرقُها عن جمع بنودها — كما صدرت */
+    old_sheets?: { count: number; difference: number };
     settlement: {
         sheets: number; issued: number; paid: number; unpaid: number; remaining: number;
         pending: { standalone: number; components: number; credit: number; total: number };
@@ -469,22 +466,12 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                         })}
                     </p>
                 )}
-                {(s.rounding.report_difference !== 0 || s.rounding.sheet_difference !== 0) && (
-                    <div className="mt-2 rounded-md border border-dashed border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-rounding-note">
-                        <p className="font-semibold">{t('مطابقة التقريب (لم يُعدَّل أي مبلغ)')}</p>
-                        <p>
-                            {t('العمولة هنا لكل بند بالبيسة: :lines', { lines: fmt(s.rounding.lines_commission) })}
-                            {s.rounding.report_difference !== 0 &&
-                                <> · {t('تقرير مبيعات البوتيك يقرّبها على المجموع: :report (فرق :d)', { report: fmt(s.rounding.report_commission), d: fmt(s.rounding.report_difference) })}</>}
-                        </p>
-                        {s.rounding.sheet_difference !== 0 && (
-                            <p>
-                                {t('ورقة التسوية لما لم يُسوَّ تحسب صافي البوتيك :sheet مقابل :lines هنا (فرق :d) — المعتمد للدفع الورقة حتى يُقرَّر.', {
-                                    sheet: fmt(s.rounding.sheet_pending_net), lines: fmt(s.rounding.lines_pending_net), d: fmt(s.rounding.sheet_difference),
-                                })}
-                            </p>
-                        )}
-                    </div>
+                {s.old_sheets && s.old_sheets.count > 0 && (
+                    <p className="mt-2 rounded-md border border-dashed border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-rounding-note">
+                        {t('في الشهر :n ورقة صدرت قبل توحيد التقريب، مجموعها يختلف عن جمع بنودها بـ :d. الورقة كما صدرت، والجديدة تطابق بنودها بالبيسة.', {
+                            n: number(s.old_sheets.count), d: fmt(s.old_sheets.difference),
+                        })}
+                    </p>
                 )}
                 {s.standalone.taxed_orders > 0 && (
                     <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-tax-note">

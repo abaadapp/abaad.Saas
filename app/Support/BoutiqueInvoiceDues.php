@@ -89,6 +89,7 @@ final class BoutiqueInvoiceDues
         $variants = ProductVariant::where('business_id', $invoice->business_id)
             ->whereIn('id', $items->map(fn ($i) => (int) ($i->details['variant']['id'] ?? 0))->filter()->unique())->pluck('price', 'id');
         $now = now();
+        $rule = BoutiqueMoney::rule((int) $invoice->business_id, $now);
 
         foreach ($items->values() as $n => $item) {
             if (($owner = $owners[$n] ?? null) === null) {
@@ -98,7 +99,7 @@ final class BoutiqueInvoiceDues
             $product = $products->get($item->product_id);
             $variant = (int) ($item->details['variant']['id'] ?? 0);
             $rateH = BoutiqueMoney::rate($owner['rate']);
-            $split = BoutiqueMoney::split(BoutiqueMoney::gross($item->quantity, $item->unit_price), $rateH);
+            $split = BoutiqueMoney::split(BoutiqueMoney::gross($item->quantity, $item->unit_price), $rateH, self::vatInside($item, $rule));
 
             BoutiqueInvoiceLine::create([
                 'business_id' => $invoice->business_id,
@@ -117,7 +118,7 @@ final class BoutiqueInvoiceDues
                 'tax_rate' => $item->tax_rate,
                 'tax_inclusive' => self::inclusive($item),
                 'tax_amount' => $item->tax_amount,
-                'rule' => BoutiqueMoney::AS_RECORDED,
+                'rule' => $rule,
                 'base' => Baisa::toMoney($split['base']),
                 'rate' => $rateH / 100,
                 'commission' => Baisa::toMoney($split['commission']),
@@ -137,6 +138,12 @@ final class BoutiqueInvoiceDues
     {
         return (float) $item->tax_amount > 0
             && Baisa::of((float) $item->line_total) === max(0, BoutiqueMoney::gross($item->quantity, $item->unit_price) - Baisa::of((float) $item->discount));
+    }
+
+    /** ما يُخرَج من سعر البند قبل عمولته — بضريبته هو كما على الورقة، لا بإعداد اليوم */
+    private static function vatInside(CustomerInvoiceItem $item, string $rule): int
+    {
+        return $rule === BoutiqueMoney::BEFORE_VAT && self::inclusive($item) ? BoutiqueMoney::rate($item->tax_rate) : 0;
     }
 
     /* ═══════════ ٢. التحصيل ═══════════ */
@@ -273,8 +280,10 @@ final class BoutiqueInvoiceDues
         }
 
         $rateH = BoutiqueMoney::rate($line->rate);
-        $before = BoutiqueMoney::split(BoutiqueMoney::gross($left, $line->unit_price), $rateH);
-        $after = BoutiqueMoney::split(BoutiqueMoney::gross(round($left - $qty, 3), $line->unit_price), $rateH);
+        // بقاعدة لقطته: ما أُخرج منها من ضريبةٍ يُخرَج ممّا بقي
+        $vatH = $line->rule === BoutiqueMoney::BEFORE_VAT && $line->tax_inclusive ? BoutiqueMoney::rate($line->tax_rate) : 0;
+        $before = BoutiqueMoney::split(BoutiqueMoney::gross($left, $line->unit_price), $rateH, $vatH);
+        $after = BoutiqueMoney::split(BoutiqueMoney::gross(round($left - $qty, 3), $line->unit_price), $rateH, $vatH);
         $diff = fn (string $k) => Baisa::toMoney($before[$k] - $after[$k]);
         $settled = $line->boutique_settlement_id !== null;
 

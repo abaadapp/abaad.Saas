@@ -51,6 +51,8 @@ interface Props {
         partial: boolean;
         period: string; from: string; to: string; lines: Line[];
         quantity: number; gross: number; commission: number; net: number; lines_count: number;
+        /** ضريبةٌ داخل الأسعار أُخرجت قبل العمولة — صفرٌ في القاعدة القائمة */
+        vat?: number;
         /** مكوّناتُ الباقات وإضافاتُها — انظر `BoutiqueDues::statement` */
         components?: ComponentsPart;
         /** المطلوب سداده: صافي المنفرد وصافي المكوّنات معًا */
@@ -366,6 +368,13 @@ export default function BoutiqueShow() {
             />
 
             {/* صدرت فواتيرُه ولم يكتمل تحصيلُها: يُقال ولا يُجمع — لا تحمله ورقة */}
+            {/* والضريبةُ المشمولة حين تُخرَج قبل العمولة تُقال: بها يجمع الإجماليُّ إلى ما تحته */}
+            {statement && (statement.vat ?? 0) > 0 && (
+                <p className="mb-5 text-[12px] text-[#6b7280]" data-testid="boutique-vat-inside">
+                    {t('ضريبة داخل الأسعار أُخرجت قبل العمولة: :vat — يورّدها المتجر.', { vat: money(statement.vat ?? 0, currency) })}
+                </p>
+            )}
+
             {statement && ((statement.awaiting?.lines ?? 0) > 0 || (statement.reopened?.lines ?? 0) > 0) && (
                 <Card className="mb-5 space-y-1 p-4 text-[13px] leading-6" data-testid="boutique-awaiting">
                     {(statement.awaiting?.lines ?? 0) > 0 && (

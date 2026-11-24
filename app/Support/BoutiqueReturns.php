@@ -196,6 +196,7 @@ final class BoutiqueReturns
             'name' => (string) $item->name,
             'variant_name' => $item->variant_name,
             'rate' => round((float) ($item->boutique_rate ?? 0), 2),
+            'vat_rate' => $item->boutique_vat_rate === null ? null : round((float) $item->boutique_vat_rate, 2),
             'unit_price' => round((float) $item->price, 3),
         ];
     }
@@ -630,19 +631,14 @@ final class BoutiqueReturns
     /* ═══════════ الكتابة ═══════════ */
 
     /**
-     * إشعارٌ بحصّة `$qty` قطعة كما حملتها الورقة — بالفرق لا بالضرب.
-     *
-     * الورقةُ تقرّب على سطر الصنف ونسبته (`Boutiques::statement`). فحصّةُ ما
-     * عاد = صافي السطر قبل المرتجع ناقصًا صافيه بعده، بالتقريب نفسه. فمرتجعُ
-     * السطر كلِّه قطعةً قطعة يساوي صافيَه على الورقة بالفلس.
+     * إشعارٌ بحصّة `$qty` قطعة كما حملتها الورقة — بالفرق لا بالضرب (`share`).
      *
      * @param  array<string, mixed>  $line
      */
     private static function write(Order $order, array $line, int $qty, float $gross, string $source, string $condition, string $reason, ?int $editId): BoutiqueReturn
     {
-        [$group, $before] = self::groupGross($line, $source === BoutiqueReturn::QUANTITY ? $gross : 0.0);
         $rate = (float) $line['rate'];
-        $amount = round(self::netOf($group - $before, $rate) - self::netOf($group - $before - $gross, $rate), 3);
+        $amount = self::share($line, $gross, $source);
 
         return BoutiqueReturn::create([
             'business_id' => $order->business_id,
@@ -672,7 +668,36 @@ final class BoutiqueReturns
     }
 
     /**
-     * إجماليُّ سطر الورقة يومَ صدورها، وما عاد منه قبل هذا الإشعار.
+     * حصّةُ البوتيك ممّا عاد الآن من بند — بقاعدة ورقته هي.
+     *
+     * ورقةٌ قُرّبت بندًا بندًا (`rounding`): صافي البند قبل المرتجع ناقصًا صافيه بعده. وورقةٌ
+     * صدرت قبل ذلك قرّبت الصنفَ ونسبتَه معًا (`groupGross`): يُحسب مرتجعُها كذلك. فمرتجعُ
+     * البند كلِّه قطعةً قطعة يجمع إلى ما على ورقته بالبيسة في الحالين.
+     *
+     * @param  array<string, mixed>  $line
+     */
+    private static function share(array $line, float $gross, string $source): float
+    {
+        if (BoutiqueSettlement::whereKey($line['settlement_id'])->value('rounding') === BoutiqueMoney::LINE) {
+            // الإنقاصُ كتب البندَ بما بقي، والإلغاءُ تركه بإجماليّه: فيُطرح ما كُتب عنه من إشعارات الإلغاء
+            $after = $source === BoutiqueReturn::QUANTITY
+                ? BoutiqueMoney::baisa(OrderItem::whereKey($line['item_id'])->value('total') ?? 0)
+                : BoutiqueMoney::baisa(OrderItem::whereKey($line['item_id'])->value('total') ?? 0)
+                    - BoutiqueMoney::baisa(BoutiqueReturn::where('order_item_id', $line['item_id'])->where('source', BoutiqueReturn::CANCEL)->sum('gross'))
+                    - BoutiqueMoney::baisa($gross);
+            $net = fn (int $totalB) => BoutiqueMoney::split($totalB, BoutiqueMoney::rate($line['rate']), BoutiqueMoney::rate($line['vat_rate'] ?? 0))['net'];
+
+            return Baisa::toMoney($net($after + BoutiqueMoney::baisa($gross)) - $net($after));
+        }
+
+        [$group, $before] = self::groupGross($line, $source === BoutiqueReturn::QUANTITY ? $gross : 0.0);
+        $rate = (float) $line['rate'];
+
+        return round(self::netOf($group - $before, $rate) - self::netOf($group - $before - $gross, $rate), 3);
+    }
+
+    /**
+     * إجماليُّ سطر الورقة يومَ صدورها، وما عاد منه قبل هذا الإشعار — لورقةٍ قرّبت الصنف.
      *
      * بنودُ الطلبات الملغاة باقيةٌ بإجماليّها، والمُنقَصةُ في يومها نقص
      * إجماليُّها — فيُردّ إليها ما نقص من إشعاراتها (`QUANTITY`).
@@ -700,7 +725,7 @@ final class BoutiqueReturns
         return [round($group, 3), round((float) $notes->sum('gross'), 3)];
     }
 
-    /** صافي سطرٍ بتقريب الورقة نفسِه */
+    /** صافي سطرٍ بتقريب ورقةٍ قرّبت الصنفَ ونسبتَه معًا */
     private static function netOf(float $gross, float $rate): float
     {
         $gross = round($gross, 3);

@@ -598,6 +598,9 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/whatsapp/merchant-link/config', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'configId'])->name('whatsapp.merchant-link.config');
     // ‏‏وخيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» — يُفتح بعد نقل التجّار إلى تطبيق أبعاد (`WhatsAppMerchantLink::setCoexistence`)
     Route::post('/whatsapp/merchant-link/coexistence', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'coexistence'])->name('whatsapp.merchant-link.coexistence');
+    // ‏‏وتطبيقُ إنستقرام ولمن يُفتح ربطُه (`InstagramPlatform`)
+    Route::post('/instagram/credentials', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'credentials'])->name('instagram.credentials');
+    Route::post('/instagram/mode', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'mode'])->name('instagram.mode');
     // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات: مقفلة، أو لمتاجر تجربة، أو للجميع (`ChannelAutomationsSwitch`)
     Route::post('/automations/switch', [App\Http\Controllers\SuperAdmin\ChannelAutomationsController::class, 'switch'])->name('automations.switch');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
@@ -1556,6 +1559,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
 
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
         Route::post('/whatsapp/guided-orders', [WhatsAppOnboardingController::class, 'guidedOrders'])->name('whatsapp.guidedOrders');
+
+        /*
+         * ‏‏وإنستقرام — لمتجرٍ فتحته له المنصّة وحده (`InstagramPlatform`). والرجوعُ من صفحة إنستقرام GET:
+         * Meta تعيد التاجرَ بمتصفّحه وجلستِه إلى هذا العنوان، والختمُ لمرّةٍ واحدة يحرسه (`InstagramLink::connect`).
+         */
+        Route::get('/instagram', [App\Http\Controllers\Admin\InstagramController::class, 'show'])->name('instagram');
+        Route::post('/instagram/connect', [App\Http\Controllers\Admin\InstagramController::class, 'connect'])
+            ->middleware('throttle:10,1,instagram-link')->name('instagram.connect');
+        Route::get('/instagram/callback', [App\Http\Controllers\Admin\InstagramController::class, 'callback'])
+            ->middleware('throttle:10,1,instagram-link')->name('instagram.callback');
+        Route::post('/instagram/disconnect', [App\Http\Controllers\Admin\InstagramController::class, 'disconnect'])->name('instagram.disconnect');
 
         /*
          * ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`).
@@ -2532,6 +2546,19 @@ Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
 Route::post('/webhooks/paymob', [PaymobController::class, 'callback'])
     ->middleware('throttle:120,1')
     ->name('webhooks.paymob');
+/*
+ * ‏‏وأبوابُ Meta لإنستقرام — الإشعارات وإلغاءُ الإذن وحذفُ البيانات، وصفحةُ حال الحذف لصاحب الحساب.
+ * والكتابةُ منها لا تُقبل إلّا بتوقيعٍ بسرّنا (`InstagramWebhooks`).
+ */
+Route::get('/webhooks/instagram', [App\Http\Controllers\Instagram\WebhookController::class, 'verify'])->name('webhooks.instagram.verify');
+Route::post('/webhooks/instagram', [App\Http\Controllers\Instagram\WebhookController::class, 'handle'])->name('webhooks.instagram');
+Route::post('/webhooks/instagram/deauthorize', [App\Http\Controllers\Instagram\WebhookController::class, 'deauthorize'])
+    ->middleware('throttle:30,1,instagram-meta')->name('webhooks.instagram.deauthorize');
+Route::post('/webhooks/instagram/deletion', [App\Http\Controllers\Instagram\WebhookController::class, 'deletion'])
+    ->middleware('throttle:30,1,instagram-meta')->name('webhooks.instagram.deletion');
+Route::get('/instagram/deletion/{code}', [App\Http\Controllers\Instagram\WebhookController::class, 'status'])
+    ->where('code', '[A-Z0-9]{12}')->middleware('throttle:30,1,instagram-meta')->name('instagram.deletion.status');
+
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'handle'])->name('webhooks.whatsapp');
 // وإشعاراتُ تطبيق التاجر — عنوانٌ لكلّ وصلة، يُتحقَّق منه بسرّ تطبيقها (`WhatsAppOwnApp`)

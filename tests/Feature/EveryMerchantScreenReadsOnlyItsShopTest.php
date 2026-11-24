@@ -46,6 +46,11 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
          * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
          */
         \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        /*
+         * ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`): مقفلًا تردّ صفحتُه ٤٠٤ قبل أن يُسأل سؤالُ هذا الاختبار.
+         */
+        \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
+        \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
 
         /*
          * والمتجران فُتحت فيهما روابطُ الدفع (`PaymentLinks::ready`): فتُقرأ «كل
@@ -89,6 +94,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
             ['addons', $b['addon'], 'name', 'ADDON'],
             ['product_variants', $b['variant'], 'name', 'VARIANT'],
             ['channel_automations', $b['channel_automation'], 'name', 'AUTOMATION'],
+            ['instagram_connections', $b['instagram_connection'], 'username', 'INSTAGRAM'],
         ];
 
         foreach ($marks as [$table, $id, $column, $tag]) {

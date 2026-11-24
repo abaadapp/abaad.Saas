@@ -103,6 +103,7 @@ class IntegrationsAreSoldWithThePlanTest extends TestCase
         $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.index'));
         $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.google.key'));
         $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.googleBusiness.callback'));
+        $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.instagram.callback'));
         $this->assertSame('whatsapp', CheckPlanFeature::featureFor('admin.integrations.whatsapp.connect'));
         $this->assertNull(CheckPlanFeature::featureFor('admin.integrations.paymob'));
         $this->assertNull(CheckPlanFeature::featureFor('admin.integrations.paymob.save'));

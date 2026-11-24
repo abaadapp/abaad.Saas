@@ -65,7 +65,7 @@ class ATranslationIsNeverLostInAMergeTest extends TestCase
         $this->assertSame([], $missing, 'وسمٌ يمرّ في متغيّر بلا ترجمة إنجليزية');
     }
 
-    public function test_the_boutique_sales_and_whatsapp_automation_keys_both_survive(): void
+    public function test_the_keys_of_every_branch_that_met_this_file_survive(): void
     {
         $en = $this->english();
         foreach ([
@@ -75,11 +75,13 @@ class ATranslationIsNeverLostInAMergeTest extends TestCase
             $this->assertArrayHasKey($key, $en, 'مفتاحُ مبيعات البوتيك ضاع: '.$key);
         }
 
-        // ومن أتمتة واتساب (#259): كلُّ نصٍّ حرفيٍّ في شاشتها
-        $src = (string) file_get_contents(resource_path('js/Pages/Admin/Integrations/WhatsappAutomations.tsx'));
-        preg_match_all("/\bt\(\s*'((?:[^'\\\\]|\\\\.)+)'/", $src, $m);
-        $this->assertNotEmpty($m[1]);
-        $lost = array_values(array_filter(array_unique($m[1]), fn ($k) => ! isset($en[stripslashes($k)])));
-        $this->assertSame([], $lost, 'مفتاحُ أتمتة واتساب ضاع في الدمج');
+        // ومن كلّ طرفٍ التقى بهذا الفرع في الملف: كلُّ نصٍّ حرفيٍّ في شاشته (#259 وواتساب، #260 وإنستغرام)
+        foreach (['WhatsappAutomations', 'Instagram'] as $screen) {
+            $src = (string) file_get_contents(resource_path("js/Pages/Admin/Integrations/{$screen}.tsx"));
+            preg_match_all("/\bt\(\s*'((?:[^'\\\\]|\\\\.)+)'/", $src, $m);
+            $this->assertNotEmpty($m[1], $screen.': لم تُقرأ نصوصُه — الاختبارُ لا يقيس شيئًا');
+            $lost = array_values(array_filter(array_unique($m[1]), fn ($k) => ! isset($en[stripslashes($k)])));
+            $this->assertSame([], $lost, $screen.': مفتاحٌ ضاع في الدمج');
+        }
     }
 }

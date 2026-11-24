@@ -83,6 +83,22 @@ return [
         'settlements_paused' => (bool) env('PAYMOB_SETTLEMENTS_PAUSED', false),
     ],
 
+    /*
+     * ‏‏إنستقرام بتسجيل الدخول عبر Instagram — عناوينُ Meta وإصدارُها.
+     *
+     * ومعرّفُ تطبيق إنستقرام وسرُّه يُكتبان من إعدادات المنصّة (`InstagramPlatform`)، وهذان للخادم
+     * احتياطًا لا غير: صفُّ القاعدة يُقرأ في كلّ طلب، و`.env` لا يُقرأ بعد النشر بلا إعادة تشغيل.
+     */
+    'instagram' => [
+        'app_id' => env('INSTAGRAM_APP_ID'),
+        'app_secret' => env('INSTAGRAM_APP_SECRET'),
+        'api_version' => env('INSTAGRAM_API_VERSION', 'v27.0'),
+        'authorize_url' => 'https://www.instagram.com/oauth/authorize',
+        'token_url' => 'https://api.instagram.com/oauth/access_token',
+        'graph_url' => env('INSTAGRAM_GRAPH_URL', 'https://graph.instagram.com'),
+        'timeout' => 15,
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

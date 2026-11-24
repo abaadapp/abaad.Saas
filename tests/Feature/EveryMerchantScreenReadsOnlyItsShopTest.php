@@ -46,6 +46,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
          * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
          */
         \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        \App\Support\WhatsAppCampaignsSwitch::set(\App\Support\WhatsAppCampaignsSwitch::ALL);
         /*
          * ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`): مقفلًا تردّ صفحتُه ٤٠٤ قبل أن يُسأل سؤالُ هذا الاختبار.
          */
@@ -95,6 +96,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
             ['product_variants', $b['variant'], 'name', 'VARIANT'],
             ['channel_automations', $b['channel_automation'], 'name', 'AUTOMATION'],
             ['channel_automations', $b['instagram_automation'], 'name', 'IG-AUTOMATION'],
+            ['whatsapp_campaign_templates', $b['campaign_template'], 'title', 'CAMPAIGN-TEMPLATE'],
+            ['whatsapp_campaigns', $b['campaign'], 'name', 'CAMPAIGN'],
             ['instagram_connections', $b['instagram_connection'], 'username', 'INSTAGRAM'],
         ];
 

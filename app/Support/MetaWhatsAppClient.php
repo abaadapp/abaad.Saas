@@ -324,6 +324,104 @@ class MetaWhatsAppClient
     }
 
     /**
+     * ‏‏إرسالُ قالبِ عرضٍ إلى Meta لمراجعته — على حساب أعمال الوصلة نفسِه.
+     *
+     * ورسالةُ الرفض تُؤخذ بلغة صاحبها (`error_user_msg`) إن كتبتها Meta: هي التي تقول ما في النصّ.
+     *
+     * @param  array<string, mixed>  $template
+     * @return array{ok: bool, id: ?string, status: ?string, category: ?string, code: ?string, message: ?string}
+     */
+    public static function createTemplate(WhatsAppConnection $connection, array $template): array
+    {
+        $r = self::graph($connection, 'post', $connection->waba_id.'/message_templates', $template);
+
+        return [
+            'ok' => $r['ok'] && filled($r['body']['id'] ?? null),
+            'id' => filled($r['body']['id'] ?? null) ? (string) $r['body']['id'] : null,
+            'status' => filled($r['body']['status'] ?? null) ? (string) $r['body']['status'] : null,
+            'category' => filled($r['body']['category'] ?? null) ? (string) $r['body']['category'] : null,
+            'code' => $r['code'],
+            'message' => $r['message'],
+        ];
+    }
+
+    /** @return array{ok: bool, code: ?string, message: ?string} */
+    public static function removeTemplate(WhatsAppConnection $connection, string $name): array
+    {
+        $r = self::graph($connection, 'delete', $connection->waba_id.'/message_templates?'.http_build_query(['name' => $name]));
+
+        return ['ok' => $r['ok'], 'code' => $r['code'], 'message' => $r['message']];
+    }
+
+    /**
+     * ‏‏قوالبُ الحساب صفًّا صفًّا — بحالها وسبب رفضها وجودتها، صفحةً بعد صفحة.
+     *
+     * @return array{ok: bool, rows: list<array<string, mixed>>, message: ?string}
+     */
+    public static function templateRows(WhatsAppConnection $connection, int $pages = 5): array
+    {
+        $rows = [];
+        $after = null;
+
+        for ($i = 0; $i < $pages; $i++) {
+            $r = self::graph($connection, 'get', $connection->waba_id.'/message_templates', array_filter([
+                'fields' => 'id,name,status,category,language,rejected_reason,quality_score', 'limit' => 200, 'after' => $after,
+            ]));
+
+            if (! $r['ok']) {
+                return ['ok' => false, 'rows' => $rows, 'message' => $r['message']];
+            }
+
+            $rows = [...$rows, ...array_values((array) ($r['body']['data'] ?? []))];
+            $after = filled($r['body']['paging']['next'] ?? null) ? ($r['body']['paging']['cursors']['after'] ?? null) : null;
+
+            if ($after === null) {
+                break;
+            }
+        }
+
+        return ['ok' => true, 'rows' => $rows, 'message' => null];
+    }
+
+    /**
+     * ‏‏كم عميلًا في اليوم تسمح Meta لهذا الرقم أن يبدأ معهم، وجودتُه عندها — أو `null` لما لم تقله.
+     *
+     * @return array{tier: ?string, quality: ?string}
+     */
+    public static function limits(WhatsAppConnection $connection): array
+    {
+        $r = self::graph($connection, 'get', (string) $connection->phone_number_id, ['fields' => 'whatsapp_business_manager_messaging_limit,quality_rating']);
+
+        return [
+            'tier' => $r['ok'] && filled($r['body']['whatsapp_business_manager_messaging_limit'] ?? null) ? (string) $r['body']['whatsapp_business_manager_messaging_limit'] : null,
+            'quality' => $r['ok'] && filled($r['body']['quality_rating'] ?? null) ? (string) $r['body']['quality_rating'] : null,
+        ];
+    }
+
+    /** @return array{ok: bool, body: array, code: ?string, message: ?string} */
+    private static function graph(WhatsAppConnection $connection, string $method, string $path, array $data = []): array
+    {
+        $url = rtrim((string) config('whatsapp.graph_url'), '/').'/'.config('whatsapp.api_version').'/'.$path;
+
+        try {
+            $response = Http::withToken($connection->access_token)->timeout((int) config('whatsapp.timeout', 15))->acceptJson()->{$method}($url, $data);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'body' => [], 'code' => 'network_error', 'message' => __('تعذّر الاتصال بواتساب — حاول بعد قليل.')];
+        }
+
+        $body = (array) ($response->json() ?? []);
+        $error = (array) ($body['error'] ?? []);
+
+        return [
+            'ok' => $response->successful() && $error === [],
+            'body' => $body,
+            'code' => $error === [] && $response->successful() ? null : (string) ($error['code'] ?? $response->status()),
+            'message' => $error === [] && $response->successful() ? null
+                : mb_substr((string) ($error['error_user_msg'] ?? $error['message'] ?? 'HTTP '.$response->status()), 0, 300),
+        ];
+    }
+
+    /**
      * قراءةُ ردِّ ميتا على رسالةٍ — نجاحًا أو فشلًا.
      *
      * وثلاثةُ نداءاتٍ تقرأ الردَّ نفسَه: قالبٌ ونصٌّ وملفّ. «فحصان لسؤالٍ

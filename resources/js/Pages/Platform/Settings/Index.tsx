@@ -17,6 +17,7 @@ import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth
 import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
 import InstagramPlatformCard, { type InstagramPlatformState } from '@/Pages/Platform/Settings/partials/InstagramPlatformCard';
 import ChannelAutomationsSwitch, { type ChannelAutomationsState } from '@/Pages/Platform/Settings/partials/ChannelAutomationsSwitch';
+import WhatsappCampaignsSwitch, { type WhatsappCampaignsState } from '@/Pages/Platform/Settings/partials/WhatsappCampaignsSwitch';
 import WhatsAppMerchantLinkSwitch, { type WhatsAppLinkState } from './partials/WhatsAppMerchantLinkSwitch';
 
 type Settings = Record<string, string>;
@@ -124,7 +125,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, channelAutomations, instagram } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, channelAutomations, whatsappCampaigns, instagram } =
         usePage<PageProps<{
             settings: Settings;
             /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
@@ -132,6 +133,7 @@ export default function PlatformSettings() {
             /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
             whatsappLink?: WhatsAppLinkState;
             channelAutomations?: ChannelAutomationsState;
+            whatsappCampaigns?: WhatsappCampaignsState;
             instagram?: InstagramPlatformState;
             mail?: MailStatus;
             plans: SelectOption[];
@@ -354,6 +356,7 @@ export default function PlatformSettings() {
             */}
             {tab === 'whatsapp' && whatsappLink && <WhatsAppMerchantLinkSwitch state={whatsappLink} locale={locale} />}
             {tab === 'whatsapp' && channelAutomations && <ChannelAutomationsSwitch state={channelAutomations} />}
+            {tab === 'whatsapp' && whatsappCampaigns && <WhatsappCampaignsSwitch state={whatsappCampaigns} />}
             {tab === 'instagram' && instagram && <InstagramPlatformCard state={instagram} />}
             <form onSubmit={submit}>
                 {tab === 'general' && (

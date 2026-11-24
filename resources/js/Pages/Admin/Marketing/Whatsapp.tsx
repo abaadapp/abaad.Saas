@@ -1,5 +1,5 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, MessageCircle, Save, ScrollText } from 'lucide-react';
+import { AlertTriangle, Megaphone, MessageCircle, Save, ScrollText } from 'lucide-react';
 import { WhatsAppBusinessMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -22,6 +22,8 @@ import type { PageProps } from '@/types';
 interface Automation {
     readiness: Readiness;
     events: { key: string; setting: string; label: string }[];
+    /** حملاتُ واتساب — لمتجرٍ فتحتها له المنصّة وحده */
+    campaigns?: boolean;
 }
 
 interface Props {
@@ -94,6 +96,14 @@ export default function Whatsapp() {
                             ومقابضُ «متى تُرسَل» بلا بابٍ إلى «وماذا جرى» تترك
                             التاجر يُشعل ويُطفئ ولا يرى أثرَ ذلك في شيء.
                         */}
+                        {automation.campaigns && (
+                            <Button asChild variant="outline">
+                                <Link href={route('admin.marketing.whatsapp.campaigns')}>
+                                    <Megaphone />
+                                    {t('حملات واتساب')}
+                                </Link>
+                            </Button>
+                        )}
                         <Button asChild variant="outline">
                             <Link href={route('admin.marketing.whatsapp.log')}>
                                 <ScrollText />

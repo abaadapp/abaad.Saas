@@ -30,8 +30,10 @@ class Integrations
 
     public const PAYMOB = 'paymob';
 
+    public const INSTAGRAM = 'instagram';
+
     /** الترتيب ترتيبُ العرض — الأقربُ إلى عمل المتجر أوّلًا */
-    public const ALL = [self::GOOGLE, self::WHATSAPP, self::PAYMOB];
+    public const ALL = [self::GOOGLE, self::WHATSAPP, self::INSTAGRAM, self::PAYMOB];
 
     /**
      * ما يُعرّف الأداة ولا يتبدّل بمتجر: اسمُها وموقعُها ولونُها وبابُها.
@@ -57,6 +59,19 @@ class Integrations
             'tint' => '#25d366',
             'route' => 'admin.integrations.whatsapp',
             'feature' => 'whatsapp',
+        ],
+        /*
+         * ‏‏وإنستقرام لا تُرسم بطاقتُه إلّا لمتجرٍ فتحته له المنصّة (`InstagramLink::available`) — انظر `cards`.
+         * وبابُه بقدرة التكاملات كصفحتها (`CheckPlanFeature`)، ولا سعرَ خاصًّا به بعد.
+         */
+        self::INSTAGRAM => [
+            'name' => 'إنستقرام',
+            'site' => 'instagram.com',
+            'line' => 'اربط حساب متجرك الاحترافي بضغطة — لتصل تعليقاتُه ورسائلُه أبعاد.',
+            'category' => 'التواصل',
+            'tint' => '#e1306c',
+            'route' => 'admin.integrations.instagram',
+            'feature' => null,
         ],
         self::PAYMOB => [
             'name' => 'Paymob',
@@ -95,6 +110,11 @@ class Integrations
         return match ($key) {
             self::GOOGLE => self::googleStatus($business),
             self::WHATSAPP => self::whatsappStatus($business),
+            self::INSTAGRAM => self::state(match (InstagramLink::view(InstagramLink::forBusiness((int) $business->id))['state'] ?? null) {
+                'connected' => 'ready',
+                'needs_relink' => 'partial',
+                default => 'off',
+            }),
             // من صفّ هذا المتجر وحده — ولا تسأل عن سلّة الموقع: الربطُ غيرُ الاستعمال
             self::PAYMOB => self::state(PaymobSettings::state((int) $business->id)),
             // ولا حالَ لما لم يُبنَ: لا مفتاحَ يُقرأ ولا مرحلةَ تُقاس
@@ -161,6 +181,9 @@ class Integrations
      */
     public static function cards(Business $business): array
     {
+        // ‏‏وإنستقرام لمن فُتح له وحده — بطاقةٌ لبابٍ يردّ 404 تكذب على من يضغطها
+        $keys = array_values(array_filter(self::ALL, fn (string $k) => $k !== self::INSTAGRAM || InstagramLink::available($business)));
+
         return array_map(function (string $key) use ($business) {
             $tool = self::CATALOG[$key];
             $feature = $tool['feature'];
@@ -177,6 +200,6 @@ class Integrations
                 'licensed' => $feature === null || PlanFeatures::allows($business, $feature),
                 'status' => self::status($key, $business),
             ];
-        }, self::ALL);
+        }, $keys);
     }
 }

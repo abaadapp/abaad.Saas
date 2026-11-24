@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoicePreparation;
 use App\Models\CustomerPayment;
+use App\Models\CustomerPaymentAllocation;
 use App\Models\CustomerPaymentLink;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -39,10 +40,15 @@ use LogicException;
  *   الفاتورةُ قُيّدت حين صدرت (`CustomerInvoices::issue`)، والتحصيلُ حين
  *   دُفع (`CustomerPayments::record`). وهذا الصفُّ عملٌ لا مال.
  * - **ولا تفعيلَ بغير دفعٍ موثَّق.** لا عودةُ المتصفّح من Paymob، ولا رابطٌ
- *   معلَّقٌ أو ملغًى أو منتهٍ، ولا دفعةٌ جزئيّة. البابُ الآليّ الوحيد إشعارُ
- *   Paymob الموقَّع بعد أن يُثبَّت ماله (`afterLinkPaid`). وفاتورةٌ سُدّدت
- *   بغيره (نقدًا مثلًا) تُرسَل بيدِ من يملك التحصيل، بعد أن يُتحقَّق من
- *   سدادها في الخادم (`activateByHand`).
+ *   معلَّقٌ أو ملغًى أو منتهٍ، ولا دفعةٌ جزئيّة. وللتفعيل الآليّ بابان:
+ *   إشعارُ Paymob الموقَّع بعد أن يُثبَّت ماله (`afterLinkPaid`)، وتحصيلٌ
+ *   سجّله من يملك التحصيل (`afterPayment`) — نقدًا أو ببطاقةٍ أو تحويلٍ أو
+ *   شيك، على فاتورةٍ بعينها أو على الحساب، دفعةً أو دفعات. والشرطُ واحد:
+ *   فاتورةٌ صادرةٌ باقيها صفر، يُقرأ تحت القفل. وما لا يُحتسب بابًا (رابطٌ
+ *   ملغًى أو منتهٍ وصل مالُه) يُرسَل بيدٍ بعد المراجعة (`activateByHand`).
+ *
+ *   كان التحصيلُ اليدويّ لا يُظهر المهمّة: ينتظر زرًّا في صفحة الفاتورة لا
+ *   يفتحها من يجهّز، فتبقى فاتورةٌ سُدّدت كلُّها خارج اللوحة (2026-11-24).
  * - **ولا تفعيلَ مرّتين.** القفلُ على صفّ التجهيز و`activated_at` يقولان
  *   ذلك؛ وإشعارٌ مكرّر أو متزامن يجد الصفَّ مفعَّلًا فيمضي.
  *
@@ -60,7 +66,19 @@ final class CustomerInvoicePreparations
 
     public const FROM_RECONCILE = 'reconcile';
 
+    /** تحصيلٌ مسجَّلٌ أتمّ سدادَها — أو نقاطٌ غطّتها كلَّها */
+    public const FROM_PAYMENT = 'payment';
+
     public const FROM_HAND = 'manual';
+
+    /**
+     * كم يبقى سدادٌ «حديثًا» — فتُطبع ورقتُه وتُرسل رسالتُه حين يُعاد تفعيلُه.
+     *
+     * المطابقةُ كلَّ عشر دقائق تعيد ما سقط ساعتَه. وما مضى عليه أكثرُ من ذلك
+     * يُعاد إلى اللوحة **بصمت**: لا ورقةَ تُطبع وحدها ولا رسالةَ تصل زبونًا
+     * عن شيءٍ ربّما تسلّمه.
+     */
+    private const FRESH_HOURS = 2;
 
     /** الحالُ الأولى بعد السداد — «بانتظار التجهيز» في اللوحة */
     public const FIRST = OrderStatus::CONFIRMED;
@@ -451,13 +469,15 @@ final class CustomerInvoicePreparations
      * في معاملةٍ واحدة: الصفُّ تحت قفل، والفاتورةُ تُقرأ تحت قفلٍ من جديد —
      * فإشعاران متزامنان لا يُفعّلان مرّتين، ودفعةٌ أُلغيت قبل لحظة لا تُحسب.
      * وتُكتب ورقةُ الصندوق الداخليّة في المعاملة نفسِها (`PrintJobs`): لا
-     * مهمّةٌ بلا ورقة، ولا ورقةٌ بلا مهمّة.
+     * مهمّةٌ بلا ورقة، ولا ورقةٌ بلا مهمّة. و`$quiet` لسدادٍ قديمٍ يُعاد إلى
+     * اللوحة (`reconcile`): تظهر بطاقتُه وحدها — لا ورقةٌ ولا رسالة، وتُطبع
+     * بيدٍ من البطاقة إن لزمت.
      *
      * @return array{0: ?CustomerInvoicePreparation, 1: ?string} المهمّةُ إن فُعّلت الآن، وسببُ الرفض إن رُفضت
      */
-    public static function activate(int $invoiceId, string $source, ?int $paymentId = null, ?int $userId = null): array
+    public static function activate(int $invoiceId, string $source, ?int $paymentId = null, ?int $userId = null, bool $quiet = false): array
     {
-        return DB::transaction(function () use ($invoiceId, $source, $paymentId, $userId) {
+        return DB::transaction(function () use ($invoiceId, $source, $paymentId, $userId, $quiet) {
             $prep = CustomerInvoicePreparation::where('customer_invoice_id', $invoiceId)->lockForUpdate()->first();
 
             if (! $prep) {
@@ -483,11 +503,17 @@ final class CustomerInvoicePreparations
                 'status_changed_at' => now(),
             ])->save();
 
-            PrintJobs::queueInvoiceInternal($prep);
+            if (! $quiet) {
+                PrintJobs::queueInvoiceInternal($prep);
+            }
 
             Activity::log('created', 'وصلت الفاتورة '.$invoice->number.' إلى لوحة التجهيز بعد سدادها', [
                 'subject_id' => $prep->id, 'subject_type' => 'customer_invoice_preparation', 'business_id' => (int) $prep->business_id,
             ]);
+
+            if ($quiet) {
+                return [$prep, null];
+            }
 
             /*
              * وفاتورةُ طلبٍ جاء من واتساب يُبلَّغ زبونُه برقم طلبه — بعد أن تثبت
@@ -505,7 +531,7 @@ final class CustomerInvoicePreparations
     }
 
     /**
-     * بعد أن يُثبَّت دفعُ رابطٍ موثَّق — البابُ الآليّ الوحيد.
+     * بعد أن يُثبَّت دفعُ رابطٍ موثَّق — بابُ Paymob الآليّ.
      *
      * يُنادى من `PaymentLinks::callback` بعد `settle` وخارج معاملتها، ولو كان
      * الإشعارُ مكرّرًا: فيصير كلُّ إعادةٍ من Paymob محاولةً ثانيةً للتفعيل.
@@ -565,8 +591,7 @@ final class CustomerInvoicePreparations
          * المطابقةُ والإشعارُ المكرَّر كلاهما يمرّان من هنا. ويُرسَل بيدٍ من
          * صفحة الفاتورة إن لم يُجهَّز بعد.
          */
-        $since = Business::whereKey($link->business_id)->value('customer_invoice_preparation_enabled_at');
-        if ($since !== null && $link->paid_at->lessThan(Carbon::parse($since))) {
+        if (! self::sinceOpened((int) $link->business_id, $link->paid_at)) {
             return false;
         }
 
@@ -579,7 +604,82 @@ final class CustomerInvoicePreparations
     }
 
     /**
-     * فاتورةٌ سُدّدت بغير رابط (نقدًا، أو تحويلًا) — تُرسَل بيدٍ مأذونة.
+     * بعد أن يثبت تحصيلٌ مسجَّل — كلُّ فاتورةٍ أتمّها تظهر مهمّتُها، إن طُلبت.
+     *
+     * يُنادى من `CustomerPayments::record` بعد تثبيت معاملتها كلِّها، أيًّا كان
+     * من سجّلها ومن أيّ بابٍ جاءت: صفحةُ الفاتورة، وعند الإصدار، وعلى الحساب
+     * توزَّع على الأقدم. ومالُ Paymob يمرّ ببابه (`afterLinkPaid`): لذاك
+     * شروطُه — رابطٌ لم يُلغَ ولم ينتهِ.
+     *
+     * ولا يرمي أبدًا: المالُ ثابتٌ قبله، وسقوطُه يُكتب على الصفّ وتعيده
+     * المطابقة. ولا يكتب مالًا: يقرأ الباقيَ ويُظهر بطاقة.
+     */
+    public static function afterPayment(int $paymentId): void
+    {
+        try {
+            $payment = CustomerPayment::find($paymentId);
+
+            if (! $payment || $payment->method === CustomerPayments::PAYMOB || ! self::paymentCounts($payment)) {
+                return;
+            }
+
+            $waiting = CustomerInvoicePreparation::where('business_id', $payment->business_id)
+                ->whereNull('activated_at')
+                ->whereIn('customer_invoice_id', CustomerPaymentAllocation::where('customer_payment_id', $payment->id)->select('customer_invoice_id'))
+                ->orderBy('id')->pluck('customer_invoice_id');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return;
+        }
+
+        foreach ($waiting as $invoiceId) {
+            self::settled((int) $invoiceId, (int) $payment->id, $payment->created_by ? (int) $payment->created_by : null);
+        }
+    }
+
+    /** فاتورةٌ غطّتها النقاطُ كلَّها صدرت مسدَّدة — ولا تحصيلَ يأتي بعدها يُظهرها (`CustomerInvoices::issue`) */
+    public static function afterIssuedPaid(int $invoiceId, ?int $userId = null): void
+    {
+        self::settled($invoiceId, null, $userId);
+    }
+
+    /** يُفعّل ما سُدّد — وما يمنعه حالٌ مشروع (جزءٌ لم يكتمل، مفتاحٌ مغلق) ليس خطأً يُكتب */
+    private static function settled(int $invoiceId, ?int $paymentId, ?int $userId): void
+    {
+        try {
+            self::activate($invoiceId, self::FROM_PAYMENT, $paymentId, $userId);
+        } catch (\Throwable $e) {
+            report($e);
+            self::remember($invoiceId, $e);
+        }
+    }
+
+    /**
+     * أيُحتسب هذا التحصيلُ بابًا للتفعيل؟
+     *
+     * قائمٌ غيرُ ملغًى، وليس شيكًا ارتدّ، وسُجّل والتجهيزُ مفتوح — كما يُسأل
+     * الرابطُ (`linkCounts`): فتحُ المفتاح بعد أسبوعٍ لا يعيد إلى اللوحة ما
+     * سُدّد وهو مغلق. والشيكُ تحت التحصيل سدادٌ كما تقول الفاتورةُ نفسُها
+     * (`CustomerInvoice::paidTotal`).
+     */
+    public static function paymentCounts(CustomerPayment $payment): bool
+    {
+        return $payment->cancelled_at === null
+            && $payment->cheque_status !== Cheques::BOUNCED
+            && self::sinceOpened((int) $payment->business_id, $payment->created_at);
+    }
+
+    /** أوقع هذا والمفتاحُ مفتوح — لا قبل آخر فتحٍ له؟ */
+    private static function sinceOpened(int $businessId, ?\DateTimeInterface $at): bool
+    {
+        $since = Business::whereKey($businessId)->value('customer_invoice_preparation_enabled_at');
+
+        return $since === null || ($at !== null && ! Carbon::instance($at)->lessThan(Carbon::parse($since)));
+    }
+
+    /**
+     * فاتورةٌ سُدّدت بما لا يُحتسب بابًا وحده (رابطٌ ملغًى أو منتهٍ) — تُرسَل بيدٍ مأذونة.
      *
      * والسدادُ يُقرأ في الخادم كما يُقرأ للرابط (`blocker`): لا يُرسل الزرُّ
      * فاتورةً لم تُسدَّد، ولا يُرسلها مرّتين.
@@ -592,42 +692,132 @@ final class CustomerInvoicePreparations
     }
 
     /**
-     * المطابقة: روابطُ دُفعت ومهامُّها لم تظهر — تُعاد من جديد.
+     * المطابقة: فواتيرُ سُدّدت ومهامُّها لم تظهر — تُعاد من جديد.
      *
-     * لسقوطٍ بعد ثبات المال (قاعدةٌ مشغولة، خطأٌ عابر). ولا يُفعّل إلّا ما
-     * يُفعّله الإشعارُ نفسُه: رابطٌ يُحتسب (`linkCounts`) وفاتورةٌ سُدّدت كلُّها.
+     * ═══ ما تعيده وحدها (كلَّ عشر دقائق) ═══
+     *
+     * ما سقط بعد ثبات المال (قاعدةٌ مشغولة، خطأٌ عابر)، وما سُدّد قبل أن
+     * يُظهره السدادُ وحده **وموعدُه لم يفت**: عملٌ ينتظر بلا شكّ. ولا تُفعّل
+     * إلّا ما يُفعّله السدادُ نفسُه: بابٌ يُحتسب، وفاتورةٌ صادرةٌ باقيها صفر.
+     *
+     * ═══ وما لا تعيده إلّا بأمرٍ صريح (`$history`) ═══
+     *
+     * تحصيلٌ قديمٌ (`FRESH_HOURS`) وموعدُ تسليمه فات: ربّما سُلّم بيدٍ منذ
+     * أسابيع، ولا دليلَ في القاعدة يقول. فيُعدّ أوّلًا ثمّ يُعاد — مرّةً، لكلّ
+     * المتاجر، وبصمت.
+     *
+     * وتُعاد بلا أثر: المهمّةُ صفٌّ واحدٌ لفاتورتها، و`activated_at` تحت القفل.
      */
-    public static function reconcile(): int
+    public static function reconcile(bool $history = false): int
     {
         $done = 0;
 
+        self::due($history, function (CustomerInvoicePreparation $prep, array $door) use (&$done) {
+            try {
+                [$activated] = self::activate(
+                    (int) $prep->customer_invoice_id, $door['source'], $door['payment'], null, ! self::fresh($door['at']),
+                );
+                $done += $activated ? 1 : 0;
+            } catch (\Throwable $e) {
+                report($e);
+                self::remember((int) $prep->customer_invoice_id, $e);
+            }
+        });
+
+        return $done;
+    }
+
+    /**
+     * كم تعيد المطابقةُ لو نُفّذت الآن — يُقرأ ولا يُكتب شيء.
+     *
+     * @return array<int, array{live: int, history: int}> لكلّ متجر: ما يعود وحده، وما لا يعود إلّا بالأمر
+     */
+    public static function pending(): array
+    {
+        $out = [];
+
+        self::due(true, function (CustomerInvoicePreparation $prep, array $door) use (&$out) {
+            $at = &$out[(int) $prep->business_id];
+            $at ??= ['live' => 0, 'history' => 0];
+            $at[self::live($prep, $door) ? 'live' : 'history']++;
+        });
+
+        return $out;
+    }
+
+    /**
+     * ما ينتظر من المسدَّد — صادرٌ باقيه صفر، في متاجرَ مفتوحٍ لها، وله بابٌ يُحتسب.
+     *
+     * @param  callable(CustomerInvoicePreparation, array{source: string, payment: ?int, at: ?\DateTimeInterface}): void  $each
+     */
+    private static function due(bool $history, callable $each): void
+    {
         CustomerInvoicePreparation::whereNull('activated_at')
             ->whereIn('business_id', Business::where('customer_invoice_preparation_enabled', true)->select('id'))
+            ->whereHas('invoice', fn ($i) => $i->where('status', CustomerInvoice::ISSUED)
+                ->whereRaw(CustomerInvoice::outstandingSql().' <= 0.0005')
+                ->whereDoesntHave('orders'))
+            ->with('invoice')
             ->orderBy('id')
-            ->chunkById(100, function ($preps) use (&$done) {
+            ->chunkById(100, function ($preps) use ($history, $each) {
                 foreach ($preps as $prep) {
-                    $links = CustomerPaymentLink::where('business_id', $prep->business_id)
-                        ->where('customer_invoice_id', $prep->customer_invoice_id)
-                        ->where('status', CustomerPaymentLink::PAID)
-                        ->orderByDesc('paid_at')
-                        ->get();
+                    $door = self::door($prep);
 
-                    $link = $links->first(fn (CustomerPaymentLink $l) => self::linkCounts($l));
-                    if (! $link) {
-                        continue;
-                    }
-
-                    try {
-                        [$activated] = self::activate((int) $prep->customer_invoice_id, self::FROM_RECONCILE, (int) $link->customer_payment_id);
-                        $done += $activated ? 1 : 0;
-                    } catch (\Throwable $e) {
-                        report($e);
-                        self::remember((int) $prep->customer_invoice_id, $e);
+                    if ($door !== null && ($history || self::live($prep, $door))) {
+                        $each($prep, $door);
                     }
                 }
             });
+    }
 
-        return $done;
+    /**
+     * من أين سُدّدت — رابطٌ يُحتسب، أو تحصيلٌ مسجَّل، أو نقاطٌ غطّتها؛ وإلّا `null`.
+     *
+     * @return array{source: string, payment: ?int, at: ?\DateTimeInterface}|null
+     */
+    private static function door(CustomerInvoicePreparation $prep): ?array
+    {
+        $link = CustomerPaymentLink::where('business_id', $prep->business_id)
+            ->where('customer_invoice_id', $prep->customer_invoice_id)
+            ->where('status', CustomerPaymentLink::PAID)
+            ->orderByDesc('paid_at')
+            ->get()
+            ->first(fn (CustomerPaymentLink $l) => self::linkCounts($l));
+
+        $payment = CustomerPayment::where('business_id', $prep->business_id)
+            ->where('method', '<>', CustomerPayments::PAYMOB)
+            ->whereIn('id', CustomerPaymentAllocation::where('customer_invoice_id', $prep->customer_invoice_id)->select('customer_payment_id'))
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (CustomerPayment $p) => self::paymentCounts($p));
+
+        // وأحدثُهما أتمّها: رابطٌ دُفع قبل شهرٍ وباقٍ سُجّل اليوم — بابُها اليوم
+        if ($link && ($payment === null || $link->paid_at->greaterThanOrEqualTo($payment->created_at))) {
+            return ['source' => self::FROM_RECONCILE, 'payment' => (int) $link->customer_payment_id, 'at' => $link->paid_at];
+        }
+        if ($payment) {
+            return ['source' => self::FROM_PAYMENT, 'payment' => (int) $payment->id, 'at' => $payment->created_at];
+        }
+
+        // صدرت بصفرٍ غطّته النقاط: لا تحصيلَ لها ولا رابط، وسدادُها ساعةُ إصدارها
+        $issued = $prep->invoice?->issued_by_at;
+
+        return (float) $prep->invoice?->total <= 0.0005 && $issued !== null && self::sinceOpened((int) $prep->business_id, $issued)
+            ? ['source' => self::FROM_PAYMENT, 'payment' => null, 'at' => $issued]
+            : null;
+    }
+
+    /** أعملٌ ينتظر بلا شكّ؟ — رابطٌ موثَّق، أو سدادٌ حديث، أو موعدٌ لم يفت يومُه */
+    private static function live(CustomerInvoicePreparation $prep, array $door): bool
+    {
+        return $door['source'] === self::FROM_RECONCILE
+            || self::fresh($door['at'])
+            || ($prep->scheduled_for !== null && $prep->scheduled_for->greaterThanOrEqualTo(now()->startOfDay()));
+    }
+
+    private static function fresh(?\DateTimeInterface $at): bool
+    {
+        return $at !== null && Carbon::instance($at)->greaterThan(now()->subHours(self::FRESH_HOURS));
     }
 
     /** سببُ سقوط التفعيل على الصفّ — يُرى في الفاتورة، ولا يُسقط شيئًا إن سقط هو */
@@ -648,13 +838,14 @@ final class CustomerInvoicePreparations
 
     /* ═══════════════════════════ اللوحة ═══════════════════════════ */
 
-    /** مهامُّ اللوحة: ظهرت ولم تُغلق — في متجرها، وفي الفرع الحاليّ إن كان */
-    public static function board(int $businessId, ?int $branchId)
+    /** مهامُّ اللوحة: ظهرت ولم تُغلق — في متجرها، وفي نطاق من يقرؤها (`PreparationScope`) */
+    public static function board(int $businessId, ?PreparationScope $scope = null)
     {
-        return CustomerInvoicePreparation::where('customer_invoice_preparations.business_id', $businessId)
+        $tasks = CustomerInvoicePreparation::where('customer_invoice_preparations.business_id', $businessId)
             ->whereNotNull('activated_at')
-            ->whereNotIn('status', self::CLOSED)
-            ->when($branchId, fn ($w) => $w->where('branch_id', $branchId));
+            ->whereNotIn('status', self::CLOSED);
+
+        return $scope ? $scope->apply($tasks) : $tasks;
     }
 
     /** ما يجوز الانتقالُ إليه من الحال الحاليّة — أزرارُ البطاقة منها */
@@ -677,10 +868,10 @@ final class CustomerInvoicePreparations
      *
      * @return string|null سببُ الرفض، أو `null` إن نُقلت
      */
-    public static function move(int $businessId, int $prepId, ?int $branchId, string $to, ?string &$from = null): ?string
+    public static function move(int $businessId, int $prepId, ?PreparationScope $scope, string $to, ?string &$from = null): ?string
     {
-        return DB::transaction(function () use ($businessId, $prepId, $branchId, $to, &$from) {
-            $prep = self::board($businessId, $branchId)->whereKey($prepId)->lockForUpdate()->first();
+        return DB::transaction(function () use ($businessId, $prepId, $scope, $to, &$from) {
+            $prep = self::board($businessId, $scope)->whereKey($prepId)->lockForUpdate()->first();
 
             if (! $prep) {
                 return __('المهمّة غير موجودة في لوحة التجهيز.');

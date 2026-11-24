@@ -139,7 +139,12 @@ export interface PrepProps {
     /** فروعُ من يعدّل بيانات التسليم ومناسباتُ البطاقة — وnull لمن لا يملكه */
     invoiceDetails?: { options: PreparationOptions } | null;
     orders: PrepOrder[];
-    filters: { when: string | null; type: string | null };
+    /** والفرعُ مُرشِّحٌ في العنوان كأخويه — لا جلسة؛ و`show` ما رفعه «عرض المزيد» */
+    filters: { when: string | null; type: string | null; branch?: number | null; show?: number | null };
+    /** فروعُ من يقرأ — فارغةٌ لمن له فرعٌ واحد: لا يُرشَّح به شيء */
+    branches?: { id: number; name: string }[];
+    /** فروعُه إن كانت لوحتُه بعضَ فروع المتجر — وnull لمن يراها كلَّها */
+    limited?: string[] | null;
     counts: { all: number; overdue: number; today: number; tomorrow: number };
     typeCounts: { all: number; delivery: number; pickup: number };
     /** خريطةُ الأعمدة من الخادم — مفتاحٌ إلى الحالات التي يضمّها */
@@ -147,7 +152,7 @@ export interface PrepProps {
     /** أعدادُ الأعمدة تحت المرشّحين — من الاستعلام لا من البطاقات المعروضة */
     columnCounts: Record<string, number>;
     /** يصل حين تُقصّ اللوحة عند سقفها — وnull حين تُعرض كاملة */
-    truncated: { shown: number; total: number } | null;
+    truncated: { shown: number; total: number; more?: number | null } | null;
     fetchedAt: string;
 }
 

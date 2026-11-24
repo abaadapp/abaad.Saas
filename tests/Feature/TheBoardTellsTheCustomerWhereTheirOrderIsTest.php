@@ -221,6 +221,8 @@ class TheBoardTellsTheCustomerWhereTheirOrderIsTest extends TestCase
             'number' => $number, 'status' => $status, 'is_held' => false,
             'payment_method' => 'Paymob', 'payment_status' => 'مدفوع',
             'subtotal' => 25, 'total' => 25, 'ordered_at' => now(),
+            // وطلبُ الموقع يُكتب بنوع تنفيذه دائمًا (`WebCheckout`) — وبه يقف على اللوحة
+            'fulfillment_type' => 'delivery',
         ]);
     }
 

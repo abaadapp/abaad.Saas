@@ -10957,5 +10957,10 @@
     "اكتب الرد مرة واحدة وانشره": "Write the reply once and publish it",
     "يصل وحده من رقم متجرك، ويظهر في المحادثة باسم الأتمتة.": "It goes out on its own from your store's number and shows in the chat under the automation's name.",
     "إقفالها يسكت أتمتات التجار المنشورة — ولا يمحوها. متابعة؟": "Closing it silences merchants' published automations — it doesn't delete them. Continue?",
-    "تصير الأتمتة :state. تعمل على أرقام التجار الحقيقية حين ينشرون أتمتة. متابعة؟": "Automations become :state. They run on merchants' real numbers when they publish one. Continue?"
+    "تصير الأتمتة :state. تعمل على أرقام التجار الحقيقية حين ينشرون أتمتة. متابعة؟": "Automations become :state. They run on merchants' real numbers when they publish one. Continue?",
+    "تُعرض طلبات فرع «:name» وحده": "Showing only :name's orders",
+    "تعرض لوحتك طلبات فروعك: :names": "Your board shows your branches: :names",
+    "لست مُسنَدًا إلى فرع قائم — راجع مديرك ليُسندك إلى فرع.": "You aren't assigned to an active branch — ask your manager to assign you to one.",
+    "لا طلبات تنتظر التجهيز في هذا الفرع": "No orders awaiting preparation in this branch",
+    "بتحصيل مسجَّل": "By a recorded payment"
 }

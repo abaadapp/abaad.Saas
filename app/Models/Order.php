@@ -178,9 +178,19 @@ class Order extends Model
      */
     public function scopeAwaitingPreparation($query)
     {
+        return $query->toPrepare()->whereNotIn('status', OrderStatus::CLOSED);
+    }
+
+    /**
+     * طلبٌ يُجهَّز — لا سلّةً معلّقة ولا بيعةَ منضدة، أغُلق بعدُ أم لم يُغلق.
+     *
+     * شقُّ `awaitingPreparation` بلا حاله: أبوابُ اللوحة التي تردّ نقلًا
+     * برسالته (طلبٌ سُلّم قبل لحظة) تحتاج أن تجد الطلبَ وقد أُغلق.
+     */
+    public function scopeToPrepare($query)
+    {
         return $query->where('is_held', false)
-            ->where(fn ($w) => $w->whereNotNull('scheduled_for')->orWhereNotNull('fulfillment_type'))
-            ->whereNotIn('status', OrderStatus::CLOSED);
+            ->where(fn ($w) => $w->whereNotNull('scheduled_for')->orWhereNotNull('fulfillment_type'));
     }
 
     /**

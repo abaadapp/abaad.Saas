@@ -19,8 +19,8 @@ import { useTranslate } from '@/lib/i18n';
  * بجملةٍ يقرؤها الخادم (`CustomerInvoicePreparations::blocker`).
  *
  * والأفعالُ بما يقوله الخادم: يُطلب لفاتورةٍ لم تُسدَّد، ويُعدَّل ما لم
- * يُسلَّم، ويُلغى ما لم يظهر، ويُرسل بيدِ من يملك التحصيل فاتورةً سُدّدت
- * بغير رابط. ولا شيءَ من هذا يمسّ بندًا ولا مبلغًا.
+ * يُسلَّم، ويُلغى ما لم يظهر، ويُرسل بيدِ من يملك التحصيل مسدَّدةً لم تظهر
+ * وحدها. ولا شيءَ من هذا يمسّ بندًا ولا مبلغًا.
  */
 export interface PreparationPanelData {
     enabled: boolean;
@@ -43,6 +43,7 @@ export interface PreparationPanelData {
 const SOURCE: Record<string, string> = {
     paymob: 'عبر رابط الدفع',
     reconcile: 'عبر رابط الدفع',
+    payment: 'بتحصيل مسجَّل',
     manual: 'أرسلها موظف بعد السداد',
 };
 

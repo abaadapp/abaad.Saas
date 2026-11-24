@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\SettlementRefused;
 use App\Models\Boutique;
+use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
 use App\Models\Branch;
 use App\Models\Business;
@@ -518,7 +520,7 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         // بعد إصدارها (لم تُسدَّد): الورقةُ لا تُمسّ
         $items = OrderItem::where('order_id', $second->id)->get();
         OrderCorrection::cancel($second->fresh(), 'رُدّ بعد الورقة', boutiqueReturned: true,
-            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sellable' => (int) $i->quantity, 'damaged' => 0]])->all());
         $sheet->refresh();
         $this->assertSame($kept, [$sheet->gross, $sheet->commission, $sheet->net, $sheet->number], 'إلغاءُ بيعةٍ أعاد كتابة ورقةٍ صدرت');
 
@@ -534,12 +536,101 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         $paidNet = (float) $sheet->fresh()->net;
         $items = OrderItem::where('order_id', $third->id)->get();
         OrderCorrection::cancel($third->fresh(), 'رُدّ بعد السداد', boutiqueReturned: true,
-            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sellable' => (int) $i->quantity, 'damaged' => 0]])->all());
         $this->assertSame($paidNet, (float) $sheet->fresh()->net);
         $after = $this->summary(['boutique' => (string) $this->lama->id]);
         $this->assertGreaterThan(0, $after['returns']['notes'], 'مرتجعٌ بعد الورقة لم يُقَل');
         $this->assertEquals($s['settlement']['paid'], $after['settlement']['paid'], 'ما سُدِّد سُدِّد');
         $this->assertEquals(0, $after['standalone']['gross'], 'الملغياتُ خرجت من المبيعات ومرّةً واحدة');
+    }
+
+    /** مرتجعٌ من فاتورةٍ مختلطة يمسّ بوتيكَه وحده — قبل الورقة وبعدها وبعد سدادها */
+    public function test_a_return_touches_only_the_boutique_it_was_of(): void
+    {
+        $this->shop->forceFill(['order_notes_and_edits_enabled' => true])->save();
+        $this->lama->update(['returns_terms' => BoutiqueReturns::TERMS_ALL, 'returns_terms_ref' => 'عقد 1']);
+        $orders = [];
+        foreach (['قبل', 'بعد', 'مسدَّدة'] as $_) {
+            $orders[] = $this->sell([[$this->mine], [$this->silver, 2], [$this->perfume]]);
+        }
+        $this->actingAs($this->owner);
+        $silverOf = fn (Order $o) => OrderItem::where('order_id', $o->id)->where('boutique_id', $this->lama->id)->sole();
+        $lower = fn (Order $o) => OrderCorrection::setQuantity($o->fresh(), $silverOf($o), 1, 'رُدّت قطعة', OrderCorrection::SETTLE_REFUNDED, 'نقدي');
+        // نقصُ بندٍ حملته ورقةٌ إشعارٌ ينتظر استلامَ القطعة، ثمّ يُحسم بشرط الاتّفاقية الموثَّق
+        $receive = fn (Order $o) => BoutiqueReturns::receive(BoutiqueReturn::where('order_id', $o->id)->sole(), 1, 0, 'عادت سليمة');
+        $reem = fn () => collect($this->summary(['boutique' => (string) $this->reem->id]))->only(['standalone', 'owed', 'settlement', 'returns'])->all();
+        $reemBefore = $reem();
+
+        // قبل الورقة: تنقص لمى قطعةً (٦ − ٢٠٪ = ٤٫٨) ولا تتحرّك ريم
+        $lower($orders[0]);
+        $this->assertEquals(30.0, $this->summary(['boutique' => (string) $this->lama->id])['standalone']['gross'], '٣٦ − ٦');
+        $this->assertEquals($reemBefore, $reem(), 'مرتجعُ لمى مسّ ريم');
+
+        $lama = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+        $reemSheet = Boutiques::settle($this->shop, $this->reem, self::PERIOD);
+        $frozen = fn () => [$lama->fresh()->only(['number', 'gross', 'commission', 'net', 'lines_count']), $reemSheet->fresh()->only(['number', 'gross', 'commission', 'net', 'lines_count'])];
+        $kept = $frozen();
+        $reemIssued = $reem();
+
+        // بعد الورقة وقبل سدادها: إشعارٌ يُنقص ما يُدفع للمى بحصّتها وحدها، والورقتان كما صدرتا
+        $lower($orders[1]);
+        $this->assertSame([BoutiqueReturn::AWAITING, 24.0], [BoutiqueReturn::where('order_id', $orders[1]->id)->value('status'), round((float) BoutiqueReturns::payable($lama->fresh()->expense), 3)], 'لا يُنقص شيءٌ قبل أن تُستلم');
+        $receive($orders[1]);
+        $this->assertSame($kept, $frozen());
+        $this->assertEquals(4.8, (float) DB::table('boutique_returns')->where('boutique_id', $this->lama->id)->sum('amount'));
+        $this->assertEquals(0, DB::table('boutique_returns')->where('boutique_id', $this->reem->id)->count());
+        $this->assertEquals(24.0 - 4.8, round((float) BoutiqueReturns::payable($lama->fresh()->expense), 3), 'صافيها ٢٤ ناقصَ ٤٫٨');
+        $this->assertEquals($reemIssued, $reem());
+
+        // بعد سدادها: مطالبةٌ على البوتيك لا تُعيد كتابةَ ورقةٍ سُدِّدت
+        $this->post(route('admin.expenses.paid', $lama->expense_id), ['method' => 'نقدي'])->assertSessionHasNoErrors();
+        $cash = Ledger::balance($this->shop->id, 'cash');
+        $lower($orders[2]);
+        $receive($orders[2]);
+        $this->assertSame($kept, $frozen());
+        $s = $this->summary(['boutique' => (string) $this->lama->id]);
+        $this->assertEquals(4.8, $s['returns']['claims_open'], 'مطالبةٌ بحصّته من القطعة');
+        $this->assertEquals($cash - 6.0, Ledger::balance($this->shop->id, 'cash'), 'ما رُدّ للزبون ثمنُ القطعة وحده، ولا سدادَ ثانٍ ولا استرداد');
+        $this->assertEquals($reemIssued, $reem(), 'ريم كما كانت في كلّ الأحوال');
+
+        // ومن سدّد مرّةً لا يُسدَّد ثانيةً
+        $this->post(route('admin.expenses.paid', $lama->expense_id), ['method' => 'نقدي']);
+        $this->assertEquals($cash - 6.0, Ledger::balance($this->shop->id, 'cash'));
+        $this->assertEquals(0, round((float) DB::table('journal_lines')->selectRaw('SUM(debit) - SUM(credit) as d')->value('d'), 3));
+    }
+
+    /** إرجاعُ بندٍ واحدٍ كاملٍ من فاتورةٍ مختلطة: بندُه وحده، وبقيّةُ الجهات كما كانت */
+    public function test_one_line_returned_whole_leaves_every_other_party_as_it_was(): void
+    {
+        $this->shop->forceFill(['order_notes_and_edits_enabled' => true])->save();
+        $order = $this->sell([[$this->mine], [$this->silver, 2], [$this->perfume]]);
+        $this->actingAs($this->owner);
+        $item = OrderItem::where('order_id', $order->id)->where('boutique_id', $this->reem->id)->sole();
+        OrderCorrection::setQuantity($order->fresh(), $item, 0, 'رُدّ العطر', OrderCorrection::SETTLE_REFUNDED, 'نقدي');
+
+        $inv = $this->invoice($order);
+        $this->assertWhole($inv);
+        $this->assertSame(['بوتيك لمى'], array_column($inv['shares']['boutiques'], 'name'));
+        $this->assertEquals([32.0, 9.6, 22.4], [$inv['money']['total'], $inv['money']['boutiques_owed'], $inv['shares']['shop']]);
+        $this->assertEquals(0, $this->summary(['boutique' => (string) $this->reem->id])['owed']);
+        $this->assertEquals(9.6, $this->summary(['boutique' => (string) $this->lama->id])['owed']);
+    }
+
+    /** آجلٌ أُلغي قبل أن يُدفع: يخرج من حساب البوتيك، وورقتُه تُنقص بإشعارها — ولا مالَ يتحرّك */
+    public function test_an_unpaid_sale_cancelled_before_payment_owes_nobody_and_moves_no_money(): void
+    {
+        $company = Customer::create(['language' => 'ar', 'business_id' => $this->shop->id, 'name' => 'شركة', 'allow_credit_sales' => true]);
+        $order = $this->sell([[$this->mine], [$this->silver, 2]], ['credit' => true, 'customer_id' => $company->id]);
+        $this->assertEquals(9.6, $this->summary()['owed'], 'الآجلُ بيعٌ قائم');
+        $this->assertEquals([0.0, 32.0], [$this->invoice($order)['money']['paid'], $this->invoice($order)['money']['balance']]);
+
+        $this->actingAs($this->owner);
+        OrderCorrection::cancel($order->fresh(), 'أُلغي قبل الدفع', boutiqueReturned: true);
+        $this->assertEquals([0.0, 0.0], [$this->summary()['owed'], $this->summary()['standalone']['gross']]);
+        $this->assertEquals(12.0, $this->summary()['returns']['cancelled_gross']);
+        $this->assertEquals([0.0, 0.0, 0.0], [Ledger::balance($this->shop->id, 'cash'), Ledger::balance($this->shop->id, 'receivable'), Ledger::balance($this->shop->id, 'sales')]);
+        $this->expectException(SettlementRefused::class);
+        Boutiques::settle($this->shop, $this->lama, self::PERIOD);
     }
 
     /**
@@ -559,7 +650,7 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         $sheet = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
         $items = OrderItem::where('order_id', $kept->id)->get();
         OrderCorrection::cancel($kept->fresh(), 'رُدّ بعد الورقة', boutiqueReturned: true,
-            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sellable' => (int) $i->quantity, 'damaged' => 0]])->all());
         $settled = collect($this->rows()['rows'])->firstWhere('order_number', $kept->number);
         $this->assertFalse($settled['void'], 'بندٌ حملته ورقةٌ لا يُمحى نصيبُه من الصفّ');
         $this->assertEquals([3.6, 14.4], [$settled['commission'], $settled['net']], 'كما صدرت به الورقة');
@@ -678,7 +769,7 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         Boutiques::settle($this->shop, $this->reem, self::PERIOD);
         // بعد الورقة: إلغاءٌ يُنتج رصيدًا للمتجر وإشعاراتٍ، ثمّ بيعٌ جديد ورصيدٌ يُقاصّ
         OrderCorrection::cancel($a->fresh(), 'أُلغي بعد الورقة', boutiqueReturned: true,
-            boutiqueLines: OrderItem::where('order_id', $a->id)->whereNotNull('boutique_id')->get()->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+            boutiqueLines: OrderItem::where('order_id', $a->id)->whereNotNull('boutique_id')->get()->mapWithKeys(fn ($i) => [$i->id => ['sellable' => (int) $i->quantity, 'damaged' => 0]])->all());
         $this->sell([[$set], [$this->silver, 2], [$this->perfume, 3]]);
 
         foreach ([$this->lama, $this->reem] as $b) {

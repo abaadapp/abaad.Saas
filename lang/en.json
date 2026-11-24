@@ -11305,7 +11305,7 @@
     "لا يمكن الربط من هذا الرابط الآن": "This link can’t be used to link right now",
     "لم يعد هذا الرابط يعمل — اطلب من فريق أبعاد رابطًا جديدًا.": "This link no longer works — ask the Abaad team for a new one.",
     "لن يستطيع صاحب المتجر الربط من هذا الرابط. متابعة؟": "The shop’s owner won’t be able to link from this link. Continue?",
-    "هذا المتجر مربوط بتطبيقه على Meta — لا يُربط برابط.": "This shop is linked to its own Meta app — it can’t be linked with a link.",
+    "هذا المتجر ربط رقمه بتطبيقه على Meta — لا يُربط برابط.": "This shop linked its number with its own Meta app — it can’t be linked with a link.",
     "هذا رابط ربط واتساب متجر «:shop» بنظام أبعاد:": "Here is the link to connect “:shop”’s WhatsApp to Abaad:",
     "يجري ربطٌ آخر لهذا المتجر الآن — انتظر دقيقة ثمّ أعد المحاولة.": "Another linking is running for this shop now — wait a minute, then try again.",
     "يظهر الرقم الآن في صفحة واتساب في حساب متجرك. يمكنك إغلاق هذه الصفحة.": "The number now shows on the WhatsApp page in your shop’s account. You can close this page.",
@@ -11314,5 +11314,6 @@
     "ينتظر العميل": "Waiting for the client",
     "نسخ الرسالة": "Copy message",
     "نُسخت الرسالة": "Message copied",
-    "رسائل المتجر ما زالت تخرج من رقم أبعاد — اختر «API مستقل للمتجر» أدناه واحفظ لتخرج من رقمه.": "The shop’s messages still go out from Abaad’s number — choose “Dedicated API for the shop” below and save so they go out from its number."
+    "رسائل المتجر ما زالت تخرج من رقم أبعاد — اختر «API مستقل للمتجر» أدناه واحفظ لتخرج من رقمه.": "The shop’s messages still go out from Abaad’s number — choose “Dedicated API for the shop” below and save so they go out from its number.",
+    "متجرك مربوط بتطبيقك الخاص على Meta — لا يبدّله الربط عبر تطبيق أبعاد. إن أردت الانتقال فافصل التكامل أوّلًا.": "Your shop is linked with your own Meta app — linking through Abaad’s app doesn’t replace it. To move, disconnect the integration first."
 }

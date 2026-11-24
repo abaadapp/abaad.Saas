@@ -86,6 +86,15 @@ class WhatsAppOnboarding
         ?string $phoneNumberId = null,
         string $type = self::CLOUD_API,
     ): array {
+        /*
+         * ‏‏ووصلةُ تطبيق التاجر لا يبدّلها إذنٌ من تطبيق أبعاد — من أيّ بابٍ جاء، وقبل أيّ نداءٍ إلى ميتا.
+         * ولا يُكتب عليها فشلٌ: لم يقع فيها شيء (`WhatsAppOwnApp::onOwnApp`).
+         */
+        if (WhatsAppOwnApp::holds(WhatsAppConnections::forBusiness($business->id))) {
+            return ['ok' => false, 'connection' => null, 'field' => 'code', 'pending' => false, 'webhook' => null,
+                'message' => __('متجرك مربوط بتطبيقك الخاص على Meta — لا يبدّله الربط عبر تطبيق أبعاد. إن أردت الانتقال فافصل التكامل أوّلًا.')];
+        }
+
         $exchange = WhatsAppEmbeddedSignup::exchange($code);
 
         if (! $exchange['ok']) {
@@ -371,6 +380,7 @@ class WhatsAppOnboarding
     {
         $existing = WhatsAppConnections::forBusiness($business->id);
 
+        // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه (`leave`) — فلا تصير الوصلةُ نصفين
         $attributes = array_merge([
             'owner_type' => WhatsAppMode::OWNER_BUSINESS,
             'business_id' => $business->id,
@@ -380,7 +390,7 @@ class WhatsAppOnboarding
             // ‏‏وبلا مستخدمٍ: رُبط من رابطٍ أرسله فريقُ أبعاد (`WhatsAppClientLinks`)
             'connected_by_user_id' => $actor?->id,
             'disconnected_at' => null,
-        ], $attributes);
+        ], WhatsAppOwnApp::leave($existing), $attributes);
 
         return $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
     }

@@ -328,7 +328,7 @@ class WhatsAppController extends Controller
          * تطبيق أبعاد. وهو تفويضٌ باسم النشاط يُرسل برقمه ويقرأ رسائل زبائنه —
          * فلصاحب الحساب وحده، كالتسجيل المدمج.
          */
-        if (WhatsAppOwnApp::enabled()) {
+        if (WhatsAppOwnApp::onOwnApp((int) $business->id)) {
             if (! \App\Support\Permissions::isOwner($request->user())) {
                 return back()->withErrors(['app_id' => __('ربط واتساب لصاحب الحساب وحده.')]);
             }
@@ -424,7 +424,9 @@ class WhatsAppController extends Controller
             'last_error_message' => null,
             'last_error_at' => null,
         ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state'])
-          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : []);
+          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : [])
+          // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه — فلا تصير الوصلةُ نصفين
+          + WhatsAppOwnApp::leave($existing);
 
         $connection = $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
 

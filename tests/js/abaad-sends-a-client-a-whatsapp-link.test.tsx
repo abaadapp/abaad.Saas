@@ -183,7 +183,7 @@ describe('صندوق الرابط عند فريق أبعاد', () => {
     });
 
     it('ومتجرٌ لا يُربط برابط يقول لماذا ويُقفل الزرّ', () => {
-        box({ can: false, why: 'هذا المتجر مربوط بتطبيقه على Meta — لا يُربط برابط.' });
+        box({ can: false, why: 'هذا المتجر ربط رقمه بتطبيقه على Meta — لا يُربط برابط.' });
 
         expect(screen.getByTestId('client-link-why')).toHaveTextContent('بتطبيقه على Meta');
         expect(screen.getByTestId('client-link-create')).toBeDisabled();

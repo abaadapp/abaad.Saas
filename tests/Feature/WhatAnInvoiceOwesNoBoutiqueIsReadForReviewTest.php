@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Boutique;
+use App\Models\BoutiqueInvoiceLine;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
@@ -83,14 +84,24 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
     }
 
     /** @param list<array{0: Product, 1?: int, 2?: float}> $lines */
-    private function invoice(array $lines, string $day = '2027-02-10', bool $issue = true, ?Customer $customer = null): CustomerInvoice
+    private function invoice(array $lines, string $day = '2027-02-10', bool $issue = true, ?Customer $customer = null, bool $old = true): CustomerInvoice
     {
         $customer ??= $this->company;
         $invoice = CustomerInvoices::create((int) $customer->business_id, $customer, ['issued_at' => $day], array_map(fn ($l) => [
             'product_id' => $l[0]->id, 'description' => $l[0]->name, 'quantity' => $l[1] ?? 1, 'unit_price' => (float) $l[0]->price, 'discount' => $l[2] ?? 0,
         ], $lines));
 
-        return $issue ? CustomerInvoices::issue($invoice) : $invoice;
+        if (! $issue) {
+            return $invoice;
+        }
+
+        $issued = CustomerInvoices::issue($invoice);
+        // صدرت قبل أن تُحفظ اللقطة — وهي ما تُراجَع. وما له لقطةٌ محسوبٌ وخارجٌ (اختبارُه أدناه)
+        if ($old) {
+            BoutiqueInvoiceLine::where('customer_invoice_id', $issued->id)->delete();
+        }
+
+        return $issued;
     }
 
     private function sell(Product $p, array $extra = []): Order
@@ -130,6 +141,13 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
         }
     }
 
+    /** وما حُفظت لقطتُه محسوبٌ في حساب بوتيكه — لا يُعرض للمراجعة */
+    public function test_an_invoice_that_keeps_its_boutique_is_not_listed(): void
+    {
+        $this->invoice([[$this->silver, 2]], old: false);
+        $this->assertSame(0, $this->review()->assertOk()->json('summary.lines'));
+    }
+
     public function test_a_monthly_paper_over_orders_is_not_listed(): void
     {
         $order = $this->sell($this->silver, ['credit' => true, 'customer_id' => $this->company->id]);
@@ -149,6 +167,7 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
         $whatsapp = $this->invoice([[$this->silver]], issue: false);
         $whatsapp->forceFill(['form_token' => WhatsAppOrderCheckout::FORM_TOKEN.'9'])->save();
         CustomerInvoices::issue($whatsapp);
+        BoutiqueInvoiceLine::where('customer_invoice_id', $whatsapp->id)->delete();
 
         $by = collect($this->review()->assertOk()->json('rows'))->keyBy('invoice_id');
         $this->assertSame('paid', $by[$paid->id]['payment']);
@@ -294,5 +313,130 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
         $this->review()->assertOk();
         $this->review(['boutique' => $this->lama->id, 'period' => '2027-02', 'page' => 1])->assertOk();
         $this->assertSame($before, $print());
+    }
+
+    /* ═══════════ الجرد: المحتملُ غيرُ المسجَّل ═══════════ */
+
+    /** بيعٌ محفوظٌ في يومٍ بنسبةٍ بعينها — يُكتب بها لقطتُه كما يكتبها الصندوق */
+    private function soldOn(string $day, Product $p, ?float $rate = null): void
+    {
+        $now = Carbon::getTestNow();
+        Carbon::setTestNow($day.' 12:00:00');
+        $was = $p->boutique_id === null ? null : (float) Boutique::find($p->boutique_id)->commission_rate;
+        if ($rate !== null && $was !== null) {
+            Boutique::whereKey($p->boutique_id)->update(['commission_rate' => $rate]);
+        }
+        $this->sell($p->fresh());
+        if ($rate !== null && $was !== null) {
+            Boutique::whereKey($p->boutique_id)->update(['commission_rate' => $was]);
+        }
+        Carbon::setTestNow($now);
+    }
+
+    private function collect(CustomerInvoice $invoice): void
+    {
+        CustomerPayments::record((int) $invoice->business_id, $this->company, (float) $invoice->total, ['method' => 'نقدي'], [$invoice->id => (float) $invoice->total]);
+    }
+
+    /** لا يُحسب إلّا ما حاصرته لقطتان متطابقتان — وبنسبةِ يومه لا بنسبة اليوم */
+    public function test_the_dry_run_works_out_only_what_two_equal_sales_bracket_at_their_rate(): void
+    {
+        $this->soldOn('2027-01-05', $this->silver, 25);
+        $bracketed = $this->invoice([[$this->silver, 2, 1.0]], '2027-01-10');
+        DB::table('customer_invoices')->where('id', $bracketed->id)->update(['issued_by_at' => '2027-01-10 10:00:00']);
+        $this->collect($bracketed);
+        $this->soldOn('2027-01-20', $this->silver, 25);
+
+        $r = BoutiqueInvoiceReview::dryRun((int) $this->shop->id);
+        // 2 × 12 = 24 قبل الخصم، ونسبةُ يومها 25٪ (واليومَ 20٪): عمولة 6 وصافٍ 18
+        $this->assertEquals(['lines' => 1, 'gross' => 24.0, 'commission' => 6.0, 'net' => 18.0], array_diff_key($r['reliable'], ['boutiques' => 1]));
+        $this->assertEquals(18.0, $r['reliable']['boutiques']['بوتيك لمى']['net']);
+        $this->assertSame([1, 1, 2.0, 23.0], [$r['lines'], $r['invoices'], $r['quantity'], $r['amount']]);
+        $this->assertSame([['قطعة فضّة', 18.0, 0]], array_map(fn ($p) => [$p['product'], $p['reliable_net'], $p['manual_lines']], $r['products']));
+        $this->assertSame(0, array_sum(array_column($r['manual'], 'lines')));
+    }
+
+    /** وكلُّ ما عداه يُعدّ بسببه ولا يُحسب له شيء */
+    public function test_the_dry_run_counts_by_reason_what_it_will_not_guess(): void
+    {
+        $issued = function (array $lines, string $at) {
+            $invoice = $this->invoice($lines, substr($at, 0, 10));
+            DB::table('customer_invoices')->where('id', $invoice->id)->update(['issued_by_at' => $at]);
+
+            return $invoice;
+        };
+        // لا بيعَ قبلها
+        $this->collect($issued([[$this->silver]], '2027-01-02 10:00:00'));
+        $this->soldOn('2027-01-05', $this->silver, 25);
+        // محاصَرةٌ لكن لم يكتمل تحصيلُها
+        $issued([[$this->silver]], '2027-01-10 10:00:00');
+        // محاصَرةٌ محصَّلةٌ وعليها إشعارُ دائن
+        $credited = $issued([[$this->silver, 2]], '2027-01-11 10:00:00');
+        CustomerInvoices::creditNote($credited, 12.0, 0.0, 'خصم');
+        CustomerPayments::record((int) $this->shop->id, $this->company, 12.0, ['method' => 'نقدي'], [$credited->id => 12.0]);
+        $this->soldOn('2027-01-20', $this->silver, 25);
+        // النسبةُ تغيّرت بين ما قبلها وما بعدها
+        $this->collect($issued([[$this->silver]], '2027-01-22 10:00:00'));
+        $this->soldOn('2027-01-25', $this->silver, 30);
+        // ولا بيعَ بعدها
+        $this->collect($issued([[$this->silver]], '2027-02-01 10:00:00'));
+        // وكان للمتجر قبلها وبعدها — لا بوتيكَ فيه يومَها
+        $vase = $this->product($this->shop, 'مزهرية', 5);
+        $this->soldOn('2027-01-05', $vase);
+        $this->collect($issued([[$vase]], '2027-01-10 10:00:00'));
+        $this->soldOn('2027-01-20', $vase);
+        $vase->update(['boutique_id' => $this->reem->id]);
+
+        $r = BoutiqueInvoiceReview::dryRun((int) $this->shop->id);
+        $this->assertSame(0, $r['reliable']['lines']);
+        $this->assertEquals(0.0, $r['reliable']['net']);
+        $this->assertSame(['before_only' => 1, 'conflict' => 1, 'none' => 1, 'credited' => 1, 'unpaid' => 1], array_map(fn ($m) => $m['lines'], $r['manual']));
+        $this->assertSame(['lines' => 1, 'amount' => 5.0], $r['shop']);
+        $this->assertSame(6, $r['lines']);
+    }
+
+    /** والجردُ لا يكتب حرفًا، ولا يخلط متجرًا بآخر، ولا يطبع عميلًا */
+    public function test_the_dry_run_writes_nothing_and_prints_each_shop_alone_and_no_customer(): void
+    {
+        $this->soldOn('2027-01-05', $this->silver);
+        $mine = $this->invoice([[$this->silver]], '2027-01-10');
+        DB::table('customer_invoices')->where('id', $mine->id)->update(['issued_by_at' => '2027-01-10 10:00:00']);
+        $this->collect($mine);
+        $this->soldOn('2027-01-20', $this->silver);
+        [$other] = $this->openShop('متجر آخر', 'y@review.om');
+        Boutique::create(['business_id' => $other->id, 'name' => 'بوتيكهم', 'commission_rate' => 33.33, 'active' => true]);
+        $this->openShop('بلا بوتيك', 'z@review.om');
+
+        $tables = ['boutiques', 'boutique_settlements', 'boutique_returns', 'boutique_invoice_lines', 'boutique_invoice_returns', 'boutique_component_dues', 'customer_invoices', 'customer_invoice_items', 'customer_credit_notes', 'order_items', 'orders', 'expenses', 'journal_entries', 'journal_lines', 'products', 'activity_logs'];
+        $hash = fn () => hash('sha256', json_encode(array_map(fn ($t) => DB::table($t)->orderBy('id')->get(), $tables)));
+        $before = $hash();
+        $writes = 0;
+        DB::listen(function ($q) use (&$writes) {
+            $writes += preg_match('/^\s*(insert|update|delete|replace|alter|create|drop)/i', $q->sql);
+        });
+
+        \Illuminate\Support\Facades\Artisan::call('boutiques:old-invoices', ['--json' => true]);
+        $report = json_decode(\Illuminate\Support\Facades\Artisan::output(), true);
+        $this->assertSame([(int) $this->shop->id, (int) $other->id], array_keys($report));
+        $this->assertEquals([1, 9.6], [$report[$this->shop->id]['reliable']['lines'], $report[$this->shop->id]['reliable']['net']]);
+        $this->assertSame(0, $report[$other->id]['lines']);
+
+        \Illuminate\Support\Facades\Artisan::call('boutiques:old-invoices', ['--business' => $this->shop->id]);
+        $text = \Illuminate\Support\Facades\Artisan::output();
+        $this->assertStringContainsString('9.600', $text);
+        $this->assertStringNotContainsString($this->company->name, $text);
+        $this->assertStringNotContainsString('متجر آخر', $text);
+
+        $this->assertSame([$before, 0], [$hash(), $writes]);
+    }
+
+    /** ومن الشاشة حين يُطلب — لمن يقرأ المالَ وحده */
+    public function test_the_estimate_is_asked_for_and_is_for_who_reads_the_money(): void
+    {
+        $this->invoice([[$this->silver]]);
+        $this->assertNull($this->review()->assertOk()->json('estimate'));
+        $this->assertSame(1, $this->review(['estimate' => 1])->assertOk()->json('estimate.manual.none.lines'));
+        $seller = User::create(['business_id' => $this->shop->id, 'name' => 'بائع', 'email' => 'sel@review.om', 'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط']);
+        $this->review(['estimate' => 1], $seller)->assertForbidden();
     }
 }

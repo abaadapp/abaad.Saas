@@ -225,7 +225,7 @@ final class WhatsAppLinkHealth
      * معرّفُ رقمٍ ولا معرّفُ تطبيقٍ آخر. والفحصُ الحيُّ زرٌّ لكلّ متجر
      * (`super-admin.businesses.whatsapp.check`) أو أمرُ `whatsapp:own-numbers`.
      *
-     * @return list<array{business_id:int, business:string, phone:?string, inbox:bool, health:array<string, mixed>, sender:?array{state:string, text:string}}>
+     * @return list<array{business_id:int, business:string, phone:?string, inbox:bool, health:array<string, mixed>, sender:?array{state:string, text:string}, billing:?array<string, mixed>}>
      */
     public static function fleet(): array
     {
@@ -237,6 +237,8 @@ final class WhatsAppLinkHealth
             'health' => self::view($c),
             // ‏‏ومن أيّ رقمٍ تخرج رسائلُه: معتمَد، أو ينتظر ولماذا، أو تعطّل (`WhatsAppSender`)
             'sender' => $c->business ? WhatsAppSender::brief($c->business, $c) : null,
+            // ‏‏وعلى من رسومُه عند Meta — بإحدى خمس (`WhatsAppBillingLock`)
+            'billing' => WhatsAppBillingLock::brief($c),
         ])->all();
     }
 }

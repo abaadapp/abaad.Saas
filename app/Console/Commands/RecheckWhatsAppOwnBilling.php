@@ -2,7 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\WhatsAppBilling;
 use App\Models\WhatsAppConnection;
+use App\Support\WhatsAppBillingLock;
+use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppOwnApp;
 use Illuminate\Console\Command;
 
@@ -34,6 +37,25 @@ class RecheckWhatsAppOwnBilling extends Command
                     $this->warn('أُوقفت وصلة المتجر '.$connection->business_id);
                 }
             });
+
+        // ‏‏وما ثبت من وصلات تطبيق أبعاد يُقرأ كلَّ يوم — ما نقضته القراءةُ وقف (`WhatsAppBillingLock`)
+        WhatsAppBilling::where('state', WhatsAppBillingLock::PROVEN)->each(function (WhatsAppBilling $row) use (&$stopped) {
+            $connection = WhatsAppConnections::forBusiness((int) $row->business_id);
+
+            if ($connection === null || (string) $connection->waba_id !== $row->waba_id || ! WhatsAppBillingLock::reviewable($connection)) {
+                return;
+            }
+
+            try {
+                if (WhatsAppBillingLock::daily($connection)?->state !== WhatsAppBillingLock::PROVEN && WhatsAppBillingLock::applies($connection)) {
+                    $stopped++;
+                    $this->warn('أُوقفت وصلة المتجر '.$row->business_id);
+                }
+            } catch (\Throwable $e) {
+                // ‏‏وعطبٌ في قراءة متجرٍ لا يوقف ما بعده
+                report($e);
+            }
+        });
 
         $this->line('أُوقف: '.$stopped);
 

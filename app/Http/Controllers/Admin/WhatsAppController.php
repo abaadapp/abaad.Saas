@@ -11,6 +11,7 @@ use App\Support\Demo;
 use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppEvent;
@@ -256,7 +257,16 @@ class WhatsAppController extends Controller
 
             $own = WhatsAppConnections::forBusiness($business->id);
 
-            if (! $own || ! $own->isUsable()) {
+            if (! $own || ! $own->isConnected()) {
+                return back()->withErrors(['mode' => __('اربط رقم متجرك أولًا — لا وصلة صالحة بعد.')]);
+            }
+
+            // ‏‏ورقمٌ لم تثبت جهةُ رسومه لا يُختار — ويُقال ما بقي
+            if (($stop = WhatsAppBillingLock::stop($own)) !== null) {
+                return back()->withErrors(['mode' => WhatsAppBillingLock::says($stop)['text']]);
+            }
+
+            if (! $own->isUsable()) {
                 return back()->withErrors(['mode' => __('اربط رقم متجرك أولًا — لا وصلة صالحة بعد.')]);
             }
 
@@ -405,6 +415,13 @@ class WhatsAppController extends Controller
             return back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say($kind['problem'])]);
         }
 
+        // ‏‏ولا يحلّ حسابٌ لم تثبت جهةُ رسومه محلَّ رقمٍ يُرسل اليوم — كالربط بضغطة
+        if ($why = WhatsAppOnboarding::wouldSilence($business, $existing, (string) $check['waba'], (string) $data['phone_number_id'])) {
+            WhatsAppLinkCheck::log('manual_link_refused', $business->id, ['code' => WhatsAppBillingLock::UNPROVEN, 'message' => null]);
+
+            return back()->withErrors(['phone_number_id' => $why]);
+        }
+
         $hook = WhatsAppLinkCheck::subscribe((string) $check['waba'], $token);
 
         // ولا يُحفظ على اشتراكٍ لم يُقرأ، ولا تُستبدل وصلةٌ تُرسل بوصلةٍ لم يثبت اشتراكُها
@@ -431,6 +448,8 @@ class WhatsAppController extends Controller
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
+            // ‏‏ومقفلٌ حتى تثبت جهةُ رسومه (`WhatsAppBillingLock`)
+            'billing_exempt' => WhatsAppBillingLock::staysExempt($existing, (string) $check['waba'], (string) $data['phone_number_id']),
         ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state'])
           + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : [])
           // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه — فلا تصير الوصلةُ نصفين
@@ -443,6 +462,7 @@ class WhatsAppController extends Controller
 
         Activity::log('settings', 'واتساب — ربط رقم المتجر ('.($attributes['display_phone_number'] ?? $data['phone_number_id']).')');
 
+        WhatsAppBillingLock::linked($connection->refresh());
         // ‏‏ويُعتمد رقمَ إرسالٍ حين تثبت جاهزيّتُه — كالربط بضغطة
         WhatsAppSender::linked($connection, WhatsAppSender::VIA_MANUAL, $request->user());
 

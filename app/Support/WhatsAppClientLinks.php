@@ -109,7 +109,7 @@ final class WhatsAppClientLinks
         }
 
         // ‏‏ورقمٌ سُحب إذنُه عند Meta «مربوطٌ» عندنا ولا يُرسل — يُعاد ربطُه بالرابط كما يُعاد من الحساب
-        if ($existing?->isUsable() && ! WhatsAppSender::needsRelink($business, $existing)) {
+        if ($existing?->isConnected() && ! WhatsAppSender::needsRelink($business, $existing)) {
             return __('رقم المتجر مربوط ويعمل — لا يبدّله رابط. إن أراد رقمًا آخر فليفصله من حسابه أوّلًا.');
         }
 

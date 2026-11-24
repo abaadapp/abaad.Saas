@@ -314,6 +314,11 @@ class WhatsAppAutoReply
             return WhatsAppOwnApp::AWAITS_BILLING;
         }
 
+        // ‏‏ورقمٌ لم تثبت جهةُ رسومه لا يردّ — وسببُه باسمه (`WhatsAppBillingLock`)
+        if (($stop = WhatsAppBillingLock::stop($connection)) !== null) {
+            return $stop;
+        }
+
         if (! $connection->isUsable()) {
             return 'connection_unusable';
         }
@@ -456,6 +461,7 @@ class WhatsAppAutoReply
             ! WhatsAppFeature::canUseOwnNumber($business) => __('يعمل الرد من رقم متجرك الخاص وحده — باقتك لا تتيح الرقم الخاص بعد.'),
             $connection === null || $connection->owner_type !== WhatsAppMode::OWNER_BUSINESS => __('بانتظار ربط رقم متجرك — يعمل الرد فور اكتماله.'),
             WhatsAppOwnApp::awaitsBilling($connection) => __('بانتظار إثبات فوترة ميتا — يعمل الرد فور مراجعة الدليل.'),
+            WhatsAppBillingLock::stop($connection) !== null => WhatsAppBillingLock::says((string) WhatsAppBillingLock::stop($connection))['text'],
             ! $connection->isUsable() => __('بانتظار اكتمال ربط رقمك — يعمل الرد فور عودته.'),
             WhatsAppOwnApp::sendAccount($connection)['problem'] !== null => WhatsAppOwnApp::say((string) WhatsAppOwnApp::sendAccount($connection)['problem']),
             default => null,

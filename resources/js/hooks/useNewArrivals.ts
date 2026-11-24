@@ -15,6 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * مرشّحٍ رنينًا وشارةً حمراء — فيتعلّم من يجهّز أن يتجاهلها، وتصير عديمةَ
  * المعنى يوم يصل طلبٌ حقيقيّ.
  *
+ * ═══ وما كشفه مَن يقرأ لم يصل ═══
+ *
+ * «عرض المزيد» و«التالي» وترشيحُ فرعٍ آخر تُظهر بطاقاتٍ كانت على اللوحة ولم
+ * تُعرض بعد. وعدُّها وصولًا يرنّ لمئتي طلبٍ قديمٍ عند كلّ ضغطة. فالعرضُ يُعطى
+ * مفتاحًا (`view`)، وما جاء مع تبدّله خطُّ أساسٍ جديد — كأوّل تحميل.
+ *
  * ═══ والنغمةُ مرّةً للطلب الواحد — من المجموعة نفسِها ═══
  *
  * الطلب يبقى على اللوحة حتى يُجهَّز، فلا يجوز أن تُعاد نغمتُه في كلّ استطلاع.
@@ -30,8 +36,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * تُصدر صوتًا. فالمفتاحُ يُشغَّل بضغطةٍ — وهي التفاعلُ نفسُه — و`AudioContext`
  * يُنشأ حينها لا قبلها.
  */
-export default function useNewArrivals(numbers: string[], sound: boolean) {
+export default function useNewArrivals(numbers: string[], sound: boolean, view = '') {
     const seen = useRef<Set<string> | null>(null);
+    const shown = useRef(view);
     const audio = useRef<AudioContext | null>(null);
     const [fresh, setFresh] = useState<string[]>([]);
 
@@ -61,6 +68,14 @@ export default function useNewArrivals(numbers: string[], sound: boolean) {
     useEffect(() => {
         if (seen.current === null) {
             seen.current = new Set(numbers);
+            shown.current = view;
+
+            return;
+        }
+
+        if (shown.current !== view) {
+            shown.current = view;
+            for (const n of numbers) seen.current.add(n);
 
             return;
         }
@@ -73,7 +88,7 @@ export default function useNewArrivals(numbers: string[], sound: boolean) {
         setFresh((prev) => [...new Set([...prev, ...arrivals])]);
 
         if (sound) beep();
-    }, [numbers, sound, beep]);
+    }, [numbers, sound, beep, view]);
 
     /** يُنادى حين يقرّ من يجهّز أنّه رآها — فتُطفأ الشارة ولا تتراكم */
     const acknowledge = useCallback(() => setFresh([]), []);

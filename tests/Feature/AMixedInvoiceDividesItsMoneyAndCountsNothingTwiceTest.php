@@ -390,6 +390,42 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         $this->assertEquals(0, $after['standalone']['gross'], 'الملغياتُ خرجت من المبيعات ومرّةً واحدة');
     }
 
+    /**
+     * وفاتورةٌ ملغاةٌ لم تحملها ورقة: بندُها كما سُجّل ولا نصيبَ ولا عمولةَ فيه —
+     * كما في النافذة والملخّص. وما حملته ورقةٌ يبقى كما صدر.
+     */
+    public function test_a_cancelled_unsettled_row_shows_no_commission_or_net_and_a_settled_one_stays_as_issued(): void
+    {
+        $loose = $this->sell([[$this->silver, 2]]);
+        $this->actingAs($this->owner);
+        OrderCorrection::cancel($loose->fresh(), 'أُلغي', boutiqueReturned: true);
+        $row = $this->rows()['rows'][0];
+        $this->assertTrue($row['void']);
+        $this->assertEquals([12.0, 0.0, 0.0], [$row['amount'], $row['commission'], $row['net']], 'المبلغُ كما سُجّل، ولا نصيبَ لأحد');
+
+        $kept = $this->sell([[$this->silver, 3]]);
+        $sheet = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+        $items = OrderItem::where('order_id', $kept->id)->get();
+        OrderCorrection::cancel($kept->fresh(), 'رُدّ بعد الورقة', boutiqueReturned: true,
+            boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+        $settled = collect($this->rows()['rows'])->firstWhere('order_number', $kept->number);
+        $this->assertFalse($settled['void'], 'بندٌ حملته ورقةٌ لا يُمحى نصيبُه من الصفّ');
+        $this->assertEquals([3.6, 14.4], [$settled['commission'], $settled['net']], 'كما صدرت به الورقة');
+        $this->assertSame($sheet->number, $settled['settlement']);
+    }
+
+    /** خصمٌ يتجاوز حصّةَ المتجر: البوتيكُ لا ينقص، والمتجرُ يتحمّل الفرق ويُقال سالبًا لا صفرًا */
+    public function test_a_discount_beyond_the_shops_share_is_shown_negative_and_never_taken_from_the_boutique(): void
+    {
+        Coupon::create(['business_id' => $this->shop->id, 'code' => 'BIG', 'type' => 'مبلغ', 'value' => 15, 'active' => true]);
+        // بضاعةُ البوتيك ١٢، وعمولةُ المتجر ٢٫٤ وحدها — والخصمُ ١٥
+        $inv = $this->invoice($this->sell([[$this->silver, 2]], ['coupon_code' => 'BIG']));
+        $this->assertEquals(9.6, $inv['money']['boutiques_owed'], 'الخصمُ اقتُطع من البوتيك');
+        $this->assertLessThan(0, $inv['money']['shop_after_discount']);
+        $this->assertSame(self::baisa($inv['money']['total']), self::baisa($inv['money']['boutiques_owed']) + self::baisa($inv['money']['shop_after_discount']));
+        $this->assertWhole($inv);
+    }
+
     /* ═══════════ دون اتصال ═══════════ */
 
     public function test_an_offline_sale_resent_again_is_one_sale_with_one_share(): void

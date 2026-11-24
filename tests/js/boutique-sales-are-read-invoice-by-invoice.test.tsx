@@ -286,6 +286,25 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(box.textContent).toContain('منها ضريبة يورّدها المتجر');
     });
 
+    it('صفٌّ ملغًى لم يُسوَّ: لا عمولةَ ولا صافيَ ولا حالَ تسوية — والمبلغُ كما سُجّل', async () => {
+        respond = (url) => (url.includes('summary') ? summary : page([
+            row({ key: 'standalone:9', type: 'standalone', order_id: 9, order_number: 'INV-0009', parent: null, parent_total: null,
+                invoice_state: 'cancelled', void: true, amount: 12, commission: 0, net: 0, rate: 20, settle_state: 'pending' }),
+        ]));
+        mount();
+        const table = await screen.findByTestId('boutique-sales-table');
+        const tr = within(table).getByText('INV-0009').closest('tr')!;
+        expect(tr.textContent).toContain('12.000');
+        expect(tr.textContent).toContain('ملغاة');
+        expect(tr.textContent).not.toContain('لم تُسوَّ');
+        expect(tr.textContent).not.toContain('0.000');
+    });
+
+    it('خصمٌ تجاوز حصّةَ المتجر يُنبَّه إليه — والبوتيك لا ينقص', async () => {
+        await openInvoice(invoice({}, {}, { shop_after_discount: -3.1, boutiques_owed: 20.1 }));
+        expect(screen.getByTestId('boutique-invoice-discount-over').textContent).toContain('مستحق البوتيكات لا ينقص');
+    });
+
     it('ملغاةٌ لا كتلةَ مالٍ فيها', async () => {
         await openInvoice(invoice({ invoice_state: 'cancelled' }, { void: true, shop: 0, boutiques: [] }));
         expect(screen.queryByTestId('boutique-invoice-money')).toBeNull();

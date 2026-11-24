@@ -354,7 +354,13 @@ final class BoutiqueSales
         $rateH = $standalone ? self::rateHundredths($r->rate ?? 0) : 0;
         $rate = $standalone ? $rateH / 100 : null;
         $commissionB = $standalone ? self::commissionBaisa($amountB, $rateH) : 0;
-        $commission = self::money($commissionB);
+        /*
+         * فاتورةٌ ملغاةٌ لم تحملها ورقة: بندُها كما سُجّل ولا نصيبَ فيه لأحد — كما في
+         * نافذة الفاتورة والملخّص. وما حملته ورقةٌ يبقى كما صدر، ومرتجعُه منفصل.
+         */
+        $state = $states[(int) $r->order_id] ?? self::ACTIVE;
+        $void = $standalone && $state === self::CANCELLED && $r->settle_state === self::PENDING;
+        $commission = self::money($void ? 0 : $commissionB);
 
         return [
             'key' => $r->type.':'.$r->ref_id,
@@ -363,7 +369,8 @@ final class BoutiqueSales
             'order_number' => (string) $r->order_number,
             'ordered_at' => $r->ordered_at ? Carbon::parse($r->ordered_at)->format('Y-m-d H:i') : null,
             'order_status' => (string) $r->order_status,
-            'invoice_state' => $states[(int) $r->order_id] ?? self::ACTIVE,
+            'invoice_state' => $state,
+            'void' => $void,
             'boutique_id' => (int) $r->boutique_id,
             'boutique' => (string) ($r->boutique_name ?? ''),
             'product' => (string) $r->product_name,
@@ -377,7 +384,7 @@ final class BoutiqueSales
             'amount' => $amount,
             'rate' => $rate,
             'commission' => $commission,
-            'net' => self::money($amountB - $commissionB),
+            'net' => self::money($void ? 0 : $amountB - $commissionB),
             'credited' => round((float) $r->credited, 3) + 0.0,
             'kept_state' => $r->kept_state,
             'settle_state' => $r->settle_state,

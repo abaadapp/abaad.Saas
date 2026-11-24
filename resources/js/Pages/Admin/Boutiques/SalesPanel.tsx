@@ -34,6 +34,8 @@ export interface SaleRow {
     ordered_at: string | null;
     order_status: string;
     invoice_state: InvoiceState;
+    /** فاتورةٌ ملغاةٌ لم تحملها ورقة: بندُها كما سُجّل ولا نصيبَ فيه */
+    void?: boolean;
     boutique_id: number;
     boutique: string;
     product: string;
@@ -543,12 +545,12 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{number(r.quantity, 3)} × {fmt(r.unit_price)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{fmt(r.amount)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums text-[#047857]">
-                                {r.type === 'standalone' ? <>{fmt(r.commission)} <span className="text-[11px] text-[#9ca3af]">({number(r.rate ?? 0, 2)}%)</span></> : t('لا عمولة')}
+                                {r.void ? <span className="text-[#9ca3af]">—</span> : r.type === 'standalone' ? <>{fmt(r.commission)} <span className="text-[11px] text-[#9ca3af]">({number(r.rate ?? 0, 2)}%)</span></> : t('لا عمولة')}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-end font-medium tabular-nums text-[#6d28d9]">{fmt(r.net)}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-end font-medium tabular-nums text-[#6d28d9]">{r.void ? <span className="font-normal text-[#9ca3af]">—</span> : fmt(r.net)}</td>
                             <td className="space-y-1 px-3 py-2.5">
                                 <InvoiceStateBadge row={r} />
-                                <Badge variant={SETTLE_VARIANT[r.settle_state]} className="whitespace-nowrap">{t(SETTLE_LABEL[r.settle_state])}</Badge>
+                                {!r.void && <Badge variant={SETTLE_VARIANT[r.settle_state]} className="whitespace-nowrap">{t(SETTLE_LABEL[r.settle_state])}</Badge>}
                                 {r.settlement && <p className="whitespace-nowrap text-[11px] text-[#9ca3af]">{r.settlement}</p>}
                             </td>
                         </tr>
@@ -576,12 +578,12 @@ function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                         <Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_LABEL[r.type])}</Badge>
                         <span className="text-[12px] text-[#6b7280]">{r.boutique}</span>
                         <InvoiceStateBadge row={r} />
-                        <Badge variant={SETTLE_VARIANT[r.settle_state]}>{t(SETTLE_LABEL[r.settle_state])}</Badge>
+                        {!r.void && <Badge variant={SETTLE_VARIANT[r.settle_state]}>{t(SETTLE_LABEL[r.settle_state])}</Badge>}
                     </div>
                     <div className="grid grid-cols-3 gap-2 tabular-nums">
                         <div><p className="text-[11px] text-[#9ca3af]">{t('الإجمالي')}</p>{fmt(r.amount)}</div>
-                        <div><p className="text-[11px] text-[#9ca3af]">{t('عمولة المتجر')}</p>{r.type === 'standalone' ? fmt(r.commission) : t('لا عمولة')}</div>
-                        <div><p className="text-[11px] text-[#9ca3af]">{t('صافي البوتيك')}</p><span className="font-medium text-[#6d28d9]">{fmt(r.net)}</span></div>
+                        <div><p className="text-[11px] text-[#9ca3af]">{t('عمولة المتجر')}</p>{r.void ? '—' : r.type === 'standalone' ? fmt(r.commission) : t('لا عمولة')}</div>
+                        <div><p className="text-[11px] text-[#9ca3af]">{t('صافي البوتيك')}</p><span className="font-medium text-[#6d28d9]">{r.void ? '—' : fmt(r.net)}</span></div>
                     </div>
                 </li>
             ))}
@@ -617,6 +619,11 @@ function MoneyBlock({ money, fmt }: { money: InvoiceDetails['money']; fmt: (v: n
                 {row(t('مستحق البوتيكات'), fmt(money.boutiques_owed))}
                 {row(t('حصة المتجر بعد تحمّل الخصومات'), fmt(money.shop_after_discount), 'text-[#047857]')}
                 {money.tax_basis === 'inside' && money.tax > 0 && row(t('منها ضريبة يورّدها المتجر'), fmt(money.tax))}
+                {money.shop_after_discount < 0 && (
+                    <p className="mt-1 rounded-md bg-[#fef2f2] px-2 py-1.5 text-[12px] leading-5 text-[#b91c1c]" data-testid="boutique-invoice-discount-over">
+                        {t('الخصومات تجاوزت حصة المتجر من بنود هذه الفاتورة: يتحمّل المتجر الفرق، ومستحق البوتيكات لا ينقص.')}
+                    </p>
+                )}
                 <p className="pt-1 text-[12px] leading-5 text-[#9ca3af]">
                     {t('حصة المتجر ليست صافي ربح: تكلفة المنتجات والمصاريف غير محسوبة فيها.')}
                 </p>

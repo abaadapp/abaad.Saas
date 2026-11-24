@@ -11130,5 +11130,6 @@
     "مستحق البوتيكات": "Owed to boutiques",
     "حصة المتجر بعد تحمّل الخصومات": "The shop's share after bearing the discounts",
     "منها ضريبة يورّدها المتجر": "Of which VAT the shop remits",
-    "حصة المتجر ليست صافي ربح: تكلفة المنتجات والمصاريف غير محسوبة فيها.": "The shop's share is not net profit: product cost and expenses are not in it."
+    "حصة المتجر ليست صافي ربح: تكلفة المنتجات والمصاريف غير محسوبة فيها.": "The shop's share is not net profit: product cost and expenses are not in it.",
+    "الخصومات تجاوزت حصة المتجر من بنود هذه الفاتورة: يتحمّل المتجر الفرق، ومستحق البوتيكات لا ينقص.": "The discounts exceed the shop's share of this invoice's lines: the shop bears the difference and what is owed to boutiques does not fall."
 }

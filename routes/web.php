@@ -599,6 +599,10 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/whatsapp/merchant-link/config', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'configId'])->name('whatsapp.merchant-link.config');
     // ‏‏وخيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» — يُفتح بعد نقل التجّار إلى تطبيق أبعاد (`WhatsAppMerchantLink::setCoexistence`)
     Route::post('/whatsapp/merchant-link/coexistence', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'coexistence'])->name('whatsapp.merchant-link.coexistence');
+    // ‏‏ومتاجرُ تجربةٍ تربط عبر تطبيق أبعاد قبل أن يُنقل إليه غيرُها (`WhatsAppMerchantLink::setPilot`)
+    Route::post('/whatsapp/merchant-link/pilot', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'pilot'])->name('whatsapp.merchant-link.pilot');
+    // ‏‏ومفتاحُ اعتماد رقم التاجر رقمًا للإرسال آليًّا (`WhatsAppSender::enabled`)
+    Route::post('/whatsapp/merchant-link/auto-sender', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'autoSender'])->name('whatsapp.merchant-link.auto-sender');
     // ‏‏وتطبيقُ إنستقرام ولمن يُفتح ربطُه (`InstagramPlatform`)
     Route::post('/instagram/credentials', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'credentials'])->name('instagram.credentials');
     Route::post('/instagram/mode', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'mode'])->name('instagram.mode');

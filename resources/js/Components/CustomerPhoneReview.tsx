@@ -1,9 +1,10 @@
 import { router } from '@inertiajs/react';
-import { PhoneOff } from 'lucide-react';
+import { PhoneOff, X } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import { PHONE_STATUS_LABEL, type PhoneStatus } from '@/lib/customer-phone';
 
 /**
@@ -12,8 +13,11 @@ import { PHONE_STATUS_LABEL, type PhoneStatus } from '@/lib/customer-phone';
  * يُعرض في لوحة التاجر وفي قائمة العملاء وحدهما، ويختفي حين لا يبقى رقمٌ
  * يحتاج مراجعة. وزرُّه يفتح القائمةَ على المتأثّرين (`missing=phone`).
  * والعددُ من الخادم (`CustomerPhone::reviewCount`) — من متجره وحده.
+ *
+ * و`onDismiss` زرُّ إغلاقٍ إلى آخر الجلسة — تمرّره لوحةُ التحكم وحدها، وقائمةُ
+ * العملاء لا تُغلَق فيها دعوةٌ إلى مراجعة عملائها.
  */
-export function CustomerPhoneReviewBanner({ count, filtering = false }: { count: number; filtering?: boolean }) {
+export function CustomerPhoneReviewBanner({ count, filtering = false, onDismiss }: { count: number; filtering?: boolean; onDismiss?: () => void }) {
     const t = useTranslate();
 
     if (count <= 0) return null;
@@ -22,7 +26,11 @@ export function CustomerPhoneReviewBanner({ count, filtering = false }: { count:
         <div
             role="status"
             data-testid="customer-phone-review"
-            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]"
+            className={cn(
+                'mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]',
+                // مكانُ زرّ الإغلاق في طرف السطر — بالعربيّة يسارًا وبالإنجليزيّة يمينًا، وأوسعُ تحت الإصبع
+                onDismiss && 'relative pe-12 touch:pe-14',
+            )}
         >
             <span className="flex items-start gap-2">
                 <PhoneOff className="mt-0.5 size-5 shrink-0" />
@@ -39,6 +47,17 @@ export function CustomerPhoneReviewBanner({ count, filtering = false }: { count:
                 <Button size="sm" onClick={() => router.get(route('admin.customers.index'), { missing: 'phone' }, { preserveState: false })}>
                     {t('مراجعة العملاء')}
                 </Button>
+            )}
+            {onDismiss && (
+                <button
+                    type="button"
+                    onClick={onDismiss}
+                    title={t('إغلاق التنبيه')}
+                    className="absolute end-2 top-2 flex size-8 items-center justify-center rounded-[8px] text-[#92400e]/70 transition-colors hover:bg-[#fef3c7] hover:text-[#92400e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] touch:end-1 touch:top-1 touch:size-11"
+                >
+                    <X className="size-4" />
+                    <span className="sr-only">{t('إغلاق التنبيه')}</span>
+                </button>
             )}
         </div>
     );

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Support\DashboardMetrics;
 use App\Support\Demo;
 use App\Support\PlatformMetrics;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 /**
@@ -36,8 +38,10 @@ class DashboardController extends Controller
              * هادئٌ في الصفحة لا في الجرس، ولمن يدخل قسم العملاء وحده: زرُّه
              * يفتح قائمتَهم، ومن لا يدخلها لا يُدعى إليها. والعددُ محفوظٌ عشر
              * دقائق ويُمحى بحفظ أيّ عميل (`CustomerPhone::reviewCount`).
+             *
+             * ومن أغلقه في جلسته هذه لا يُرسل إليه حتّى يخرج ويدخل (`dismissPhoneReview`).
              */
-            'customerPhoneReview' => auth()->user()?->allows('customers')
+            'customerPhoneReview' => auth()->user()?->allows('customers') && ! session()->has(self::phoneReviewKey())
                 ? \App\Support\CustomerPhone::reviewCount(Demo::bid())
                 : 0,
             // والبطاقاتُ والرسمان في اللقطة أعلاه: تتبع الفرعَ المختار كأحدث
@@ -69,6 +73,29 @@ class DashboardController extends Controller
             'topEmployees' => collect(Demo::employees(Demo::currentBranchId()))
                 ->sortByDesc('achieved')->take(5)->values()->all(),
         ]);
+    }
+
+    /**
+     * إغلاقُ تنبيه بيانات العملاء من لوحة التحكم — إلى أن تنتهي هذه الجلسة.
+     *
+     * في الجلسة لا في القاعدة: الخروجُ يُبطلها (`LoginController::logout`)
+     * فيعود التنبيهُ مع الدخول التالي ما بقي من يحتاج مراجعة. وهو لوحة التحكم
+     * وحدها: قسمُ العملاء يقول العددَ نفسَه كما كان.
+     */
+    public function dismissPhoneReview(Request $request): RedirectResponse
+    {
+        // بابُ من يُعرض له التنبيهُ نفسُه — وقسمُ اللوحة يسأله `CheckAbility` قبله
+        abort_unless($request->user()->allows('customers'), 403);
+
+        $request->session()->put(self::phoneReviewKey(), true);
+
+        return to_route('admin.dashboard');
+    }
+
+    /** لصاحبه في متجره: من تبدّل حسابُه أو متجرُه في الجلسة نفسِها لا يرث إغلاقَ غيره */
+    private static function phoneReviewKey(): string
+    {
+        return 'phone_review_dismissed.'.Demo::bid().'.'.auth()->id();
     }
 
     public function superStats()

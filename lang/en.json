@@ -11581,5 +11581,6 @@
     "معلوم صاحبها ونسبتها يومها: :lines بندًا بإجمالي :gross — عمولة :commission وصافٍ محتمل :net. رقم للقرار، لم يُسجَّل منه شيء.": "Owner and rate known for their day: :lines lines totalling :gross — commission :commission and a possible net of :net. A number to decide on; nothing of it was recorded.",
     "للمراجعة بيد — :why: :lines بندًا": "To review by hand — :why: :lines lines",
     "كانت للمتجر يومها: :lines بندًا": "They were the shop's at the time: :lines lines",
-    "لا يُحسب بنسبة اليوم، ولا يُسجَّل ولا يُسدَّد من هنا.": "Today's rate is not used, and nothing is recorded or paid from here."
+    "لا يُحسب بنسبة اليوم، ولا يُسجَّل ولا يُسدَّد من هنا.": "Today's rate is not used, and nothing is recorded or paid from here.",
+    "الكمية المرتجعة": "Quantity returned"
 }

@@ -277,8 +277,11 @@ class WhatsAppOnboarding
                 'message' => __('تمّ التفويض — بقيت خطوةٌ واحدة: فعّل رقمك برمز التحقّق بخطوتين (ستّة أرقام) أدناه.')];
         }
 
+        // ‏‏ورقمٌ اكتمل ربطُه يصير رقمَ إرسال متجره حين تثبت جاهزيّتُه — بلا يدِ أحد (`WhatsAppSender`)
+        WhatsAppSender::linked($connection, $actor === null ? WhatsAppSender::VIA_CLIENT_LINK : WhatsAppSender::VIA_EMBEDDED, $actor);
+
         return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => false, 'webhook' => $hook['state'],
-            'message' => self::linkedMessage($hook['state'])];
+            'message' => self::withSender($business, self::linkedMessage($hook['state']))];
     }
 
     /** أينتظر رقمُ هذه الوصلة تسجيلَه في Cloud API؟ */
@@ -327,7 +330,15 @@ class WhatsAppOnboarding
         Activity::log('settings', 'واتساب — تفعيل رقم المتجر في Cloud API ('
             .($connection->display_phone_number ?? $connection->phone_number_id).')', ['business_id' => $business->id]);
 
-        return ['ok' => true, 'message' => self::linkedMessage((string) $connection->webhook_state)];
+        WhatsAppSender::linked($connection->refresh(), WhatsAppSender::VIA_REGISTERED, auth()->user());
+
+        return ['ok' => true, 'message' => self::withSender($business, self::linkedMessage((string) $connection->webhook_state))];
+    }
+
+    /** ‏‏ومن بقيت رسائلُه من رقم أبعاد حتى يجهز رقمُه يُقال له */
+    public static function withSender(Business $business, string $message): string
+    {
+        return trim($message.' '.WhatsAppSender::said($business));
     }
 
     /** ما يُقال بعد ربطٍ قُبل — والاستقبالُ لا يُدّعى قبل أن يثبت */

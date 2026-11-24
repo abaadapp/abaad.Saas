@@ -28,7 +28,7 @@ export interface SenderView {
 const PILL: Record<Exclude<SenderView['state'], 'none'>, { state: SetupState; label: string }> = {
     checking: { state: 'progress', label: 'قيد التحقّق' },
     adopted: { state: 'ready', label: 'معتمد' },
-    problem: { state: 'error', label: 'متعطّل' },
+    problem: { state: 'error', label: 'لا يُرسل' },
 };
 
 const ICON: Record<StepState, { icon: typeof Check; cls: string }> = {

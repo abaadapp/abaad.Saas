@@ -4492,7 +4492,7 @@ class Demo
             $senders = WhatsAppSender::bell($limit, null, ['merchant', 'abaad']);
             foreach ($senders['broken'] as $b) {
                 $add('wa-sender-down-'.$b['connection']->id, [
-                    'text' => __('رقم واتساب «:shop» متعطّل ورسائله لا تخرج: :why', [
+                    'text' => __('رسائل واتساب «:shop» لا تخرج: :why', [
                         'shop' => $b['business']->name, 'why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text'],
                     ]),
                     'time' => $b['problem']['since'] ?? __('الآن'),
@@ -4651,7 +4651,7 @@ class Demo
 
         foreach ($waSender['broken'] as $b) {
             $add('wa-sender-down-'.$b['connection']->id, [
-                'text' => __('رقم واتساب متجرك متعطّل ورسائلك لا تخرج: :why', ['why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text']]),
+                'text' => __('رسائل واتساب متجرك لا تخرج: :why', ['why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text']]),
                 'time' => $b['problem']['since'] ?? __('الآن'),
                 'section' => 'integrations',
                 'icon' => 'message-circle',

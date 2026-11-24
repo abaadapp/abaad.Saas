@@ -229,19 +229,20 @@ final class WhatsAppMerchantLink
     public static function state(): array
     {
         $readable = true;
-        $modeRow = $configRow = $coexistRow = $pilotRow = null;
+        $modeRow = $configRow = $coexistRow = $pilotRow = $autoRow = null;
         try {
             $modeRow = self::row(self::KEY);
             $configRow = self::row(self::CONFIG_KEY);
             $coexistRow = self::row(self::COEXISTENCE_KEY);
             $pilotRow = self::row(self::PILOT_KEY);
+            $autoRow = self::row(WhatsAppSender::KEY);
         } catch (\Throwable $e) {
             report($e);
             $readable = false;
         }
 
         $fromScreen = preg_match(self::CONFIG_ID_PATTERN, (string) $configRow?->value) === 1;
-        $ids = array_values(array_filter([$modeRow?->id, $configRow?->id, $coexistRow?->id, $pilotRow?->id]));
+        $ids = array_values(array_filter([$modeRow?->id, $configRow?->id, $coexistRow?->id, $pilotRow?->id, $autoRow?->id]));
 
         $history = [];
         if ($ids !== []) {

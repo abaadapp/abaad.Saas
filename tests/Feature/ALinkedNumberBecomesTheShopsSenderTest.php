@@ -938,7 +938,7 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->assertSame('invalid_token', $this->row()->health_code);
         $this->assertSame(WhatsAppMode::BUSINESS_OWN, $this->mode(), 'لا يُرجَع إلى رقم أبعاد');
         $key = 'wa-sender-down-'.WhatsAppConnections::forBusiness($this->shop->id)->id;
-        $this->assertStringContainsString('متعطّل', $this->bell($this->owner)[$key]);
+        $this->assertStringContainsString('رسائل واتساب متجرك لا تخرج', $this->bell($this->owner)[$key]);
         $this->assertStringContainsString('محل ورد', $this->bell($this->super)[$key]);
 
         $this->calls = [];
@@ -1338,6 +1338,7 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->actingAs($hisOwner)->post(route('super-admin.whatsapp.merchant-link.auto-sender'), ['enabled' => false])->assertForbidden();
         $this->actingAs($this->super)->post(route('super-admin.whatsapp.merchant-link.auto-sender'), ['enabled' => false])->assertSessionHasNoErrors();
         $this->assertStringContainsString('أوقف', ActivityLog::where('subject_type', Setting::class)->latest('id')->first()->description);
+        $this->assertStringContainsString('أوقف', WhatsAppMerchantLink::state()['history'][0]['what'], 'ويُقرأ في شاشة المنصّة');
 
         $this->calls = [];
         $this->tick();

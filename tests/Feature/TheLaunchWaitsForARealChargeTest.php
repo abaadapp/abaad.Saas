@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\WhatsAppBilling;
 use App\Models\WhatsAppBillingEvent;
 use App\Models\WhatsAppBillingTrial;
+use App\Models\WhatsAppCampaign;
 use App\Models\WhatsAppCampaignRecipient;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
@@ -18,6 +19,8 @@ use App\Support\MetaWhatsAppClient;
 use App\Support\OrderStatus;
 use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppBillingTrials;
+use App\Support\WhatsAppCampaigns;
+use App\Support\WhatsAppCampaignsSwitch;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
@@ -539,16 +542,54 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
         $this->assertEqualsCanonicalizing([['business' => 'محل ورد', 'n' => 1], ['business' => 'غير منسوبة لمتجر', 'n' => 1]], $cost['by_shop']);
     }
 
-    public function test_a_campaign_message_is_named_so(): void
+    /** حملةٌ تخرج الآن إلى ثلاثة أرقام — مقرَّةٌ على وصلة المتجر */
+    private function runningCampaign(): WhatsAppCampaign
+    {
+        $campaign = WhatsAppCampaign::create([
+            'business_id' => $this->shop->id, 'whatsapp_connection_id' => $this->c()->id, 'name' => 'حملة', 'status' => WhatsAppCampaign::SENDING, 'total' => 3, 'started_at' => now(),
+            'message' => ['meta_name' => 'abaad_offer_1', 'language' => 'ar', 'variables' => []], 'audience' => [],
+        ]);
+        foreach (['96891110001', '96891110002', '96891110003'] as $phone) {
+            WhatsAppCampaignRecipient::create(['business_id' => $this->shop->id, 'campaign_id' => $campaign->id, 'phone' => $phone, 'status' => WhatsAppCampaignRecipient::PENDING]);
+        }
+        $this->assertTrue(WhatsAppCampaignsSwitch::set(WhatsAppCampaignsSwitch::ALL)['ok']);
+        $this->travelTo(now()->setTime(12, 0));
+        $this->calls = [];
+
+        return $campaign;
+    }
+
+    public function test_a_running_campaign_stops_at_the_lock_and_burns_no_recipient(): void
     {
         $this->trial();
-        DB::table('whatsapp_campaign_recipients')->getConnection()->statement('select 1');
-        $this->assertSame('other', (function () {
-            $this->metaSaid('wamid.OTHER', 'delivered', ['pricing' => ['category' => 'marketing']]);
+        $campaign = $this->runningCampaign();
+        WhatsAppBillingTrial::query()->update(['state' => 'closed', 'open_slot' => null]);
 
-            return WhatsAppMessagePrice::where('wamid', 'wamid.OTHER')->value('kind');
-        })());
-        $this->assertTrue(class_exists(WhatsAppCampaignRecipient::class));
+        $this->artisan('whatsapp:run-campaigns')->assertSuccessful();
+        $this->assertSame([], $this->outgoing());
+        $this->assertSame([WhatsAppCampaign::PAUSED, WhatsAppBillingLock::UNPROVEN], [$campaign->fresh()->status, $campaign->fresh()->stop_reason]);
+        $this->assertSame(3, WhatsAppCampaignRecipient::where('status', WhatsAppCampaignRecipient::PENDING)->count());
+        $this->assertStringContainsString('جهة رسوم', (string) WhatsAppCampaigns::stopWhy($campaign->fresh()->stop_reason));
+        // ‏‏ولا يستأنفها التاجر فوق القفل
+        $this->assertFalse(WhatsAppCampaigns::resume($this->shop->fresh(), $campaign->fresh())['ok']);
+    }
+
+    public function test_a_campaign_stops_at_the_trials_count_and_its_messages_are_named(): void
+    {
+        $this->trial();
+        $campaign = $this->runningCampaign();
+        WhatsAppBillingTrial::query()->update(['message_limit' => 2]);
+        $this->artisan('whatsapp:run-campaigns')->assertSuccessful();
+
+        $this->assertSame(['PN-1', 'PN-1'], $this->outgoing());
+        $this->assertSame([WhatsAppCampaign::PAUSED, WhatsAppBillingLock::TRIAL_SPENT], [$campaign->fresh()->status, $campaign->fresh()->stop_reason]);
+        $this->assertSame(1, WhatsAppCampaignRecipient::where('status', WhatsAppCampaignRecipient::PENDING)->count());
+
+        $wamid = WhatsAppCampaignRecipient::whereNotNull('wamid')->value('wamid');
+        $this->metaSaid($wamid, 'delivered', ['pricing' => ['billable' => true, 'type' => 'regular', 'category' => 'marketing']]);
+        $this->assertSame(['campaign', 'marketing', (int) $this->shop->id], array_values(WhatsAppMessagePrice::first()->only(['kind', 'category', 'business_id'])));
+        $this->metaSaid('wamid.OTHER', 'delivered', ['pricing' => ['category' => 'service']]);
+        $this->assertSame('other', WhatsAppMessagePrice::where('wamid', 'wamid.OTHER')->value('kind'));
     }
 
     public function test_a_failure_to_keep_it_never_loses_the_status_itself(): void

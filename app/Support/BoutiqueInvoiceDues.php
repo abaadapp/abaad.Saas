@@ -334,7 +334,7 @@ final class BoutiqueInvoiceDues
                 $from = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
                 $q->whereBetween('boutique_invoice_lines.collected_at', [$from, (clone $from)->endOfMonth()]);
             })
-            ->whereIn('boutique_invoice_lines.customer_invoice_id', CustomerInvoice::where('business_id', $businessId)->whereRaw(self::collectedSql())->select('id'));
+            ->whereExists(fn ($q) => self::invoiceOf($q)->whereRaw(self::collectedSql()));
     }
 
     /** بانتظار التحصيل: صدرت فواتيرُها ولم يكتمل ما قُبض عنها */
@@ -357,8 +357,13 @@ final class BoutiqueInvoiceDues
             ->when($boutiqueId !== null, fn ($q) => $q->where('boutique_invoice_lines.boutique_id', $boutiqueId))
             ->whereNotNull('boutique_invoice_lines.boutique_settlement_id')
             ->whereColumn('boutique_invoice_lines.quantity', '>', 'boutique_invoice_lines.returned_quantity')
-            ->whereIn('boutique_invoice_lines.customer_invoice_id', CustomerInvoice::where('business_id', $businessId)
-                ->where('status', CustomerInvoice::ISSUED)->whereRaw('NOT '.self::collectedSql())->select('id'));
+            ->whereExists(fn ($q) => self::invoiceOf($q)->where('customer_invoices.status', CustomerInvoice::ISSUED)->whereRaw('NOT '.self::collectedSql()));
+    }
+
+    /** فاتورةُ البند — يُسأل عن تحصيلها لكلّ بندٍ مرشَّح، لا لكلّ فواتير المتجر */
+    private static function invoiceOf($query)
+    {
+        return $query->selectRaw('1')->from('customer_invoices')->whereColumn('customer_invoices.id', 'boutique_invoice_lines.customer_invoice_id');
     }
 
     /**

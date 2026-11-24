@@ -12,6 +12,9 @@ Artisan::command('inspire', function () {
 // قلبُ الاشتراكات المنتهية إلى «منتهي» أول كل يوم — قبل أن يفتح أحد لوحته
 Schedule::command('subscriptions:expire')->dailyAt('00:10')->withoutOverlapping();
 
+// ‏‏رموزُ إنستقرام تُجدَّد قبل انتهاء أيّامها الستّين، والإشعاراتُ الخام بعد ثلاثين يومًا تُحذف
+Schedule::command('instagram:refresh-tokens')->dailyAt('04:30')->withoutOverlapping();
+
 // روابطُ الدفع المنتهية تُوسَم كلَّ ساعة — والشاشةُ توسمها عند فتحها أيضًا
 Schedule::command('payment-links:expire')->hourly()->withoutOverlapping();
 

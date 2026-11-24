@@ -53,6 +53,11 @@ class EveryScreenOpensTest extends TestCase
          * قبل أن يُسأل سؤالُ هذا الكنس — فتمرّ بلا حارس.
          */
         \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        /*
+         * ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`): مقفلًا تردّ صفحتُه ٤٠٤ قبل أن يُسأل سؤالُ هذا الاختبار.
+         */
+        \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
+        \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
 
         $this->owner = $business->users()->where('role', 'admin')->firstOrFail();
 

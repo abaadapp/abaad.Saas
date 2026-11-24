@@ -1761,7 +1761,10 @@ class CustomerInvoiceController extends Controller
             'pieces.*.damaged' => ['nullable', 'numeric', 'min:0', 'max:100000'],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
-        ], ['basis' => __('سبب الإشعار'), 'pieces' => __('قطع البوتيك المرتجعة')]);
+        ], [
+            'basis' => __('سبب الإشعار'), 'pieces' => __('قطع البوتيك المرتجعة'),
+            'pieces.*.quantity' => __('الكمية المرتجعة'), 'pieces.*.sellable' => __('عاد سليمًا'), 'pieces.*.damaged' => __('تالف أو لن يعود'),
+        ]);
 
         $invoice = $this->find($id);
 

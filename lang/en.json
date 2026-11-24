@@ -11578,6 +11578,7 @@
     "للمراجعة بيد — :why: :lines بندًا": "To review by hand — :why: :lines lines",
     "كانت للمتجر يومها: :lines بندًا": "They were the shop's at the time: :lines lines",
     "لا يُحسب بنسبة اليوم، ولا يُسجَّل ولا يُسدَّد من هنا.": "Today's rate is not used, and nothing is recorded or paid from here.",
+    "الكمية المرتجعة": "Quantity returned",
     "في الشهر :n ورقة صدرت قبل توحيد التقريب، مجموعها يختلف عن جمع بنودها بـ :d. الورقة كما صدرت، والجديدة تطابق بنودها بالبيسة.": "This month :n sheets issued before rounding was unified differ from the sum of their lines by :d. A sheet stays as issued; a new one matches its lines to the baisa.",
     "ضريبة داخل الأسعار أُخرجت قبل العمولة: :vat — يورّدها المتجر.": "Tax inside the prices taken out before commission: :vat — the shop remits it."
 }

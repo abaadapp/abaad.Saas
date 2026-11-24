@@ -35,6 +35,8 @@ import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Customer } from '@/types/models';
 import { PhoneStatusBadge } from '@/Components/CustomerPhoneReview';
+import { CustomerPortalButton } from '@/Components/RibbonPortal';
+import type { PortalLinkState } from '@/lib/ribbon-portal';
 import { phoneRefusal, phoneStatus } from '@/lib/customer-phone';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import {
@@ -66,6 +68,8 @@ interface Props {
     paymentLinks?: PaymentLinksPanel;
     /** سجلُّ نقاط الولاء — آخرُ الحركات، ومصدرُ كلٍّ منها: فاتورةٌ سُدّدت برابط، أو طلب، أو يد */
     pointHistory?: PointRow[];
+    /** حالُ رابطه إلى بوابة RIBBON — يصل لمتجرها ومن يشارك فيه وحدهم */
+    portalLink?: PortalLinkState;
 }
 
 interface PointRow {
@@ -99,7 +103,7 @@ const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 export default function CustomerShow() {
     const {
         customer, history = [], historyTotals = NO_TOTALS, collections = [], collectionTotals = NO_RECEIPTS, addresses, context, branches = [],
-        customerFlags, paymentLinks, pointHistory = [], auth,
+        customerFlags, paymentLinks, pointHistory = [], portalLink, auth,
     } = usePage<PageProps<Props>>().props;
     /*
      * ورفعُ حظر البيع لمن يملك تجاوزَه — كما يقبله الخادم (`CustomerController::internal`).
@@ -229,6 +233,7 @@ export default function CustomerShow() {
                 subtitle={t('سجل مشتريات العميل ونقاط ولائه')}
                 actions={
                     <>
+                        {portalLink && <CustomerPortalButton state={portalLink} />}
                         <Button variant="outline" asChild>
                             <a href={tenant(route('admin.customers.statement', customer.id))} target="_blank" rel="noreferrer">
                                 <Receipt />{t('كشف حساب')}

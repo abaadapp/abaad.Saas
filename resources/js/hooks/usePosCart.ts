@@ -259,6 +259,8 @@ export interface CheckoutResult {
      * للزبون إنّ نقاطه نفدت.
      */
     balance?: number | null;
+    /** بيعةُ عميلٍ مسجَّل في متجر RIBBON: عنوانُ رابطه، فيُعرض زرُّ «مشاركة رابط مشترياتي» */
+    portal?: string | null;
     /**
      * المبلغُ كما كتبه الخادم — أو `null` حين لا ردَّ يحمله.
      *
@@ -305,6 +307,8 @@ interface SendResult {
     balance?: number | null;
     /** إجماليُّ البيعة كما كتبه الخادم */
     total?: number;
+    /** بيعةُ عميلٍ مسجَّل في متجر RIBBON (`RibbonPortal\Portal::mayShare`) */
+    portal?: string | null;
     error?: string;
     /** أسماءُ الحقول التي ردّها الخادم — منها يُعرف السبب */
     fields?: string[];
@@ -1423,6 +1427,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                          */
                         balance: typeof d.points_balance === 'number' ? d.points_balance : null,
                         total: typeof d.total === 'number' ? d.total : undefined,
+                        portal: typeof d.portal === 'string' ? d.portal : null,
                     };
                 }
                 /*
@@ -1987,6 +1992,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                 redeemed: res.redeemed ?? 0,
                 balance: res.balance ?? null,
                 total: res.total ?? null,
+                portal: res.portal ?? null,
                 rejected: !!res.drop,
                 loyaltyChanged: changed,
             };

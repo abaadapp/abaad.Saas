@@ -11,6 +11,7 @@ import Field, { Select } from '@/Components/Field';
 
 import LanguageChoice from '@/Components/LanguageChoice';
 import { CustomerPhoneReviewBanner, PhoneStatusBadge } from '@/Components/CustomerPhoneReview';
+import { PortalButton, type PortalPanel } from '@/Components/RibbonPortal';
 import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -43,10 +44,12 @@ interface Props {
     unlanguaged: number;
     /** عملاءُ تحتاج أرقامُهم مراجعة (`CustomerPhone::reviewCount`) */
     phoneReview: number;
+    /** «بوابة عملاء RIBBON» — يصل لمتجرها ومن يشارك فيه وحدهم */
+    portal?: PortalPanel;
 }
 
 export default function CustomersIndex() {
-    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, unlanguaged, phoneReview, context } =
+    const { customers, pagination, filters, sorts, stats, branches, currentBranchId, unlanguaged, phoneReview, portal, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -229,6 +232,7 @@ export default function CustomersIndex() {
                 subtitle={t('إدارة قاعدة عملاء المحل وسجل مشترياتهم ونقاط ولائهم')}
                 actions={
                     <>
+                        {portal && <PortalButton portal={portal} />}
                         {/*
                             التصديرُ في قائمته الموحّدة — تقريرُ العملاء كما في الشاشة
                             بحثًا وترتيبًا، وملفُّ الاستيراد بندٌ باسمه.

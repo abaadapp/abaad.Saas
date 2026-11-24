@@ -104,6 +104,8 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Admin\Finance\PaymentLinkController;
 use App\Http\Controllers\Store\SitemapController;
+use App\Http\Controllers\Admin\RibbonPortalController as RibbonPortalAdminController;
+use App\Http\Controllers\Store\RibbonPortalController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\Store\StoreOldCartBridgeController;
 use App\Http\Controllers\SubscriptionExpiredController;
@@ -130,6 +132,7 @@ use App\Http\Controllers\SupportAttachmentController;
 use App\Http\Controllers\WebsiteContactController;
 use App\Http\Controllers\WhatsApp\WebhookController;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RibbonPortalGate;
 use App\Http\Middleware\StoreLivesOnItsSubdomain;
 use App\Support\Permissions;
 use App\Support\Storefront;
@@ -1018,6 +1021,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/customers/import/confirm', [CustomerImportExportController::class, 'confirm'])->name('customers.import.confirm');
     Route::post('/customers/import/cancel', [CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
+    /*
+     * بوابةُ عملاء RIBBON — لمتجر سعود وحده، وسواه 404 (`RibbonPortal\Portal`). قسمُها `customers`
+     * من اسمها، ويُسأل معه من يشارك. والحدُّ على ما يُصدر رابطًا أو يُلغيه.
+     */
+    Route::get('/customers/portal/poster', [RibbonPortalAdminController::class, 'poster'])->name('customers.portal.poster');
+    Route::post('/customers/{id}/portal', [RibbonPortalAdminController::class, 'share'])->whereNumber('id')->middleware('throttle:60,1,ribbon-portal-share')->name('customers.portal.share');
+    Route::post('/customers/{id}/portal/reissue', [RibbonPortalAdminController::class, 'reissue'])->whereNumber('id')->middleware('throttle:30,1,ribbon-portal-reissue')->name('customers.portal.reissue');
+    Route::delete('/customers/{id}/portal', [RibbonPortalAdminController::class, 'revoke'])->whereNumber('id')->middleware('throttle:30,1,ribbon-portal-revoke')->name('customers.portal.revoke');
+
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     // جولةُ اللغة: زرٌّ في صفّ القائمة لمن سُجّل قبل أن يُسأل
     Route::post('/customers/{id}/language', [CustomerController::class, 'language'])->name('customers.language');
@@ -2160,6 +2172,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->name('help.attachment');
 
     Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
+    // «بوابة العملاء» — لمتجر سعود وحده، ولمن يديرها (`RibbonPortal\Portal::mayManage`)
+    Route::get('/settings/customer-portal', [RibbonPortalAdminController::class, 'settings'])->name('settings.portal.index');
+    Route::post('/settings/customer-portal/staff', [RibbonPortalAdminController::class, 'staff'])->name('settings.portal.staff');
+    Route::delete('/settings/customer-portal/links', [RibbonPortalAdminController::class, 'revokeAll'])->name('settings.portal.revokeAll');
+    Route::delete('/settings/customer-portal/links/{link}', [RibbonPortalAdminController::class, 'revokeLink'])->whereNumber('link')->name('settings.portal.revoke');
 
     // تنبيهات يعرّفها صاحب النشاط — قواعد على مقاييس النظام، وتذكيرات بموعد
     Route::post('/alerts', [CustomAlertController::class, 'store'])->name('alerts.store');
@@ -2232,6 +2249,8 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     // ‏‏كتالوجُ الصندوق للجهاز — ما تغيّر منذ ما حفظ (`TillCatalog`)
     Route::post('/catalog-feed', [App\Http\Controllers\Pos\TillCatalogController::class, 'feed'])
         ->middleware('throttle:60,1,pos-catalog-feed')->name('catalog-feed');
+    // رابطُ عميلِ البيعة بعد أن تمّت — لمتجر سعود ومن يشارك وحدهم (`RibbonPortal\Portal::mayShare`)
+    Route::post('/orders/{number}/portal', [RibbonPortalAdminController::class, 'shareSale'])->middleware('throttle:60,1,ribbon-portal-share')->name('orders.portal');
     Route::get('/orders', [App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
@@ -2313,6 +2332,33 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::get('/settings', [App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
     Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
 });
+
+/*
+ * بوابةُ عملاء RIBBON — `ribbon.abaadapp.om/my` لمتجر سعود وحده (`RibbonPortal\Portal`).
+ *
+ * قبل مسار المتاجر الفرعيّ عمدًا: مضيفُها اسمٌ بعينه وهو أخصّ. ومضيفُها من القائمة
+ * (`storefront.subdomain_businesses`) بلا قاعدة، والمتجرُ والقفلُ يُسألان في `RibbonPortalGate`
+ * لكلّ طلب. ولكلّ بابٍ عدّادُه: الدخولُ أضيقُها، والقراءةُ واسعةٌ — عملاءُ على شبكة المحلّ يخرجون
+ * من عنوانٍ واحد ولكلٍّ نبضتُه كلَّ ثلاثين ثانية، ولا يبلغها من لا جلسةَ له.
+ */
+if (($portalHost = App\Support\RibbonPortal\Portal::host()) !== null) {
+    Route::domain($portalHost)->prefix(App\Support\RibbonPortal\Portal::PATH)->name('my.')->middleware(RibbonPortalGate::class)
+        ->controller(RibbonPortalController::class)->group(function () {
+            Route::get('/', 'index')->middleware('throttle:120,1,ribbon-portal-page')->name('index');
+            Route::post('/session', 'login')->middleware('throttle:10,1,ribbon-portal-login')->name('login');
+            Route::post('/same', 'same')->middleware('throttle:20,1,ribbon-portal-same')->name('same');
+            Route::post('/logout', 'logout')->middleware('throttle:20,1,ribbon-portal-logout')->name('logout');
+            Route::get('/data', 'data')->middleware('throttle:240,1,ribbon-portal-data')->name('data');
+            Route::get('/points', 'points')->middleware('throttle:120,1,ribbon-portal-points')->name('points');
+            Route::get('/logo', 'logo')->middleware('throttle:120,1,ribbon-portal-logo')->name('logo');
+
+            Route::middleware('throttle:120,1,ribbon-portal-paper')->where(['kind' => 'order|invoice', 'id' => '[1-9][0-9]{0,9}'])->group(function () {
+                Route::get('/paper/{kind}/{id}', 'paper')->name('paper');
+                Route::get('/paper/{kind}/{id}/sheet', 'sheet')->name('paper.sheet');
+                Route::get('/paper/{kind}/{id}/pdf', 'pdf')->name('paper.pdf');
+            });
+        });
+}
 
 /*
  * متجرُ التاجر — صفحةٌ عامّة يفتحها زبون.

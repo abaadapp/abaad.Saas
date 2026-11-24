@@ -98,14 +98,20 @@ final class RouteGroups
         }
 
         $patterns = (array) config("ziggy.groups.{$group}", []);
-        $regex = '#^(?:'.implode('|', array_map(
+        $regex = fn (array $list) => '#^(?:'.implode('|', array_map(
             fn (string $p) => str_replace('\\*', '.*', preg_quote($p, '#')),
-            $patterns,
+            $list,
         )).')\z#su';
+
+        // وما سُبق بـ`!` لا يدخل ولو شمله نمطٌ آخر — كما يقرؤه Ziggy
+        $never = array_values(array_map(fn (string $p) => substr($p, 1), array_filter($patterns, fn (string $p) => str_starts_with($p, '!'))));
+        $take = $regex($patterns);
+        $skip = $never === [] ? null : $regex($never);
 
         $table['routes'] = $patterns === []
             ? []
-            : array_filter($table['routes'], fn ($name) => preg_match($regex, (string) $name) === 1, ARRAY_FILTER_USE_KEY);
+            : array_filter($table['routes'], fn ($name) => preg_match($take, (string) $name) === 1
+                && ($skip === null || preg_match($skip, (string) $name) !== 1), ARRAY_FILTER_USE_KEY);
 
         return $table;
     }

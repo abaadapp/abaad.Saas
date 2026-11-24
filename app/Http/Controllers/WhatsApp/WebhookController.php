@@ -10,9 +10,12 @@ use App\Support\CrmWhatsApp;
 use App\Support\MetaWhatsAppClient;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppCampaigns;
+use App\Support\WhatsAppCampaignTemplates;
 use App\Support\WhatsAppCoexistence;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOptOuts;
 use App\Support\WhatsAppOwnApp;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
@@ -40,6 +43,9 @@ use Illuminate\Support\Facades\Log;
  */
 class WebhookController extends Controller
 {
+    /** ‏‏حقلُ إشعار Meta بحال قالب */
+    private const TEMPLATE_STATUS = 'message_template_status_update';
+
     /**
      * تسجيل العنوان عند ميتا — تُنادي مرّةً بكلمةٍ اتفقنا عليها فتُردّ إليها.
      *
@@ -79,6 +85,13 @@ class WebhookController extends Controller
                  */
                 if ($field === WhatsAppCoexistence::ACCOUNT_UPDATE) {
                     WhatsAppCoexistence::account((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []));
+
+                    continue;
+                }
+
+                // ‏‏وحالُ قالبِ عرضٍ عند Meta — على حساب الأعمال أيضًا (`WhatsAppCampaignTemplates`)
+                if ($field === self::TEMPLATE_STATUS) {
+                    WhatsAppCampaignTemplates::statusChanged((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []));
 
                     continue;
                 }
@@ -141,6 +154,12 @@ class WebhookController extends Controller
 
         foreach ((array) $request->input('entry', []) as $entry) {
             foreach ((array) ($entry['changes'] ?? []) as $change) {
+                if (($change['field'] ?? null) === self::TEMPLATE_STATUS) {
+                    WhatsAppCampaignTemplates::statusChanged((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []), $connection);
+
+                    continue;
+                }
+
                 $this->applyChange((array) ($change['value'] ?? []), $connection, (string) ($change['field'] ?? 'messages'));
             }
         }
@@ -247,6 +266,8 @@ class WebhookController extends Controller
                 WhatsAppCoexistence::ECHOES => WhatsAppCoexistence::echoes($connection, $value),
                 WhatsAppCoexistence::HISTORY => WhatsAppCoexistence::history($connection, $value),
                 WhatsAppCoexistence::CONTACTS => WhatsAppCoexistence::contacts($connection, $value),
+                // ‏‏ومن أوقف العروضَ من إعدادات واتساب عنده أو أعادها
+                'user_preferences' => WhatsAppOptOuts::preferences($connection, $value),
                 default => null,
             };
 
@@ -390,6 +411,11 @@ class WebhookController extends Controller
             ->first();
 
         if (! $message) {
+            // ‏‏ورسالةُ حملةٍ في جدولها — بمعرّفها ووصلتها معًا
+            if (WhatsAppCampaigns::applyStatus($connection, (string) $id, $status)) {
+                return;
+            }
+
             // وردٌّ خرج من صندوق محادثات متجر — بمعرّفه ووصلته معًا
             if (WhatsAppInbox::applyStatus($connection, (string) $id, $status)) {
                 return;

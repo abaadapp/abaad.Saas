@@ -719,6 +719,12 @@ final class CustomerInvoices
                 'subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => (int) $locked->business_id,
             ]);
 
+            // وما غطّته النقاطُ كلَّه صدر مسدَّدًا — فتظهر مهمّةُ تجهيزه إن طُلبت، بعد تثبيت المعاملة
+            if ((float) $locked->total <= 0) {
+                $invoiceId = (int) $locked->id;
+                DB::afterCommit(fn () => CustomerInvoicePreparations::afterIssuedPaid($invoiceId, $userId));
+            }
+
             return $locked->fresh();
         });
     }

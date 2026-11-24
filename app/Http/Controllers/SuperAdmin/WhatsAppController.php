@@ -395,13 +395,20 @@ class WhatsAppController extends Controller
          */
         if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
             && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
-            && ! \App\Support\WhatsAppOwnApp::readyForOwnMode(WhatsAppConnections::forBusiness($business->id))) {
+            && ! \App\Support\WhatsAppSender::mayOwn(WhatsAppConnections::forBusiness($business->id))) {
             return back()->withErrors([
-                'whatsapp_mode' => __('لا يُحوَّل هذا المتجر إلى رقمه قبل أن تكتمل وصلته ويُراجَع دليل فوترتها ويُعرف حساب رسائلها — يبقى إرساله كما هو.'),
+                'whatsapp_mode' => \App\Support\WhatsAppSender::checking((int) $business->id)
+                    ? __('رقم المتجر قيد التحقّق — يصير رقم إرساله تلقائيًّا حين تكتمل مراحله، ويبقى إرساله كما هو حتى ذلك.')
+                    : __('لا يُحوَّل هذا المتجر إلى رقمه قبل أن تكتمل وصلته ويُراجَع دليل فوترتها ويُعرف حساب رسائلها — يبقى إرساله كما هو.'),
             ]);
         }
 
         $business->update($data);
+
+        // ‏‏وما اختاره الفريقُ بيده لا يُبدَّل عليه آليًّا
+        if (isset($data['whatsapp_mode'])) {
+            \App\Support\WhatsAppSender::chosen((int) $business->id, $data['whatsapp_mode']);
+        }
 
         $this->logChanges($business, $before, $business->only(array_keys($before)));
 
@@ -491,6 +498,7 @@ class WhatsAppController extends Controller
         }
 
         WhatsAppLinkCheck::recheck($own);
+        \App\Support\WhatsAppSender::soon((int) $business->id);
         $health = WhatsAppLinkHealth::state($own->refresh());
 
         Activity::log('settings', 'واتساب — فحص ربط «'.$business->name.'»: '.WhatsAppLinkHealth::label($health));
@@ -549,12 +557,17 @@ class WhatsAppController extends Controller
     public function checkAppWebhook()
     {
         $app = WhatsAppLinkCheck::appWebhook();
+        // ‏‏وما يستقبل الرسائل قد ينقصه خبرُ قالبٍ اعتُمد أو حسابٍ قُيّد
+        $needed = array_unique([...WhatsAppLinkCheck::APP_FIELDS, ...(\App\Support\WhatsAppMerchantLink::coexistence() ? \App\Support\WhatsAppCoexistence::FIELDS : [])]);
+        $missing = $app['state'] === WhatsAppLinkCheck::APP_LISTENING ? array_values(array_diff($needed, $app['fields'])) : [];
 
-        Activity::log('settings', 'واتساب — فحص إعداد إشعارات تطبيق أبعاد: '.$app['state']);
+        Activity::log('settings', 'واتساب — فحص إعداد إشعارات تطبيق أبعاد: '.$app['state'].($missing !== [] ? ' · ينقصه '.implode('، ', $missing) : ''));
 
         return back()->with('toast', [
             'msg' => match ($app['state']) {
-                WhatsAppLinkCheck::APP_LISTENING => __('تطبيق أبعاد يستقبل: عنوان الإشعارات عنوان أبعاد، وحقل messages مُفعّل.'),
+                WhatsAppLinkCheck::APP_LISTENING => $missing === []
+                    ? __('تطبيق أبعاد يستقبل: عنوان الإشعارات عنوان أبعاد، وحقل messages مُفعّل.')
+                    : __('تطبيق أبعاد يستقبل الرسائل، وتنقصه حقول إشعارات فعّلها في لوحة Meta: :fields', ['fields' => implode(' · ', $missing)]),
                 WhatsAppLinkCheck::APP_CALLBACK_ELSEWHERE => __('عنوان الإشعارات في تطبيق أبعاد ليس عنوان أبعاد — لا يصل من أيّ متجر شيء.'),
                 WhatsAppLinkCheck::APP_MESSAGES_OFF => __('حقل messages غير مُفعّل في تطبيق أبعاد — رسائل الزبائن لا تصل من أيّ متجر.'),
                 default => __('تعذّرت قراءة إعداد الإشعارات في تطبيق أبعاد من ميتا — أعد المحاولة.'),
@@ -606,6 +619,8 @@ class WhatsAppController extends Controller
             'inbox_available' => WhatsAppInbox::available($business),
             // ‏‏«أرسل رابطًا لعميلك» — حالُ آخر رابط، ولا رمزَ فيه (`WhatsAppClientLinks`)
             'client_link' => \App\Support\WhatsAppClientLinks::view($business),
+            // ‏‏ورقمُ الإرسال كما يراه التاجر — ينتظر ماذا، أو صار، أو تعطّل (`WhatsAppSender`)
+            'sender' => \App\Support\WhatsAppSender::view($business),
         ];
     }
 }

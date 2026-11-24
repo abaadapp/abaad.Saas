@@ -359,7 +359,9 @@ describe('مبيعات البوتيك وفواتيره', () => {
         const table = await screen.findByTestId('boutique-sales-table');
         expect(within(table).getByTestId('sale-channel').textContent).toBe('الموقع الإلكتروني');
         const cards = screen.getByTestId('boutique-sales-cards').textContent ?? '';
-        for (const text of ['الموقع الإلكتروني', '× 6.000', 'BQ-2027-02-1']) expect(cards).toContain(text);
+        for (const text of ['الموقع الإلكتروني', '2 × 6.000', 'BQ-2027-02-1']) expect(cards).toContain(text);
+        // والكمّيّةُ عددٌ لا مبلغ: «2» لا «2.000»، والكسرُ يبقى
+        expect(cards).not.toContain('2.000 ×');
     });
 
     it('الضريبةُ ضمن الأسعار تُقال، والفاتورةُ التي لا تطابق تُراجَع ولا تُعتمد', async () => {

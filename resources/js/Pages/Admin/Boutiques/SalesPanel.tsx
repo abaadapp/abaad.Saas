@@ -188,6 +188,15 @@ export function salesQuery(f: { period: string; boutique: string; type: string; 
     };
 }
 
+/** عددٌ بلا أصفارٍ زائدة: «٢» لا «٢٫٠٠٠» — فلا تُقرأ الكمّيّةُ مبلغًا */
+const short = (v: number | null | undefined, max: number) => {
+    const n = Number(v ?? 0);
+    for (let d = 0; d < max; d++) {
+        if (Math.abs(Number(n.toFixed(d)) - n) < 0.5 / 10 ** max) return number(n, d);
+    }
+    return number(n, max);
+};
+
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     const res = await fetch(url, {
         headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -394,7 +403,7 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                     <Tile
                         label={t('مبيعات منتجات البوتيك المنفردة')}
                         value={fmt(s.standalone.gross)}
-                        hint={t(':pieces قطعة في :invoices فاتورة', { pieces: number(s.standalone.quantity, 3), invoices: number(s.standalone.orders) })}
+                        hint={t(':pieces قطعة في :invoices فاتورة', { pieces: short(s.standalone.quantity, 3), invoices: number(s.standalone.orders) })}
                     />
                     <Tile label={t('عمولة المتجر من المنفردة')} value={fmt(s.standalone.commission)} tone="ours" />
                     <Tile label={t('صافي المنفرد للبوتيك')} value={fmt(s.standalone.net)} tone="theirs" />
@@ -560,7 +569,7 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                             <td className="px-3 py-2.5"><ProductCell row={r} fmt={fmt} /></td>
                             <td className="px-3 py-2.5 text-[#4b4b4b]">{r.boutique}</td>
                             <td className="px-3 py-2.5"><Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_LABEL[r.type])}</Badge></td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{number(r.quantity, 3)} × {fmt(r.unit_price)}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{short(r.quantity, 3)} × {fmt(r.unit_price)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{fmt(r.amount)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums text-[#047857]">
                                 {r.void ? <span className="text-[#9ca3af]">—</span> : r.type === 'standalone' ? <>{fmt(r.commission)} <span className="text-[11px] text-[#9ca3af]">({number(r.rate ?? 0, 2)}%)</span></> : t('لا عمولة')}
@@ -600,7 +609,7 @@ function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                         {!r.void && <Badge variant={SETTLE_VARIANT[r.settle_state]}>{t(SETTLE_LABEL[r.settle_state])}</Badge>}
                         {r.settlement && <span className="text-[11px] text-[#9ca3af]">{r.settlement}</span>}
                     </div>
-                    <p className="text-[12px] tabular-nums text-[#4b4b4b]">{number(r.quantity, 3)} × {fmt(r.unit_price)}</p>
+                    <p className="text-[12px] tabular-nums text-[#4b4b4b]">{short(r.quantity, 3)} × {fmt(r.unit_price)}</p>
                     <div className="grid grid-cols-3 gap-2 tabular-nums">
                         <div><p className="text-[11px] text-[#9ca3af]">{t('الإجمالي')}</p>{fmt(r.amount)}</div>
                         <div><p className="text-[11px] text-[#9ca3af]">{t('عمولة المتجر')}</p>{r.void ? '—' : r.type === 'standalone' ? fmt(r.commission) : t('لا عمولة')}</div>
@@ -754,7 +763,7 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                                     {p.addon && <span className="text-[12px] text-[#9ca3af]"> ({p.addon})</span>}
                                                 </span>
                                                 <span className="tabular-nums">
-                                                    {number(p.quantity, 3)} × {fmt(p.unit_price)} = <span className="font-medium text-[#6d28d9]">{fmt(p.amount)}</span>
+                                                    {short(p.quantity, 3)} × {fmt(p.unit_price)} = <span className="font-medium text-[#6d28d9]">{fmt(p.amount)}</span>
                                                     <span className="ms-1"><Badge variant={SETTLE_VARIANT[p.settle_state]}>{t(SETTLE_LABEL[p.settle_state])}</Badge></span>
                                                 </span>
                                             </li>

@@ -52,6 +52,8 @@ class WhatsAppPermissionsTest extends TestCase
             'business_id' => null, 'name' => 'مدير المنصة', 'email' => 'root@abaad.om',
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     /* --------------------------- التاجر لا يرفع حدّه --------------------------- */

@@ -690,18 +690,22 @@ final class WhatsAppBillingLock
 
     /* ═════════════ ما يُعرض ═════════════ */
 
-    /** ‏‏مرحلةُ «جهة الرسوم» في فحص الجاهزيّة (`WhatsAppSenderReadiness`) — لا تتمّ إلّا بإثباتٍ أو تجربة */
+    /**
+     * ‏‏مرحلةُ «جهة الرسوم» في فحص الجاهزيّة (`WhatsAppSenderReadiness`) — لا تتمّ إلّا بإثباتٍ أو تجربة.
+     *
+     * وتُقرأ Meta الآن لا كما قُرئت أمس: رقمٌ لا يصير رقمَ الإرسال ومالكُ حسابه لم يُعرف لحظتَها.
+     */
     public static function step(WhatsAppConnection $c): array
     {
-        $row = self::read($c);
+        $row = self::read($c, force: true);
         $s = fn (string $state, ?string $code) => ['state' => $state, 'code' => $code, 'params' => []];
 
         return match (true) {
             $row === null => $s('fail', self::NO_ACCOUNT),
             in_array($row->state, [self::PROBLEM, self::RECHECK], true) => $s('fail', (string) ($row->code ?: self::UNPROVEN)),
-            self::mayAdopt($c) => $s('ok', null),
             ! (((array) $row->facts)['abaad_known'] ?? false) => $s('unknown', self::ABAAD_UNKNOWN),
             ! (((array) $row->facts)['owner_known'] ?? false) => $s('unknown', self::OWNER_UNKNOWN),
+            self::mayAdopt($c) => $s('ok', null),
             $row->state === self::PENDING => $s('wait', self::REQUESTED),
             default => $s('wait', self::UNPROVEN),
         };
@@ -898,7 +902,7 @@ final class WhatsAppBillingLock
             WhatsAppOwnApp::FUNDING_CHANGED => [__('تبدّلت وسيلة الدفع على حساب واتساب بعد التحقق — الإرسال متوقف حتى يُعاد التحقق.'), 'abaad'],
             self::REVOKED => [__('أعاد فريق أبعاد فتح التحقق من جهة الرسوم — الإرسال متوقف حتى يُراجع.'), 'abaad'],
             self::COST_HIDDEN => [__('Meta لا تعرض كلفة هذا الحساب مع أنّ له رسائل محتسبة — وهذا ما تفعله مع حساب يدفع عنه شريك. لا يُعتمد حتى يتّضح.'), 'abaad'],
-            WhatsAppOwnApp::BILLED_TO_ABAAD => [__('حساب واتساب المربوط تملكه أبعاد لا المتجر — يربط التاجر حسابه هو.'), 'merchant'],
+            WhatsAppOwnApp::BILLED_TO_ABAAD => [__('حساب واتساب المربوط تملكه أبعاد لا المتجر — يربط التاجر حسابه هو.'), 'abaad'],
             WhatsAppOwnApp::PARTNER_OWNED => [__('حساب واتساب المربوط يملكه شريك آخر لا المتجر — اربط حسابًا يملكه نشاطك في Meta.'), 'merchant'],
             WhatsAppOwnApp::ACCOUNT_TAKEN => [__('حساب واتساب هذا مربوط بمتجر آخر في أبعاد — لكل متجر حسابه ووسيلة دفعه.'), 'merchant'],
             WhatsAppOwnApp::NO_PAYMENT_METHOD => [__('لا وسيلة دفع على حساب واتساب — أضفها من مدير واتساب (WhatsApp Manager) ‹ Overview.'), 'merchant'],

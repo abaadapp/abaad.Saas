@@ -668,6 +668,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $c = $this->connection();
 
         config(['whatsapp.config_id' => '2177821789438050']);
+        $this->launchWhatsAppForAll();
         $this->assertTrue(\App\Support\WhatsAppMerchantLink::set(\App\Support\WhatsAppMerchantLink::ABAAD_APP)['changed']);
         $this->assertFalse(WhatsAppOwnApp::enabled());
 

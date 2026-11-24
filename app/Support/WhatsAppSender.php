@@ -504,7 +504,8 @@ final class WhatsAppSender
     {
         // ‏‏ووصلةٌ مقفلة لا يفتحها إلّا إثباتُ جهة رسومها — لا عمودٌ قديم ولا اعتمادٌ سبق
         if (WhatsAppBillingLock::applies($c)) {
-            return $c->isUsable() && (self::proven($c) || WhatsAppBillingLock::proven($c));
+            // ‏‏ورقمٌ قيد الفحص لا يقفز أحدٌ فوق مراحله بيده
+            return $c->isUsable() && (self::proven($c) || (WhatsAppBillingLock::proven($c) && ! self::checking((int) $c->business_id)));
         }
 
         return self::proven($c) || WhatsAppOwnApp::readyForOwnMode($c);

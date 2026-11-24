@@ -259,7 +259,7 @@ class AProductsKeyOpensNoBoutiqueMoneyTest extends TestCase
         $order = Order::where('business_id', $this->shop->id)->firstOrFail();
         $this->actingAs($this->owner);
         $items = OrderItem::where('order_id', $order->id)->whereNotNull('boutique_id')->get();
-        OrderCorrection::cancel($order->fresh(), 'رُدّ', boutiqueReturned: true, boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+        OrderCorrection::cancel($order->fresh(), 'رُدّ', boutiqueReturned: true, boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sellable' => (int) $i->quantity, 'damaged' => 0]])->all());
 
         $this->actingAs($reader)->post(route('admin.boutiques.returns.receipt', $this->lama->id), ['amount' => 1, 'method' => 'نقدي', 'reference' => 'R'])->assertForbidden();
         $this->actingAs($reader)->post(route('admin.boutiques.returns.offset', $this->lama->id), ['settlement' => $sheet->id])->assertForbidden();
@@ -300,6 +300,71 @@ class AProductsKeyOpensNoBoutiqueMoneyTest extends TestCase
             $tried++;
         }
         $this->assertGreaterThan(10, $tried, 'لم تُقرأ أبواب التقارير — الاختبارُ لا يقيس شيئًا');
+    }
+
+    /** صفحةُ المنتج: كم بيع وهامشُه وحركاتُه لا تُرسل لمن يفتح المنتجاتِ وحدها */
+    public function test_a_product_page_tells_a_products_only_account_nothing_that_was_sold(): void
+    {
+        $this->sellBoth();
+        $page = fn (User $u) => $this->actingAs($u)->get(route('admin.products.show', $this->silver->id))->assertOk()->viewData('page')['props'];
+        $labels = fn (array $props) => array_column($props['stats'], 'label');
+
+        $boutiqueOwner = $page($this->user('bo', 'sales', ['products']));
+        $this->assertSame(['الكمية المتوفرة', 'سعر التكلفة'], $labels($boutiqueOwner));
+        $this->assertNull($boutiqueOwner['movements']);
+
+        // ومن له بابٌ يقرأ منه ما بيع لا يتغيّر عليه شيء: المالكُ والمبيعاتُ والمخزونُ والمحاسب
+        foreach ([$this->owner, $this->user('s1', 'sales', null), $this->user('i1', 'inventory', null), $this->user('a1', 'sales', ['products', 'expenses']), $this->user('r1', 'sales', ['products', 'reports'])] as $u) {
+            $props = $page($u);
+            $this->assertSame(['الكمية المتوفرة', 'إجمالي المبيعات', 'سعر التكلفة', 'هامش الربح'], $labels($props), $u->name);
+            $this->assertNotNull($props['movements'], $u->name);
+        }
+
+        // ومتجرٌ لا بوتيكَ عنده كما كان
+        Boutique::where('business_id', $this->shop->id)->delete();
+        $this->shop->forceFill(['boutiques_enabled' => false])->save();
+        $this->assertCount(4, $page($this->user('bo2', 'sales', ['products']))['stats']);
+    }
+
+    /** وصفحةُ الطلب: ثمنُ القطعة مستحقُّها — لا يُرسل لمن يفتح المبيعاتِ ولا يقرأ المال */
+    public function test_the_order_page_asks_about_a_piece_without_its_price(): void
+    {
+        $order = $this->sellBoth();
+        $piece = fn (User $u) => $this->actingAs($u)->get(route('admin.orders.show', $order->number))->assertOk()->viewData('page')['props']['boutiquePieces'][0];
+        $this->assertArrayNotHasKey('unit_price', $piece($this->user('s2', 'sales', null)));
+        $this->assertSame('قطعة فضّة', $piece($this->user('s3', 'sales', null))['product']);
+        $this->assertEquals(7.0, $piece($this->owner)['unit_price']);
+    }
+
+    /**
+     * كلُّ شاشةٍ يفتحها مفتاحُ المنتجات وحده معدودة — وشاشةٌ جديدةٌ تُفحص قبل أن تُضاف هنا.
+     *
+     * صاحبُ بوتيكٍ أُعطي حسابًا لأصنافه هو هذا المفتاح: فما لا يُذكر هنا لا يبلغه.
+     */
+    public function test_every_screen_the_products_key_opens_is_known(): void
+    {
+        $user = $this->user('only', 'sales', ['products']);
+        $opened = [];
+        foreach (Route::getRoutes() as $route) {
+            $name = (string) $route->getName();
+            if (! in_array('GET', $route->methods(), true) || ! str_starts_with($name, 'admin.') || str_contains($route->uri(), '{')) {
+                continue;
+            }
+            $res = $this->actingAs($user)->get($this->exportRoute($name, [], (int) $this->shop->id));
+            if ($res->baseResponse->getStatusCode() === 200) {
+                $opened[] = $name;
+            }
+        }
+        sort($opened);
+        $known = [
+            'admin.addons.index', 'admin.boutiques.index', 'admin.export.products', 'admin.help.index',
+            'admin.notifications.feed', 'admin.notifications.history', 'admin.products.create', 'admin.products.index',
+            'admin.products.stockFeed', 'admin.search', 'admin.seasons.index',
+            // ملفّاتُ قائمة المنتجات نفسِها: أعمدتُها صنفٌ وسعرٌ وكمّيّةٌ واسمُ بوتيك — لا مبيعَ ولا نسبة
+            'admin.products.export.pdf', 'admin.products.export.xlsx', 'admin.products.exportPdf', 'admin.products.xlsx',
+        ];
+        $this->assertSame([], array_values(array_diff($opened, $known)), 'شاشةٌ جديدةٌ يفتحها مفتاحُ المنتجات — أفيها مبيعاتٌ أو مال؟');
+        $this->assertContains('admin.products.index', $opened);
     }
 
     /* ═══════════ متجرٌ آخر ═══════════ */

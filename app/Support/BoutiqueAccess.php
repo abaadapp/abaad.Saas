@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Business;
 use App\Models\User;
 
 /**
@@ -37,5 +38,35 @@ final class BoutiqueAccess
     public static function pay(?User $user): bool
     {
         return self::read($user) && $user->may(Permissions::INVOICE_PAY);
+    }
+
+    /**
+     * من يفتح «المنتجات» وحدها — كصاحب بوتيكٍ أُعطي حسابًا ليرتّب قطعه.
+     *
+     * لا مبيعاتٍ ولا مخزونًا ولا مصروفاتٍ ولا ماليّةً ولا تقارير: فليس له بابٌ يقرأ
+     * منه كم بيع. ومن يملك واحدًا منها يقرأه من بابه أصلًا، فلا يتغيّر عليه شيء.
+     */
+    public static function productsOnly(?User $user): bool
+    {
+        return $user !== null && ! collect(['orders', 'inventory', 'expenses', 'finance', 'reports'])
+            ->contains(fn (string $section) => $user->allows($section));
+    }
+
+    /** أيُحجب ما بيع من صنفٍ عن هذا الجالس؟ — في متجرٍ يؤوي بوتيكاتٍ وحده */
+    public static function hidesSales(?User $user, ?Business $business): bool
+    {
+        return self::productsOnly($user) && Boutiques::holds($business);
+    }
+
+    /**
+     * قطعُ البوتيك في صفحة الطلب كما تُرسَل: يُسأل عن حالها من يلغي، وثمنُها
+     * (وهو مستحقُّها) لمن يقرأ المال وحده — والشاشةُ لا ترسمه أصلًا.
+     *
+     * @param  list<array<string, mixed>>  $pieces
+     * @return list<array<string, mixed>>
+     */
+    public static function pieces(array $pieces, ?User $user): array
+    {
+        return self::read($user) ? $pieces : array_map(fn (array $p) => array_diff_key($p, ['unit_price' => 1]), $pieces);
     }
 }

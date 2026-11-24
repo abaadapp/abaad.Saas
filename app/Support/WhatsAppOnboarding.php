@@ -80,12 +80,21 @@ class WhatsAppOnboarding
      */
     public static function connect(
         Business $business,
-        User $actor,
+        ?User $actor,
         string $code,
         ?string $wabaId = null,
         ?string $phoneNumberId = null,
         string $type = self::CLOUD_API,
     ): array {
+        /*
+         * ‏‏ووصلةُ تطبيق التاجر لا يبدّلها إذنٌ من تطبيق أبعاد — من أيّ بابٍ جاء، وقبل أيّ نداءٍ إلى ميتا.
+         * ولا يُكتب عليها فشلٌ: لم يقع فيها شيء (`WhatsAppOwnApp::onOwnApp`).
+         */
+        if (WhatsAppOwnApp::holds(WhatsAppConnections::forBusiness($business->id))) {
+            return ['ok' => false, 'connection' => null, 'field' => 'code', 'pending' => false, 'webhook' => null,
+                'message' => __('متجرك مربوط بتطبيقك الخاص على Meta — لا يبدّله الربط عبر تطبيق أبعاد. إن أردت الانتقال فافصل التكامل أوّلًا.')];
+        }
+
         $exchange = WhatsAppEmbeddedSignup::exchange($code);
 
         if (! $exchange['ok']) {
@@ -253,8 +262,9 @@ class WhatsAppOnboarding
         // قوالب المحلّ تُهيَّأ بأسمائها الافتراضية — كما في الربط اليدويّ
         WhatsAppTemplates::seedBusinessDefaults($business->id);
 
+        // ‏‏ومتجرُه صريح: من ربط من رابطٍ لا حسابَ له في أبعاد، وسطرُه يبقى في سجلّ المتجر
         Activity::log('settings', 'واتساب — ربط رقم المتجر بالتسجيل المدمج ('
-            .($chosen['display_phone_number'] ?? $numberId).')');
+            .($chosen['display_phone_number'] ?? $numberId).')', ['business_id' => $business->id]);
 
         /*
          * ‏‏ورقمٌ بقي في تطبيق واتساب للأعمال: تُطلب جهاتُه ومحادثاتُه السابقة الآن — Meta تقبلها
@@ -315,7 +325,7 @@ class WhatsAppOnboarding
         ]);
 
         Activity::log('settings', 'واتساب — تفعيل رقم المتجر في Cloud API ('
-            .($connection->display_phone_number ?? $connection->phone_number_id).')');
+            .($connection->display_phone_number ?? $connection->phone_number_id).')', ['business_id' => $business->id]);
 
         return ['ok' => true, 'message' => self::linkedMessage((string) $connection->webhook_state)];
     }
@@ -366,19 +376,21 @@ class WhatsAppOnboarding
      *
      * @param  array<string, mixed>  $attributes
      */
-    private static function save(Business $business, User $actor, array $attributes): WhatsAppConnection
+    private static function save(Business $business, ?User $actor, array $attributes): WhatsAppConnection
     {
         $existing = WhatsAppConnections::forBusiness($business->id);
 
+        // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه (`leave`) — فلا تصير الوصلةُ نصفين
         $attributes = array_merge([
             'owner_type' => WhatsAppMode::OWNER_BUSINESS,
             'business_id' => $business->id,
             'provider' => 'meta_cloud',
             'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
             'connected_at' => now(),
-            'connected_by_user_id' => $actor->id,
+            // ‏‏وبلا مستخدمٍ: رُبط من رابطٍ أرسله فريقُ أبعاد (`WhatsAppClientLinks`)
+            'connected_by_user_id' => $actor?->id,
             'disconnected_at' => null,
-        ], $attributes);
+        ], WhatsAppOwnApp::leave($existing), $attributes);
 
         return $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
     }

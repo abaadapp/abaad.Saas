@@ -606,6 +606,10 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // ‏‏ولمن تُفتح حملاتُ واتساب: مقفلة، أو لمتاجر تجربة، أو للجميع (`WhatsAppCampaignsSwitch`)
     Route::post('/whatsapp-campaigns/switch', [App\Http\Controllers\SuperAdmin\WhatsAppCampaignsController::class, 'switch'])->name('whatsappCampaigns.switch');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
+    // ‏‏«أرسل رابطًا لعميلك» — يربط صاحبُ المتجر رقمَه من الرابط بلا دخول (`WhatsAppClientLinks`)
+    Route::post('/businesses/{id}/whatsapp/client-link', [App\Http\Controllers\SuperAdmin\WhatsAppClientLinkController::class, 'store'])
+        ->middleware('throttle:20,1,whatsapp-client-link')->name('businesses.whatsapp.clientLink.store');
+    Route::delete('/businesses/{id}/whatsapp/client-link', [App\Http\Controllers\SuperAdmin\WhatsAppClientLinkController::class, 'destroy'])->name('businesses.whatsapp.clientLink.destroy');
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
         ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
@@ -2565,6 +2569,21 @@ Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
     ->where('token', '[A-Za-z0-9]{32}')
     ->middleware('throttle:30,1,sign-paper')
     ->name('documents.sign.pdf');
+
+/*
+ * ‏‏رابطُ ربط واتساب — يرسله فريقُ أبعاد لصاحب المتجر، فيربط رقمَه من صفحةٍ بلا دخول.
+ *
+ * أربعون حرفًا لا تُخمَّن، لمرّةٍ واحدة وثلاثة أيّام. والعنوانُ الذي فيه الرمز يحوّل إلى صفحةٍ بلا رمز:
+ * نافذةُ Meta ترسل عنوانَ الصفحة إليها. انظر `WhatsAppClientLinks`.
+ */
+Route::get('/connect/whatsapp', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'show'])
+    ->middleware('throttle:60,1,client-link-page')->name('clientLink.show');
+Route::post('/connect/whatsapp', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'connect'])
+    ->middleware('throttle:10,1,client-link-connect')->name('clientLink.connect');
+Route::post('/connect/whatsapp/register', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'register'])
+    ->middleware('throttle:5,10,client-link-register')->name('clientLink.register');
+Route::get('/connect/whatsapp/{token}', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'open'])
+    ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:30,1,client-link-open')->name('clientLink.open');
 
 /*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.

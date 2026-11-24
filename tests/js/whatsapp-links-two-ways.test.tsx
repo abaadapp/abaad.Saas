@@ -62,7 +62,7 @@ describe('التاجر يختار كيف يربط رقمه', () => {
 
         const steps = screen.getByTestId('link-steps');
         expect(steps).toHaveAttribute('data-kind', 'coexistence');
-        expect(steps).toHaveTextContent('امسحه بتطبيق واتساب للأعمال');
+        expect(steps).toHaveTextContent('أكّده من تطبيق واتساب للأعمال');
         expect(steps).toHaveTextContent('2.24.17');
         expect(screen.getByTestId('link-kind-coexistence')).not.toHaveTextContent('قريبًا');
         expect(screen.getByTestId('connect-whatsapp')).toHaveTextContent('ربط واتساب مع التطبيق');

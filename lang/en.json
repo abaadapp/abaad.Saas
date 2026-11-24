@@ -11400,7 +11400,7 @@
     "الفاتورة ملغاة — بنودها كما سُجّلت، ولا نصيب فيها لأحد.": "The invoice is cancelled — its lines are shown as recorded, and no one has a share in it.",
     "صنف مستبدل": "Replaced item",
     "إيواء البوتيكات مطفأ لهذا المتجر من إدارة المنصة. الشاشة باقية لأن لديك بوتيكات، وما سُجّل من مبيعات والتزامات معروض كما هو ولم يُحذف.": "Boutique hosting is off for this shop by the platform. The screen stays because you have boutiques, and the sales and obligations already recorded are shown as they are and nothing was deleted.",
-    "حساب قطع البوتيك داخل منتجات المتجر مطفأ الآن — ما يُباع بعد إطفائه لا يُحتسب، وما سُجّل قبله معروض ومحسوب كما هو. وسداد ما صدر منه في ورقة تسوية يحتاج إعادة تشغيله من إدارة المنصة.": "Counting boutique pieces inside the shop's products is off now — what is sold after it was switched off is not counted, and what was recorded before is shown and counted as it is. Paying what was issued on a settlement sheet needs it switched back on by the platform.",
+    "حساب قطع البوتيك داخل منتجات المتجر مطفأ الآن — ما يُباع بعد إطفائه لا يُحتسب، وما سُجّل قبله معروض ومحسوب كما هو، ويُسوّى ويُسدَّد.": "Counting boutique pieces inside the shop's products is off now — what is sold after it was switched off is not counted, and what was recorded before is shown and counted as it is, and is settled and paid.",
     "كل حالات الفاتورة": "All invoice states",
     "حالة الفاتورة": "Invoice state",
     "مجموع البنود قبل الخصم": "Lines total before discount",

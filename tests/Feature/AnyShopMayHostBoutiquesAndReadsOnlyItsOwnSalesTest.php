@@ -379,11 +379,10 @@ class AnyShopMayHostBoutiquesAndReadsOnlyItsOwnSalesTest extends TestCase
     }
 
     /**
-     * ما يقوله تنبيهُ الشاشة يطابق ما يفعله باب السداد اليوم.
+     * ما يقوله تنبيهُ الشاشة يطابق ما يفعله باب السداد.
      *
-     * بعد إطفاء حساب القطع يُردّ سدادُ جزئها من ورقةٍ صدرت (٤٠٤) ولو كانت
-     * مستحقّة — ثغرةٌ قائمة منذ ‎#146‎ معروضةٌ للقرار، لا تُصلَح هنا لأنّها
-     * مسارُ مال. وإن أُصلحت سقط هذا الاختبار: حدِّث التنبيه والتقرير معه.
+     * بعد إطفاء حساب القطع يُسدَّد جزؤها من ورقةٍ صدرت كالمعتاد — الثغرةُ القائمة
+     * منذ ‎#146‎ أُصلحت (`BoutiqueDues::reachable`)، والتنبيهُ يقول ذلك.
      */
     public function test_the_note_says_what_the_pay_door_does_while_the_pieces_are_off(): void
     {
@@ -401,19 +400,14 @@ class AnyShopMayHostBoutiquesAndReadsOnlyItsOwnSalesTest extends TestCase
         $this->assertEquals(10, $sheet->components_due);
 
         $this->platformSaves($shop, ['boutiques_enabled' => '0', 'boutique_components_enabled' => '0']);
-        $this->actingAs($owner->fresh())->post(route('admin.boutiques.components.pay', [$noor->id, $sheet->id]), ['method' => 'نقدي'])->assertNotFound();
-        $this->assertNull($sheet->fresh()->components_paid_at);
-
         $s = $this->summary($owner->fresh());
-        $this->assertEquals(10, $s['settlement']['unpaid'], 'الالتزامُ يُرى ولو تعذّر سدادُه من الشاشة');
+        $this->assertEquals(10, $s['settlement']['unpaid'], 'الالتزامُ يُرى');
         $this->assertSame('off', $s['pieces']);
         $this->assertTrue($s['pieces_recorded']);
 
-        // وإعادةُ التشغيل تفتح السداد — فلا التزامَ عالقٌ بلا مخرج
-        $this->platformSaves($shop, ['boutiques_enabled' => '1']);
-        $this->platformSaves($shop, ['boutiques_enabled' => '1', 'boutique_components_enabled' => '1']);
         $this->actingAs($owner->fresh())->post(route('admin.boutiques.components.pay', [$noor->id, $sheet->id]), ['method' => 'نقدي'])->assertSessionHasNoErrors();
-        $this->assertNotNull($sheet->fresh()->components_paid_at);
+        $this->assertNotNull($sheet->fresh()->components_paid_at, 'ما صدر يُسدَّد ولو أُطفئ الحساب');
+        $this->assertEquals(0, $this->summary($owner->fresh())['settlement']['unpaid']);
     }
 
     /* ═══════════ عزلُ المتاجر ═══════════ */

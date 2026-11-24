@@ -850,6 +850,29 @@ class LoyaltyRedeemsByAFixedAmountOrAPercentTest extends TestCase
         $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->count(), 'ولا عكسَ لقيدٍ لم يُكتب');
     }
 
+    /** وما غطّته النقاطُ كلَّه وطُلب تجهيزُه يظهر في اللوحة بإصداره — لا تحصيلَ يأتي بعده فيُظهره */
+    public function test_an_invoice_covered_by_points_reaches_the_preparation_board_when_it_is_issued(): void
+    {
+        $this->shop->forceFill(['customer_invoice_preparation_enabled' => true])->save();
+        $items = $this->wholeInvoiceByPoints();
+
+        $this->post(route('admin.customerInvoices.store'), [
+            'customer_id' => $this->customer->id, 'items' => $items, 'issue' => true,
+            'payment_method' => CustomerInvoices::CREDIT, 'redeem_points' => 10000,
+            'preparation' => [
+                'enabled' => true, 'fulfillment_type' => 'pickup', 'branch_id' => $this->branch->id,
+                'scheduled_for' => now()->addDay()->format('Y-m-d H:i'), 'recipient_name' => 'مريم', 'recipient_phone' => '99887766',
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $invoice = CustomerInvoice::where('business_id', $this->shop->id)->latest('id')->firstOrFail();
+        $this->assertTrue(CustomerInvoices::coveredByPoints($invoice));
+        $prep = $invoice->preparation()->firstOrFail();
+        $this->assertNotNull($prep->activated_at);
+        $this->assertSame(CustomerInvoicePreparations::FROM_PAYMENT, $prep->activation_source);
+        $this->assertSame(0, JournalEntry::where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)->count(), 'ولا قيد');
+    }
+
     /** والشاملةُ كذلك: سعرٌ معروضٌ بـ١٠٥ تغطّيه ١٠٥٠٠ نقطة — والصندوقُ والفاتورةُ صفرٌ معًا */
     public function test_a_whole_inclusive_basket_is_zero_on_the_till_and_on_the_invoice(): void
     {

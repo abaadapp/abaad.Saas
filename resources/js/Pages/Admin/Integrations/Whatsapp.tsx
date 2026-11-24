@@ -1,5 +1,5 @@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { Bot, Gauge, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Bot, Gauge, Megaphone, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field from '@/Components/Field';
@@ -57,6 +57,8 @@ export interface Automation {
     guided_orders?: GuidedOrdersView | null;
     /** أتمتةُ الردود بالكلمات — `null` لمتجرٍ لم تفتحها له المنصّة (`ChannelAutomationsSwitch`) */
     keyword_automations?: { published: number; total: number } | null;
+    /** حملاتُ واتساب — لمتجرٍ فتحتها له المنصّة (`WhatsAppCampaignsSwitch`) */
+    campaigns?: boolean;
     may_manage: boolean;
     usage: {
         used: number;
@@ -421,6 +423,23 @@ export default function IntegrationsWhatsapp() {
                                 <Link href={route('admin.integrations.whatsapp.automations')}>
                                     <Bot />
                                     {t('أتمتة واتساب')}
+                                </Link>
+                            </Button>
+                        }
+                    />
+                )}
+
+                {/* ‏‏وحملاتُ العروض — صفحتُها في التسويق */}
+                {automation.campaigns && (
+                    <SettingsSection
+                        title="حملات واتساب"
+                        description="عرض يصل عملاءك من رقم متجرك — بقالب يعتمده واتساب."
+                        icon={Megaphone}
+                        action={
+                            <Button asChild variant="outline">
+                                <Link href={route('admin.marketing.whatsapp.campaigns')}>
+                                    <Megaphone />
+                                    {t('حملات واتساب')}
                                 </Link>
                             </Button>
                         }

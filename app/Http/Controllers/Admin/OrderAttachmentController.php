@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Demo;
+use App\Support\PreparationScope;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -49,7 +50,13 @@ class OrderAttachmentController extends Controller
          */
         abort_unless($user === null || $user->allows('orders') || $user->allows('preparation'), 403);
 
-        $order = Order::where('business_id', $this->bid())->findOrFail($id);
+        /*
+         * ومن باب اللوحة بنطاق اللوحة: من قُيِّد بفرعٍ لا يفتح مرفقَ طلبٍ لا
+         * تعرضه لوحتُه (`PreparationScope`). وبابُ «المبيعات» كما كان.
+         */
+        $order = request()->routeIs('admin.preparation.giftcard')
+            ? PreparationScope::of($user, $this->bid())->orders()->toPrepare()->findOrFail($id)
+            : Order::where('business_id', $this->bid())->findOrFail($id);
 
         abort_if(
             ! filled($order->card_file) || ! Storage::disk('local')->exists($order->card_file),

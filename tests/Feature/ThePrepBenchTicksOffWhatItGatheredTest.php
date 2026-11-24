@@ -322,14 +322,20 @@ class ThePrepBenchTicksOffWhatItGatheredTest extends TestCase
         $this->assertSame(0, OrderPrepCheck::count());
     }
 
-    /** وطلبُ فرعٍ آخر كذلك حين تكون اللوحة مقيّدةً بفرع */
+    /** وطلبُ فرعٍ آخر كذلك لمن قُيِّد بفرع — بإسناده لا بجلسته (`PreparationScope`) */
     public function test_another_branchs_order_cannot_be_ticked(): void
     {
         $second = Branch::create(['business_id' => $this->business->id, 'name' => 'الثاني']);
         $theirs = $this->order(['branch_id' => $second->id]);
 
         $main = Branch::where('business_id', $this->business->id)->where('name', 'الرئيسي')->value('id');
-        session(['current_branch' => $main]);
+        $local = User::create([
+            'business_id' => $this->business->id, 'name' => 'مجهّز الرئيسي', 'email' => 'main-bench@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'inventory', 'status' => 'نشط', 'permissions' => ['preparation'],
+        ]);
+        $local->branches()->sync([$main]);
+        $this->actingAs($local);
+        session(['current_branch' => $second->id]);
 
         $this->post(route('admin.preparation.check', $theirs->number), [
             'key' => 'task:packaging', 'checked' => true,

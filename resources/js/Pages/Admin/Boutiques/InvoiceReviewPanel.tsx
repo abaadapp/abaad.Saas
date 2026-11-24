@@ -97,12 +97,14 @@ export default function InvoiceReviewPanel({ boutiqueId, currency }: { boutiqueI
     if (!summary || summary.lines === 0) return null;
 
     const fmt = (v: number) => money(v, currency);
+    // التاريخُ والرقمُ وسط سطرٍ عربيّ يُعزلان — وإلّا قُلب «2026-11-24» على الشاشة
+    const ltr = (v: string) => `\u2066${v}\u2069`;
     const evidence = (r: ReviewRow) => {
         if (!r.evidence) return t('لا بيع محفوظ قبلها');
         return r.evidence.boutique === null
-            ? t('صنف المتجر — :order في :at', { order: r.evidence.order, at: r.evidence.at })
+            ? t('صنف المتجر — :order في :at', { order: ltr(r.evidence.order), at: ltr(r.evidence.at) })
             : t(':boutique بنسبة :rate٪ — :order في :at', {
-                boutique: r.evidence.boutique, rate: number(r.evidence.rate ?? 0), order: r.evidence.order, at: r.evidence.at,
+                boutique: r.evidence.boutique, rate: number(r.evidence.rate ?? 0, Number.isInteger(r.evidence.rate ?? 0) ? 0 : 2), order: ltr(r.evidence.order), at: ltr(r.evidence.at),
             });
     };
 

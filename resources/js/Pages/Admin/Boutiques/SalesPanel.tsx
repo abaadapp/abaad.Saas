@@ -108,6 +108,12 @@ export interface InvoiceDetails {
         shop_remaining: number | null;
         shop_share: number;
     }[];
+    money: {
+        lines: number; discount: number; discount_coupon: number; discount_points: number;
+        tax: number; tax_basis: 'none' | 'inside' | 'added' | 'unknown'; delivery_fee: number;
+        total: number; paid: number; balance: number; boutiques_owed: number;
+        shop_after_discount: number; shop_after_tax: number;
+    };
     shares: {
         boutiques: { id: number; name: string; standalone_gross: number; commission: number; standalone_net: number; components_due: number; owed: number }[];
         shop: number;
@@ -143,6 +149,12 @@ export const SETTLE_LABEL: Record<SettleState, string> = {
     paid: 'سُدِّدت',
 };
 
+export const STATE_LABEL: Record<InvoiceState, string> = {
+    active: 'سارية',
+    partial: 'مرتجعة جزئيًا',
+    cancelled: 'ملغاة',
+};
+
 const SETTLE_VARIANT: Record<SettleState, 'neutral' | 'warning' | 'success'> = {
     pending: 'neutral',
     issued: 'warning',
@@ -156,12 +168,13 @@ const TYPE_VARIANT: Record<SaleType, 'info' | 'primary' | 'outline'> = {
 };
 
 /** معاملاتُ الطلب كما يقرؤها الخادم — «الكلّ» لا يُرسَل */
-export function salesQuery(f: { period: string; boutique: string; type: string; settle: string; q: string; page?: number }) {
+export function salesQuery(f: { period: string; boutique: string; type: string; settle: string; state?: string; q: string; page?: number }) {
     return {
         period: f.period,
         ...(f.boutique !== 'all' ? { boutique: f.boutique } : {}),
         ...(f.type && f.type !== 'all' ? { type: f.type } : {}),
         ...(f.settle && f.settle !== 'all' ? { settle: f.settle } : {}),
+        ...(f.state && f.state !== 'all' ? { state: f.state } : {}),
         ...(f.q.trim() ? { q: f.q.trim() } : {}),
         ...(f.page && f.page > 1 ? { page: f.page } : {}),
     };
@@ -184,6 +197,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
     // «الكلّ» قيمةٌ لا فراغ: القائمةُ المنسدلة لا تحمل قيمةً فارغة فتُرسم خانةً بيضاء
     const [type, setType] = useState('all');
     const [settle, setSettle] = useState('all');
+    const [state, setState] = useState('all');
     const [q, setQ] = useState('');
     const [term, setTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -200,7 +214,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
     }, [q]);
 
     // ومُرشِّحٌ يتغيّر يعيد إلى الصفحة الأولى
-    useEffect(() => setPage(1), [period, boutique, type, settle, term]);
+    useEffect(() => setPage(1), [period, boutique, type, settle, state, term]);
 
     // الملخّصُ للشهر والبوتيك وحدهما — لا يتبدّل بالبحث ولا بالصفحة
     useEffect(() => {
@@ -216,7 +230,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
         const ctl = new AbortController();
         setLoading(true);
         setFailed(false);
-        getJson<SalesPage>(route('admin.boutiques.sales', salesQuery({ period, boutique, type, settle, q: term, page })), ctl.signal)
+        getJson<SalesPage>(route('admin.boutiques.sales', salesQuery({ period, boutique, type, settle, state, q: term, page })), ctl.signal)
             .then((p) => {
                 setRows(p);
                 setLoading(false);
@@ -227,7 +241,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
                 setLoading(false);
             });
         return () => ctl.abort();
-    }, [period, boutique, type, settle, term, page]);
+    }, [period, boutique, type, settle, state, term, page]);
 
     const fmt = (v: number | null | undefined) => money(v ?? 0, currency);
 
@@ -246,7 +260,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
             </div>
 
             {/* المرشّحات — كلُّها في الخادم */}
-            <div className="grid grid-cols-1 gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <Select value={period} onChange={(e) => onPeriodChange(e.target.value)} options={periods} aria-label={t('الشهر')} />
                 <Select value={boutique} onChange={(e) => setBoutique(e.target.value)} options={boutiqueOptions} aria-label={t('البوتيك')} />
                 <Select
@@ -266,6 +280,15 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
                         ...(Object.keys(SETTLE_LABEL) as SettleState[]).map((k) => ({ value: k, label: t(SETTLE_LABEL[k]) })),
                     ]}
                     aria-label={t('حالة التسوية')}
+                />
+                <Select
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    options={[
+                        { value: 'all', label: t('كل حالات الفاتورة') },
+                        ...(Object.keys(STATE_LABEL) as InvoiceState[]).map((k) => ({ value: k, label: t(STATE_LABEL[k]) })),
+                    ]}
+                    aria-label={t('حالة الفاتورة')}
                 />
                 <div className="relative">
                     <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-[#9ca3af]" />
@@ -568,6 +591,40 @@ function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
 
 /* ═══════════ تفاصيل الفاتورة ═══════════ */
 
+/** المدفوع والخصومات والضريبة وحصّةُ المتجر بعدها — كلٌّ في سطره، ولا يُخلط بمجموع البنود */
+function MoneyBlock({ money, fmt }: { money: InvoiceDetails['money']; fmt: (v: number) => string }) {
+    const t = useTranslate();
+    const otherDiscount = Math.max(0, Number((money.discount - money.discount_coupon - money.discount_points).toFixed(3)));
+    const row = (label: string, value: string, extra = '') => (
+        <div className={cn('flex items-baseline justify-between gap-3 py-1', extra)}>
+            <dt className="text-[#6b7280]">{label}</dt>
+            <dd className="tabular-nums">{value}</dd>
+        </div>
+    );
+
+    return (
+        <dl className="rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[13px]" data-testid="boutique-invoice-money">
+            {row(t('مجموع البنود قبل الخصم'), fmt(money.lines))}
+            {money.discount_coupon > 0 && row(t('كوبون (على المتجر)'), `−${fmt(money.discount_coupon)}`)}
+            {money.discount_points > 0 && row(t('نقاط الولاء (على المتجر)'), `−${fmt(money.discount_points)}`)}
+            {otherDiscount > 0 && row(t('خصم آخر (على المتجر)'), `−${fmt(otherDiscount)}`)}
+            {money.tax > 0 && row(money.tax_basis === 'inside' ? t('الضريبة (ضمن الأسعار)') : t('الضريبة (مضافة)'), fmt(money.tax))}
+            {money.delivery_fee > 0 && row(t('التوصيل'), fmt(money.delivery_fee))}
+            {row(t('إجمالي ما على العميل'), fmt(money.total), 'border-t border-dashed border-[var(--ui-border,#e8e8e8)] font-semibold text-[#111]')}
+            {row(t('المدفوع فعليًا'), fmt(money.paid))}
+            {money.balance > 0 && row(t('المتبقي على العميل'), fmt(money.balance))}
+            <div className="mt-1 border-t border-[var(--ui-border,#e8e8e8)] pt-1">
+                {row(t('مستحق البوتيكات'), fmt(money.boutiques_owed))}
+                {row(t('حصة المتجر بعد تحمّل الخصومات'), fmt(money.shop_after_discount), 'text-[#047857]')}
+                {money.tax_basis === 'inside' && money.tax > 0 && row(t('منها ضريبة يورّدها المتجر'), fmt(money.tax))}
+                <p className="pt-1 text-[12px] leading-5 text-[#9ca3af]">
+                    {t('حصة المتجر ليست صافي ربح: تكلفة المنتجات والمصاريف غير محسوبة فيها.')}
+                </p>
+            </div>
+        </dl>
+    );
+}
+
 function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onClose: () => void; fmt: (v: number) => string }) {
     const t = useTranslate();
     const [data, setData] = useState<InvoiceDetails | null>(null);
@@ -706,6 +763,8 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                 </li>
                             </ul>
                         </div>
+
+                        {!data.shares.void && <MoneyBlock money={data.money} fmt={fmt} />}
 
                         {data.shares.void && (
                             <p className="rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="boutique-invoice-void">

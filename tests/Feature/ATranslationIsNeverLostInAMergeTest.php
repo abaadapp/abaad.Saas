@@ -51,7 +51,7 @@ class ATranslationIsNeverLostInAMergeTest extends TestCase
     {
         $src = (string) file_get_contents(resource_path('js/Pages/Admin/Boutiques/SalesPanel.tsx'));
         $labels = [];
-        foreach (['TYPE_LABEL', 'SETTLE_LABEL'] as $map) {
+        foreach (['TYPE_LABEL', 'SETTLE_LABEL', 'STATE_LABEL'] as $map) {
             $this->assertSame(1, preg_match('/const '.$map.'[^=]*=\s*\{(.*?)\};/s', $src, $block), $map.' لم يُعثر عليه');
             preg_match_all("/:\s*'([^']+)'/", $block[1], $m);
             $this->assertNotEmpty($m[1]);

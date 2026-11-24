@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
 use App\Models\BoutiqueReturn;
+use App\Models\BoutiqueReturnRecovery;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
 use App\Models\Expense;
@@ -65,13 +66,16 @@ final class BoutiqueSales
 
     public const ACTIVE = 'active';
 
+    /** تصحيحاتٌ تُنقص كمّيّةَ ما بيع — منها يُعرف المرتجعُ الجزئيّ */
+    private const REDUCING = [OrderEdit::LINE, OrderEdit::ADDON, OrderEdit::REPLACE_LINE];
+
     /**
      * ما يطلبه الرابط — مُنقًّى، وما لا يصحّ يُقرأ «الكلّ».
      *
      * بوتيكٌ من متجرٍ آخر لا يُرشَّح به: يُقرأ «الكلّ» كأنّه لم يُطلب، فلا
      * يُعرف من الردّ أهو موجودٌ عند غيرك — كما `Boutiques::scope`.
      *
-     * @return array{period: string, boutique: ?int, type: ?string, settle: ?string, q: string, page: int}
+     * @return array{period: string, boutique: ?int, type: ?string, settle: ?string, state: ?string, q: string, page: int}
      */
     public static function filters(Request $request, int $businessId): array
     {
@@ -82,6 +86,7 @@ final class BoutiqueSales
 
         $type = $request->query('type');
         $settle = $request->query('settle');
+        $state = $request->query('state');
         $page = $request->query('page');
 
         return [
@@ -89,6 +94,7 @@ final class BoutiqueSales
             'boutique' => $boutique,
             'type' => in_array($type, self::TYPES, true) ? $type : null,
             'settle' => in_array($settle, self::STATES, true) ? $settle : null,
+            'state' => in_array($state, [self::ACTIVE, self::PARTIAL, self::CANCELLED], true) ? $state : null,
             'q' => mb_substr(Search::term($request), 0, 80),
             'page' => is_string($page) && ctype_digit($page) && (int) $page > 0 ? min((int) $page, 100000) : 1,
         ];
@@ -131,6 +137,7 @@ final class BoutiqueSales
 
         $page = DB::query()->fromSub($union, 'r')
             ->when($f['settle'] !== null, fn ($w) => $w->where('r.settle_state', $f['settle']))
+            ->when(($f['state'] ?? null) !== null, fn ($w) => self::whereState($w, $f['state']))
             ->when($q !== '', fn ($w) => $w->where(fn ($s) => $s
                 ->where('r.order_number', $like, '%'.$q.'%')
                 ->orWhere('r.product_name', $like, '%'.$q.'%')
@@ -221,6 +228,21 @@ final class BoutiqueSales
             );
     }
 
+    /** مُرشِّحُ حال الفاتورة في القاعدة — بالقاعدة التي تُقرأ بها الصفحة (`invoiceStates`) */
+    private static function whereState($query, string $state)
+    {
+        $reduced = fn ($e) => $e->selectRaw('1')->from('order_edits as oe')
+            ->whereColumn('oe.order_id', 'r.order_id')
+            ->whereIn('oe.kind', self::REDUCING)
+            ->whereColumn('oe.qty_after', '<', 'oe.qty_before');
+
+        return match ($state) {
+            self::CANCELLED => $query->where('r.order_status', Order::CANCELLED),
+            self::PARTIAL => $query->where('r.order_status', '!=', Order::CANCELLED)->whereExists($reduced),
+            default => $query->where('r.order_status', '!=', Order::CANCELLED)->whereNotExists($reduced),
+        };
+    }
+
     /**
      * حالُ كلّ فاتورةٍ في الصفحة: ملغاة، أو مرتجعةٌ جزئيًّا، أو سارية بحالها.
      *
@@ -237,7 +259,7 @@ final class BoutiqueSales
         }
 
         $reduced = OrderEdit::whereIn('order_id', $orderIds)
-            ->whereIn('kind', [OrderEdit::LINE, OrderEdit::ADDON, OrderEdit::REPLACE_LINE])
+            ->whereIn('kind', self::REDUCING)
             ->whereColumn('qty_after', '<', 'qty_before')
             ->distinct()->pluck('order_id')->map(fn ($id) => (int) $id)->flip();
 
@@ -247,6 +269,39 @@ final class BoutiqueSales
                 $reduced->has((int) $o->id) => self::PARTIAL,
                 default => self::ACTIVE,
             }])->all();
+    }
+
+    /**
+     * صافي ما لم يُسوَّ لكلّ بوتيكٍ في الشهر — كما يحسبه الكشف (`Boutiques::statement`).
+     *
+     * نسخةٌ مجمَّعة في القاعدة من الدالّة نفسِها: بنودُ الصنف الواحد بنسبةٍ واحدة
+     * تُجمع، ثمّ يُقرَّب إجماليُّها وعمولتُها، كما تُجمعها الورقة. وهي تجمع في القاعدة
+     * لا في الذاكرة — خمسون ألف بندٍ لا تُحمَّل لتُقرأ صافيًا. واختبارٌ يقابلها
+     * بـ`Boutiques::statement` لكلّ بوتيك فلا تفترقان.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, float>
+     */
+    private static function pendingNets(int $businessId, array $ids, $sold): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $groups = DB::table('order_items')->whereIn('boutique_id', $ids)->whereNull('boutique_settlement_id')
+            ->whereIn('order_id', $sold)
+            ->groupBy('boutique_id', 'product_id', 'name', 'variant_name', 'boutique_rate')
+            ->selectRaw('boutique_id, COALESCE(boutique_rate, 0) as rate, SUM(total) as gross')
+            ->get();
+
+        $nets = [];
+        foreach ($groups as $g) {
+            $rate = round((float) $g->rate, 2);
+            $gross = round((float) $g->gross, 3);
+            $nets[(int) $g->boutique_id] = round(($nets[(int) $g->boutique_id] ?? 0.0) + $gross - round($gross * $rate / 100, 3), 3);
+        }
+
+        return $nets;
     }
 
     /* ═══════════ البيسة ═══════════ */
@@ -394,20 +449,27 @@ final class BoutiqueSales
         $reportCommB = 0;
         $quantity = 0.0;
         $lines = 0;
-        foreach ($boutiques as $b) {
-            $row = Boutiques::soldLines($businessId, $b, $from, $to)
-                ->selectRaw("COALESCE(SUM($lineB), 0) as gross_b")
-                ->selectRaw("COALESCE(SUM($commissionB), 0) as commission_b")
-                ->selectRaw("COALESCE(SUM(CASE WHEN order_items.boutique_settlement_id IS NULL THEN $lineB - ($commissionB) ELSE 0 END), 0) as pending_net_b")
-                ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
-                ->selectRaw('COUNT(*) as line_count')
-                ->toBase()->first();
+        // استعلامٌ واحد لكلّ البوتيكات — لا اثنان لكلّ بوتيك
+        $sold = Order::where('business_id', $businessId)->sold()->whereBetween('ordered_at', [$from, $to])->select('id');
+        $perBoutique = $ids === [] ? collect() : DB::table('order_items')->whereIn('order_items.boutique_id', $ids)
+            ->whereIn('order_items.order_id', $sold)
+            ->groupBy('order_items.boutique_id')
+            ->selectRaw('order_items.boutique_id')
+            ->selectRaw("COALESCE(SUM($lineB), 0) as gross_b")
+            ->selectRaw("COALESCE(SUM($commissionB), 0) as commission_b")
+            ->selectRaw("COALESCE(SUM(CASE WHEN order_items.boutique_settlement_id IS NULL THEN $lineB - ($commissionB) ELSE 0 END), 0) as pending_net_b")
+            // وما تقوله `Boutiques::soldTotals` لهذا البوتيك: المجموعُ مرّةً ثمّ التقريب
+            ->selectRaw('COALESCE(SUM(order_items.total * COALESCE(order_items.boutique_rate, 0) / 100.0), 0) as report_commission')
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
+            ->selectRaw('COUNT(*) as line_count')
+            ->get();
+        foreach ($perBoutique as $row) {
             $grossB += (int) $row->gross_b;
             $commB += (int) $row->commission_b;
             $pendingNetB += (int) $row->pending_net_b;
             $quantity = round($quantity + (float) $row->quantity, 3);
             $lines += (int) $row->line_count;
-            $reportCommB += self::baisa(Boutiques::soldTotals($businessId, $b, $from, null, null, $to)['commission']);
+            $reportCommB += self::baisa(round((float) $row->report_commission, 3));
         }
         $standalone = [
             'gross' => self::money($grossB),
@@ -417,7 +479,6 @@ final class BoutiqueSales
             'lines' => $lines,
         ];
 
-        $sold = Order::where('business_id', $businessId)->sold()->whereBetween('ordered_at', [$from, $to])->select('id');
         $standalone['orders'] = $ids === [] ? 0 : (int) OrderItem::whereIn('order_id', $sold)
             ->whereIn('boutique_id', $ids)->distinct()->count('order_id');
         /*
@@ -466,6 +527,15 @@ final class BoutiqueSales
             ->where('kind', BoutiqueSettlement::SETTLEMENT)->where('period', $f['period'])
             ->with('expense')->get();
 
+        // ما خُفّض من كلّ ورقةٍ بمرتجعٍ أو مقاصّة — استعلامان للشهر لا اثنان لكلّ ورقة (`BoutiqueReturns::reductions`)
+        $sheetIds = $sheets->pluck('id');
+        $reductions = BoutiqueReturn::whereIn('boutique_settlement_id', $sheetIds)->where('status', BoutiqueReturn::REDUCED)
+            ->groupBy('boutique_settlement_id')->selectRaw('boutique_settlement_id, SUM(amount) as total')->pluck('total', 'boutique_settlement_id');
+        $offsets = BoutiqueReturnRecovery::whereIn('boutique_settlement_id', $sheetIds)->where('kind', BoutiqueReturnRecovery::OFFSET)
+            ->groupBy('boutique_settlement_id')->selectRaw('boutique_settlement_id, SUM(amount) as total')->pluck('total', 'boutique_settlement_id');
+        $payable = fn (BoutiqueSettlement $sheet) => max(0.0, round((float) $sheet->expense->amount
+            - round((float) ($reductions[$sheet->id] ?? 0) + (float) ($offsets[$sheet->id] ?? 0), 3), 3));
+
         $issued = 0.0;
         $paid = 0.0;
         $unpaid = 0.0;
@@ -473,7 +543,7 @@ final class BoutiqueSales
             $issued = round($issued + (float) $s->net + (float) $s->components_net, 3);
 
             // جزءُ المنفرد بما يُسدَّد فعلًا بعد ما خُفّض منه بمرتجع (`BoutiqueReturns::payable`)
-            $part = (int) $s->lines_count === 0 || $s->expense === null ? 0.0 : BoutiqueReturns::payable($s->expense);
+            $part = (int) $s->lines_count === 0 || $s->expense === null ? 0.0 : $payable($s);
             $standalonePaid = (int) $s->lines_count > 0 && $s->expense?->status === Expense::PAID;
             $standalonePaid ? $paid = round($paid + $part, 3) : $unpaid = round($unpaid + $part, 3);
 
@@ -485,13 +555,30 @@ final class BoutiqueSales
 
         $pending = ['standalone' => 0.0, 'components' => 0.0, 'credit' => 0.0, 'total' => 0.0];
         $sheetNetB = 0;
+        $nets = self::pendingNets($businessId, $ids, $sold);
+        /*
+         * جزءُ المكوّنات: من لا رصيدَ له فصافيه مستحقُّه مجمَّعًا — وهو ما تقوله
+         * `BoutiqueDues::statement` بلا رصيد. ومن له رصيدٌ (مقاصّةٌ من الأقدم) تُقرأ
+         * دالّتُها نفسُها له: حسابُها لا يُكرَّر هنا. والاختبارُ يقابل النوعين.
+         */
+        $dueByBoutique = $ids === [] ? collect() : BoutiqueComponentDue::where('business_id', $businessId)->whereIn('boutique_id', $ids)
+            ->whereNull('boutique_settlement_id')
+            ->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL])
+            ->whereBetween('period_at', [$from, $to])
+            ->groupBy('boutique_id')->selectRaw('boutique_id, SUM(amount) as due')->pluck('due', 'boutique_id');
+        $withCredit = $ids === [] ? [] : BoutiqueComponentDue::where('business_id', $businessId)->whereIn('boutique_id', $ids)
+            ->where('kind', BoutiqueComponentDue::CREDIT)->distinct()->pluck('boutique_id')->map(fn ($id) => (int) $id)->flip()->all();
         foreach ($boutiques as $b) {
-            $st = Boutiques::statement($businessId, (int) $b->id, $f['period']);
-            $sheetNetB += self::baisa($st['net']);
-            $pending['standalone'] = round($pending['standalone'] + $st['net'], 3);
-            $pending['components'] = round($pending['components'] + $st['components']['net'], 3);
-            $pending['credit'] = round($pending['credit'] + $st['components']['credit'], 3);
-            $pending['total'] = round($pending['total'] + $st['payable'], 3);
+            $net = $nets[(int) $b->id] ?? 0.0;
+            $due = round((float) ($dueByBoutique[(int) $b->id] ?? 0), 3);
+            $part = isset($withCredit[(int) $b->id])
+                ? BoutiqueDues::statement($businessId, (int) $b->id, $f['period'])
+                : ['net' => $due, 'credit' => 0.0];
+            $sheetNetB += self::baisa($net);
+            $pending['standalone'] = round($pending['standalone'] + $net, 3);
+            $pending['components'] = round($pending['components'] + $part['net'], 3);
+            $pending['credit'] = round($pending['credit'] + $part['credit'], 3);
+            $pending['total'] = round($pending['total'] + $net + $part['net'], 3);
         }
 
         // ── المرتجعاتُ والأرصدة — بيوم وقوعها، منفصلةً عن المبيعات
@@ -688,6 +775,8 @@ final class BoutiqueSales
          * أصفار — كما لا يحسبها الملخّصُ ولا الكشف. وقطعُها عُكس مستحقُّها أصلًا.
          */
         $void = (string) $order->status === Order::CANCELLED;
+        $balance = round((float) ($order->balance_due ?? 0), 3);
+        $unpaid = $order->payment_status === 'غير مدفوع';
         $owedB = 0;
         $parties = array_values(array_map(function (array $p) use ($void, &$owedB) {
             $net = $void ? 0 : $p['gross'] - $p['commission'];
@@ -755,6 +844,31 @@ final class BoutiqueSales
                 'tax_basis' => $basis,
             ],
             'lines' => $lines,
+            'money' => [
+                'lines' => $linesTotal,
+                'discount' => $discount,
+                'discount_coupon' => min($discount, round((float) ($order->coupon_discount ?? 0), 3)),
+                'discount_points' => $order->loyaltyDiscount(),
+                'tax' => $tax,
+                'tax_basis' => $basis,
+                'delivery_fee' => $fee,
+                'total' => $total,
+                /*
+                 * ما دفعه العميل فعلًا: الإجماليّ ناقصَ ما بقي عليه — والفاتورةُ
+                 * غيرُ المدفوعة لم يُدفع منها شيء. والملغاةُ لا تُقرأ دفعًا.
+                 */
+                'paid' => $void || $unpaid ? 0.0 : self::money(self::baisa($total) - self::baisa($balance)),
+                'balance' => $void ? 0.0 : ($unpaid ? $total : $balance),
+                'boutiques_owed' => self::money($owedB),
+                /*
+                 * حصّةُ المتجر بعد أن تحمّل الخصم — والبوتيكُ لا ينقص منه شيء.
+                 * والضريبةُ المشمولة داخل البنود يوردها المتجر من حصّته؛ والمضافةُ
+                 * يدفعها العميل فوقها فلا تُحسب منها. وليست صافي ربح: لا تكلفة
+                 * منتجاتٍ ولا مصاريف فيها.
+                 */
+                'shop_after_discount' => self::money($void ? 0 : $linesB - $owedB - self::baisa($discount)),
+                'shop_after_tax' => self::money($void ? 0 : $linesB - $owedB - self::baisa($discount) - ($basis === 'inside' ? self::baisa($tax) : 0)),
+            ],
             'shares' => [
                 'boutiques' => $parties,
                 'shop' => self::money($void ? 0 : $linesB - $owedB),

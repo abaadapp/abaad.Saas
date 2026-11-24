@@ -223,7 +223,7 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(table.parentElement!.className).toContain('md:block');
     });
 
-    const invoice = (over: Partial<InvoiceDetails['order']> = {}, shares: Partial<InvoiceDetails['shares']> = {}): InvoiceDetails => ({
+    const invoice = (over: Partial<InvoiceDetails['order']> = {}, shares: Partial<InvoiceDetails['shares']> = {}, money: Partial<InvoiceDetails['money']> = {}): InvoiceDetails => ({
         order: { id: 11, number: 'INV-0011', ordered_at: '2027-02-10 10:00', status: 'مكتمل', invoice_state: 'active', subtotal: 40, discount: 5, tax: 0, delivery_fee: 0, total: 35, tax_basis: 'none', ...over },
         lines: [
             {
@@ -233,6 +233,10 @@ describe('مبيعات البوتيك وفواتيره', () => {
             },
             { id: 2, name: 'باقة بسيطة', variant: null, quantity: 1, price: 20, total: 20, addons_total: 0, boutique: null, pieces: [], dues: 0, shop_remaining: null, shop_share: 20 },
         ],
+        money: {
+            lines: 40, discount: 5, discount_coupon: 5, discount_points: 0, tax: 0, tax_basis: 'none', delivery_fee: 0,
+            total: 35, paid: 35, balance: 0, boutiques_owed: 6, shop_after_discount: 29, shop_after_tax: 29, ...money,
+        },
         shares: {
             boutiques: [{ id: 5, name: 'بوتيك لمى', standalone_gross: 0, commission: 0, standalone_net: 0, components_due: 6, owed: 6 }],
             shop: 34, lines_total: 40, reconciles: true, void: false, ...shares,
@@ -262,9 +266,29 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(shares.textContent).toContain('6.000');
         expect(shares.textContent).toContain('34.000');
         expect(shares.textContent).toContain('40.000');
+        expect(screen.getByTestId('boutique-invoice-money').textContent).toContain('29.000');
         expect(screen.queryByTestId('boutique-invoice-mismatch')).toBeNull();
         // ومن لا يملك قسم المبيعات لا يُعطى رابطَ الفاتورة الكاملة
         expect(screen.queryByText('فتح الفاتورة كاملة')).toBeNull();
+    });
+
+    it('مالُ الفاتورة منفصلٌ عن مجموع البنود: المدفوع والخصومات والضريبة وحصّةُ المتجر بعدها', async () => {
+        await openInvoice(invoice({}, {}, {
+            lines: 32, discount: 5, discount_coupon: 2, discount_points: 3, tax: 1.286, tax_basis: 'inside',
+            total: 27, paid: 20, balance: 7, boutiques_owed: 9.6, shop_after_discount: 17.4, shop_after_tax: 16.114,
+        }));
+        const box = screen.getByTestId('boutique-invoice-money');
+        for (const text of ['32.000', '−2.000', 'كوبون', '−3.000', 'نقاط الولاء', '1.286', '27.000', '20.000', '7.000', '9.600', '17.400', 'ليست صافي ربح']) {
+            expect(box.textContent).toContain(text);
+        }
+        expect(box.textContent).not.toContain('خصم آخر');
+        // والضريبةُ ضمن الأسعار تُقال منها
+        expect(box.textContent).toContain('منها ضريبة يورّدها المتجر');
+    });
+
+    it('ملغاةٌ لا كتلةَ مالٍ فيها', async () => {
+        await openInvoice(invoice({ invoice_state: 'cancelled' }, { void: true, shop: 0, boutiques: [] }));
+        expect(screen.queryByTestId('boutique-invoice-money')).toBeNull();
     });
 
     it('الضريبةُ ضمن الأسعار تُقال، والفاتورةُ التي لا تطابق تُراجَع ولا تُعتمد', async () => {

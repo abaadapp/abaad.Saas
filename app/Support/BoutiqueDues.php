@@ -95,7 +95,7 @@ class BoutiqueDues
             $parent = $l['product'] ?? null;
 
             foreach ($l['components'] ?? [] as $c) {
-                $p = $owned->get((int) ($c['product_id'] ?? 0));
+                $p = $owned->get(self::materialId($c));
                 if ($p && ! $settling) {
                     $errors["items.$idx"] = __('«:name» صنفُ بوتيك، ولا يدخل طلبًا مخصَّصًا بعد.', ['name' => $p->name]);
                 }
@@ -980,6 +980,16 @@ class BoutiqueDues
         ];
     }
 
+    /**
+     * صنفُ مادّةٍ في طلبٍ مخصَّص — كما تكتبها `CustomArrangement::components`: نموذجُ
+     * الصنف في `product`، ولا `product_id` فيها. وكان يُقرأ `product_id` وحده فلا
+     * يُعرف صاحبُ المادّة، ويمرّ ما كُتب ليُردّ.
+     */
+    private static function materialId(array $component): int
+    {
+        return (int) (($component['product'] ?? null)?->id ?? $component['product_id'] ?? 0);
+    }
+
     /** أصنافُ البوتيك بين مكوّنات هذه البنود وإضافاتها — بمقاساتها وبوتيكها */
     private static function owned(int $businessId, array $lines, array $pinnedIds = []): Collection
     {
@@ -998,7 +1008,7 @@ class BoutiqueDues
                 $ids[] = (int) $s->inventory_product_id;
             }
             foreach ($l['components'] ?? [] as $c) {
-                $ids[] = (int) ($c['product_id'] ?? 0);
+                $ids[] = self::materialId($c);
             }
         }
 

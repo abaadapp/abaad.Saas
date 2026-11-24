@@ -74,6 +74,8 @@ class Notifications
         'self-signup-business-' => [self::INFO, self::MANUAL],
         'gbp-review-' => [self::TASK, self::MANUAL],
         'wa-delivery' => [self::TASK, self::AUTO],
+        // ‏‏رقمٌ رُبط من رابطٍ أرسله فريقُ أبعاد — خبرٌ يُقرأ ويُخفى (`WhatsAppClientLinks`)
+        'wa-client-link-' => [self::INFO, self::MANUAL],
         'daily-' => [self::INFO, self::MANUAL],
         'archive-' => [self::INFO, self::MANUAL],
         'grn-' => [self::TASK, self::AUTO],

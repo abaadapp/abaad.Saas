@@ -80,7 +80,7 @@ class WhatsAppOnboarding
      */
     public static function connect(
         Business $business,
-        User $actor,
+        ?User $actor,
         string $code,
         ?string $wabaId = null,
         ?string $phoneNumberId = null,
@@ -253,8 +253,9 @@ class WhatsAppOnboarding
         // قوالب المحلّ تُهيَّأ بأسمائها الافتراضية — كما في الربط اليدويّ
         WhatsAppTemplates::seedBusinessDefaults($business->id);
 
+        // ‏‏ومتجرُه صريح: من ربط من رابطٍ لا حسابَ له في أبعاد، وسطرُه يبقى في سجلّ المتجر
         Activity::log('settings', 'واتساب — ربط رقم المتجر بالتسجيل المدمج ('
-            .($chosen['display_phone_number'] ?? $numberId).')');
+            .($chosen['display_phone_number'] ?? $numberId).')', ['business_id' => $business->id]);
 
         /*
          * ‏‏ورقمٌ بقي في تطبيق واتساب للأعمال: تُطلب جهاتُه ومحادثاتُه السابقة الآن — Meta تقبلها
@@ -315,7 +316,7 @@ class WhatsAppOnboarding
         ]);
 
         Activity::log('settings', 'واتساب — تفعيل رقم المتجر في Cloud API ('
-            .($connection->display_phone_number ?? $connection->phone_number_id).')');
+            .($connection->display_phone_number ?? $connection->phone_number_id).')', ['business_id' => $business->id]);
 
         return ['ok' => true, 'message' => self::linkedMessage((string) $connection->webhook_state)];
     }
@@ -366,7 +367,7 @@ class WhatsAppOnboarding
      *
      * @param  array<string, mixed>  $attributes
      */
-    private static function save(Business $business, User $actor, array $attributes): WhatsAppConnection
+    private static function save(Business $business, ?User $actor, array $attributes): WhatsAppConnection
     {
         $existing = WhatsAppConnections::forBusiness($business->id);
 
@@ -376,7 +377,8 @@ class WhatsAppOnboarding
             'provider' => 'meta_cloud',
             'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
             'connected_at' => now(),
-            'connected_by_user_id' => $actor->id,
+            // ‏‏وبلا مستخدمٍ: رُبط من رابطٍ أرسله فريقُ أبعاد (`WhatsAppClientLinks`)
+            'connected_by_user_id' => $actor?->id,
             'disconnected_at' => null,
         ], $attributes);
 

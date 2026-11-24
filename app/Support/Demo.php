@@ -4482,6 +4482,20 @@ class Demo
                 ]);
             }
 
+            /*
+             * ‏‏ومتجرٌ ربط رقمَه من رابطٍ أرسله الفريق — من أرسله ينتظر الخبر (`WhatsAppClientLinks`).
+             */
+            foreach (WhatsAppClientLinks::recent($limit) as $l) {
+                $add('wa-client-link-'.$l->id, [
+                    'text' => __('ربط «:shop» رقم واتساب :phone من الرابط الذي أُرسل له', [
+                        'shop' => $l->business?->name ?? '—', 'phone' => $l->connected_phone ?: '—',
+                    ]),
+                    'time' => optional($l->connected_at)->diffForHumans(),
+                    'icon' => 'message-circle', 'color' => 'success',
+                    'url' => route('super-admin.businesses.show', $l->business_id),
+                ]);
+            }
+
             $subs = Subscription::with('business')
                 ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
                 ->whereDate('ends_at', '<=', now()->addDays(30))
@@ -5029,6 +5043,23 @@ class Demo
                 'url' => $toInvoice
                     ? route('admin.customerInvoices.show', $link->customer_invoice_id)
                     : route('admin.finance.paymentLinks'),
+            ]);
+        }
+
+        /*
+         * ‏‏ورقمٌ رُبط بالمتجر من رابطٍ أرسله فريقُ أبعاد — من ربطه لم يدخل الحساب، فيُقال لصاحبه
+         * ليعرفه، أو ليفصله إن لم يكن منه (`WhatsAppClientLinks`).
+         */
+        foreach (WhatsAppClientLinks::recent($limit, $bid) as $l) {
+            $add('wa-client-link-'.$l->id, [
+                'text' => __('رُبط رقم واتساب :phone بمتجرك من رابطٍ أرسله فريق أبعاد — إن لم يكن منك فافصله وراسلنا', [
+                    'phone' => $l->connected_phone ?: '—',
+                ]),
+                'time' => optional($l->connected_at)->format('Y-m-d H:i'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'info',
+                'url' => route('admin.integrations.whatsapp'),
             ]);
         }
 

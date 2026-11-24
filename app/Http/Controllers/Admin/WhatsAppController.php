@@ -21,7 +21,6 @@ use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppLog;
-use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOnboarding;
 use App\Support\WhatsAppOwnApp;
@@ -102,18 +101,7 @@ class WhatsAppController extends Controller
              * و`configured` تُطفئ الزرّ حين ينقص إعدادٌ على الخادم: زرٌّ
              * يفتح نافذةً تفشل عند ميتا أسوأ من زرٍّ لا يظهر.
              */
-            'embedded' => [
-                'configured' => WhatsAppEmbeddedSignup::configured(),
-                'app_id' => (string) config('whatsapp.app_id'),
-                'config_id' => WhatsAppMerchantLink::configId(),
-                'graph_version' => (string) config('whatsapp.api_version'),
-                'feature_type' => (string) config('whatsapp.feature_type'),
-                'session_info_version' => (string) config('whatsapp.session_info_version'),
-                // نسخةُ التسجيل المدمج إن كُتبت — وبلا نسخةٍ تخدمها ميتا بـv4
-                'version' => config('whatsapp.es_version'),
-                // والتعايشُ يُعرض اختيارًا مطفأً بسببه ما لم يُفتح على الخادم
-                'coexistence_open' => WhatsAppOnboarding::coexistenceOpen(),
-            ],
+            'embedded' => WhatsAppEmbeddedSignup::publicConfig(),
 
             /* حالُ الربط بحالاتها الستّ — تُحسب في الخادم ولا تُستنتج في الشاشة */
             'link' => WhatsAppLink::view($own),

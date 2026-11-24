@@ -140,19 +140,28 @@ export interface PrepProps {
     invoiceDetails?: { options: PreparationOptions } | null;
     orders: PrepOrder[];
     /** والفرعُ مُرشِّحٌ في العنوان كأخويه — لا جلسة؛ و`show` ما رفعه «عرض المزيد» */
-    filters: { when: string | null; type: string | null; branch?: number | null; show?: number | null };
+    filters: { when: string | null; type: string | null; branch?: number | null; show?: number | null; from?: number | null };
     /** فروعُ من يقرأ — فارغةٌ لمن له فرعٌ واحد: لا يُرشَّح به شيء */
     branches?: { id: number; name: string }[];
     /** فروعُه إن كانت لوحتُه بعضَ فروع المتجر — وnull لمن يراها كلَّها */
     limited?: string[] | null;
+    /** كم على اللوحة بلا فرع — لمن يراه: المقيَّدُ بفروعٍ لا يراه (`PreparationScope`) */
+    unassigned?: number;
     counts: { all: number; overdue: number; today: number; tomorrow: number };
     typeCounts: { all: number; delivery: number; pickup: number };
     /** خريطةُ الأعمدة من الخادم — مفتاحٌ إلى الحالات التي يضمّها */
     columns: Record<string, string[]>;
     /** أعدادُ الأعمدة تحت المرشّحين — من الاستعلام لا من البطاقات المعروضة */
     columnCounts: Record<string, number>;
-    /** يصل حين تُقصّ اللوحة عند سقفها — وnull حين تُعرض كاملة */
-    truncated: { shown: number; total: number; more?: number | null } | null;
+    /** يصل حين تُقصّ اللوحة عند سقفها — وnull حين تُعرض كاملة. وما بعد السقف نوافذُ تُبلغ كلُّها */
+    truncated: {
+        shown: number;
+        total: number;
+        from?: number;
+        more?: number | null;
+        next?: number | null;
+        prev?: number | null;
+    } | null;
     fetchedAt: string;
 }
 

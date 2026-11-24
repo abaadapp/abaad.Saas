@@ -41,7 +41,7 @@ const NO_TYPE_COUNTS = { all: 0, delivery: 0, pickup: 0 };
 
 /** ما تُجلب وحدها عند الاستطلاع — لا الصفحةُ كلُّها */
 // والفرعُ وما يُرشَّح به معها: من غُيّر إسنادُه ولوحتُه مفتوحةٌ يُقال له ما تعرضه الآن
-const LIVE_PROPS = ['orders', 'counts', 'typeCounts', 'columnCounts', 'truncated', 'fetchedAt', 'filters', 'branches', 'limited'];
+const LIVE_PROPS = ['orders', 'counts', 'typeCounts', 'columnCounts', 'truncated', 'fetchedAt', 'filters', 'branches', 'limited', 'unassigned'];
 
 /** أسماءُ الأعمدة — مفاتيحُها من `PreparationController::COLUMNS` */
 const COLUMN_LABELS: Record<string, string> = {
@@ -96,6 +96,7 @@ export default function PreparationIndex() {
     const truncated = page.truncated ?? null;
     const branches = page.branches ?? [];
     const limited = page.limited ?? null;
+    const unassigned = page.unassigned ?? 0;
     const branch = branches.find((b) => b.id === filters.branch) ?? null;
 
     const [view, setView] = useState(() => remembered('prep.view', 'cards'));
@@ -146,7 +147,8 @@ export default function PreparationIndex() {
 
     // والجديدُ يُعرف بهويّة البطاقة المصنَّفة — طلبٌ ومهمّةُ فاتورةٍ لا يتصادمان (`idOf`)
     const numbers = useMemo(() => orders.map(idOf), [orders]);
-    const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound);
+    // وما كشفه ترشيحٌ أو «عرض المزيد» ليس وصولًا — المفتاحُ مرشّحاتُ العرض كلُّها
+    const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound, JSON.stringify(filters));
 
     // ومهمّةٌ عُدّلت من جهازٍ آخر لا تُشارَك أوراقُها المجهَّزةُ هنا بما كانت عليه
     useChangedPapersForgotten(orders);
@@ -172,7 +174,7 @@ export default function PreparationIndex() {
     ];
 
     // المرشّحاتُ تُحفظ معًا: تبديل النافذة لا يُسقط التنفيذ ولا الفرعَ المختارين
-    const go = (next: { when?: string | null; type?: string | null; branch?: number | null; show?: number | null }) => {
+    const go = (next: { when?: string | null; type?: string | null; branch?: number | null; show?: number | null; from?: number | null }) => {
         const when = next.when !== undefined ? next.when : filters.when;
         const type = next.type !== undefined ? next.type : filters.type;
         const at = next.branch !== undefined ? next.branch : filters.branch;
@@ -185,6 +187,7 @@ export default function PreparationIndex() {
                 ...(at ? { branch: at } : {}),
                 // و«عرض المزيد» لما يُعرض الآن وحده — ترشيحٌ جديدٌ يبدأ من سقفه
                 ...(next.show ? { show: next.show } : {}),
+                ...(next.from ? { from: next.from } : {}),
             },
             { preserveState: true, preserveScroll: true },
         );
@@ -529,6 +532,14 @@ export default function PreparationIndex() {
                 </p>
             )}
 
+            {/* وما لا فرعَ له لا يبلغ من قُيِّد بفروع — فيُقال عددُه لمن يراه، لئلّا ينتظر أحدًا لا يراه */}
+            {unassigned > 0 && (
+                <p data-testid="prep-unassigned" className="mb-4 flex items-center gap-1.5 text-[12px] text-[#92400e]">
+                    <AlertTriangle className="size-3.5 shrink-0" />
+                    {t('على اللوحة :n بلا فرع — لا تظهر للموظفين المقيَّدين بفروع', { n: unassigned })}
+                </p>
+            )}
+
             {/*
               * ما لم يُعرض يُقال عددُه.
               *
@@ -540,23 +551,35 @@ export default function PreparationIndex() {
                 <Card className="mb-4 flex items-center gap-2 border-[#fde68a] bg-[#fffbeb] p-4 text-sm text-[#92400e]">
                     <AlertTriangle className="size-4 shrink-0" />
                     <span>
-                        {t('تُعرض :shown من :total طلبًا. ضيّق بالتبويبات أو بنوع التنفيذ لرؤية الباقي.', {
-                            shown: truncated.shown,
-                            total: truncated.total,
-                        })}
+                        {truncated.from || truncated.next
+                            ? t('تُعرض البطاقات :a–:b من :total بترتيب مواعيدها', {
+                                  a: (truncated.from ?? 0) + 1,
+                                  b: (truncated.from ?? 0) + truncated.shown,
+                                  total: truncated.total,
+                              })
+                            : t('تُعرض :shown من :total طلبًا. ضيّق بالتبويبات أو بنوع التنفيذ لرؤية الباقي.', {
+                                  shown: truncated.shown,
+                                  total: truncated.total,
+                              })}
                     </span>
-                    {truncated.more && (
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="ms-auto rounded-full"
-                            data-testid="prep-more"
-                            onClick={() => go({ show: truncated.more })}
-                        >
-                            {t('عرض المزيد')}
-                        </Button>
-                    )}
+                    {/* «عرض المزيد» حتّى السقف، ثمّ نوافذُ بطوله — فلا بطاقةَ لا تُبلغ */}
+                    <span className="ms-auto flex items-center gap-1">
+                        {truncated.more && (
+                            <Button type="button" size="sm" variant="outline" className="rounded-full" data-testid="prep-more" onClick={() => go({ show: truncated.more })}>
+                                {t('عرض المزيد')}
+                            </Button>
+                        )}
+                        {truncated.prev !== null && truncated.prev !== undefined && (
+                            <Button type="button" size="sm" variant="outline" className="rounded-full" data-testid="prep-prev" onClick={() => go({ show: filters.show, from: truncated.prev })}>
+                                {t('السابق')}
+                            </Button>
+                        )}
+                        {truncated.next && (
+                            <Button type="button" size="sm" variant="outline" className="rounded-full" data-testid="prep-next" onClick={() => go({ show: filters.show, from: truncated.next })}>
+                                {t('التالي')}
+                            </Button>
+                        )}
+                    </span>
                 </Card>
             )}
 

@@ -8010,6 +8010,8 @@
     "لست مُسنَدًا إلى فرع قائم — راجع مديرك ليُسندك إلى فرع.": "You aren't assigned to an active branch — ask your manager to assign you to one.",
     "لا طلبات تنتظر التجهيز في هذا الفرع": "No orders awaiting preparation in this branch",
     "بتحصيل مسجَّل": "By a recorded payment",
+    "على اللوحة :n بلا فرع — لا تظهر للموظفين المقيَّدين بفروع": ":n on the board have no branch — staff limited to branches don't see them",
+    "تُعرض البطاقات :a–:b من :total بترتيب مواعيدها": "Showing cards :a–:b of :total, ordered by schedule",
     "حالة المهمّة: :status": "Task status: :status",
     "الورقة تُطبع الآن أو خرجت أو لم تُكتب بعد — لا تُعاد.": "The paper is printing now, already printed, or was not created yet — it cannot be sent again.",
     "الورقة تُطبع الآن أو خرجت أو لم تُكتب بعد.": "The paper is printing now, already printed, or was not created yet.",

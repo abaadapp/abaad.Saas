@@ -28,8 +28,16 @@ use App\Models\User;
  * - **ولا منشئَ ولا صندوقَ ولا ورديّةَ ولا جلسة:** تبقى على الطلب للتقارير
  *   والمحاسبة والسجلّ، ولا تُسأل هنا.
  *
- * وما لا فرعَ له من الطلبات يُرى لكلّ من يجهّز في متجره: ليس من فرعٍ
- * ممنوع، وإخفاؤه عن المقيَّدين يترك طلبًا لا يجهّزه أحد.
+ * ═══ وما لا فرعَ له مغلقٌ على من قُيِّد ═══
+ *
+ * فراغُ الفرع لا يعني «للجميع»: طلبٌ سُجّل قبل أن يكون للمتجر فرع، أو صفٌّ
+ * قديم، أو مهمّةُ فرعٍ مُحي صفُّه (`nullOnDelete`) — ولا يُعرف من الفراغ أيُّها.
+ * ولا بابَ في النظام يمحو فرعًا وحدَه اليوم، لكنّ القاعدةَ تُكتب لما لا يُعرف:
+ * لا يُعطى من قُيِّد ما لا يُعرف فرعُه (كـ`CostsAndLosses`)، ويراه صاحبُ
+ * النشاط ومن لم يُقيَّد ويُقال لهما عددُه (`unassigned`) — فلا يضيع.
+ *
+ * ومن شمل إسنادُه فروعَ المتجر كلَّها ليس مقيَّدًا: لا فرعَ ممنوعٌ عليه. فمتجرٌ
+ * بفرعٍ واحد يرى كلُّ من أُسند إليه ما فيه كلَّه.
  */
 final class PreparationScope
 {
@@ -45,10 +53,15 @@ final class PreparationScope
 
     public static function of(?User $user, int $businessId): self
     {
-        return new self(
-            $businessId,
-            Permissions::isOwner($user) ? null : CostsAndLosses::allowedBranches($businessId, $user),
-        );
+        $allowed = Permissions::isOwner($user) ? null : CostsAndLosses::allowedBranches($businessId, $user);
+
+        // وبالمحذوف منها: فرعٌ في السلّة ما زال فرعًا لم يُسنَد إليه
+        if ($allowed !== null && $allowed !== []
+            && Branch::withTrashed()->where('business_id', $businessId)->whereNotIn('id', $allowed)->doesntExist()) {
+            $allowed = null;
+        }
+
+        return new self($businessId, $allowed);
     }
 
     /** مع ترشيحِ فرعٍ — من فروعه الحيّة وحدها؛ والمجهولُ «الكلّ» لا لوحةٌ فارغة */
@@ -94,9 +107,7 @@ final class PreparationScope
     public function apply($query)
     {
         return $query
-            ->when($this->allowed !== null, fn ($q) => $q->where(
-                fn ($w) => $w->whereIn('branch_id', $this->allowed)->orWhereNull('branch_id')
-            ))
+            ->when($this->allowed !== null, fn ($q) => $q->whereIn('branch_id', $this->allowed))
             ->when($this->chosen !== null, fn ($q) => $q->where('branch_id', $this->chosen));
     }
 

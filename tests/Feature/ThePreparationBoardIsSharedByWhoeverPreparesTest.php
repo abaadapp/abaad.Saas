@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Admin\PreparationController;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
@@ -312,6 +313,10 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
         $mine = $this->order();
         $theirs = $this->order(['branch_id' => $seeb->id, 'branch' => 'السيب']);
         $nowhere = $this->order(['branch_id' => null, 'branch' => '']);
+        $unknown = $this->write($this->owner);
+        $this->pay($this->owner, $unknown, 100);
+        // ومهمّةٌ لا يُعرف فرعُها — قد تكون مهمّةَ فرعٍ لا يعمل فيه
+        $this->prep($unknown)->forceFill(['branch_id' => null])->save();
         $task = $this->write($this->owner, true, ['preparation' => $this->prepInput(['branch_id' => $seeb->id])]);
         $this->pay($this->owner, $task, 100);
         $prep = $this->prep($task);
@@ -321,12 +326,9 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
 
         foreach ([null, $this->khuwair->id, $seeb->id] as $session) {
             $props = $this->board($bench, [], ['current_branch' => $session]);
-            $this->assertEqualsCanonicalizing(
-                ['order:'.$mine->number, 'order:'.$nowhere->number],
-                array_column($props['orders'], 'key'),
-                'طلبُ فرعه، وما لا فرعَ له — ولا سواهما',
-            );
-            $this->assertSame(2, $props['counts']['all'], 'والعدّادُ عدّادُ ما يُعرض');
+            $this->assertSame(['order:'.$mine->number], array_column($props['orders'], 'key'), 'طلبُ فرعه — ولا ما لا يُعرف فرعُه');
+            $this->assertSame(1, $props['counts']['all'], 'والعدّادُ عدّادُ ما يُعرض');
+            $this->assertSame(0, $props['unassigned'], 'ولا يُقال له عددُ ما لا يراه');
             $this->assertSame(['الخوير'], $props['limited']);
         }
 
@@ -350,12 +352,59 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
         $this->post(route('admin.preparation.invoiceRequeue', $prep->id))->assertNotFound();
         $this->post(route('admin.preparation.invoicePrintConfirm', $prep->id))->assertNotFound();
 
+        // وما لا فرعَ له مغلقٌ عليه من أبوابه كذلك
+        $this->post(route('admin.preparation.move', $nowhere->number), ['status' => OrderStatus::PREPARING])->assertNotFound();
+        $this->get(route('admin.preparation.sheet', $nowhere->number))->assertNotFound();
+        $this->post(route('admin.preparation.invoiceMove', $this->prep($unknown)->id), ['status' => OrderStatus::PREPARING])->assertSessionHasErrors('status');
+        $this->get(route('admin.preparation.invoiceInternalPdf', $this->prep($unknown)->id))->assertNotFound();
+
         $this->assertSame(OrderStatus::CONFIRMED, $theirs->fresh()->status);
         $this->assertSame(OrderStatus::CONFIRMED, $prep->fresh()->status);
 
-        // والمالكُ يرى الكلّ ولو قُيِّد في صفوفه — كما في عمليّات الفروع
+        // والمالكُ يرى الكلّ ولو قُيِّد في صفوفه — كما في عمليّات الفروع — ويُقال له ما لا فرعَ له
         $this->owner->branches()->sync([$this->khuwair->id]);
-        $this->assertCount(4, $this->board($this->owner->fresh())['orders']);
+        $all = $this->board($this->owner->fresh());
+        $this->assertCount(5, $all['orders']);
+        $this->assertSame(2, $all['unassigned']);
+
+        // ومن لم يُقيَّد كذلك، ومن أُسند إلى الفروع كلِّها ليس مقيَّدًا
+        $this->assertCount(5, $this->board($this->bench())['orders']);
+        $bench->branches()->sync([$this->khuwair->id, $seeb->id]);
+        $this->assertCount(5, $this->board($bench->fresh())['orders']);
+
+        // وفرعٌ ثالثٌ في السلّة ما زال فرعًا لم يُسنَد إليه
+        $third = Branch::create(['business_id' => $this->shop->id, 'name' => 'صحار']);
+        $third->delete();
+        $this->assertCount(3, $this->board($bench->fresh())['orders']);
+    }
+
+    /** ومتجرٌ بفرعٍ واحد: كلُّ من أُسند إليه يرى ما فيه كلَّه — وما لا فرعَ له معه */
+    public function test_in_a_single_branch_shop_unassigned_work_is_everyones(): void
+    {
+        $nowhere = $this->order(['branch_id' => null, 'branch' => '']);
+        $bench = $this->bench();
+        $bench->branches()->sync([$this->khuwair->id]);
+
+        $this->assertSame(['order:'.$nowhere->number], $this->keys($bench));
+        $this->assertSame(0, $this->board($this->owner)['unassigned'], 'ولا تنبيهَ لمتجرٍ بفرعٍ واحد');
+    }
+
+    /** وصفُّ فرعٍ مُحي من القاعدة يُفرّغ فرعَ مهامّه — ولا تصير مشاعًا لمن قُيِّد بغيره */
+    public function test_erasing_a_branch_row_hands_its_work_to_no_restricted_worker(): void
+    {
+        $seeb = Branch::create(['business_id' => $this->shop->id, 'name' => 'السيب']);
+        Branch::create(['business_id' => $this->shop->id, 'name' => 'صحار']);
+        $task = $this->write($this->owner, true, ['preparation' => $this->prepInput(['branch_id' => $seeb->id])]);
+        $this->pay($this->owner, $task, 100);
+        $bench = $this->bench();
+        $bench->branches()->sync([$this->khuwair->id]);
+
+        $seeb->delete();
+        $seeb->forceDelete();
+        $this->assertNull($this->prep($task)->branch_id, 'المحوُ يُفرّغ الفرع');
+
+        $this->assertSame([], $this->keys($bench));
+        $this->assertSame([$this->key($task)], $this->keys($this->owner));
     }
 
     /** ومن قُيِّد بفرعٍ حُذف لا يصير بلا قيد */
@@ -660,7 +709,7 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
         Order::insert($rows);
 
         $props = $this->board($this->second);
-        $this->assertSame(['shown' => 200, 'total' => 205, 'more' => 400], $props['truncated']);
+        $this->assertSame(['shown' => 200, 'total' => 205, 'from' => 0, 'more' => 400, 'next' => null, 'prev' => null], $props['truncated']);
         $this->assertSame(205, $props['counts']['all']);
 
         $more = $this->board($this->second, ['show' => 400]);
@@ -669,7 +718,67 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
 
         // ورقمٌ بيدٍ لا يفتح اللوحةَ بلا سقف
         $this->assertSame(200, count($this->board($this->second, ['show' => 5])['orders']));
-        $this->assertSame(\App\Http\Controllers\Admin\PreparationController::BOARD_MAX, $this->board($this->second, ['show' => 999999])['filters']['show']);
+        $this->assertSame(PreparationController::BOARD_MAX, $this->board($this->second, ['show' => 999999])['filters']['show']);
+    }
+
+    /**
+     * وما فوق الألف يُبلغ كلُّه — نافذةً بعد نافذة، لا تسقط بطاقةٌ ولا تتكرّر.
+     *
+     * والمواعيدُ متساويةٌ عمدًا: ترتيبٌ لا يُحسم بالمعرّف يضع البطاقةَ في
+     * نافذتين أو في لا شيء. ومعها مهامُّ فواتيرَ بين الطلبات.
+     */
+    public function test_past_a_thousand_every_card_is_still_reached_once(): void
+    {
+        $max = PreparationController::BOARD_MAX;
+        $rows = [];
+        for ($i = 0; $i < $max + 230; $i++) {
+            $rows[] = [
+                'business_id' => $this->shop->id, 'branch_id' => $this->khuwair->id, 'number' => 'INV-K'.$i, 'status' => OrderStatus::CONFIRMED,
+                'is_held' => false, 'payment_method' => 'نقدي', 'payment_status' => 'مدفوع', 'subtotal' => 1, 'total' => 1,
+                'ordered_at' => now(), 'scheduled_for' => now()->addHours(intdiv($i, 400)), 'fulfillment_type' => FlowerOrder::PICKUP,
+                'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+        foreach (array_chunk($rows, 300) as $part) {
+            Order::insert($part);
+        }
+        $tasks = [];
+        foreach (['2026-11-24 10:00', '2026-11-24 12:00', '2026-12-30 10:00'] as $at) {
+            $invoice = $this->write($this->owner, true, ['preparation' => $this->prepInput(['scheduled_for' => $at])]);
+            $this->pay($this->first, $invoice, 100);
+            $tasks[] = $this->key($invoice);
+        }
+        $total = $max + 230 + 3;
+        $bench = $this->bench();
+
+        $first = $this->board($bench, ['show' => $max]);
+        $this->assertCount($max, $first['orders']);
+        $this->assertSame(['shown' => $max, 'total' => $total, 'from' => 0, 'more' => null, 'next' => $max, 'prev' => null], $first['truncated']);
+
+        $last = $this->board($bench, ['show' => $max, 'from' => $first['truncated']['next']]);
+        $this->assertCount(233, $last['orders']);
+        $this->assertSame(['shown' => 233, 'total' => $total, 'from' => $max, 'more' => null, 'next' => null, 'prev' => 0], $last['truncated']);
+
+        $seen = array_merge(array_column($first['orders'], 'key'), array_column($last['orders'], 'key'));
+        $this->assertCount($total, $seen);
+        $this->assertCount($total, array_unique($seen), 'لا بطاقةَ مرّتين');
+        foreach ($tasks as $key) {
+            $this->assertContains($key, $seen);
+        }
+        // والبعيدةُ موعدًا في النافذة الثانية — الترتيبُ واحدٌ للجدولين
+        $this->assertContains($tasks[2], array_column($last['orders'], 'key'));
+        $this->assertContains($tasks[0], array_column($first['orders'], 'key'));
+
+        // والعدّادُ واحدٌ في النافذتين، والنقلُ يبلغ ما في الثانية
+        $this->assertSame($total, $last['counts']['all']);
+        $far = collect($last['orders'])->firstWhere('kind', 'order');
+        $this->actingAs($bench)->post(route('admin.preparation.move', $far['number']), ['status' => OrderStatus::PREPARING])->assertSessionHasNoErrors();
+
+        // ونافذةٌ خلت — سُلّم ما فيها — تردّ إلى آخر ما فيه شيء لا إلى لوحةٍ فارغة
+        Order::where('business_id', $this->shop->id)->whereIn('number', array_column($rows, 'number'))->orderByDesc('id')->limit(300)->update(['status' => OrderStatus::PICKED_UP]);
+        $after = $this->board($bench, ['show' => $max, 'from' => $max]);
+        $this->assertNotEmpty($after['orders']);
+        $this->assertNull($after['filters']['from']);
     }
 
     /* ============================ ٦ — المصادرُ والحالات ============================ */

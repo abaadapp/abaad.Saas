@@ -353,6 +353,8 @@ class HandleInertiaRequests extends Middleware
                  * صفٌّ للعرض (`PaymentLinks::row`) لا سرَّ فيه.
                  */
                 'paymentLink' => $request->session()->get('paymentLink'),
+                // ‏‏رابطُ ربط واتساب الذي أُنشئ الآن — يمرّ مرّةً ولا يُحفظ (`WhatsAppClientLinks`)
+                'whatsappClientLink' => $request->session()->get('whatsappClientLink'),
                 // وأكان مع إصدار الفاتورة نفسِه — «تم إصدار الفاتورة وإنشاء رابط الدفع»
                 'paymentLinkIssued' => (bool) $request->session()->get('paymentLinkIssued'),
             ],

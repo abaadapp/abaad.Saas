@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import ClientLinkBox, { type ClientLinkView } from '@/Pages/Platform/Businesses/partials/ClientLinkBox';
 import type { LinkHealth } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 
 /** ما يصل من الخادم — بلا رمزٍ ولا سرّ (انظر SuperAdmin\WhatsAppController::businessView) */
@@ -64,6 +65,8 @@ export interface BusinessWhatsApp {
     own_needs_addon?: boolean;
     /** صندوقُ محادثات واتساب مفتوحٌ له — تلقائيًّا: الباقةُ تشمل واتساب ولم يُطفأ (`WhatsAppInbox::available`) */
     inbox_available?: boolean;
+    /** «أرسل رابطًا لعميلك» — حالُ آخر رابط (`WhatsAppClientLinks::view`) */
+    client_link?: ClientLinkView;
 }
 
 /** ما يراه فريقُ أبعاد قبل أن يؤكّد أنّ فوترة ميتا على التاجر */
@@ -408,6 +411,14 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                         </div>
                     )}
                 </dl>
+            )}
+
+            {data.client_link && (
+                <ClientLinkBox
+                    businessId={businessId}
+                    data={data.client_link}
+                    stillShared={data.own_connection?.usable === true && data.effective_mode !== 'business_own'}
+                />
             )}
 
             <div className="space-y-5">

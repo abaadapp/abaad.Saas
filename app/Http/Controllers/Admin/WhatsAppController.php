@@ -21,7 +21,6 @@ use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppLog;
-use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOnboarding;
 use App\Support\WhatsAppOwnApp;
@@ -102,18 +101,7 @@ class WhatsAppController extends Controller
              * و`configured` تُطفئ الزرّ حين ينقص إعدادٌ على الخادم: زرٌّ
              * يفتح نافذةً تفشل عند ميتا أسوأ من زرٍّ لا يظهر.
              */
-            'embedded' => [
-                'configured' => WhatsAppEmbeddedSignup::configured(),
-                'app_id' => (string) config('whatsapp.app_id'),
-                'config_id' => WhatsAppMerchantLink::configId(),
-                'graph_version' => (string) config('whatsapp.api_version'),
-                'feature_type' => (string) config('whatsapp.feature_type'),
-                'session_info_version' => (string) config('whatsapp.session_info_version'),
-                // نسخةُ التسجيل المدمج إن كُتبت — وبلا نسخةٍ تخدمها ميتا بـv4
-                'version' => config('whatsapp.es_version'),
-                // والتعايشُ يُعرض اختيارًا مطفأً بسببه ما لم يُفتح على الخادم
-                'coexistence_open' => WhatsAppOnboarding::coexistenceOpen(),
-            ],
+            'embedded' => WhatsAppEmbeddedSignup::publicConfig(),
 
             /* حالُ الربط بحالاتها الستّ — تُحسب في الخادم ولا تُستنتج في الشاشة */
             'link' => WhatsAppLink::view($own),
@@ -340,7 +328,7 @@ class WhatsAppController extends Controller
          * تطبيق أبعاد. وهو تفويضٌ باسم النشاط يُرسل برقمه ويقرأ رسائل زبائنه —
          * فلصاحب الحساب وحده، كالتسجيل المدمج.
          */
-        if (WhatsAppOwnApp::enabled()) {
+        if (WhatsAppOwnApp::onOwnApp((int) $business->id)) {
             if (! \App\Support\Permissions::isOwner($request->user())) {
                 return back()->withErrors(['app_id' => __('ربط واتساب لصاحب الحساب وحده.')]);
             }
@@ -436,7 +424,9 @@ class WhatsAppController extends Controller
             'last_error_message' => null,
             'last_error_at' => null,
         ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state'])
-          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : []);
+          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : [])
+          // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه — فلا تصير الوصلةُ نصفين
+          + WhatsAppOwnApp::leave($existing);
 
         $connection = $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
 

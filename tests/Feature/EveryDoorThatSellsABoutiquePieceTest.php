@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Addon;
 use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
+use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPaymentLink;
@@ -270,6 +271,55 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
         $this->paid($intent);
         $this->assertSame(1, Order::where('business_id', $this->shop->id)->count());
         $this->assertOwed(12.0, 2.4, 9.6);
+    }
+
+    /* ═══════════ الخصمُ من أيّ بابٍ جاء ═══════════ */
+
+    /**
+     * سياسةٌ واحدة في كلّ باب: خصمُ المنتج نفسِه يُنقص سعرَ بيعه فيقع على البوتيك
+     * بحصّته، وخصمُ الفاتورة (كوبونٌ ونقاط) على المتجر ولا يمسّ البوتيك.
+     */
+    public function test_a_coupon_never_lowers_the_boutiques_due_whichever_door_sold_it(): void
+    {
+        Coupon::create(['business_id' => $this->shop->id, 'code' => 'TEN', 'type' => 'نسبة', 'value' => 10, 'active' => true]);
+        $till = $this->sell(['coupon_code' => 'TEN']);
+        $this->assertEquals([1.2, 10.8], [(float) $till->discount, (float) $till->total]);
+        $this->assertOwed(12.0, 2.4, 9.6, 'كوبونُ الصندوق');
+
+        $this->checkout(['items' => [['id' => $this->silver->id, 'qty' => 1]], 'promo' => 'TEN'])->assertOk();
+        $web = Order::where('business_id', $this->shop->id)->where('channel', 'website')->sole();
+        $this->assertEquals([1.2, 10.8], [(float) $web->discount, (float) $web->total], 'كوبونُ الموقع لم يُطبَّق — الاختبارُ لا يقيس شيئًا');
+        $this->assertOwed(24.0, 4.8, 19.2, 'كوبونُ الموقع');
+
+        // وتصحيحُ فاتورةٍ مخصومةٍ يعيد حساب الخصم ولا يحمّل البوتيكَ منه شيئًا
+        $this->actingAs($this->owner);
+        OrderCorrection::addLine($till->fresh(), ['product_id' => $this->silver->id, 'qty' => 1], 'زيادة', OrderCorrection::SETTLE_COLLECTED, 'نقدي');
+        $this->assertOwed(36.0, 7.2, 28.8, 'تصحيحُ فاتورةٍ عليها كوبون');
+    }
+
+    public function test_a_products_own_discount_lowers_the_price_the_boutique_is_owed_from_in_both_doors(): void
+    {
+        $this->silver->update(['discount' => 25]);          // ١٢ ← ٩
+        $this->actingAs($this->owner)->postJson('/pos/checkout', [
+            'items' => [['id' => $this->silver->id, 'name' => $this->silver->name, 'qty' => 1, 'price' => 9]],
+            'payment_method' => 'نقدي', 'client_uuid' => 'own-discount',
+        ])->assertOk();
+        $this->assertOwed(9.0, 1.8, 7.2, 'خصمُ المنتج في الصندوق');
+        $this->checkout(['items' => [['id' => $this->silver->id, 'qty' => 1]]])->assertOk();
+        $this->assertOwed(18.0, 3.6, 14.4, 'خصمُ المنتج في الموقع');
+        $this->assertSame(0, (int) round((float) Order::where('business_id', $this->shop->id)->sum('discount') * 1000), 'خصمُ المنتج ليس خصمَ فاتورة — لا يُخصم مرّتين');
+    }
+
+    /** إضافةُ المتجر المدفوعةُ على صنف البوتيك للمتجر كلِّها — لا تدخل مبيعاتِ البوتيك */
+    public function test_a_shops_addon_on_a_boutique_piece_is_the_shops(): void
+    {
+        $wrap = Addon::create(['business_id' => $this->shop->id, 'name' => 'تغليف', 'price' => 3, 'active' => true, 'pos_enabled' => true, 'scope' => Addon::SCOPE_ALL]);
+        $this->actingAs($this->owner)->postJson('/pos/checkout', [
+            'items' => [['id' => $this->silver->id, 'name' => $this->silver->name, 'qty' => 1, 'price' => 12, 'addons' => [['addon_id' => $wrap->id, 'qty' => 1]]]],
+            'payment_method' => 'نقدي', 'client_uuid' => 'addon-door',
+        ])->assertOk();
+        $this->assertEquals(15.0, (float) Order::where('business_id', $this->shop->id)->sole()->total);
+        $this->assertOwed(12.0, 2.4, 9.6, 'إضافةُ المتجر دخلت حسابَ البوتيك');
     }
 
     /* ═══════════ ٣ · رابطُ الدفع — تحصيلٌ لا بيع ═══════════ */

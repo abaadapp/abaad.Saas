@@ -45,7 +45,7 @@ interface Props {
 export default function CustomerPortal() {
     const { portal, urls, links, pagination, employees, mayGrant } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [confirm, confirmDialog] = useConfirm();
+    const [ask, confirmDialog] = useConfirm();
     const [staff, setStaff] = useState(employees);
     const [saving, setSaving] = useState(false);
     const dirty = JSON.stringify(staff) !== JSON.stringify(employees);
@@ -59,11 +59,11 @@ export default function CustomerPortal() {
             { preserveScroll: true, onStart: () => setSaving(true), onFinish: () => setSaving(false) },
         );
     const revoke = async (l: LinkRow) => {
-        if (! await confirm({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
+        if (! await ask({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
         router.delete(l.revokeUrl, { preserveScroll: true });
     };
     const revokeAll = async () => {
-        if (! await confirm({ message: 'إلغاء كل روابط العملاء؟ يخرجون جميعًا، ويلزم إصدار رابط جديد لكل عميل.', danger: true, action: 'إلغاء الكل' })) return;
+        if (! await ask({ message: 'إلغاء كل روابط العملاء؟ يخرجون جميعًا، ويلزم إصدار رابط جديد لكل عميل.', danger: true, action: 'إلغاء الكل' })) return;
         router.delete(urls.revokeAll, { preserveScroll: true });
     };
 

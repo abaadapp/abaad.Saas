@@ -76,7 +76,7 @@ export function PortalButton({ portal }: { portal: PortalPanel }) {
 /** ملفُّ العميل — قسمُ «رابط بوابة العميل» */
 export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
     const t = useTranslate();
-    const [confirm, confirmDialog] = useConfirm();
+    const [ask, confirmDialog] = useConfirm();
     const { copyLater, copied } = useCopy();
     const [busy, setBusy] = useState<'make' | 'copy' | 'qr' | 'reissue' | 'revoke' | null>(null);
     const [now, setNow] = useState(state);
@@ -85,7 +85,7 @@ export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
     const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
 
     /** الرابطُ من الخادم في كلّ مرّة: قد أعاد غيرُك إصدارَه */
-    const ask = async (what: 'make' | 'copy' | 'qr' | 'reissue', url: string): Promise<SharedLink | null> => {
+    const fetchLink = async (what: 'make' | 'copy' | 'qr' | 'reissue', url: string): Promise<SharedLink | null> => {
         setBusy(what);
         const asked = askPortal<SharedLink>(url, 'POST', failed);
         if (what === 'copy') await copyLater(linkOf(asked));
@@ -102,14 +102,14 @@ export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
         return data;
     };
     const showQr = async () => {
-        if (await ask('qr', now.urls.share)) setShowing(true);
+        if (await fetchLink('qr', now.urls.share)) setShowing(true);
     };
     const reissue = async () => {
-        if (! now.urls.reissue || ! await confirm({ message: 'إعادة إصدار رابط هذا العميل؟ يتوقف رابطه الحالي ويخرج من أجهزته.', action: 'إعادة إصدار الرابط' })) return;
-        if (await ask('reissue', now.urls.reissue)) toast.success(t('صدر رابط جديد، والقديم لم يعد يعمل'));
+        if (! now.urls.reissue || ! await ask({ message: 'إعادة إصدار رابط هذا العميل؟ يتوقف رابطه الحالي ويخرج من أجهزته.', action: 'إعادة إصدار الرابط' })) return;
+        if (await fetchLink('reissue', now.urls.reissue)) toast.success(t('صدر رابط جديد، والقديم لم يعد يعمل'));
     };
     const revoke = async () => {
-        if (! now.urls.revoke || ! await confirm({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
+        if (! now.urls.revoke || ! await ask({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
         setBusy('revoke');
         const { data, error } = await askPortal<{ state: PortalLinkState }>(now.urls.revoke, 'DELETE', failed);
         setBusy(null);
@@ -131,14 +131,14 @@ export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
             {!now.hasPhone ? (
                 <p className="rounded-xl bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">{t('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')}</p>
             ) : !now.issued ? (
-                <Button className="w-full" loading={busy === 'make'} onClick={() => void ask('make', now.urls.share)} data-testid="portal-make">
+                <Button className="w-full" loading={busy === 'make'} onClick={() => void fetchLink('make', now.urls.share)} data-testid="portal-make">
                     <Link2 />
                     {t('إنشاء الرابط الشخصي')}
                 </Button>
             ) : (
                 <div className="space-y-3">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                        <Button variant="outline" loading={busy === 'copy'} disabled={busy !== null} onClick={() => void ask('copy', now.urls.share)} data-testid="portal-copy">
+                        <Button variant="outline" loading={busy === 'copy'} disabled={busy !== null} onClick={() => void fetchLink('copy', now.urls.share)} data-testid="portal-copy">
                             {copied ? <Check className="text-[#047857]" /> : <Copy />}
                             {copied ? t('نُسخ') : t('نسخ الرابط')}
                         </Button>

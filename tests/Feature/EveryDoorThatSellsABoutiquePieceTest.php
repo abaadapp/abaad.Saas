@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Addon;
 use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
+use App\Models\BoutiqueInvoiceLine;
 use App\Models\Coupon;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPaymentLink;
 use App\Models\CustomOrderTemplate;
@@ -17,6 +19,7 @@ use App\Models\Product;
 use App\Models\StorePaymentIntent;
 use App\Models\WhatsAppChat;
 use App\Models\WhatsAppOrderSession;
+use App\Support\BoutiqueInvoiceDues;
 use App\Support\Boutiques;
 use App\Support\CustomArrangement;
 use App\Support\CustomerInvoices;
@@ -45,12 +48,10 @@ use Tests\TestCase;
  *      البوتيك على البند، فيدخل حسابَه مرّةً واحدة.
  *   ٢. ورقةُ الطلب ودفعتُه ورابطُه لا تُعيد عدَّه.
  *   ٣. وبابان يكتبان **فاتورةَ عميلٍ بلا طلب** — اليدويّةُ وطلبُ واتساب الآليّ —
- *      لا يدخل صنفُ البوتيك فيهما حسابَه. عطبٌ قائم مثبَّتٌ هنا كما هو، لا سياسةٌ
- *      معتمدة: إصلاحُه هجرةٌ وقرارُ متى يتحقّق البيع، فلا يُنفَّذ بلا موافقة.
+ *      يحفظان اللقطةَ عند الإصدار، ويدخل صنفُ البوتيك حسابَه حين يكتمل تحصيلُها
+ *      (`BoutiqueInvoiceDues`، وتفصيلُه في `ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest`).
  *   ٤. وقطعةُ البوتيك داخل منتجٍ من المتجر (وصفةٌ أو إضافةٌ أو طلبٌ مخصّص) لا
  *      تُستحقّ والمفتاحُ مطفأ (#146).
- *
- * ومتى أُصلح البابان انقلبت الاختباراتُ المسمّاة `is_not_in_the_boutiques_account_yet`.
  */
 class EveryDoorThatSellsABoutiquePieceTest extends TestCase
 {
@@ -108,13 +109,21 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
 
     private function assertOwed(float $gross, float $commission, float $net, string $why = ''): void
     {
-        // والعمولةُ من الكشف وحده: SQLite تقسم العددين الصحيحين قسمةً صحيحة في `soldTotals` (١٢ × ٢٠ ÷ ١٠٠)
-        $this->assertEquals($gross, Boutiques::soldTotals((int) $this->shop->id, $this->lama)['gross'], $why.' — تقريرُ المبيعات');
+        $r = Boutiques::soldTotals((int) $this->shop->id, $this->lama);
+        $this->assertEquals([$gross, $commission, $net], [$r['gross'], $r['commission'], $r['net']], $why.' — تقريرُ المبيعات');
 
         // والكشفُ الذي تُصدر منه الورقة يقول الشيء نفسَه — لا قارئَ يعدّ ما لا يعدّه الآخر
         $s = Boutiques::statement((int) $this->shop->id, (int) $this->lama->id, self::PERIOD);
         $this->assertEquals([$gross, $commission, $net], [$s['gross'], $s['commission'], $s['net']], $why.' — الكشف');
         $this->assertEquals(0, $s['components']['count'], 'استُحقّت قطعةٌ والمفتاحُ مطفأ');
+    }
+
+    /** صدرت ولم يكتمل تحصيلُها: في التقرير بيعٌ، وفي الكشف «بانتظار التحصيل» لا مستحقّ */
+    private function assertAwaits(float $net, string $why = '', float $gross = 12.0, float $commission = 2.4): void
+    {
+        $s = Boutiques::statement((int) $this->shop->id, (int) $this->lama->id, self::PERIOD);
+        $this->assertEquals([0.0, 0.0, 0.0, $net], [$s['gross'], $s['commission'], $s['net'], $s['awaiting']['net']], $why.' — الكشف');
+        $this->assertEquals([$net, $net], [($r = Boutiques::soldTotals((int) $this->shop->id, $this->lama))['net'], $r['awaiting_net']], $why.' — التقرير');
     }
 
     private function sell(array $extra = [], int $qty = 1): Order
@@ -347,7 +356,7 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
         $this->assertOwed(0.0, 0.0, 0.0);
     }
 
-    /* ═══════════ ٤ · فاتورةُ العميل بلا طلب — العطبُ القائم ═══════════ */
+    /* ═══════════ ٤ · فاتورةُ العميل بلا طلب ═══════════ */
 
     private function invoiceFor(int $qty = 1): CustomerInvoice
     {
@@ -360,21 +369,17 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
         return CustomerInvoice::where('business_id', $this->shop->id)->latest('id')->firstOrFail();
     }
 
-    /**
-     * السببُ الجذريّ: بندُ فاتورة العميل لا عمودَ فيه لصاحبه ولا لنسبته ولا لختم
-     * ورقته — وكلُّ قارئٍ لحساب البوتيك يقرأ `order_items` وحدها.
-     */
-    public function test_the_invoice_line_has_nowhere_to_keep_whose_piece_it_was(): void
+    /** اللقطةُ في جدولها — وبندُ الفاتورة وسجلُّ القطع كما كانا */
+    public function test_the_invoice_line_keeps_whose_piece_it_was_in_its_own_row(): void
     {
-        foreach (['boutique_id', 'boutique_name', 'boutique_rate', 'boutique_settlement_id'] as $column) {
-            $this->assertTrue(Schema::hasColumn('order_items', $column));
-            $this->assertFalse(Schema::hasColumn('customer_invoice_items', $column), 'صار للبند عمودُ '.$column.' — حدّث اختباراتِ هذا القسم');
+        foreach (['boutique_id', 'boutique_name', 'rate', 'commission', 'net', 'collected_at', 'boutique_settlement_id'] as $column) {
+            $this->assertTrue(Schema::hasColumn('boutique_invoice_lines', $column), $column);
         }
-        // والسجلُّ القائم لمستحقّ القطع لا يسعها: رقمُ الطلب فيه إلزاميّ
+        $this->assertFalse(Schema::hasColumn('customer_invoice_items', 'boutique_id'));
         $this->assertFalse(collect(Schema::getColumns('boutique_component_dues'))->firstWhere('name', 'order_id')['nullable']);
     }
 
-    public function test_a_manual_invoice_is_not_in_the_boutiques_account_yet(): void
+    public function test_a_manual_invoice_enters_the_account_once_when_it_is_fully_collected(): void
     {
         $invoice = $this->invoiceFor();
         $this->assertSame(CustomerInvoice::DRAFT, $invoice->status);
@@ -382,33 +387,35 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
 
         $issued = CustomerInvoices::issue($invoice, $this->owner->id);
         $this->assertFalse($issued->coversOrders());
-        // الإيرادُ كلُّه للمتجر في الدفتر، ولا شيءَ للبوتيك
         $this->assertEquals(12.0, Ledger::balance((int) $this->shop->id, 'sales'));
-        $this->assertOwed(0.0, 0.0, 0.0, 'الصادرة');
+        $this->assertAwaits(9.6, 'الصادرة');
         $this->assertSame(100, (int) $this->silver->fresh()->quantity, 'فاتورةُ العميل لا تُخرج من الرفّ');
 
-        foreach ([5.0, 7.0] as $amount) {
-            CustomerPayments::record((int) $this->shop->id, $this->company, $amount, ['method' => 'نقدي'], [$issued->id => $amount], $this->owner->id);
-            $this->assertOwed(0.0, 0.0, 0.0, 'المدفوعُ منها '.$amount);
-        }
-        $this->assertEquals(0.0, $issued->fresh()->outstanding());
-        $this->assertSame(0, OrderItem::count());
+        CustomerPayments::record((int) $this->shop->id, $this->company, 5.0, ['method' => 'نقدي'], [$issued->id => 5.0], $this->owner->id);
+        $this->assertAwaits(9.6, 'المدفوعُ منها 5');
+        CustomerPayments::record((int) $this->shop->id, $this->company, 7.0, ['method' => 'نقدي'], [$issued->id => 7.0], $this->owner->id);
+        $this->assertOwed(12.0, 2.4, 9.6, 'اكتملت');
+        $this->assertSame(0, OrderItem::count(), 'كُتب طلبٌ وهميّ');
         $this->assertSame(0, BoutiqueComponentDue::count());
     }
 
-    /** ورابطُ دفعها يحصّل ثمنَها، ولا يُدخل البوتيك */
-    public function test_a_paid_link_over_a_manual_invoice_is_not_in_the_boutiques_account_yet(): void
+    /** ورابطُ دفعها يكمل تحصيلَها — وإشعارُه المكرّر لا يزيد */
+    public function test_a_paid_link_over_a_manual_invoice_enters_the_account_once(): void
     {
         $this->fakeLinks();
         $invoice = CustomerInvoices::issue($this->invoiceFor(), $this->owner->id);
         [$link] = PaymentLinks::forInvoice($invoice, $this->owner->id);
+        $this->assertAwaits(9.6, 'رابطٌ لم يُدفع');
         $this->payLink($link);
         $this->assertEquals(0.0, $invoice->fresh()->outstanding());
-        $this->assertOwed(0.0, 0.0, 0.0);
+        $this->assertOwed(12.0, 2.4, 9.6);
+        $this->tx--;
+        $this->payLink($link);
+        $this->assertOwed(12.0, 2.4, 9.6, 'إشعارٌ مكرّر');
     }
 
     /** وطلبُ واتساب الآليّ يكتب فاتورةَ عميلٍ — فهو من هذا الباب */
-    public function test_an_automatic_whatsapp_order_is_not_in_the_boutiques_account_yet(): void
+    public function test_an_automatic_whatsapp_order_enters_the_account_when_it_is_paid(): void
     {
         $chat = WhatsAppChat::create(['business_id' => $this->shop->id, 'phone_number_id' => 'PN-1', 'source_mode' => 'own', 'customer_phone' => '96891234567']);
         $session = WhatsAppOrderSession::create([
@@ -420,27 +427,26 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
         $invoice = WhatsAppOrderCheckout::invoice($this->shop->fresh(), $session);
 
         $this->assertSame(CustomerInvoice::ISSUED, $invoice->status, 'الطلبُ الآليّ يُصدر ورقتَه قبل الدفع');
-        $this->assertFalse($invoice->coversOrders());
-        $this->assertSame([(int) $this->silver->id], $invoice->items->pluck('product_id')->filter()->map(fn ($i) => (int) $i)->values()->all());
         $this->assertGreaterThan(0.0, $invoice->outstanding(), 'ولم يُدفع بعد');
-        $this->assertOwed(0.0, 0.0, 0.0);
+        $this->assertAwaits(9.6, 'طلبٌ لم يُدفع');
+        // والطلبُ نفسُه مرّةً أخرى ورقةٌ واحدة ولقطةٌ واحدة
+        WhatsAppOrderCheckout::invoice($this->shop->fresh(), $session->fresh());
+        $this->assertSame(1, BoutiqueInvoiceLine::count());
 
         CustomerPayments::record((int) $this->shop->id, $this->company, 12.0, ['method' => 'نقدي'], [$invoice->id => 12.0], $this->owner->id);
-        $this->assertEquals(0.0, $invoice->fresh()->outstanding());
-        $this->assertOwed(0.0, 0.0, 0.0, 'دُفع ولم يدخل');
+        $this->assertOwed(12.0, 2.4, 9.6, 'دُفع');
         $this->assertSame(0, Order::where('business_id', $this->shop->id)->count(), 'كُتب طلبٌ مع الفاتورة — صار العدُّ مرّتين ممكنًا');
     }
 
-    /** إشعارُ الدائن مبلغٌ بلا بنود: لا يُعرف منه أيُّ صنفٍ رُدّ — وهو ما يمنع إصلاحًا بلا تصميم */
-    public function test_a_credit_note_is_an_amount_without_lines(): void
+    /** إشعارٌ بمبلغٍ وحده لا يمسّ بوتيكًا، وإشعارٌ سمّى القطعةَ يُنقص ما لصاحبها */
+    public function test_a_credit_note_lowers_the_boutique_only_by_the_piece_it_names(): void
     {
         $invoice = CustomerInvoices::issue($this->invoiceFor(2), $this->owner->id);
-        $note = CustomerInvoices::creditNote($invoice, 12.0, 0.0, 'رُدّت قطعة', $this->owner->id);
-        $this->assertEquals(12.0, (float) $note->amount);
-        foreach (['product_id', 'customer_invoice_item_id', 'quantity'] as $column) {
-            $this->assertFalse(Schema::hasColumn('customer_credit_notes', $column));
-        }
-        $this->assertFalse(Schema::hasTable('customer_credit_note_items'));
+        CustomerInvoices::creditNote($invoice, 2.0, 0.0, 'خصم', $this->owner->id);
+        $this->assertAwaits(19.2, 'خصمٌ على المتجر', 24.0, 4.8);
+        $items = BoutiqueInvoiceDues::noteItems($invoice, [(int) $invoice->items->first()->id => ['quantity' => 1]]);
+        CustomerInvoices::creditNote($invoice->fresh(), 12.0, 0.0, 'رُدّت قطعة', $this->owner->id, items: $items, basis: CustomerCreditNote::RETURN);
+        $this->assertAwaits(9.6, 'عادت واحدة');
     }
 
     /* ═══════════ ٥ · قطعةٌ داخل منتج المتجر — والمفتاحُ مطفأ (#146) ═══════════ */
@@ -487,8 +493,8 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
     /**
      * كلُّ ملفٍّ يكتب بندَ بيعٍ مذكورٌ هنا بحاله — فبابٌ جديد لا يُفتح بلا جوابٍ عن البوتيك.
      *
-     * من كتب بندَ طلبٍ وجب أن يكتب صاحبَه (`Boutiques::itemColumns`). ومن كتب بندَ
-     * فاتورةِ عميلٍ فهو في العطب القائم أعلاه حتّى يُصلح.
+     * من كتب بندَ طلبٍ وجب أن يكتب صاحبَه (`Boutiques::itemColumns`). ومن كتب بندَ فاتورةِ
+     * عميلٍ حُفظت لقطتُه عند الإصدار (`BoutiqueInvoiceDues::snapshot`).
      */
     public function test_no_new_door_sells_without_answering_for_the_boutique(): void
     {

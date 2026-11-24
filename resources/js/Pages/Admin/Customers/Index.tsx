@@ -257,11 +257,13 @@ export default function CustomersIndex() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        {portal && <PortalButton portal={portal} />}
-                        <Button onClick={() => setAdding(true)}>
-                            <UserPlus />
-                            {t('إضافة عميل')}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            {portal && <PortalButton portal={portal} />}
+                            <Button onClick={() => setAdding(true)}>
+                                <UserPlus />
+                                {t('إضافة عميل')}
+                            </Button>
+                        </div>
                     </>
                 }
             />

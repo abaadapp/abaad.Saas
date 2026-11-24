@@ -167,7 +167,7 @@ export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
                 <DialogContent className="sm:max-w-sm">
                     <DialogHeader><DialogTitle>{t('رمز بوابة العميل')}</DialogTitle></DialogHeader>
                     <div className="flex flex-col items-center gap-3 p-5 pt-2 text-center" data-testid="portal-customer-qr">
-                        {link && <img src={link.qr} alt={t('رمز QR لرابط العميل')} className="size-60 rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-white p-4" />}
+                        {link && <img src={link.qr} alt={t('رمز QR لرابط العميل')} className="size-64 rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-white p-6" />}
                         <p className="text-sm text-[#374151]">{t('يمسحه العميل بهاتفه، ثم يكتب رقم هاتفه المسجّل.')}</p>
                         <p className="text-[12px] text-[#9ca3af]">{t('رمز خاص بهذا العميل وحده، فلا يُعرض لغيره.')}</p>
                     </div>

@@ -13,7 +13,7 @@
         .sheet { max-width: 480px; margin: 24px auto; background: #f7f2ec; border: 1px solid #e4dcd1; border-radius: 24px; padding: 34px 28px; }
         img { max-height: 92px; max-width: 260px; object-fit: contain; }
         h1 { font-size: 24px; margin: 18px 0 4px; color: #474530; } p { margin: 4px 0; line-height: 1.7; }
-        .qr { background: #fff; border-radius: 18px; padding: 18px; margin: 20px auto; width: max-content; } .qr svg { display: block; width: 250px; height: 250px; }
+        .qr { background: #fff; border-radius: 18px; padding: 34px; margin: 20px auto; width: max-content; } .qr svg { display: block; width: 250px; height: 250px; }
         .en { direction: ltr; color: #7b776a; font-size: 14px; } .url { direction: ltr; font-size: 15px; font-weight: 600; } small { color: #7b776a; display: block; margin-top: 20px; font-size: 10px; }
         button { font: inherit; padding: 10px 22px; border-radius: 12px; border: 0; background: #58563c; color: #f7f2ec; cursor: pointer; margin: 0 0 24px; }
         @media print { body { background: none; } .sheet { border: 0; margin: 0 auto; } button { display: none; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

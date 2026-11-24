@@ -1,5 +1,7 @@
 import { Link, router } from '@inertiajs/react';
 import { RefreshCw, Webhook } from 'lucide-react';
+import StatusPill from '@/Components/StatusPill';
+import { BILLING_PILL, type BillingState } from '@/Components/WhatsappBilling';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
@@ -15,6 +17,8 @@ export interface OwnNumberRow {
     health: LinkHealth;
     /** ورقمُ إرساله: معتمَد، أو ينتظر، أو تعطّل (`WhatsAppSender::brief`) */
     sender?: { state: 'checking' | 'adopted' | 'problem' | 'own' | 'shared'; text: string };
+    /** وعلى من رسومُه عند Meta (`WhatsAppBillingLock::brief`) */
+    billing?: { state: BillingState; label: string; locked: boolean; own_app: boolean; text: string | null } | null;
 }
 
 const TONE: Record<LinkHealth['tone'], string> = {
@@ -81,6 +85,13 @@ export default function OwnNumbersHealth({ rows }: { rows: OwnNumberRow[] }) {
                                             data-state={row.sender.state}
                                         >
                                             {row.sender.text}
+                                        </p>
+                                    )}
+                                    {row.billing && (
+                                        <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[#6b7280]" data-testid="own-number-billing" data-state={row.billing.state}>
+                                            <span>{t('رسوم واتساب')}</span>
+                                            <StatusPill state={BILLING_PILL[row.billing.state]} label={row.billing.label} />
+                                            {!row.billing.locked && !row.billing.own_app && <span>{t('ربط من قبل القفل')}</span>}
                                         </p>
                                     )}
                                     <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[#9ca3af]">

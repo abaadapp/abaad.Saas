@@ -526,7 +526,7 @@ class PosController extends Controller
              */
             'points_balance' => $result['loyalty']['balance'],
         ] + ($order->customer_id !== null && \App\Support\RibbonPortal\Portal::mayShare($request->user())
-            // «مشاركة رابط مشترياتي» — لمتجر سعود ومن يشارك فيه، ولبيعةٍ لها عميلٌ مسجَّل
+            // «نسخ رابط بوابة العميل» — لمتجر سعود ومن يشارك فيه، ولبيعةٍ لها عميلٌ مسجَّل
             ? ['portal' => route('pos.orders.portal', $order->number, false)] : []));
     }
 

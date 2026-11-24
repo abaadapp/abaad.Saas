@@ -11,8 +11,6 @@ use App\Support\RibbonPortal\Account;
 use App\Support\RibbonPortal\Paper;
 use App\Support\RibbonPortal\Texts;
 use App\Support\Search;
-use App\Support\Website\MerchantData;
-use App\Support\WhatsAppPhone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -41,7 +39,7 @@ class RibbonPortalController extends Controller
 
         $customer = $this->customer($request);
         if ($customer === null || $request->boolean('switch')) {
-            $response = response()->view('portal.ribbon.door', $this->frame($request, null) + ['ask' => $this->askLink($request)]);
+            $response = response()->view('portal.ribbon.door', $this->frame($request, null));
 
             // جلسةٌ أُلغيت أو انقضت: كعكتُها لا تبقى. ومن فتح رابطَ غيره على جهازه (`switch`) تبقى له جلستُه حتى يدخل الآخر
             return $customer !== null || $request->cookie(Access::COOKIE) === null ? $response : $response->withCookie(Access::cookie($request, null));
@@ -238,18 +236,8 @@ class RibbonPortalController extends Controller
             'lang' => $lang,
             'dir' => $lang === 'en' ? 'ltr' : 'rtl',
             't' => fn (string $key, array $with = []) => Texts::say($lang, $key, $with),
-            'texts' => Texts::all($lang),
             'shop' => InvoiceBranding::name($this->business($request)),
             'nonce' => (string) $request->attributes->get('portal_nonce'),
         ];
-    }
-
-    /** «اطلب رابطي» — محادثةُ واتساب مع رقم المتجر، بلا رقمٍ ولا اسمٍ لأحد */
-    private function askLink(Request $request): ?string
-    {
-        $phone = WhatsAppPhone::normalize((string) MerchantData::identity($this->business($request))['whatsapp']);
-
-        return $phone === null ? null
-            : 'https://wa.me/'.$phone.'?text='.rawurlencode(Texts::say($this->lang($request, null), 'askMessage'));
     }
 }

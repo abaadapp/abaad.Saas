@@ -597,7 +597,7 @@ class PageController extends Controller
                     'order' => $p->order?->number,
                 ])->all(),
         ] + array_filter([
-            // «مشاركة رابط العميل» إلى بوابة RIBBON — لمتجر سعود ومن يشارك وحدهم
+            // قسمُ «رابط بوابة العميل» — لمتجر سعود ومن يشارك وحدهم
             'portalLink' => RibbonPortalController::panelFor(auth()->user(), (int) $id),
         ]));
     }

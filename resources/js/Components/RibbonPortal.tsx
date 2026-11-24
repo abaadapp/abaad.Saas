@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { ChevronLeft, ExternalLink, Link2, MessageCircle, Printer, QrCode, RefreshCw, Share2, UserRoundCheck } from 'lucide-react';
+import { Check, ChevronLeft, Copy, ExternalLink, Link2, Printer, QrCode, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import CopyButton from '@/Components/CopyButton';
 import { useConfirm } from '@/Components/ConfirmDialog';
+import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
+import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import { useCopy } from '@/lib/copy';
 import { useTranslate } from '@/lib/i18n';
-import { askPortal, type PortalLinkState, type SharedLink } from '@/lib/ribbon-portal';
+import { askPortal, linkOf, type PortalLinkState, type SharedLink } from '@/lib/ribbon-portal';
 import { cn } from '@/lib/utils';
 
 /**
@@ -15,8 +18,8 @@ import { cn } from '@/lib/utils';
  *
  * لا شيءَ هنا يُرسم بلا ما يرسله الخادم (`RibbonPortal\Portal`): متجرٌ آخر لا
  * يصله مفتاحُها، وموظّفٌ لا يشارك لا يصله كذلك. والرابطُ الشخصيُّ لا يأتي مع
- * الصفحة: يُطلب حين يُضغط الزرّ. ولا تُرسَل رسالة — يُفتح واتساب بنصّها
- * ويضغط الموظّفُ «إرسال» بيده.
+ * الصفحة: يُطلب حين يُضغط الزرّ. ولا رسالةَ من هنا ولا قناةَ مراسلة: يُنسخ
+ * الرابطُ أو يُمسح رمزُه من الشاشة.
  */
 export interface PortalPanel {
     url: string;
@@ -49,7 +52,7 @@ export function PortalLinkBox({ portal, stacked = false }: { portal: PortalPanel
     );
 }
 
-/** أعلى قائمة العملاء */
+/** أعلى قائمة العملاء بجانب «إضافة عميل» */
 export function PortalButton({ portal }: { portal: PortalPanel }) {
     const t = useTranslate();
     const [open, setOpen] = useState(false);
@@ -58,11 +61,11 @@ export function PortalButton({ portal }: { portal: PortalPanel }) {
         <>
             <Button variant="outline" onClick={() => setOpen(true)} data-testid="portal-button">
                 <QrCode />
-                {t('بوابة عملاء RIBBON')}
+                {t('بوابة العملاء')}
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="sm:max-w-md">
-                    <DialogHeader><DialogTitle>{t('بوابة عملاء RIBBON')}</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>{t('بوابة العملاء')}</DialogTitle></DialogHeader>
                     <div className="p-5 pt-2"><PortalLinkBox portal={portal} /></div>
                 </DialogContent>
             </Dialog>
@@ -70,93 +73,107 @@ export function PortalButton({ portal }: { portal: PortalPanel }) {
     );
 }
 
-/** ما يُفعل برابطٍ صدر: نسخٌ وواتساب */
-function SharedActions({ shared }: { shared: SharedLink }) {
-    const t = useTranslate();
-
-    return (
-        <div className="space-y-3" data-testid="portal-shared">
-            <div className="rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3">
-                <p className="whitespace-pre-line break-words text-[13px] leading-relaxed text-[#374151]">{shared.message}</p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <CopyButton text={shared.url} label={t('نسخ الرابط')} size="md" className="w-full" />
-                <Button variant="success" asChild>
-                    <a href={shared.whatsapp} target="_blank" rel="noreferrer" data-testid="portal-whatsapp"><MessageCircle />{t('مشاركة عبر واتساب')}</a>
-                </Button>
-            </div>
-            <p className="text-[12px] text-[#9ca3af]">{t('لا تُرسل الرسالة تلقائيًّا: يُفتح واتساب بنصّها وترسلها بيدك.')}</p>
-        </div>
-    );
-}
-
-/** ملفُّ العميل */
-export function CustomerPortalButton({ state }: { state: PortalLinkState }) {
+/** ملفُّ العميل — قسمُ «رابط بوابة العميل» */
+export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
     const t = useTranslate();
     const [confirm, confirmDialog] = useConfirm();
-    const [open, setOpen] = useState(false);
-    const [busy, setBusy] = useState(false);
+    const { copyLater, copied } = useCopy();
+    const [busy, setBusy] = useState<'make' | 'copy' | 'qr' | 'reissue' | 'revoke' | null>(null);
     const [now, setNow] = useState(state);
-    const [shared, setShared] = useState<SharedLink | null>(null);
+    const [link, setLink] = useState<SharedLink | null>(null);
+    const [showing, setShowing] = useState(false);
     const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
 
-    const run = async (path: 'share' | 'reissue') => {
-        setBusy(true);
-        const { data, error } = await askPortal<SharedLink>(now.urls[path], 'POST', failed);
-        setBusy(false);
-        if (error || !data) return void toast.error(error ?? failed);
-        setShared(data);
+    /** الرابطُ من الخادم في كلّ مرّة: قد أعاد غيرُك إصدارَه */
+    const ask = async (what: 'make' | 'copy' | 'qr' | 'reissue', url: string): Promise<SharedLink | null> => {
+        setBusy(what);
+        const asked = askPortal<SharedLink>(url, 'POST', failed);
+        if (what === 'copy') await copyLater(linkOf(asked));
+        const { data, error } = await asked;
+        setBusy(null);
+        if (error || !data) {
+            toast.error(error ?? failed);
+
+            return null;
+        }
+        setLink(data);
         setNow(data.state);
-        if (path === 'reissue') toast.success(t('صدر رابط جديد، والقديم لم يعد يعمل'));
+
+        return data;
+    };
+    const showQr = async () => {
+        if (await ask('qr', now.urls.share)) setShowing(true);
+    };
+    const reissue = async () => {
+        if (! now.urls.reissue || ! await confirm({ message: 'إعادة إصدار رابط هذا العميل؟ يتوقف رابطه الحالي ويخرج من أجهزته.', action: 'إعادة إصدار الرابط' })) return;
+        if (await ask('reissue', now.urls.reissue)) toast.success(t('صدر رابط جديد، والقديم لم يعد يعمل'));
     };
     const revoke = async () => {
-        if (! await confirm({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
-        setBusy(true);
+        if (! now.urls.revoke || ! await confirm({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
+        setBusy('revoke');
         const { data, error } = await askPortal<{ state: PortalLinkState }>(now.urls.revoke, 'DELETE', failed);
-        setBusy(false);
+        setBusy(null);
         if (error || !data) return void toast.error(error ?? failed);
-        setShared(null);
+        setLink(null);
         setNow(data.state);
         toast.success(t('أُلغي الرابط وخرج صاحبه من أجهزته'));
     };
 
     return (
-        <>
+        <Card className="p-6" data-testid="portal-customer">
             {confirmDialog}
-            <Button variant="outline" onClick={() => setOpen(true)} data-testid="portal-customer-button">
-                <Share2 />
-                {t('مشاركة رابط العميل')}
-            </Button>
-            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setShared(null); }}>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader><DialogTitle>{t('رابط العميل إلى بوابته')}</DialogTitle></DialogHeader>
-                    <div className="space-y-4 p-5 pt-2">
-                        <dl className="grid grid-cols-2 gap-3 text-sm" data-testid="portal-state">
-                            <div><dt className="text-[12px] text-[#9ca3af]">{t('الرابط الحالي')}</dt><dd className="font-medium">{now.issued ? <span dir="ltr">{now.issued}</span> : t('لم يصدر بعد')}</dd></div>
-                            <div><dt className="text-[12px] text-[#9ca3af]">{t('آخر دخول به')}</dt><dd className="font-medium">{now.used ? <span dir="ltr">{now.used}</span> : '—'}</dd></div>
-                        </dl>
+            <div className="mb-1 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-[#111]">{t('رابط بوابة العميل')}</h3>
+                <Badge variant={now.issued ? 'success' : 'neutral'} data-testid="portal-customer-state">{now.issued ? t('فعّال') : t('لم يصدر بعد')}</Badge>
+            </div>
+            <p className="mb-4 text-[12px] text-[#9ca3af]">{t('يدخل العميل بوابته برابطه الشخصي ورقم هاتفه المسجّل.')}</p>
 
-                        {!now.hasPhone ? (
-                            <p className="rounded-xl bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">{t('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')}</p>
-                        ) : shared ? (
-                            <SharedActions shared={shared} />
-                        ) : (
-                            <Button className="w-full" loading={busy} onClick={() => void run('share')} data-testid="portal-make">
-                                <Link2 />
-                                {now.issued ? t('عرض الرابط للمشاركة') : t('إنشاء رابط العميل')}
-                            </Button>
-                        )}
+            {!now.hasPhone ? (
+                <p className="rounded-xl bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">{t('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')}</p>
+            ) : !now.issued ? (
+                <Button className="w-full" loading={busy === 'make'} onClick={() => void ask('make', now.urls.share)} data-testid="portal-make">
+                    <Link2 />
+                    {t('إنشاء الرابط الشخصي')}
+                </Button>
+            ) : (
+                <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                        <Button variant="outline" loading={busy === 'copy'} disabled={busy !== null} onClick={() => void ask('copy', now.urls.share)} data-testid="portal-copy">
+                            {copied ? <Check className="text-[#047857]" /> : <Copy />}
+                            {copied ? t('نُسخ') : t('نسخ الرابط')}
+                        </Button>
+                        <Button variant="outline" loading={busy === 'qr'} disabled={busy !== null} onClick={() => void showQr()} data-testid="portal-qr">
+                            <QrCode />
+                            {t('عرض رمز QR')}
+                        </Button>
+                    </div>
+                    {link && (
+                        <p dir="ltr" className="select-all break-all rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-start text-[12px] leading-relaxed text-[#374151]" data-testid="portal-link">{link.url}</p>
+                    )}
+                    <dl className="space-y-1.5 text-[12px]">
+                        <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('صدر في')}</dt><dd dir="ltr" className="text-[#111]">{now.issued}</dd></div>
+                        <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('آخر دخول به')}</dt><dd dir="ltr" className="text-[#111]">{now.used ?? '—'}</dd></div>
+                    </dl>
+                    {(now.urls.reissue || now.urls.revoke) && (
+                        <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+                            {now.urls.reissue && <Button variant="outline" size="sm" loading={busy === 'reissue'} disabled={busy !== null} onClick={() => void reissue()} data-testid="portal-reissue"><RefreshCw />{t('إعادة إصدار الرابط')}</Button>}
+                            {now.urls.revoke && <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy === 'revoke'} disabled={busy !== null} onClick={() => void revoke()} data-testid="portal-revoke">{t('إلغاء الرابط')}</Button>}
+                        </div>
+                    )}
+                </div>
+            )}
 
-                        {now.issued && (
-                            <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-4">
-                                <Button variant="outline" size="sm" disabled={busy} onClick={() => void run('reissue')} data-testid="portal-reissue"><RefreshCw />{t('إعادة إصدار الرابط')}</Button>
-                                <Button variant="ghost" size="sm" className="text-[#b91c1c]" disabled={busy} onClick={() => void revoke()} data-testid="portal-revoke">{t('إلغاء رابط الوصول')}</Button>
-                            </div>
-                        )}
+            <Dialog open={showing && link !== null} onOpenChange={setShowing}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader><DialogTitle>{t('رمز بوابة العميل')}</DialogTitle></DialogHeader>
+                    <div className="flex flex-col items-center gap-3 p-5 pt-2 text-center" data-testid="portal-customer-qr">
+                        {link && <img src={link.qr} alt={t('رمز QR لرابط العميل')} className="size-60 rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-white p-4" />}
+                        <p className="text-sm text-[#374151]">{t('يمسحه العميل بهاتفه، ثم يكتب رقم هاتفه المسجّل.')}</p>
+                        <p className="text-[12px] text-[#9ca3af]">{t('رمز خاص بهذا العميل وحده، فلا يُعرض لغيره.')}</p>
                     </div>
                 </DialogContent>
             </Dialog>
-        </>
+        </Card>
     );
 }
 

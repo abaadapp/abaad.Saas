@@ -8,8 +8,10 @@ use App\Models\CustomerPortalSession;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoices;
+use App\Support\MarketingSettings;
 use App\Support\RibbonPortal\Access;
 use App\Support\RibbonPortal\Portal;
+use App\Support\RibbonPortal\Qr;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -17,6 +19,9 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\RibbonPortalShop;
@@ -29,7 +34,8 @@ use Tests\TestCase;
  *   - والرابطُ وحدَه كذلك، ولا يُخمَّن، ويُغلق بالإلغاء وبتغيّر الرقم وبحذف العميل ساعتَها.
  *   - ولا يبلغ أحدٌ فاتورةَ غيره برقمها ولا بمعرّفها.
  *   - ومتجرٌ آخر لا بابَ له ولا زرَّ ولا مفتاحَ في صفحاته — ولو كتب العنوانَ بيده.
- *   - ومشاركةُ الرابط لمن اختاره صاحبُ النشاط، ولا تفتح له شيئًا آخر.
+ *   - ومشاركةُ الرابط لمن اختاره صاحبُ النشاط، ولا تفتح له شيئًا آخر، وإلغاؤه وإعادةُ إصداره لمن يدير.
+ *   - ولا رسالةَ ولا قناةَ مراسلةٍ فيها: الرابطُ يُنسخ أو يُمسح رمزُه من داخل النظام.
  */
 class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
 {
@@ -74,6 +80,10 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         foreach (['مريم', 'INV-1', '91234567'] as $private) {
             $this->assertStringNotContainsString($private, $page);
         }
+        // ومن لا رابطَ صالحًا معه يُقال له نصًّا من يسأل — بلغته
+        $this->assertStringContainsString('data-testid="portal-ask">يرجى طلب رابطك الشخصي من موظفي RIBBON</p>', $page);
+        $this->assertStringContainsString('data-testid="portal-ask">Please ask the RIBBON team for your personal link</p>',
+            $this->visitor(null)->withCookie('rb_my_lang', 'en')->get('http://ribbon.abaadapp.om/my')->getContent());
 
         // بلا رابط: الرقمُ المسجَّل وغيرُ المسجَّل ورقمُ عميلِ متجرٍ آخر سواءٌ في الردّ
         $this->buyer('جارة', '99999999', $this->neighbour);
@@ -90,6 +100,13 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
         $answers[] = $this->attempt($this->key($this->maryam), '90000001')->assertStatus(422)->getContent();
         $this->assertCount(1, array_unique($answers), 'لا يُعرف من الردّ أصحّ الرابطُ أم الرقم');
+        // ورابطٌ أُلغي كذلك — والردُّ يقول من يسأل
+        $revoked = $this->key($this->maryam);
+        Access::revoke($this->maryam, $this->owner);
+        RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
+        $gone = $this->attempt($revoked, '91234567')->assertStatus(422);
+        $this->assertSame($answers[0], $gone->getContent());
+        $this->assertStringContainsString('يرجى طلب رابطك الشخصي من موظفي RIBBON', $gone->json('message'));
 
         $this->assertSame(0, CustomerPortalSession::count());
         $this->myJson('/data')->assertStatus(401);
@@ -428,20 +445,109 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->staff($till)->postJson(route('admin.customers.portal.share', $this->maryam->id))->assertForbidden();
         $this->assertSame(['customers', 'pos'], $clerk->fresh()->permissions, 'صلاحيّاتُه كما كانت');
 
-        // والردُّ رابطٌ ورسالةٌ لرقمه المسجَّل — ولا يُرسَل شيء
-        $reply = $this->staff($clerk)->postJson(route('admin.customers.portal.share', $this->maryam->id))->assertOk()->json();
-        $this->assertStringStartsWith('https://wa.me/96891234567?text=', $reply['whatsapp']);
-        $this->assertStringContainsString('أهلًا بك في RIBBON، يسعدنا أن نوفر لك بوابتك الخاصة', $reply['message']);
-        $this->assertStringContainsString($reply['url'], $reply['message']);
-        $this->assertStringNotContainsString('مريم', $reply['message']);
-        $this->maryam->update(['language' => 'en']);
-        $this->assertStringContainsString('Welcome to RIBBON', $this->staff($clerk)->postJson(route('admin.customers.portal.share', $this->maryam->id))->json('message'));
-        Http::assertNothingSent();
+        // والردُّ رابطُه ورمزُه وحالُه — بلا رسالةٍ ولا رقمٍ ولا اسم، ولا يُخزَّن
+        $answer = $this->staff($clerk)->postJson(route('admin.customers.portal.share', $this->maryam->id))->assertOk();
+        $reply = $answer->json();
+        $this->assertSame(['url', 'qr', 'state'], array_keys($reply));
+        $this->assertStringContainsString('no-store', (string) $answer->headers->get('Cache-Control'));
+        $this->assertStringStartsWith('https://ribbon.abaadapp.om/my#', $reply['url']);
+        $this->assertSame(Qr::dataUri($reply['url'], 320), $reply['qr'], 'رمزُ رابطه هو، لا الرابطِ العامّ');
+        foreach (['مريم', '91234567'] as $private) {
+            $this->assertStringNotContainsString($private, (string) json_encode($reply, JSON_UNESCAPED_UNICODE));
+        }
+        // ولا رابطَ ولا رمزَ له في الصفحة قبل أن يُطلب
+        $page = $this->staff($clerk)->get(route('admin.customers.show', $this->maryam->id))->getContent();
+        $this->assertStringNotContainsString(explode('#', $reply['url'])[1], $page);
+        $this->assertStringNotContainsString('data:image\/svg+xml', $page);
 
         // وعميلٌ بلا رقم: يُقال، ولا يُصدر
         $this->staff($clerk)->postJson(route('admin.customers.portal.share', $this->buyer('بلا رقم', null)->id))->assertStatus(422);
         // وعميلُ متجرٍ آخر ليس هنا
         $this->staff($this->owner)->postJson(route('admin.customers.portal.share', $this->buyer('جار', '97777777', $this->neighbour)->id))->assertNotFound();
+    }
+
+    public function test_whoever_shares_makes_and_copies_and_only_a_manager_reissues_or_revokes(): void
+    {
+        $clerk = $this->staffer('موظفة', 'sales', ['customers']);
+        $manager = $this->staffer('مديرة', 'sales', ['customers']);
+        $this->grant([$clerk->id], [$manager->id]);
+        $state = fn (User $by) => $this->staff($by)->get(route('admin.customers.show', $this->maryam->id))->viewData('page')['props']['portalLink'];
+
+        // من يشارك: يُنشئ وينسخ ويعرض الرمز — ولا يصله عنوانُ غيرها، ولو كتبه بيده رُدّ
+        $this->assertNull($state($clerk)['issued']);
+        $first = $this->staff($clerk)->postJson(route('admin.customers.portal.share', $this->maryam->id))->assertOk()->json('url');
+        $this->assertSame($first, $this->staff($clerk)->postJson(route('admin.customers.portal.share', $this->maryam->id))->json('url'));
+        $this->assertNotNull($state($clerk)['issued']);
+        $this->assertSame([null, null], [$state($clerk)['urls']['reissue'], $state($clerk)['urls']['revoke']]);
+        $cookie = $this->enter($this->maryam);
+        $this->staff($clerk)->postJson(route('admin.customers.portal.reissue', $this->maryam->id))->assertForbidden();
+        $this->staff($clerk)->deleteJson(route('admin.customers.portal.revoke', $this->maryam->id))->assertForbidden();
+        $this->myJson('/data', $cookie)->assertOk();
+
+        // ومن يدير وصاحبُ النشاط: كلُّها
+        foreach ([$manager, $this->owner] as $user) {
+            $this->assertNotNull($state($user)['urls']['reissue'], $user->name);
+            $this->assertNotNull($state($user)['urls']['revoke'], $user->name);
+            $was = explode('#', Access::share($this->maryam->fresh(), null)['url'])[1];
+            $cookie = $this->enter($this->maryam);
+            $this->staff($user)->postJson(route('admin.customers.portal.reissue', $this->maryam->id))->assertOk()->assertJsonStructure(['url', 'qr', 'state']);
+            $this->attempt($was, '91234567')->assertStatus(422);
+            $this->myJson('/data', $cookie)->assertStatus(401);
+            $cookie = $this->enter($this->maryam);
+            $this->staff($user)->deleteJson(route('admin.customers.portal.revoke', $this->maryam->id))->assertOk()->assertJsonPath('state.issued', null);
+            $this->myJson('/data', $cookie)->assertStatus(401);
+        }
+    }
+
+    public function test_it_is_tied_to_no_message_channel(): void
+    {
+        // رقمُ واتساب المتجر محفوظٌ وربطُه كما هو — ولا أثرَ له في البوابة
+        MarketingSettings::save((int) $this->ribbon->id, 'website', ['store_whatsapp' => '90001122']);
+        Queue::fake();
+        Mail::fake();
+        Notification::fake();
+        $tables = array_values(array_filter(DB::connection()->getSchemaBuilder()->getTableListing(schemaQualified: false), fn ($t) => preg_match('/whatsapp|notification|message/', $t)));
+        $this->assertContains('whatsapp_messages', $tables);
+        $count = fn () => collect($tables)->mapWithKeys(fn ($t) => [$t => DB::table($t)->count()])->all();
+        $before = $count();
+
+        $order = $this->order($this->maryam, 'INV-Q');
+        $url = route('admin.customers.portal.share', $this->maryam->id);
+        $answers = [
+            $this->staff($this->owner)->postJson($url)->assertOk(),
+            $this->staff($this->owner)->postJson(route('pos.orders.portal', $order->number))->assertOk(),
+            $this->staff($this->owner)->postJson(route('admin.customers.portal.reissue', $this->maryam->id))->assertOk(),
+            $this->staff($this->owner)->get(route('admin.customers.portal.poster'))->assertOk(),
+            $this->my()->assertOk(),
+            $this->my('', $this->enter($this->maryam))->assertOk(),
+            $this->staff($this->owner)->deleteJson(route('admin.customers.portal.revoke', $this->maryam->id))->assertOk(),
+        ];
+        foreach ($answers as $i => $answer) {
+            $this->assertDoesNotMatchRegularExpression('/whatsapp|wa\.me|واتساب|90001122|mailto:|sms:|tel:/iu', $answer->getContent(), 'الردّ '.$i);
+        }
+        // والصفحةُ العامّةُ بلا رابطٍ خارجها أصلًا
+        $this->assertDoesNotMatchRegularExpression('/href="(https?:)?\/\//', $this->my()->getContent());
+
+        $this->assertSame($before, $count(), 'لا صفَّ في جداول المراسلة');
+        Queue::assertNothingPushed();
+        Mail::assertNothingOutgoing();
+        Notification::assertNothingSent();
+        Http::assertNothingSent();
+
+        // ولا ذكرَ لواتساب في كودها — سوى قاعدةِ النظام في قراءة رقم الهاتف، وهي حسابُ نصٍّ لا ربط
+        $files = [
+            ...glob(app_path('Support/RibbonPortal/*.php')), ...glob(resource_path('views/portal/ribbon/*.php')), ...glob(app_path('Models/CustomerPortal*.php')),
+            app_path('Http/Controllers/Admin/RibbonPortalController.php'), app_path('Http/Controllers/Store/RibbonPortalController.php'), app_path('Http/Middleware/RibbonPortalGate.php'),
+            ...glob(resource_path('js/Components/RibbonPortal*.tsx')), resource_path('js/lib/ribbon-portal.ts'), resource_path('js/Pages/Admin/Settings/CustomerPortal.tsx'),
+        ];
+        $this->assertGreaterThan(18, count($files));
+        foreach ($files as $file) {
+            $code = (string) file_get_contents($file);
+            if (str_ends_with($file, 'RibbonPortal/Access.php')) {
+                $code = str_replace(['use App\Support\WhatsAppPhone;', '(`WhatsAppPhone`)', 'WhatsAppPhone::normalize('], '', $code);
+            }
+            $this->assertDoesNotMatchRegularExpression('/whatsapp|wa\.me|واتساب|mailto:|sms:/iu', $code, basename($file));
+        }
     }
 
     public function test_the_till_offers_it_after_a_sale_to_a_registered_customer_only(): void
@@ -458,7 +564,7 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->assertStringEndsWith('/portal', $sold['portal']);
 
         $reply = $this->staff($till)->postJson('http://localhost'.$sold['portal'])->assertOk()->json();
-        $this->assertSame(Access::share($this->maryam->fresh(), null)['url'], $reply['url']);
+        $this->assertSame(['url' => Access::share($this->maryam->fresh(), null)['url']], $reply, 'الرابطُ وحدَه ليُنسخ');
         // وبيعةٌ بلا عميلٍ أو رقمٌ ليس لها: لا رابط، والبيعةُ كما هي
         $this->staff($till)->postJson(route('pos.orders.portal', $sell($till)['invoice']))->assertNotFound();
         $this->staff($till)->postJson(route('pos.orders.portal', 'NOPE'))->assertNotFound();
@@ -502,6 +608,7 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $poster = $this->staff($this->owner)->get(route('admin.customers.portal.poster'))->assertOk()->getContent();
         $this->assertStringContainsString('<svg viewBox="0 0 320 320"', $poster, 'بلا viewBox يُقصّ الرمزُ حين يُصغَّر فلا يُمسح');
         $this->assertStringContainsString('ribbon.abaadapp.om/my', $poster);
+        $this->assertStringContainsString('يرجى طلب رابطك الشخصي من موظفي RIBBON', $poster);
         $this->assertStringNotContainsString('#', explode('ribbon.abaadapp.om/my', $poster)[1][0] ?? '');
     }
 }

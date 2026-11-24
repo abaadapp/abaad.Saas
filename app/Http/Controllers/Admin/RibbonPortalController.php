@@ -15,7 +15,6 @@ use App\Support\Permissions;
 use App\Support\RibbonPortal\Access;
 use App\Support\RibbonPortal\Portal;
 use App\Support\RibbonPortal\Qr;
-use App\Support\WhatsAppPhone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,11 +23,13 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * بوابةُ عملاء RIBBON عند الموظّف — يشارك رابطَ العميل ويلغيه، ويديرها صاحبُ النشاط.
+ * بوابةُ عملاء RIBBON عند الموظّف — يُنشئ رابطَ العميل وينسخه ويعرض رمزَه، ويديرها صاحبُ النشاط.
  *
  * لمتجر سعود وحده: كلُّ بابٍ هنا يردّ 404 لسواه ولو كُتب عنوانُه بيد (`open`).
- * وصلاحيّةُ المشاركة لا تفتح فاتورةً ولا نقاطًا: لا يُردّ من هنا إلّا الرابط.
- * ولا تُرسَل رسالة: يُفتح واتساب بنصٍّ مكتوب، ويضغط الموظّفُ «إرسال» بيده.
+ * وصلاحيّةُ المشاركة لا تفتح فاتورةً ولا نقاطًا: لا يُردّ من هنا إلّا الرابط. وإلغاؤه وإعادةُ
+ * إصداره لمن يدير البوابة: كلاهما يُخرج العميلَ من أجهزته.
+ *
+ * ولا رسالةَ من هنا ولا قناةَ مراسلة: الرابطُ يُنسخ أو يُمسح رمزُه، ولا يخرج من النظام بغير يد الموظّف.
  */
 class RibbonPortalController extends Controller
 {
@@ -41,23 +42,23 @@ class RibbonPortalController extends Controller
 
     public function reissue(int $id): JsonResponse
     {
-        return $this->reply($this->customer($id), fn (Customer $c) => Access::reissue($c, auth()->user()));
+        return $this->reply($this->customer($id, manage: true), fn (Customer $c) => Access::reissue($c, auth()->user()));
     }
 
     public function revoke(int $id): JsonResponse
     {
-        $customer = $this->customer($id);
+        $customer = $this->customer($id, manage: true);
 
         if (Access::revoke($customer, auth()->user())) {
             Access::log('ألغى رابط بوابة العميل', $customer);
         }
 
-        return $this->json(['ok' => true, 'state' => self::state($customer)]);
+        return $this->json(['state' => self::state($customer, auth()->user())]);
     }
 
     /* ─────────── الصندوق ─────────── */
 
-    /** رابطُ عميلِ هذه البيعة — بعد أن تمّت، ولا يمسّها فشلُه */
+    /** رابطُ عميلِ هذه البيعة ليُنسخ — بعد أن تمّت، ولا يمسّها فشلُه */
     public function shareSale(string $number): JsonResponse
     {
         $this->open(Portal::mayShare(auth()->user()));
@@ -65,7 +66,7 @@ class RibbonPortalController extends Controller
         $order = Order::where('business_id', Demo::bid())->where('is_held', false)->where('number', $number)->firstOrFail();
         abort_if($order->customer_id === null, 404);
 
-        return $this->reply($this->customer((int) $order->customer_id), fn (Customer $c) => Access::share($c, auth()->user()));
+        return $this->reply($this->customer((int) $order->customer_id), fn (Customer $c) => Access::share($c, auth()->user()), sale: true);
     }
 
     /* ─────────── الرابطُ العامّ ─────────── */
@@ -134,6 +135,9 @@ class RibbonPortalController extends Controller
         $data = $request->validate([
             'share' => ['present', 'array', 'max:500'], 'share.*' => ['integer'],
             'manage' => ['present', 'array', 'max:500'], 'manage.*' => ['integer'],
+        ], [], [
+            'share' => __('من يشارك روابط العملاء'), 'share.*' => __('الموظف'),
+            'manage' => __('يدير البوابة'), 'manage.*' => __('الموظف'),
         ]);
 
         Portal::saveStaff((int) Demo::bid(), $data['share'], $data['manage']);
@@ -175,12 +179,13 @@ class RibbonPortalController extends Controller
 
         $customer = Customer::where('business_id', $user->business_id)->find($customerId);
 
-        return $customer ? self::state($customer) : null;
+        return $customer ? self::state($customer, $user) : null;
     }
 
-    private static function state(Customer $customer): array
+    private static function state(Customer $customer, ?User $user): array
     {
         $link = Access::live($customer);
+        $manage = Portal::mayManage($user);
 
         return [
             /*
@@ -189,8 +194,9 @@ class RibbonPortalController extends Controller
              */
             'urls' => [
                 'share' => route('admin.customers.portal.share', $customer->id, false),
-                'reissue' => route('admin.customers.portal.reissue', $customer->id, false),
-                'revoke' => route('admin.customers.portal.revoke', $customer->id, false),
+                // ومن يشارك ولا يدير لا يصله عنوانُهما، ولو كتبه بيده رُدّ
+                'reissue' => $manage ? route('admin.customers.portal.reissue', $customer->id, false) : null,
+                'revoke' => $manage ? route('admin.customers.portal.revoke', $customer->id, false) : null,
             ],
             'hasPhone' => Access::phone($customer) !== null,
             'issued' => $link?->created_at?->format('Y-m-d H:i'),
@@ -206,14 +212,15 @@ class RibbonPortalController extends Controller
         abort_unless($may, 403);
     }
 
-    private function customer(int $id): Customer
+    private function customer(int $id, bool $manage = false): Customer
     {
-        $this->open(Portal::mayShare(auth()->user()));
+        $this->open($manage ? Portal::mayManage(auth()->user()) : Portal::mayShare(auth()->user()));
 
         return Customer::where('business_id', Demo::bid())->findOrFail($id);
     }
 
-    private function reply(Customer $customer, callable $make): JsonResponse
+    /** الرابطُ — ومعه في ملفّ العميل رمزُه وحالُه. ولا يُردّ رمزُه للصندوق: زرُّه ينسخ وحسب */
+    private function reply(Customer $customer, callable $make, bool $sale = false): JsonResponse
     {
         $made = $make($customer);
 
@@ -224,25 +231,10 @@ class RibbonPortalController extends Controller
             Access::log('أصدر رابط بوابة العميل', $customer);
         }
 
-        $message = $this->message($customer, $made['url']);
-
-        return $this->json([
-            'ok' => true,
-            'url' => $made['url'],
-            'message' => $message,
-            'whatsapp' => 'https://wa.me/'.WhatsAppPhone::normalize((string) Access::phone($customer)).'?text='.rawurlencode($message),
-            'state' => self::state($customer),
-        ]);
-    }
-
-    /** نصُّ المشاركة بلغة العميل — بلا اسمه ولا رقمه */
-    private function message(Customer $customer, string $url): string
-    {
-        $shop = InvoiceBranding::name((int) $customer->business_id);
-
-        return $customer->language === 'en'
-            ? "Welcome to {$shop}. We are happy to give you your own portal with all your purchases, invoices and loyalty points. You can open it here, and enter with your phone number:\n{$url}"
-            : "أهلًا بك في {$shop}، يسعدنا أن نوفر لك بوابتك الخاصة للاطلاع على جميع مشترياتك وفواتيرك ورصيد نقاط الولاء. يمكنك الوصول إليها من خلال الرابط التالي، والدخول برقم هاتفك:\n{$url}";
+        return $this->json(['url' => $made['url']] + ($sale ? [] : [
+            'qr' => Qr::dataUri($made['url'], 320),
+            'state' => self::state($customer, auth()->user()),
+        ]));
     }
 
     /** والرابطُ لا يُخزَّن في متصفّحٍ ولا وسيط */

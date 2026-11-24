@@ -44,7 +44,7 @@ interface Props {
     unlanguaged: number;
     /** عملاءُ تحتاج أرقامُهم مراجعة (`CustomerPhone::reviewCount`) */
     phoneReview: number;
-    /** «بوابة عملاء RIBBON» — يصل لمتجرها ومن يشارك فيه وحدهم */
+    /** «بوابة العملاء» — يصل لمتجرها ومن يشارك فيه وحدهم */
     portal?: PortalPanel;
 }
 
@@ -232,7 +232,6 @@ export default function CustomersIndex() {
                 subtitle={t('إدارة قاعدة عملاء المحل وسجل مشترياتهم ونقاط ولائهم')}
                 actions={
                     <>
-                        {portal && <PortalButton portal={portal} />}
                         {/*
                             التصديرُ في قائمته الموحّدة — تقريرُ العملاء كما في الشاشة
                             بحثًا وترتيبًا، وملفُّ الاستيراد بندٌ باسمه.
@@ -258,6 +257,7 @@ export default function CustomersIndex() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
+                        {portal && <PortalButton portal={portal} />}
                         <Button onClick={() => setAdding(true)}>
                             <UserPlus />
                             {t('إضافة عميل')}

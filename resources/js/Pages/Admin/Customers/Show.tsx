@@ -35,7 +35,7 @@ import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Customer } from '@/types/models';
 import { PhoneStatusBadge } from '@/Components/CustomerPhoneReview';
-import { CustomerPortalButton } from '@/Components/RibbonPortal';
+import { CustomerPortalCard } from '@/Components/RibbonPortal';
 import type { PortalLinkState } from '@/lib/ribbon-portal';
 import { phoneRefusal, phoneStatus } from '@/lib/customer-phone';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
@@ -233,7 +233,6 @@ export default function CustomerShow() {
                 subtitle={t('سجل مشتريات العميل ونقاط ولائه')}
                 actions={
                     <>
-                        {portalLink && <CustomerPortalButton state={portalLink} />}
                         <Button variant="outline" asChild>
                             <a href={tenant(route('admin.customers.statement', customer.id))} target="_blank" rel="noreferrer">
                                 <Receipt />{t('كشف حساب')}
@@ -324,6 +323,9 @@ export default function CustomerShow() {
                             </p>
                         )}
                     </Card>
+
+                    {/* ومفتاحُه حالُه: رقمٌ صُحّح من هذه الصفحة يُغلق رابطَه، فيُرسم كما صار */}
+                    {portalLink && <CustomerPortalCard key={JSON.stringify(portalLink)} state={portalLink} />}
 
                     {showInternal && (
                         <Card className="p-6">

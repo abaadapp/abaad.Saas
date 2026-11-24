@@ -17,18 +17,16 @@ final class Texts
 
         // الدخول
         'welcomeGuest' => 'مشترياتك وفواتيرك ونقاطك في مكان واحد',
-        'guestHow' => 'هذه الصفحة لعملائنا المسجّلين. للدخول افتح رابطك الشخصي الذي شاركه معك المحل.',
-        'guestAsk' => 'ليس لديك رابط؟ اطلبه من موظف المحل عند الشراء، أو راسلنا.',
-        'askWhatsapp' => 'اطلب رابطي عبر واتساب',
-        'askMessage' => 'مرحبًا، أرغب في رابط بوابة العملاء الخاصة بي.',
+        // نصُّ المالك حرفًا — لمن لا رابطَ صالحًا معه
+        'askStaff' => 'يرجى طلب رابطك الشخصي من موظفي RIBBON',
+        'guestHow' => 'هذه الصفحة لعملائنا المسجّلين، وتُفتح بالرابط الشخصي ورقم الهاتف المسجّل لدينا.',
         'phoneLabel' => 'رقم هاتفك المسجّل لدينا',
         'phoneHint' => 'الرقم الذي أعطيته للمحل عند الشراء.',
         'enter' => 'دخول',
         'entering' => 'لحظة…',
-        'loginFailed' => 'تعذّر الدخول. تأكد من رقم هاتفك، أو اطلب رابطًا جديدًا من المحل.',
+        'loginFailed' => 'تعذّر الدخول. تأكد من رقم هاتفك المسجّل. وإن لم يعد رابطك صالحًا: يرجى طلب رابطك الشخصي من موظفي RIBBON',
         'tooMany' => 'محاولات كثيرة. حاول بعد :n دقيقة.',
         'networkError' => 'تعذّر الاتصال. تحقّق من الشبكة وحاول من جديد.',
-        'sessionOver' => 'انتهت جلستك. افتح رابطك الشخصي من جديد.',
         'needJs' => 'هذه الصفحة تحتاج إلى تفعيل JavaScript في متصفحك.',
 
         // الحساب
@@ -104,18 +102,15 @@ final class Texts
         'poweredBy' => 'Powered by ABAAD',
 
         'welcomeGuest' => 'Your purchases, invoices and points in one place',
-        'guestHow' => 'This page is for our registered customers. To enter, open the personal link the shop shared with you.',
-        'guestAsk' => 'No link yet? Ask for it at the shop, or message us.',
-        'askWhatsapp' => 'Ask for my link on WhatsApp',
-        'askMessage' => 'Hello, I would like my customer portal link.',
+        'askStaff' => 'Please ask the RIBBON team for your personal link',
+        'guestHow' => 'This page is for our registered customers. It opens with your personal link and the phone number registered with us.',
         'phoneLabel' => 'Your phone number registered with us',
         'phoneHint' => 'The number you gave the shop when you bought.',
         'enter' => 'Enter',
         'entering' => 'One moment…',
-        'loginFailed' => 'We could not let you in. Check your phone number, or ask the shop for a new link.',
+        'loginFailed' => 'We could not let you in. Check your registered phone number. If your link is no longer valid: Please ask the RIBBON team for your personal link',
         'tooMany' => 'Too many attempts. Try again in :n minutes.',
         'networkError' => 'No connection. Check your network and try again.',
-        'sessionOver' => 'Your session has ended. Open your personal link again.',
         'needJs' => 'This page needs JavaScript enabled in your browser.',
 
         'hello' => 'Welcome, :name',

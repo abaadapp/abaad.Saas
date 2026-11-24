@@ -1,9 +1,10 @@
-{{-- بابُ البوابة: بلا رابطٍ لا حقلَ فيه — ومعه رقمُ الهاتف. والرابطُ في جزء `#` تقرؤه الصفحةُ ولا يبلغ الخادمَ في عنوان --}}
+{{-- بابُ البوابة: بلا رابطٍ صالحِ الشكل لا حقلَ فيه بل «اطلب رابطك من موظفي RIBBON» — ومعه رقمُ الهاتف. والرابطُ في جزء `#` تقرؤه الصفحةُ ولا يبلغ الخادمَ في عنوان --}}
 @extends('portal.ribbon.layout')
 
 @section('style')
     .door { max-width: 440px; margin: 5vh auto 0; text-align: center; }
     .door .card { padding: 26px 22px; margin-top: 18px; text-align: start; }
+    .door .ask { margin: 0; font-size: 17px; font-weight: 600; color: var(--olive-d); line-height: 1.6; }
     .door label { display: block; font-weight: 500; margin-bottom: 6px; } .door .btn { width: 100%; margin-top: 14px; }
 @endsection
 
@@ -15,11 +16,8 @@
         <noscript><p class="err">{{ $t('needJs') }}</p></noscript>
 
         <div class="card" id="how" data-testid="portal-public">
-            <p style="margin:0">{{ $t('guestHow') }}</p>
-            <p class="muted sm" style="margin:10px 0 0">{{ $t('guestAsk') }}</p>
-            @if ($ask)
-                <a class="btn" href="{{ $ask }}" target="_blank" rel="noopener noreferrer">{{ $t('askWhatsapp') }}</a>
-            @endif
+            <p class="ask" data-testid="portal-ask">{{ $t('askStaff') }}</p>
+            <p class="muted sm" style="margin:8px 0 0">{{ $t('guestHow') }}</p>
         </div>
 
         <form class="card" id="login" data-testid="portal-login" hidden autocomplete="on">

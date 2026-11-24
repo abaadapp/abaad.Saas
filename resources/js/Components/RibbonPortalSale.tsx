@@ -1,39 +1,45 @@
 import { useState } from 'react';
-import { MessageCircle, Share2 } from 'lucide-react';
+import { Check, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import CopyButton from '@/Components/CopyButton';
 import { Button } from '@/Components/ui/button';
+import { useCopy } from '@/lib/copy';
 import { useTranslate } from '@/lib/i18n';
-import { askPortal, type SharedLink } from '@/lib/ribbon-portal';
+import { askPortal, linkOf, type SaleLink } from '@/lib/ribbon-portal';
 import { cn } from '@/lib/utils';
 
-/** بعد البيع في الصندوق — ولا يمسّ البيعةَ ولا طباعتَها */
-export function PortalSaleShare({ url, className }: { url: string; className?: string }) {
+/** بعد البيع في الصندوق: ينسخ رابطَ العميل — ولا يمسّ البيعةَ ولا طباعتَها */
+export function PortalSaleLink({ url, className }: { url: string; className?: string }) {
     const t = useTranslate();
+    const { copyLater, copied } = useCopy();
     const [busy, setBusy] = useState(false);
-    const [shared, setShared] = useState<SharedLink | null>(null);
+    /** جهازٌ يمنع الحافظة: يُعرض الرابطُ ليُنسخ بيده */
+    const [shown, setShown] = useState<string | null>(null);
     const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
 
     const run = async () => {
         setBusy(true);
-        const { data, error } = await askPortal<SharedLink>(url, 'POST', failed);
+        const asked = askPortal<SaleLink>(url, 'POST', failed);
+        const done = await copyLater(linkOf(asked));
+        const { data, error } = await asked;
         setBusy(false);
-        // البيعةُ تمّت: خطأُ المشاركة يُقال ولا يوقف شيئًا
+        // البيعةُ تمّت: خطأُ النسخ يُقال ولا يوقف شيئًا
         if (error || !data) return void toast.warning(error ?? failed);
-        setShared(data);
+        setShown(done ? null : data.url);
     };
 
-    return shared ? (
-        <div className={cn('grid grid-cols-2 gap-2', className)} data-testid="portal-sale-shared">
-            <CopyButton text={shared.url} label={t('نسخ رابط العميل')} size="md" className="w-full rounded-full" />
-            <Button variant="success" className="rounded-full" asChild>
-                <a href={shared.whatsapp} target="_blank" rel="noreferrer"><MessageCircle />{t('واتساب')}</a>
+    return (
+        <div className={cn('space-y-2', className)}>
+            <Button variant="outline" className="w-full rounded-full" loading={busy} onClick={() => void run()} data-testid="portal-sale">
+                {copied ? <Check className="text-[#047857]" /> : <Link2 />}
+                {copied ? t('نُسخ رابط بوابة العميل') : t('نسخ رابط بوابة العميل')}
             </Button>
+            {shown && (
+                <div className="flex items-center gap-2 rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2" data-testid="portal-sale-link">
+                    <span dir="ltr" className="min-w-0 flex-1 select-all break-all text-start text-[12px] text-[#374151]">{shown}</span>
+                    <CopyButton text={shown} label={t('نسخ')} />
+                </div>
+            )}
         </div>
-    ) : (
-        <Button variant="outline" className={className} loading={busy} onClick={() => void run()} data-testid="portal-sale">
-            <Share2 />
-            {t('مشاركة رابط مشترياتي')}
-        </Button>
     );
 }

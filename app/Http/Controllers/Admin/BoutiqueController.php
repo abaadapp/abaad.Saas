@@ -179,8 +179,8 @@ class BoutiqueController extends Controller
                 'expense_reference' => $settlement->expense?->reference,
                 ...self::componentsOf($settlement),
             ] : null,
-            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن فُتح له سجلُّ المكوّنات وحده
-            'ledger' => BoutiqueDues::active((int) $business->id) ? BoutiqueDues::ledgerFor((int) $business->id, (int) $boutique->id) : null,
+            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن فُتح له سجلُّ المكوّنات، أو سُجّل لبوتيكه شيءٌ من قبل
+            'ledger' => BoutiqueDues::reachable((int) $business->id, (int) $boutique->id) ? BoutiqueDues::ledgerFor((int) $business->id, (int) $boutique->id) : null,
             /*
              * وتاريخُ ما صدر — فيُقرأ ما مضى بلا تنقّلٍ بين الشهور.
              */
@@ -283,7 +283,8 @@ class BoutiqueController extends Controller
     {
         $business = $this->shop();
         $boutique = $this->find($id);
-        abort_unless(BoutiqueDues::active((int) $business->id), 404);
+        // ما صدر يُسدَّد ولو أُطفئ حسابُ القطع — فالمفتاحُ يوقف الجديد لا الدين
+        abort_unless(BoutiqueDues::reachable((int) $business->id, (int) $boutique->id), 404);
         $data = $request->validate(['method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)]]);
 
         $doc = BoutiqueSettlement::where('business_id', $business->id)->where('boutique_id', $boutique->id)
@@ -298,7 +299,7 @@ class BoutiqueController extends Controller
     {
         $business = $this->shop();
         $boutique = $this->find($id);
-        abort_unless(BoutiqueDues::active((int) $business->id), 404);
+        abort_unless(BoutiqueDues::reachable((int) $business->id, (int) $boutique->id), 404);
         $data = $request->validate([
             'method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)],
             'amount' => ['nullable', 'numeric', 'gt:0', 'max:1000000'],

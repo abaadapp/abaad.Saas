@@ -620,6 +620,11 @@ class Reports
                 ['المستحق للبوتيك', 'net', true],
                 ['الكمية المباعة', 'quantity', false],
                 ['طلبات فيها منتجات البوتيك', 'orders', false],
+                // وفواتيرُ العملاء بلا طلب — ومنها ما بِيع ولم يكتمل تحصيلُه
+                ...($totals['invoices'] > 0 ? [
+                    ['فواتير عملاء فيها منتجات البوتيك', 'invoices', false],
+                    ['منه بانتظار التحصيل', 'awaiting_net', true],
+                ] : []),
             ];
 
         return collect($rows)->map(fn ($r) => [

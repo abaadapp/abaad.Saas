@@ -8,10 +8,9 @@ import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
 /**
- * فواتيرُ عملاءٍ فيها صنفُ هذا البوتيك ولم تدخل حسابَه — للمراجعة وحدها.
+ * فواتيرُ عملاءٍ قديمةٌ فيها صنفُ هذا البوتيك ولم تدخل حسابَه — للمراجعة وحدها.
  *
- * فاتورةُ العميل بلا طلبٍ لا تحفظ صاحبَ الصنف ولا نسبتَه، وحسابُ البوتيك من بنود
- * الطلبات. فتُعرض هنا كما كُتبت: لا مستحقَّ يُحسب ولا نسبةُ اليوم تُستعمل
+ * صدرت قبل أن تُحفظ حصّةُ البوتيك على بنود الفاتورة. فتُعرض هنا كما كُتبت: لا مستحقَّ يُحسب ولا نسبةُ اليوم تُستعمل
  * (`BoutiqueInvoiceReview`). ومن لا يقرأ مالَ البوتيك يردّه البابُ فلا يُرسم شيء.
  */
 
@@ -35,7 +34,24 @@ export interface ReviewRow {
     url: string | null;
 }
 
+interface Estimate {
+    reliable: { lines: number; gross: number; commission: number; net: number };
+    manual: Record<'before_only' | 'conflict' | 'none' | 'credited' | 'unpaid', { lines: number; amount: number }>;
+    shop: { lines: number; amount: number };
+}
+
+/** لماذا لا يُحسب لها شيء — كلٌّ بسببه */
+export const MANUAL_LABEL: Record<keyof Estimate['manual'], string> = {
+    none: 'لا بيع محفوظ قبلها',
+    before_only: 'لا بيع محفوظ بعدها',
+    conflict: 'النسبة أو البوتيك قبلها غير ما بعدها',
+    credited: 'عليها إشعار دائن بلا بنود',
+    unpaid: 'لم يكتمل تحصيلها',
+};
+
 interface Review {
+    /** المحتملُ غيرُ المسجَّل — حين يُطلب وحده */
+    estimate?: Estimate | null;
     summary: { lines: number; invoices: number; amount: number };
     rows: ReviewRow[];
     page: number;
@@ -75,6 +91,8 @@ export default function InvoiceReviewPanel({ boutiqueId, currency }: { boutiqueI
     const [open, setOpen] = useState(false);
     const [page, setPage] = useState(1);
     const [review, setReview] = useState<Review | null>(null);
+    const [estimate, setEstimate] = useState<Estimate | null>(null);
+    const [asking, setAsking] = useState(false);
 
     useEffect(() => {
         let live = true;
@@ -92,6 +110,14 @@ export default function InvoiceReviewPanel({ boutiqueId, currency }: { boutiqueI
             live = false;
         };
     }, [open, page, boutiqueId]);
+
+    const askEstimate = () => {
+        setAsking(true);
+        ask({ boutique: boutiqueId, summary: 1, estimate: 1 }).then((r) => {
+            setEstimate(r?.estimate ?? null);
+            setAsking(false);
+        });
+    };
 
     // لا شيءَ يُراجَع، أو لا إذنَ بالمال: لا يُرسم القسم
     if (!summary || summary.lines === 0) return null;
@@ -114,10 +140,10 @@ export default function InvoiceReviewPanel({ boutiqueId, currency }: { boutiqueI
                 <div className="min-w-0">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-[#111]">
                         <AlertTriangle className="size-4 shrink-0 text-[#b45309]" />
-                        {t('فواتير عملاء لا تدخل حساب هذا البوتيك')}
+                        {t('فواتير عملاء قديمة لا تدخل حساب هذا البوتيك')}
                     </h2>
                     <p className="mt-1 text-[12px] leading-5 text-[#6b7280]">
-                        {t(':lines بندًا في :invoices فاتورة، كُتبت بمبلغ :amount. فاتورة العميل لا تحفظ صاحب الصنف ولا نسبته يوم البيع، فلا تدخل مبيعات البوتيك ولا مستحقه ولا أوراقه.', {
+                        {t(':lines بندًا في :invoices فاتورة، كُتبت بمبلغ :amount. صدرت قبل أن تُحفظ حصة البوتيك على بنود الفاتورة، فلا تدخل مبيعاته ولا مستحقه ولا أوراقه.', {
                             lines: number(summary.lines), invoices: number(summary.invoices), amount: fmt(summary.amount),
                         })}
                     </p>
@@ -130,6 +156,28 @@ export default function InvoiceReviewPanel({ boutiqueId, currency }: { boutiqueI
 
             {open && review && (
                 <>
+                    <div className="border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-[13px] leading-6" data-testid="review-estimate">
+                        {estimate === null ? (
+                            <Button variant="outline" size="sm" disabled={asking} onClick={askEstimate}>{t('احسب المحتمل غير المسجّل')}</Button>
+                        ) : (
+                            <>
+                                <p>
+                                    {t('معلوم صاحبها ونسبتها يومها: :lines بندًا بإجمالي :gross — عمولة :commission وصافٍ محتمل :net. رقم للقرار، لم يُسجَّل منه شيء.', {
+                                        lines: number(estimate.reliable.lines), gross: fmt(estimate.reliable.gross), commission: fmt(estimate.reliable.commission), net: fmt(estimate.reliable.net),
+                                    })}
+                                </p>
+                                <ul className="text-[12px] text-[#b45309]">
+                                    {(Object.keys(MANUAL_LABEL) as (keyof Estimate['manual'])[]).filter((k) => estimate.manual[k].lines > 0).map((k) => (
+                                        <li key={k}>{t('للمراجعة بيد — :why: :lines بندًا', { why: t(MANUAL_LABEL[k]), lines: number(estimate.manual[k].lines) })}</li>
+                                    ))}
+                                </ul>
+                                {estimate.shop.lines > 0 && (
+                                    <p className="text-[12px] text-[#6b7280]">{t('كانت للمتجر يومها: :lines بندًا', { lines: number(estimate.shop.lines) })}</p>
+                                )}
+                                <p className="text-[12px] text-[#6b7280]">{t('لا يُحسب بنسبة اليوم، ولا يُسجَّل ولا يُسدَّد من هنا.')}</p>
+                            </>
+                        )}
+                    </div>
                     <ul className="divide-y divide-[var(--ui-border,#e8e8e8)]">
                         {review.rows.map((r) => (
                             <li key={r.id} className="grid grid-cols-1 gap-1 px-4 py-3 text-sm lg:grid-cols-[1.2fr_1.4fr_1fr_1.4fr] lg:gap-4">

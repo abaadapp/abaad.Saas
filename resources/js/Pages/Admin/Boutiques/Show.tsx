@@ -23,11 +23,16 @@ interface Line {
     name: string;
     variant: string | null;
     rate: number;
+    /** من أين: بنودُ الطلبات، أو فواتيرُ العملاء بلا طلب بعد تحصيلها */
+    source?: 'orders' | 'invoices';
     quantity: number;
     gross: number;
     commission: number;
     net: number;
 }
+
+/** ما في فواتير العملاء: بنودٌ وفواتيرُ وصافٍ */
+interface InvoicePart { lines: number; invoices: number; gross: number; net: number }
 
 interface Props {
     boutique: {
@@ -50,6 +55,10 @@ interface Props {
         components?: ComponentsPart;
         /** المطلوب سداده: صافي المنفرد وصافي المكوّنات معًا */
         payable?: number;
+        /** صدرت فواتيرُه ولم يكتمل تحصيلُها — لا تحمله ورقةٌ بعد */
+        awaiting?: InvoicePart;
+        /** حملته ورقةٌ ثمّ أُلغي تحصيلُ فاتورته */
+        reopened?: InvoicePart;
     } | null;
     /** الرصيدُ بين المتجر والبوتيك — `null` لمن لم يُفتح له سجلُّ المكوّنات */
     ledger?: BoutiqueLedger | null;
@@ -356,6 +365,26 @@ export default function BoutiqueShow() {
                 q={q}
             />
 
+            {/* صدرت فواتيرُه ولم يكتمل تحصيلُها: يُقال ولا يُجمع — لا تحمله ورقة */}
+            {statement && ((statement.awaiting?.lines ?? 0) > 0 || (statement.reopened?.lines ?? 0) > 0) && (
+                <Card className="mb-5 space-y-1 p-4 text-[13px] leading-6" data-testid="boutique-awaiting">
+                    {(statement.awaiting?.lines ?? 0) > 0 && (
+                        <p className="text-[#4b4b4b]">
+                            {t('بانتظار التحصيل: :net للبوتيك في :n فاتورة عميل صدرت ولم تُسدَّد كاملة. يدخل كشف الشهر الذي يكتمل فيه السداد.', {
+                                net: money(statement.awaiting!.net, currency), n: number(statement.awaiting!.invoices),
+                            })}
+                        </p>
+                    )}
+                    {(statement.reopened?.lines ?? 0) > 0 && (
+                        <p className="text-[#b91c1c]">
+                            {t('للمراجعة: :net حملته ورقة تسوية ثم أُلغي تحصيل فاتورته (:n فاتورة). الورقة كما صدرت.', {
+                                net: money(statement.reopened!.net, currency), n: number(statement.reopened!.invoices),
+                            })}
+                        </p>
+                    )}
+                </Card>
+            )}
+
             {/* ما بُني منه الرقم — صنفًا صنفًا */}
             {statement && <Card className="mb-5 overflow-hidden">
                 <div className="border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm font-semibold text-[#111]">
@@ -386,8 +415,11 @@ export default function BoutiqueShow() {
                                             {l.variant && (
                                                 <span className="text-[12px] text-[#9ca3af]"> — {l.variant}</span>
                                             )}
+                                            {l.source === 'invoices' && (
+                                                <span className="block text-[12px] text-[#6b7280]" data-testid="statement-from-invoices">{t('من فواتير عملاء اكتمل تحصيلها')}</span>
+                                            )}
                                         </td>
-                                        <td className="px-4 py-2.5 text-end tabular-nums">{number(l.quantity)}</td>
+                                        <td className="px-4 py-2.5 text-end tabular-nums">{number(l.quantity, Number.isInteger(l.quantity) ? 0 : 3)}</td>
                                         <td className="px-4 py-2.5 text-end tabular-nums">{money(l.gross, currency)}</td>
                                         <td className="px-4 py-2.5 text-end tabular-nums text-[#6b7280]">
                                             {number(l.rate)}%

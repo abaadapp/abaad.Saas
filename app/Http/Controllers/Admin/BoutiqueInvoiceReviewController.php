@@ -32,6 +32,10 @@ class BoutiqueInvoiceReviewController extends Controller
 
         return response()->json([
             'summary' => $summary,
+            // المحتملُ غيرُ المسجَّل — حين يُطلب وحده: يقرأ التاريخَ كلَّه، ولا يسجّل شيئًا
+            'estimate' => $summary['lines'] > 0 && $request->boolean('estimate')
+                ? collect(BoutiqueInvoiceReview::dryRun((int) $business->id, $f['boutique']))->except('products')->all()
+                : null,
             'rows' => collect($page?->items() ?? [])->map(fn (array $r) => $r + [
                 // وفتحُ الفاتورة بصلاحيّة قسمها
                 'url' => $canOpen ? route('admin.customerInvoices.show', $r['invoice_id']) : null,

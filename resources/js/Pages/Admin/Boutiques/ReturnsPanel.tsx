@@ -20,6 +20,8 @@ import type { Currency, PageProps } from '@/types';
 export interface ReturnNote {
     id: number;
     order: string | null;
+    /** فاتورةُ عميلٍ بلا طلب — يُقال حالُ قطعها من هنا */
+    invoice?: string | null;
     sheet: string | null;
     name: string;
     quantity: number;
@@ -75,6 +77,7 @@ export default function ReturnsPanel({ boutiqueId, terms, termsRef, part, curren
     const { errors } = usePage<PageProps<Record<string, unknown>>>().props;
     const m = (n: number) => money(n, currency);
     const [why, setWhy] = useState<Record<number, string>>({});
+    const [pieces, setPieces] = useState<Record<number, { sellable?: string; damaged?: string }>>({});
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState(METHODS[1]);
     const [reference, setReference] = useState('');
@@ -86,6 +89,11 @@ export default function ReturnsPanel({ boutiqueId, terms, termsRef, part, curren
         route('admin.boutiques.returns.review', boutiqueId),
         { note: note.id, bearer, why: why[note.id] ?? '' },
         { preserveScroll: true },
+    );
+    const receive = (note: ReturnNote) => router.post(
+        route('admin.boutiques.returns.receive', boutiqueId),
+        { note: note.id, sellable: Number(pieces[note.id]?.sellable || 0), damaged: Number(pieces[note.id]?.damaged || 0) },
+        { preserveScroll: true, onSuccess: () => setPieces(({ [note.id]: _, ...rest }) => rest) },
     );
     const receipt = () => router.post(
         route('admin.boutiques.returns.receipt', boutiqueId),
@@ -113,8 +121,10 @@ export default function ReturnsPanel({ boutiqueId, terms, termsRef, part, curren
                         <li key={n.id} className="px-4 py-3" data-testid="boutique-return">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span>
-                                    {n.name} × {number(n.quantity)}
-                                    <span className="text-[#6b7280]"> — {t('ورقة :sheet، طلب :order', { sheet: n.sheet ?? '—', order: n.order ?? '—' })}</span>
+                                    {n.name} × {number(n.quantity, Number.isInteger(n.quantity) ? 0 : 3)}
+                                    <span className="text-[#6b7280]"> — {n.invoice
+                                        ? t('ورقة :sheet، فاتورة عميل :invoice', { sheet: n.sheet ?? '—', invoice: n.invoice })
+                                        : t('ورقة :sheet، طلب :order', { sheet: n.sheet ?? '—', order: n.order ?? '—' })}</span>
                                 </span>
                                 <span className="flex items-center gap-2">
                                     <span className="tabular-nums">{m(n.amount)}</span>
@@ -129,6 +139,15 @@ export default function ReturnsPanel({ boutiqueId, terms, termsRef, part, curren
                             </p>
                             {(n.terms_ref || n.decision_note) && (
                                 <p className="mt-1 text-[12px] text-[#6b7280]">{n.decision_note ?? n.terms_ref}</p>
+                            )}
+                            {n.status === 'awaiting' && n.invoice && part.can_decide && (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <Input className="w-28" type="number" min="0" max={n.quantity} step="any" dir="ltr" aria-label={t('عاد سليمًا')} placeholder={t('عاد سليمًا')}
+                                        value={pieces[n.id]?.sellable ?? ''} onChange={(e) => setPieces((v) => ({ ...v, [n.id]: { ...v[n.id], sellable: e.target.value } }))} />
+                                    <Input className="w-28" type="number" min="0" max={n.quantity} step="any" dir="ltr" aria-label={t('تالف أو لن يعود')} placeholder={t('تالف أو لن يعود')}
+                                        value={pieces[n.id]?.damaged ?? ''} onChange={(e) => setPieces((v) => ({ ...v, [n.id]: { ...v[n.id], damaged: e.target.value } }))} />
+                                    <Button size="sm" variant="outline" onClick={() => receive(n)} data-testid="return-received">{t('سجّل حال القطع')}</Button>
+                                </div>
                             )}
                             {n.status === 'review' && part.can_decide && (
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -178,6 +197,7 @@ export default function ReturnsPanel({ boutiqueId, terms, termsRef, part, curren
                     )}
                 </div>
             )}
+            {errors?.pieces && <p className="px-4 pb-3 text-[12px] text-[#b91c1c]">{String(errors.pieces)}</p>}
             {errors?.returns && <p className="px-4 pb-3 text-[12px] text-[#b91c1c]">{String(errors.returns)}</p>}
         </Card>
     );

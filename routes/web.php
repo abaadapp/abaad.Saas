@@ -828,6 +828,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/products/boutiques/sales', [BoutiqueController::class, 'sales'])->name('boutiques.sales');
     Route::get('/products/boutiques/sales/summary', [BoutiqueController::class, 'salesSummary'])->name('boutiques.sales.summary');
     Route::get('/products/boutiques/sales/orders/{order}', [BoutiqueController::class, 'salesOrder'])->whereNumber('order')->name('boutiques.sales.order');
+    Route::get('/products/boutiques/sales/invoices/{invoice}', [BoutiqueController::class, 'salesInvoice'])->whereNumber('invoice')->name('boutiques.sales.invoice');
     // فواتيرُ عملاءٍ فيها صنفُ بوتيكٍ لم يدخل حسابَه — قراءةٌ للمراجعة (`BoutiqueInvoiceReview`)
     Route::get('/products/boutiques/invoice-review', [BoutiqueInvoiceReviewController::class, 'index'])->name('boutiques.invoiceReview');
     Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
@@ -840,6 +841,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/products/boutiques/{id}/refund', [BoutiqueController::class, 'refund'])->whereNumber('id')->name('boutiques.refund');
     // مرتجعٌ بعد الورقة: قرارُ المحاسب، واستلامٌ من البوتيك بمستند، وخصمٌ من ورقةٍ لاحقة — انظر `BoutiqueReturns`
     Route::post('/products/boutiques/{id}/returns/review', [BoutiqueController::class, 'reviewReturn'])->whereNumber('id')->name('boutiques.returns.review');
+    Route::post('/products/boutiques/{id}/returns/receive', [BoutiqueController::class, 'receiveReturn'])->whereNumber('id')->name('boutiques.returns.receive');
     Route::post('/products/boutiques/{id}/returns/receipt', [BoutiqueController::class, 'returnReceipt'])->whereNumber('id')->name('boutiques.returns.receipt');
     Route::post('/products/boutiques/{id}/returns/offset', [BoutiqueController::class, 'returnOffset'])->whereNumber('id')->name('boutiques.returns.offset');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');

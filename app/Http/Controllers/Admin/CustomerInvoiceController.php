@@ -17,6 +17,8 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\BoutiqueAccess;
+use App\Support\BoutiqueInvoiceDues;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -301,6 +303,12 @@ class CustomerInvoiceController extends Controller
              * لا يُقال «نقاط» لمتجرٍ أطفأ برنامجَه ولا لفاتورةٍ كسب الزبونُ نقاطَ طلباتها.
              */
             'loyalty' => $this->loyaltyProps($invoice),
+            /*
+             * وبنودُ البوتيكات في هذه الفاتورة: قطعُها لمن يكتب إشعارَ الدائن (بلا مال)،
+             * وأنصبتُها لمن يقرأ مالَ البوتيكات وحده (`BoutiqueAccess`).
+             */
+            'boutiquePieces' => BoutiqueInvoiceDues::pieces($invoice),
+            'boutiqueShares' => BoutiqueAccess::read(auth()->user()) ? BoutiqueInvoiceDues::of($invoice) : [],
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*
@@ -530,15 +538,17 @@ class CustomerInvoiceController extends Controller
 
         $all = Addon::where('business_id', $bid)->orderBy('id')->get();
         $map = \App\Support\ProductAddons::map($bid);
-        // اسمُ بوتيكه حين يكون له — فيُنبَّه كاتبُ الورقة أنّها لا تدخل حسابَه (`BoutiqueInvoiceReview`)
+        // اسمُ بوتيكه حين يكون له — فيُقال لكاتب الورقة متى يدخل حسابَه. والنسبةُ لمن يقرأ مالَه وحده
         $boutiques = \App\Models\Boutique::where('business_id', $bid)
-            ->whereIn('id', $products->pluck('boutique_id')->filter()->unique())->get(['id', 'name', 'name_en'])->keyBy('id');
+            ->whereIn('id', $products->pluck('boutique_id')->filter()->unique())->get(['id', 'name', 'name_en', 'commission_rate'])->keyBy('id');
+        $seesRate = BoutiqueAccess::read(auth()->user());
 
         return $products->map(fn (Product $p) => [
             'id' => $p->id,
             'name' => $p->name,
             'name_en' => $p->name_en,
             'boutique' => $p->boutique_id ? $boutiques->get($p->boutique_id)?->label() : null,
+            'boutique_rate' => $seesRate && $boutiques->has($p->boutique_id) ? round((float) $boutiques[$p->boutique_id]->commission_rate, 2) : null,
             'sku' => $p->sku,
             'barcode' => $p->barcode,
             'price' => (float) $p->price,
@@ -1743,17 +1753,41 @@ class CustomerInvoiceController extends Controller
             // والضريبةُ جزءٌ من المبلغ لا فوقه — وإلّا سقط على ميزان الدفتر برسالةٍ لا تسمّي الحقل
             'tax_amount' => ['nullable', 'numeric', 'min:0', 'lte:amount'],
             'reason' => ['required', 'string', 'max:200'],
+            // أبضاعةٌ رُدّت أم خصمٌ وتسويةُ سعر؟ — ومن بنود البوتيكات كم رُدّ من كلٍّ
+            'basis' => ['nullable', 'string', Rule::in(CustomerCreditNote::BASES)],
+            'pieces' => ['nullable', 'array', 'max:200'],
+            'pieces.*.quantity' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'pieces.*.sellable' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'pieces.*.damaged' => ['nullable', 'numeric', 'min:0', 'max:100000'],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
-        ]);
+        ], ['basis' => __('سبب الإشعار'), 'pieces' => __('قطع البوتيك المرتجعة')]);
+
+        $invoice = $this->find($id);
+
+        /*
+         * وفاتورةٌ فيها بندُ بوتيكٍ باقٍ يُسأل عنها: رُدّت بضاعةٌ أم خصم؟
+         *
+         * المبلغُ وحده لا يقول أيَّ صنفٍ عاد، ومستحقُّ البوتيك لا يُنقص بالظنّ: قطعةٌ
+         * عادت تُنقص ما لصاحبها، وخصمٌ يتحمّله المتجر. فلا يُكتب بلا جواب.
+         */
+        $basis = $data['basis'] ?? null;
+        if ($basis === null && BoutiqueInvoiceDues::pieces($invoice) !== []) {
+            throw ValidationException::withMessages([
+                'basis' => __('في هذه الفاتورة بنودٌ لبوتيكات — اختر: رُدّت بضاعة، أم خصمٌ وتسويةُ سعر.'),
+            ]);
+        }
 
         try {
+            $items = $basis === CustomerCreditNote::RETURN ? BoutiqueInvoiceDues::noteItems($invoice, $data['pieces'] ?? []) : [];
             $note = CustomerInvoices::creditNote(
-                $this->find($id),
+                $invoice,
                 (float) $data['amount'],
                 (float) ($data['tax_amount'] ?? 0),
                 $data['reason'],
                 auth()->id(),
+                items: $items === [] ? null : $items,
+                basis: $basis,
             );
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);

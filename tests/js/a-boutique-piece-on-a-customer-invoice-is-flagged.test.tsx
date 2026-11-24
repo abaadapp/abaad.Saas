@@ -5,9 +5,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pageProps } from './setup';
 
 /**
- * صنفُ بوتيكٍ في فاتورة عميل لا يدخل حسابَه — يُقال لكاتبها ولا يُمنع.
+ * صنفُ بوتيكٍ في فاتورة عميل: متى يدخل حسابَه، ومن يتحمّل خصمَه — يُقال ولا يُمنع.
  *
- * تنبيهٌ تحت البند وحده: لا يغيّر سعرًا ولا يردّ حفظًا. وصنفُ المتجر بلا تنبيه.
+ * خبرٌ تحت البند وحده: لا يغيّر سعرًا ولا يردّ حفظًا. وصنفُ المتجر بلا خبر. وتحذيرُ
+ * الخصم لمن وصلته النسبة وحده (من يقرأ مالَ البوتيكات).
  */
 
 const sent: { url: string; payload: Record<string, unknown> }[] = [];
@@ -60,6 +61,7 @@ vi.mock('@/Layouts/AdminLayout', () => ({
 vi.mock('@/Components/PaperFrame', () => ({ default: () => null }));
 
 const Create = (await import('@/Pages/Admin/CustomerInvoices/Create')).default;
+const { discountOverShare, listedPrice } = await import('@/Pages/Admin/CustomerInvoices/partials/BoutiqueLine');
 
 const ADDONS = [
     { id: 11, name: 'شوكولاتة', name_en: 'Chocolate', price: 3 },
@@ -71,7 +73,8 @@ const props = {
     customers: [],
     products: [
         { id: 1, name: 'بوكيه ورد', sku: 'FLW-1', barcode: null, price: 20, boutique: null },
-        { id: 2, name: 'قطعة فضّة', sku: 'SLV-1', barcode: null, price: 12, boutique: 'بوتيك لمى' },
+        { id: 2, name: 'قطعة فضّة', sku: 'SLV-1', barcode: null, price: 12, boutique: 'بوتيك لمى', boutique_rate: 20 },
+        { id: 3, name: 'عطر', sku: 'SCN-1', barcode: null, price: 10, boutique: 'بوتيك ريم', boutique_rate: null },
     ],
     catalog_truncated: false,
     addons: ADDONS,
@@ -115,12 +118,56 @@ async function pick(user: ReturnType<typeof userEvent.setup>, name: string) {
 }
 
 describe('صنفُ بوتيكٍ في فاتورة عميل', () => {
-    it('يُنبَّه تحت بنده باسم بوتيكه وبما يُفعل', async () => {
+    it('يُقال تحت بنده متى يدخل حسابَ بوتيكه ومن يتحمّل خصمَه', async () => {
         const user = page();
         await pick(user, 'قطعة فضّة');
         const note = await screen.findByTestId('line-boutique-note');
         expect(note).toHaveTextContent('بوتيك لمى');
-        expect(note).toHaveTextContent('بيعًا آجلًا من نقطة البيع');
+        expect(note).toHaveTextContent('حين تُسدَّد الفاتورة كاملة');
+        expect(note).toHaveTextContent('خصم البند على المتجر');
+        expect(screen.queryByTestId('line-boutique-discount-over')).toBeNull();
+        expect(screen.queryByTestId('line-boutique-under-list')).toBeNull();
+    });
+
+    it('وخصمٌ جاوز حصّةَ المتجر يُحذَّر منه بمقدار ما جاوزها — لمن يعرف النسبة', async () => {
+        const user = page();
+        await pick(user, 'قطعة فضّة');
+        const discount = screen.getByLabelText('الخصم');
+        await user.clear(discount);
+        await user.type(discount, '2.4');
+        expect(screen.queryByTestId('line-boutique-discount-over')).toBeNull();
+        await user.clear(discount);
+        await user.type(discount, '5');
+        // العمولة 2.400 من 12 — والخصمُ خمسة: 2.600 فوقها
+        expect(await screen.findByTestId('line-boutique-discount-over')).toHaveTextContent('2.600');
+    });
+
+    it('ولا يُحسب لمن لم تصله النسبة', async () => {
+        const user = page();
+        await pick(user, 'عطر');
+        const discount = screen.getByLabelText('الخصم');
+        await user.clear(discount);
+        await user.type(discount, '9');
+        expect(screen.getByTestId('line-boutique-note')).toHaveTextContent('بوتيك ريم');
+        expect(screen.queryByTestId('line-boutique-discount-over')).toBeNull();
+    });
+
+    it('وسعرٌ كُتب أقلَّ من سعر الصنف يُقال أثرُه', async () => {
+        const user = page();
+        await pick(user, 'قطعة فضّة');
+        const price = screen.getByLabelText('سعر الوحدة');
+        await user.clear(price);
+        await user.type(price, '9');
+        expect(await screen.findByTestId('line-boutique-under-list')).toHaveTextContent('12.000');
+    });
+
+    it('والحسابُ بالبيسة: ما جاوز العمولةَ لا ما بلغها', () => {
+        expect(discountOverShare(12, 2.4, 20)).toBe(0);
+        expect(discountOverShare(12, 2.401, 20)).toBe(0.001);
+        expect(discountOverShare(12, 99, 20)).toBe(9.6);
+        expect(discountOverShare(12, 5, null)).toBe(0);
+        expect(listedPrice({ price: 12, variants: [{ id: 7, name: 'كبير', name_en: null, price: 15 }] } as never, '7')).toBe(15);
+        expect(listedPrice({ price: 12, variants: [] }, '')).toBe(12);
     });
 
     it('ولا يُنبَّه عن صنف المتجر', async () => {

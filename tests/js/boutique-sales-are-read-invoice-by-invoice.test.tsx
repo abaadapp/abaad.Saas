@@ -223,7 +223,7 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(table.parentElement!.className).toContain('md:block');
     });
 
-    const invoice = (over: Partial<InvoiceDetails['order']> = {}, shares: Partial<InvoiceDetails['shares']> = {}, money: Partial<InvoiceDetails['money']> = {}): InvoiceDetails => ({
+    const invoice = (over: Partial<InvoiceDetails['order']> = {}, shares: Partial<InvoiceDetails['shares']> = {}, money: Partial<NonNullable<InvoiceDetails['money']>> = {}): InvoiceDetails => ({
         order: { id: 11, number: 'INV-0011', ordered_at: '2027-02-10 10:00', status: 'مكتمل', invoice_state: 'active', subtotal: 40, discount: 5, tax: 0, delivery_fee: 0, total: 35, tax_basis: 'none', ...over },
         lines: [
             {
@@ -308,6 +308,58 @@ describe('مبيعات البوتيك وفواتيره', () => {
     it('ملغاةٌ لا كتلةَ مالٍ فيها', async () => {
         await openInvoice(invoice({ invoice_state: 'cancelled' }, { void: true, shop: 0, boutiques: [] }));
         expect(screen.queryByTestId('boutique-invoice-money')).toBeNull();
+    });
+
+    it('قبل الخصم وبعده والمتبقي تُقال دائمًا، وقناةُ البيع مع الفاتورة', async () => {
+        const box = await openInvoice(invoice({ channel: 'نقطة البيع' }, {}, { lines: 32, discount: 5, after_discount: 27, total: 27, paid: 27, balance: 0 }));
+        expect(box.textContent).toContain('نقطة البيع');
+        const m = screen.getByTestId('boutique-invoice-money').textContent ?? '';
+        expect(m).toContain('مجموع البنود قبل الخصم32.000');
+        expect(m).toContain('مجموع البنود بعد الخصم27.000');
+        expect(m).toContain('المتبقي على العميل0.000');
+    });
+
+    it('من لا يملك قسم المبيعات: بنودُ البوتيكات وحدها ولا رقمَ للمتجر', async () => {
+        const full = invoice();
+        const box = await openInvoice({
+            ...full, full: false, money: null, edits: [],
+            order: { ...full.order, subtotal: null, discount: null, tax: null, delivery_fee: null, total: null, tax_basis: null },
+            lines: [{ ...full.lines[0], price: null, total: null, addons_total: null, shop_remaining: null, shop_share: null }],
+            shares: { ...full.shares, shop: null, lines_total: null },
+        });
+        expect(screen.getByTestId('boutique-invoice-limited').textContent).toContain('صلاحية المبيعات');
+        expect(screen.queryByTestId('boutique-invoice-header')).toBeNull();
+        expect(screen.queryByTestId('boutique-invoice-money')).toBeNull();
+        const shares = screen.getByTestId('boutique-invoice-shares').textContent ?? '';
+        expect(shares).toContain('بوتيك لمى');
+        expect(shares).not.toContain('المتجر');
+        expect(box.textContent).not.toContain('باقة بسيطة');
+        expect(box.textContent).not.toMatch(/NaN|undefined|null/);
+    });
+
+    it('فواتيرُ العملاء التي لا تُحتسب تُقال في الملخّص — ولا تُقال حين لا شيء', async () => {
+        const first = mount();
+        await screen.findByTestId('boutique-sales-summary');
+        expect(screen.queryByTestId('boutique-uncounted-note')).toBeNull();
+        first.unmount();
+
+        respond = (url) => (url.includes('summary') ? { ...summary, uncounted: { lines: 3, invoices: 2, amount: 36 } } : page([]));
+        mount();
+        const note = (await screen.findByTestId('boutique-uncounted-note')).textContent ?? '';
+        expect(note).toContain('3 بندًا في 2 فاتورة عميل');
+        expect(note).toContain('36.000');
+        expect(note).toContain('ولا تدخل المبيعات ولا المستحق');
+    });
+
+    it('الصفُّ يقول قناته، والبطاقةُ على الهاتف تقول كمّيّتَه وسعرَه ورقمَ ورقته', async () => {
+        respond = (url) => (url.includes('summary') ? summary : page([
+            row({ channel: 'الموقع الإلكتروني', quantity: 2, unit_price: 6, settlement: 'BQ-2027-02-1', settle_state: 'issued' }),
+        ]));
+        mount();
+        const table = await screen.findByTestId('boutique-sales-table');
+        expect(within(table).getByTestId('sale-channel').textContent).toBe('الموقع الإلكتروني');
+        const cards = screen.getByTestId('boutique-sales-cards').textContent ?? '';
+        for (const text of ['الموقع الإلكتروني', '× 6.000', 'BQ-2027-02-1']) expect(cards).toContain(text);
     });
 
     it('الضريبةُ ضمن الأسعار تُقال، والفاتورةُ التي لا تطابق تُراجَع ولا تُعتمد', async () => {

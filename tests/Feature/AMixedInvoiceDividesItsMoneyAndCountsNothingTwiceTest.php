@@ -18,6 +18,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\BoutiqueReturns;
 use App\Support\Boutiques;
+use App\Support\CustomerInvoices;
 use App\Support\Ledger;
 use App\Support\OrderCorrection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -198,6 +199,157 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         $this->assertEquals([30.0, 6.0, 24.0], [$by['بوتيك لمى']['standalone_gross'], $by['بوتيك لمى']['commission'], $by['بوتيك لمى']['owed']]);
         $this->assertEquals([84.0, 8.4, 75.6], [$by['بوتيك ريم']['standalone_gross'], $by['بوتيك ريم']['commission'], $by['بوتيك ريم']['owed']]);
         $this->assertEquals(60.0 + 6.0 + 8.4, $inv['shares']['shop']);
+    }
+
+    /** المثالُ الإلزاميّ: ٤٢ = المتجر ٢٠ + لمى ١٢ بـ٢٠٪ + ريم ١٠ بـ١٠٪ */
+    public function test_forty_two_rials_is_nine_six_and_nine_and_twenty_three_four(): void
+    {
+        $scarf = $this->product('شال', 10, $this->reem->id);
+        $order = $this->sell([[$this->mine], [$this->silver, 2], [$scarf]]);
+        $inv = $this->invoice($order);
+        $this->assertWhole($inv);
+
+        $by = collect($inv['shares']['boutiques'])->keyBy('name');
+        $this->assertEquals(42.0, $inv['money']['total'], 'إجماليُّ الفاتورة');
+        $this->assertEquals(9.6, $by['بوتيك لمى']['owed']);
+        $this->assertEquals(9.0, $by['بوتيك ريم']['owed']);
+        $this->assertEquals(3.4, round(array_sum(array_column($inv['shares']['boutiques'], 'commission')), 3), 'عمولةُ المتجر');
+        $this->assertEquals(20.0, collect($inv['lines'])->firstWhere('name', 'باقة التاجر')['shop_share'], 'بضاعةُ المتجر');
+        $this->assertEquals(23.4, $inv['shares']['shop'], 'حصّةُ المتجر');
+        $this->assertSame(42000, self::baisa(9.6) + self::baisa(9.0) + self::baisa(23.4));
+        $this->assertStringNotContainsString('profit', json_encode($inv));
+
+        // لا يُحسب إجماليُّ الفاتورة لكلّ بوتيك: كلٌّ ببضاعته، وحصّةُ المتجر مرّةً
+        $gross = fn (Boutique $b) => $this->summary(['boutique' => (string) $b->id])['standalone'];
+        $this->assertEquals([12.0, 2.4, 9.6], [$gross($this->lama)['gross'], $gross($this->lama)['commission'], $gross($this->lama)['net']]);
+        $this->assertEquals([10.0, 1.0, 9.0], [$gross($this->reem)['gross'], $gross($this->reem)['commission'], $gross($this->reem)['net']]);
+        $this->assertEquals([22.0, 3.4, 18.6], [$this->summary()['standalone']['gross'], $this->summary()['standalone']['commission'], $this->summary()['standalone']['net']]);
+
+        // والورقتان بما قاله القسمُ بالبيسة، والدفترُ يحمل الإيرادَ مرّةً
+        $this->actingAs($this->owner);
+        $this->assertEquals(9.6, (float) Boutiques::settle($this->shop, $this->lama, self::PERIOD)->net);
+        $this->assertEquals(9.0, (float) Boutiques::settle($this->shop, $this->reem, self::PERIOD)->net);
+        $this->assertEquals(42.0, Ledger::balance($this->shop->id, 'sales'));
+        $this->assertEquals(18.6, Ledger::balance($this->shop->id, 'boutique_payable'));
+    }
+
+    /** البنودُ قبل الخصم وبعده، والمدفوعُ والمتبقي — كلٌّ في مكانه ولا يُخلط بمستحقّ البوتيك */
+    public function test_before_and_after_discount_paid_and_left_are_each_said(): void
+    {
+        Coupon::create(['business_id' => $this->shop->id, 'code' => 'FIVE', 'type' => 'مبلغ', 'value' => 5, 'active' => true]);
+        $order = $this->sell([[$this->mine], [$this->silver, 2]], ['coupon_code' => 'FIVE']);
+        DB::table('orders')->where('id', $order->id)->update(['balance_due' => 7]);
+        $m = $this->invoice($order)['money'];
+        $this->assertEquals([32.0, 5.0, 27.0, 27.0, 20.0, 7.0, 9.6], [$m['lines'], $m['discount'], $m['after_discount'], $m['total'], $m['paid'], $m['balance'], $m['boutiques_owed']]);
+    }
+
+    /** قناةُ البيع من الطلب كما كُتب — في الصفّ والفاتورة */
+    public function test_the_row_and_the_invoice_say_which_door_sold_it(): void
+    {
+        $order = $this->sell([[$this->silver]]);
+        foreach (['pos' => 'نقطة البيع', 'website' => 'الموقع الإلكتروني', null => 'غير محدّدة'] as $channel => $label) {
+            DB::table('orders')->where('id', $order->id)->update(['channel' => $channel ?: null]);
+            $this->assertSame($label, $this->rows()['rows'][0]['channel']);
+            $this->assertSame($label, $this->invoice($order)['order']['channel']);
+        }
+    }
+
+    /* ═══════════ من يرى الفاتورة كاملة ═══════════ */
+
+    /** من يقرأ مالَ البوتيك ولا يفتح المبيعات: بنودُ البوتيكات وحدها، ولا رقمَ يُستنتج منه ما للمتجر */
+    public function test_without_the_sales_section_only_the_boutiques_lines_are_read(): void
+    {
+        $order = $this->sell([[$this->mine], [$this->silver, 2], [$this->perfume]]);
+        $accountant = User::create(['business_id' => $this->shop->id, 'name' => 'محاسب', 'email' => 'acc@abaad.om', 'password' => bcrypt('x'),
+            'role' => 'sales', 'status' => 'نشط', 'permissions' => ['dashboard', 'products', 'expenses']]);
+
+        $part = $this->actingAs($accountant)->getJson(route('admin.boutiques.sales.order', $order->id))->assertOk()->json();
+        $this->assertFalse($part['full']);
+        $this->assertSame(['قطعة فضّة', 'عطر صغير'], array_column($part['lines'], 'name'));
+        $this->assertNull($part['money']);
+        foreach (['total', 'discount', 'tax', 'delivery_fee', 'subtotal'] as $k) {
+            $this->assertNull($part['order'][$k], $k);
+        }
+        $this->assertNull($part['shares']['shop']);
+        $this->assertNull($part['shares']['lines_total']);
+        $this->assertSame([false, null], [$part['can_open'], $part['url']]);
+        $json = json_encode($part, JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('باقة التاجر', $json);
+        foreach (['44', '26.6', '20.0', '23.6'] as $leak) {
+            $this->assertStringNotContainsString(':'.$leak, $json, 'رقمٌ من مال المتجر');
+        }
+        // وما للبوتيكات كما هو في الكاملة
+        $full = $this->invoice($order);
+        $this->assertTrue($full['full']);
+        $this->assertCount(3, $full['lines']);
+        $this->assertEquals($full['shares']['boutiques'], $part['shares']['boutiques']);
+        $this->assertEquals($full['totals'], $part['totals']);
+
+        // ومن زِيد له قسمُ المبيعات رآها كاملة
+        $accountant->update(['permissions' => ['dashboard', 'products', 'expenses', 'orders']]);
+        $this->assertTrue($this->actingAs($accountant->fresh())->getJson(route('admin.boutiques.sales.order', $order->id))->json('full'));
+    }
+
+    /** باقةُ المتجر التي دخلتها قطعةُ بوتيك: يُقرأ مستحقُّ القطعة، ولا يُقرأ ثمنُ الباقة */
+    public function test_without_the_sales_section_the_shops_bouquet_is_named_without_its_price(): void
+    {
+        $this->shop->forceFill(['boutique_components_enabled' => true])->save();
+        RecipeItem::create(['business_id' => $this->shop->id, 'product_id' => $this->mine->id, 'component_product_id' => $this->silver->id, 'quantity' => 1]);
+        $order = $this->sell([[$this->mine]]);
+        $accountant = User::create(['business_id' => $this->shop->id, 'name' => 'محاسب', 'email' => 'acc2@abaad.om', 'password' => bcrypt('x'),
+            'role' => 'sales', 'status' => 'نشط', 'permissions' => ['dashboard', 'products', 'expenses']]);
+        $line = $this->actingAs($accountant)->getJson(route('admin.boutiques.sales.order', $order->id))->assertOk()->json('lines.0');
+        $this->assertSame('باقة التاجر', $line['name']);
+        $this->assertSame([null, null, null, null], [$line['price'], $line['total'], $line['shop_remaining'], $line['shop_share']]);
+        $this->assertEquals(6.0, $line['pieces'][0]['amount']);
+    }
+
+    /* ═══════════ ما لا يدخل هذه الأرقام ═══════════ */
+
+    /** فاتورةُ عميلٍ بلا طلب: تُقال بعددها ومبلغها كما كُتبت، ولا تدخل مبيعاتٍ ولا مستحقًّا */
+    public function test_what_customer_invoices_sold_is_said_and_never_counted(): void
+    {
+        $this->sell([[$this->silver]]);
+        $before = $this->summary();
+        $this->assertEquals(['lines' => 0, 'invoices' => 0, 'amount' => 0.0], $before['uncounted']);
+
+        $company = Customer::create(['language' => 'ar', 'business_id' => $this->shop->id, 'name' => 'شركة', 'allow_credit_sales' => true]);
+        $invoice = fn (array $lines, string $day = '2027-02-10') => CustomerInvoices::create($this->shop->id, $company, ['issued_at' => $day],
+            array_map(fn ($p) => ['product_id' => $p->id, 'description' => $p->name, 'quantity' => 1, 'unit_price' => (float) $p->price], $lines));
+        CustomerInvoices::issue($invoice([$this->silver, $this->mine]));
+        CustomerInvoices::issue($invoice([$this->perfume]));
+        CustomerInvoices::issue($invoice([$this->silver], '2027-01-20'));            // شهرٌ آخر
+        $invoice([$this->silver]);                                                    // مسودّة
+        CustomerInvoices::cancel(CustomerInvoices::issue($invoice([$this->silver])), 'أُلغيت');
+        // آجلٌ من الصندوق: له طلبٌ محسوب فلا يُقال مرّتين
+        $this->sell([[$this->silver]], ['credit' => true, 'customer_id' => $company->id]);
+
+        $after = $this->summary();
+        $this->assertEquals(['lines' => 2, 'invoices' => 2, 'amount' => 18.0], $after['uncounted']);
+        $this->assertEquals(12.0, $after['standalone']['gross'], 'الصندوقُ نقدًا وآجلًا وحدهما');
+        $this->assertEquals(9.6, $after['owed']);
+        $lama = $this->summary(['boutique' => (string) $this->lama->id]);
+        $this->assertEquals(['lines' => 1, 'invoices' => 1, 'amount' => 6.0], $lama['uncounted']);
+
+        // ومتجرٌ آخر لا يُقرأ منه شيء
+        [$other, $otherOwner] = [Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط', 'boutiques_enabled' => true]), null];
+        Ledger::seedChart($other->id);
+        $otherOwner = User::create(['business_id' => $other->id, 'name' => 'الجار', 'email' => 'nb@abaad.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
+        $this->assertEquals(0, $this->actingAs($otherOwner)->getJson(route('admin.boutiques.sales.summary', ['period' => self::PERIOD]))->assertOk()->json('uncounted.lines'));
+    }
+
+    /** معاملاتُ الرابط لا تغيّر المتجرَ ولا الفرع: كلُّ بابٍ مقيَّدٌ بمتجر الجالس */
+    public function test_the_link_cannot_choose_another_shop_or_branch(): void
+    {
+        $order = $this->sell([[$this->silver]]);
+        $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط', 'boutiques_enabled' => true]);
+        $theirBranch = Branch::create(['business_id' => $other->id, 'name' => 'فرع الجار']);
+        $mine = $this->rows();
+        foreach ([['business_id' => $other->id], ['business' => $other->id], ['branch_id' => $theirBranch->id], ['branch' => $theirBranch->id], ['shop' => $other->id]] as $extra) {
+            $this->assertEquals($mine, $this->rows($extra), json_encode($extra));
+            $this->assertEquals($this->summary(), $this->summary($extra), json_encode($extra));
+            $this->assertSame($order->number, $this->actingAs($this->owner)->getJson(route('admin.boutiques.sales.order', [$order->id, ...$extra]))->assertOk()->json('order.number'));
+        }
     }
 
     /* ═══════════ ما يتغيّر بعد البيع ═══════════ */

@@ -251,10 +251,10 @@ class BoutiqueController extends Controller
     public function salesOrder(int $order)
     {
         $business = $this->salesShop();
-        $data = BoutiqueSales::invoice((int) $business->id, $order);
-        abort_if($data === null, 404);
-
+        // الفاتورةُ كاملةً لمن يفتح المبيعات — ومن لا يملكها يرى ما للبوتيكات فيها وحده
         $canOpen = (bool) auth()->user()?->allows('orders');
+        $data = BoutiqueSales::invoice((int) $business->id, $order, $canOpen);
+        abort_if($data === null, 404);
 
         return response()->json($data + [
             'can_open' => $canOpen,

@@ -11359,5 +11359,9 @@
     "حصة المتجر بعد تحمّل الخصومات": "The shop's share after bearing the discounts",
     "منها ضريبة يورّدها المتجر": "Of which VAT the shop remits",
     "حصة المتجر ليست صافي ربح: تكلفة المنتجات والمصاريف غير محسوبة فيها.": "The shop's share is not net profit: product cost and expenses are not in it.",
-    "الخصومات تجاوزت حصة المتجر من بنود هذه الفاتورة: يتحمّل المتجر الفرق، ومستحق البوتيكات لا ينقص.": "The discounts exceed the shop's share of this invoice's lines: the shop bears the difference and what is owed to boutiques does not fall."
+    "الخصومات تجاوزت حصة المتجر من بنود هذه الفاتورة: يتحمّل المتجر الفرق، ومستحق البوتيكات لا ينقص.": "The discounts exceed the shop's share of this invoice's lines: the shop bears the difference and what is owed to boutiques does not fall.",
+    ":pieces قطعة في :invoices فاتورة": ":pieces pieces on :invoices invoices",
+    "هذه الأرقام من فواتير نقطة البيع والموقع. وفي الشهر :lines بندًا في :invoices فاتورة عميل (كُتبت بمبلغ :amount) صنفها اليوم لبوتيك، ولا تدخل المبيعات ولا المستحق: فاتورة العميل لا تحفظ صاحب الصنف ولا نسبته.": "These figures come from till and website invoices. This month :lines lines on :invoices customer invoices (written for :amount) are of items a boutique owns today; they are in neither the sales nor the dues: a customer invoice keeps neither who owned the item nor the rate.",
+    "مجموع البنود بعد الخصم": "Lines after discount",
+    "تُعرض بنود البوتيكات وحدها. منتجات المتجر والخصم والضريبة وما دُفع لمن يملك صلاحية المبيعات.": "Only the boutiques’ lines are shown. The shop’s products, discount, tax and payment are for whoever may open sales."
 }

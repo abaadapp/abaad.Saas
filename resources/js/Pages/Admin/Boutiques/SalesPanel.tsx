@@ -33,6 +33,8 @@ export interface SaleRow {
     order_number: string;
     ordered_at: string | null;
     order_status: string;
+    /** البابُ الذي بيع منه — باسمه من الخادم */
+    channel?: string;
     invoice_state: InvoiceState;
     /** فاتورةٌ ملغاةٌ لم تحملها ورقة: بندُها كما سُجّل ولا نصيبَ فيه */
     void?: boolean;
@@ -68,6 +70,8 @@ export interface SalesSummary {
     standalone: { gross: number; commission: number; net: number; quantity: number; lines: number; orders: number; taxed_orders: number };
     components: { bundle: number; addon: number; due: number; quantity: number };
     bundles: { lines: number; revenue: number; boutiques_due: number; shop_remaining: number };
+    /** فواتيرُ عملاءٍ فيها أصنافُ البوتيك اليوم — لا تدخل هذه الأرقام */
+    uncounted?: { lines: number; invoices: number; amount: number };
     owed: number;
     pieces: 'on' | 'off' | 'taxed';
     /** مفتاحُ المنصّة لهذا المتجر — والشاشةُ تبقى لمن عنده بوتيكٌ ولو أُطفئ */
@@ -96,30 +100,32 @@ interface Piece {
 }
 
 export interface InvoiceDetails {
+    /** الفاتورةُ كاملةً، أم ما للبوتيكات فيها وحده؟ — لمن لا يملك قسم المبيعات */
+    full?: boolean;
     order: {
-        id: number; number: string; ordered_at: string | null; status: string; invoice_state: InvoiceState;
-        subtotal: number; discount: number; tax: number; delivery_fee: number; total: number;
+        id: number; number: string; ordered_at: string | null; status: string; channel?: string; invoice_state: InvoiceState;
+        subtotal: number | null; discount: number | null; tax: number | null; delivery_fee: number | null; total: number | null;
         /** أين الضريبة من أسعار البنود — مقروءةً من الفاتورة نفسها */
-        tax_basis: 'none' | 'inside' | 'added' | 'unknown';
+        tax_basis: 'none' | 'inside' | 'added' | 'unknown' | null;
     };
     lines: {
-        id: number; name: string; variant: string | null; quantity: number; price: number; total: number; addons_total: number;
+        id: number; name: string; variant: string | null; quantity: number; price: number | null; total: number | null; addons_total: number | null;
         boutique: { name: string; rate: number; commission: number; net: number; settlement: string | null; settle_state: SettleState } | null;
         pieces: Piece[];
         dues: number;
         shop_remaining: number | null;
-        shop_share: number;
+        shop_share: number | null;
     }[];
     money: {
-        lines: number; discount: number; discount_coupon: number; discount_points: number;
+        lines: number; discount: number; discount_coupon: number; discount_points: number; after_discount?: number;
         tax: number; tax_basis: 'none' | 'inside' | 'added' | 'unknown'; delivery_fee: number;
         total: number; paid: number; balance: number; boutiques_owed: number;
         shop_after_discount: number; shop_after_tax: number;
-    };
+    } | null;
     shares: {
         boutiques: { id: number; name: string; standalone_gross: number; commission: number; standalone_net: number; components_due: number; owed: number }[];
-        shop: number;
-        lines_total: number;
+        shop: number | null;
+        lines_total: number | null;
         reconciles: boolean;
         /** فاتورةٌ ملغاة: بنودُها كما سُجّلت، ولا نصيبَ فيها لأحد */
         void: boolean;
@@ -385,7 +391,11 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
             <section>
                 <p className="mb-1.5 text-[12px] font-semibold text-[#4b4b4b]">{t('مبيعات الشهر')}</p>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-                    <Tile label={t('مبيعات منتجات البوتيك المنفردة')} value={fmt(s.standalone.gross)} />
+                    <Tile
+                        label={t('مبيعات منتجات البوتيك المنفردة')}
+                        value={fmt(s.standalone.gross)}
+                        hint={t(':pieces قطعة في :invoices فاتورة', { pieces: number(s.standalone.quantity, 3), invoices: number(s.standalone.orders) })}
+                    />
                     <Tile label={t('عمولة المتجر من المنفردة')} value={fmt(s.standalone.commission)} tone="ours" />
                     <Tile label={t('صافي المنفرد للبوتيك')} value={fmt(s.standalone.net)} tone="theirs" />
                     <Tile
@@ -404,6 +414,13 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                 <p className="mt-2 text-[12px] leading-5 text-[#6b7280]" data-testid="boutique-not-final-note">
                     {t('المبالغ قبل صدور ورقة التسوية للمتابعة وليست تسوية نهائية — المعتمد ما في ورقة التسوية بعد مراجعتها.')}
                 </p>
+                {s.uncounted && s.uncounted.lines > 0 && (
+                    <p className="mt-2 rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] leading-5 text-[#b91c1c]" data-testid="boutique-uncounted-note">
+                        {t('هذه الأرقام من فواتير نقطة البيع والموقع. وفي الشهر :lines بندًا في :invoices فاتورة عميل (كُتبت بمبلغ :amount) صنفها اليوم لبوتيك، ولا تدخل المبيعات ولا المستحق: فاتورة العميل لا تحفظ صاحب الصنف ولا نسبته.', {
+                            lines: number(s.uncounted.lines), invoices: number(s.uncounted.invoices), amount: fmt(s.uncounted.amount),
+                        })}
+                    </p>
+                )}
                 {(s.rounding.report_difference !== 0 || s.rounding.sheet_difference !== 0) && (
                     <div className="mt-2 rounded-md border border-dashed border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-rounding-note">
                         <p className="font-semibold">{t('مطابقة التقريب (لم يُعدَّل أي مبلغ)')}</p>
@@ -538,6 +555,7 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                                     {r.order_number}
                                 </button>
                                 <p className="text-[11px] text-[#9ca3af] tabular-nums">{r.ordered_at}</p>
+                                {r.channel && <p className="whitespace-nowrap text-[11px] text-[#6b7280]" data-testid="sale-channel">{r.channel}</p>}
                             </td>
                             <td className="px-3 py-2.5"><ProductCell row={r} fmt={fmt} /></td>
                             <td className="px-3 py-2.5 text-[#4b4b4b]">{r.boutique}</td>
@@ -577,9 +595,12 @@ function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                     <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant={TYPE_VARIANT[r.type]}>{t(TYPE_LABEL[r.type])}</Badge>
                         <span className="text-[12px] text-[#6b7280]">{r.boutique}</span>
+                        {r.channel && <span className="text-[12px] text-[#6b7280]">{r.channel}</span>}
                         <InvoiceStateBadge row={r} />
                         {!r.void && <Badge variant={SETTLE_VARIANT[r.settle_state]}>{t(SETTLE_LABEL[r.settle_state])}</Badge>}
+                        {r.settlement && <span className="text-[11px] text-[#9ca3af]">{r.settlement}</span>}
                     </div>
+                    <p className="text-[12px] tabular-nums text-[#4b4b4b]">{number(r.quantity, 3)} × {fmt(r.unit_price)}</p>
                     <div className="grid grid-cols-3 gap-2 tabular-nums">
                         <div><p className="text-[11px] text-[#9ca3af]">{t('الإجمالي')}</p>{fmt(r.amount)}</div>
                         <div><p className="text-[11px] text-[#9ca3af]">{t('عمولة المتجر')}</p>{r.void ? '—' : r.type === 'standalone' ? fmt(r.commission) : t('لا عمولة')}</div>
@@ -594,7 +615,7 @@ function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
 /* ═══════════ تفاصيل الفاتورة ═══════════ */
 
 /** المدفوع والخصومات والضريبة وحصّةُ المتجر بعدها — كلٌّ في سطره، ولا يُخلط بمجموع البنود */
-function MoneyBlock({ money, fmt }: { money: InvoiceDetails['money']; fmt: (v: number) => string }) {
+function MoneyBlock({ money, fmt }: { money: NonNullable<InvoiceDetails['money']>; fmt: (v: number) => string }) {
     const t = useTranslate();
     const otherDiscount = Math.max(0, Number((money.discount - money.discount_coupon - money.discount_points).toFixed(3)));
     const row = (label: string, value: string, extra = '') => (
@@ -610,11 +631,12 @@ function MoneyBlock({ money, fmt }: { money: InvoiceDetails['money']; fmt: (v: n
             {money.discount_coupon > 0 && row(t('كوبون (على المتجر)'), `−${fmt(money.discount_coupon)}`)}
             {money.discount_points > 0 && row(t('نقاط الولاء (على المتجر)'), `−${fmt(money.discount_points)}`)}
             {otherDiscount > 0 && row(t('خصم آخر (على المتجر)'), `−${fmt(otherDiscount)}`)}
+            {money.discount > 0 && row(t('مجموع البنود بعد الخصم'), fmt(money.after_discount ?? money.lines - money.discount))}
             {money.tax > 0 && row(money.tax_basis === 'inside' ? t('الضريبة (ضمن الأسعار)') : t('الضريبة (مضافة)'), fmt(money.tax))}
             {money.delivery_fee > 0 && row(t('التوصيل'), fmt(money.delivery_fee))}
             {row(t('إجمالي ما على العميل'), fmt(money.total), 'border-t border-dashed border-[var(--ui-border,#e8e8e8)] font-semibold text-[#111]')}
             {row(t('المدفوع فعليًا'), fmt(money.paid))}
-            {money.balance > 0 && row(t('المتبقي على العميل'), fmt(money.balance))}
+            {row(t('المتبقي على العميل'), fmt(money.balance))}
             <div className="mt-1 border-t border-[var(--ui-border,#e8e8e8)] pt-1">
                 {row(t('مستحق البوتيكات'), fmt(money.boutiques_owed))}
                 {row(t('حصة المتجر بعد تحمّل الخصومات'), fmt(money.shop_after_discount), 'text-[#047857]')}
@@ -666,25 +688,32 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                     <div className="space-y-3 text-[13px]" data-testid="boutique-invoice">
                         <div className="flex flex-wrap items-center gap-2 text-[#6b7280]">
                             <span className="tabular-nums">{data.order.ordered_at}</span>
+                            {data.order.channel && <span>{data.order.channel}</span>}
                             <InvoiceStateBadge row={{ invoice_state: data.order.invoice_state, order_status: data.order.status }} />
                         </div>
 
-                        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-[10px] bg-[#fafafa] p-3 tabular-nums sm:grid-cols-3" data-testid="boutique-invoice-header">
-                            <div><dt className="text-[12px] text-[#6b7280]">{t('مجموع البنود')}</dt><dd>{fmt(data.shares.lines_total)}</dd></div>
-                            {data.order.discount > 0 && (
-                                <div><dt className="text-[12px] text-[#6b7280]">{t('خصم الفاتورة (على المتجر)')}</dt><dd>−{fmt(data.order.discount)}</dd></div>
-                            )}
-                            {data.order.tax > 0 && (
-                                <div>
-                                    <dt className="text-[12px] text-[#6b7280]">{data.order.tax_basis === 'inside' ? t('الضريبة (ضمن الأسعار)') : t('الضريبة (مضافة)')}</dt>
-                                    <dd>{fmt(data.order.tax)}</dd>
-                                </div>
-                            )}
-                            {data.order.delivery_fee > 0 && (
-                                <div><dt className="text-[12px] text-[#6b7280]">{t('التوصيل')}</dt><dd>{fmt(data.order.delivery_fee)}</dd></div>
-                            )}
-                            <div><dt className="text-[12px] text-[#6b7280]">{t('إجمالي الفاتورة')}</dt><dd className="font-semibold text-[#111]">{fmt(data.order.total)}</dd></div>
-                        </dl>
+                        {data.full === false ? (
+                            <p className="rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-invoice-limited">
+                                {t('تُعرض بنود البوتيكات وحدها. منتجات المتجر والخصم والضريبة وما دُفع لمن يملك صلاحية المبيعات.')}
+                            </p>
+                        ) : (
+                            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-[10px] bg-[#fafafa] p-3 tabular-nums sm:grid-cols-3" data-testid="boutique-invoice-header">
+                                <div><dt className="text-[12px] text-[#6b7280]">{t('مجموع البنود')}</dt><dd>{fmt(data.shares.lines_total ?? 0)}</dd></div>
+                                {(data.order.discount ?? 0) > 0 && (
+                                    <div><dt className="text-[12px] text-[#6b7280]">{t('خصم الفاتورة (على المتجر)')}</dt><dd>−{fmt(data.order.discount ?? 0)}</dd></div>
+                                )}
+                                {(data.order.tax ?? 0) > 0 && (
+                                    <div>
+                                        <dt className="text-[12px] text-[#6b7280]">{data.order.tax_basis === 'inside' ? t('الضريبة (ضمن الأسعار)') : t('الضريبة (مضافة)')}</dt>
+                                        <dd>{fmt(data.order.tax ?? 0)}</dd>
+                                    </div>
+                                )}
+                                {(data.order.delivery_fee ?? 0) > 0 && (
+                                    <div><dt className="text-[12px] text-[#6b7280]">{t('التوصيل')}</dt><dd>{fmt(data.order.delivery_fee ?? 0)}</dd></div>
+                                )}
+                                <div><dt className="text-[12px] text-[#6b7280]">{t('إجمالي الفاتورة')}</dt><dd className="font-semibold text-[#111]">{fmt(data.order.total ?? 0)}</dd></div>
+                            </dl>
+                        )}
 
                         {data.lines.map((l) => (
                             <div key={l.id} className="rounded-[10px] border border-[var(--ui-border,#e8e8e8)] p-3">
@@ -693,10 +722,12 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                         {l.name}
                                         {l.variant && <span className="text-[12px] text-[#9ca3af]"> — {l.variant}</span>}
                                     </p>
-                                    <span className="tabular-nums text-[#4b4b4b]">
-                                        {number(l.quantity)} × {fmt(l.price)} = {fmt(l.total)}
-                                        {l.addons_total > 0 && <> + {t('إضافات :amount', { amount: fmt(l.addons_total) })}</>}
-                                    </span>
+                                    {l.price !== null && l.total !== null && (
+                                        <span className="tabular-nums text-[#4b4b4b]">
+                                            {number(l.quantity)} × {fmt(l.price)} = {fmt(l.total)}
+                                            {(l.addons_total ?? 0) > 0 && <> + {t('إضافات :amount', { amount: fmt(l.addons_total ?? 0) })}</>}
+                                        </span>
+                                    )}
                                 </div>
 
                                 {!l.boutique && l.pieces.length === 0 && (
@@ -757,21 +788,25 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                         <span className="font-medium tabular-nums text-[#6d28d9]">{fmt(b.owed)}</span>
                                     </li>
                                 ))}
-                                <li className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
-                                    <span>
-                                        {t('المتجر')}
-                                        <span className="block text-[12px] text-[#6b7280]">{t('منتجاته وعمولته وباقي باقاته — قبل خصم الفاتورة')}</span>
-                                    </span>
-                                    <span className="font-medium tabular-nums text-[#047857]">{fmt(data.shares.shop)}</span>
-                                </li>
-                                <li className="flex justify-between gap-2 bg-[#fafafa] px-3 py-2 font-semibold tabular-nums">
-                                    <span>{t('مجموع البنود')}</span>
-                                    <span>{fmt(data.shares.lines_total)}</span>
-                                </li>
+                                {data.shares.shop !== null && data.shares.lines_total !== null && (
+                                    <>
+                                        <li className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+                                            <span>
+                                                {t('المتجر')}
+                                                <span className="block text-[12px] text-[#6b7280]">{t('منتجاته وعمولته وباقي باقاته — قبل خصم الفاتورة')}</span>
+                                            </span>
+                                            <span className="font-medium tabular-nums text-[#047857]">{fmt(data.shares.shop)}</span>
+                                        </li>
+                                        <li className="flex justify-between gap-2 bg-[#fafafa] px-3 py-2 font-semibold tabular-nums">
+                                            <span>{t('مجموع البنود')}</span>
+                                            <span>{fmt(data.shares.lines_total)}</span>
+                                        </li>
+                                    </>
+                                )}
                             </ul>
                         </div>
 
-                        {!data.shares.void && <MoneyBlock money={data.money} fmt={fmt} />}
+                        {!data.shares.void && data.money && <MoneyBlock money={data.money} fmt={fmt} />}
 
                         {data.shares.void && (
                             <p className="rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="boutique-invoice-void">

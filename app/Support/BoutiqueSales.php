@@ -8,6 +8,7 @@ use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueReturnRecovery;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
+use App\Models\CustomerInvoice;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderEdit;
@@ -164,7 +165,7 @@ final class BoutiqueSales
             ->whereNotNull('oi.boutique_id')
             ->when($f['boutique'] !== null, fn ($q) => $q->where('oi.boutique_id', $f['boutique']))
             ->selectRaw('? as type', [self::STANDALONE])
-            ->selectRaw('oi.id as ref_id, o.id as order_id, o.number as order_number, o.ordered_at, o.status as order_status')
+            ->selectRaw('oi.id as ref_id, o.id as order_id, o.number as order_number, o.ordered_at, o.status as order_status, o.channel as channel')
             ->selectRaw('oi.boutique_id, oi.boutique_name, oi.name as product_name, oi.variant_name as variant')
             ->selectRaw('NULL as parent_name, NULL as parent_variant, NULL as parent_total, NULL as addon_name')
             ->selectRaw('oi.quantity as quantity, oi.price as unit_price, oi.total as amount, oi.boutique_rate as rate')
@@ -213,7 +214,7 @@ final class BoutiqueSales
             ->leftJoin('boutique_settlements as bs', 'bs.id', '=', 'g.settlement_id')
             ->where('o.business_id', $businessId)
             ->selectRaw('CASE WHEN g.source = ? THEN ? ELSE ? END as type', [BoutiqueComponentDue::RECIPE, self::BUNDLE, self::ADDON])
-            ->selectRaw('g.ref_id, o.id as order_id, o.number as order_number, o.ordered_at, o.status as order_status')
+            ->selectRaw('g.ref_id, o.id as order_id, o.number as order_number, o.ordered_at, o.status as order_status, o.channel as channel')
             ->selectRaw('g.boutique_id, g.boutique_name, g.product_name, NULL as variant')
             ->selectRaw('oi.name as parent_name, oi.variant_name as parent_variant, oi.total as parent_total, a.name as addon_name')
             ->selectRaw('g.quantity, g.unit_price, g.amount, NULL as rate')
@@ -369,6 +370,8 @@ final class BoutiqueSales
             'order_number' => (string) $r->order_number,
             'ordered_at' => $r->ordered_at ? Carbon::parse($r->ordered_at)->format('Y-m-d H:i') : null,
             'order_status' => (string) $r->order_status,
+            // البابُ الذي بيع منه — من الطلب كما كُتب، باسمه من مصدره الواحد
+            'channel' => SalesChannel::label($r->channel),
             'invoice_state' => $state,
             'void' => $void,
             'boutique_id' => (int) $r->boutique_id,
@@ -605,6 +608,7 @@ final class BoutiqueSales
             'standalone' => $standalone,
             'components' => $components,
             'bundles' => $bundles,
+            'uncounted' => self::uncounted($businessId, $f['boutique'] === null ? null : $ids, $from, $to),
             // هل تُحسب قطعُ البوتيك داخل منتجات المتجر الآن؟ يُقال على الشاشة ولا يُتجاوز رفضُه
             'pieces' => self::piecesState($businessId),
             /*
@@ -649,19 +653,54 @@ final class BoutiqueSales
         ];
     }
 
+    /**
+     * ما كُتب في فواتير العملاء من أصناف البوتيك في الشهر — ولا يدخل الأرقامَ أعلاه.
+     *
+     * فاتورةُ العميل بلا طلبٍ (اليدويّةُ وطلبُ واتساب الآليّ) لا تحمل بنودُها صاحبَ
+     * الصنف ولا نسبتَه ولا ختمَ ورقة، وكلُّ رقمٍ هنا من بنود الطلبات. فيُقال كم هي
+     * كما كُتبت، ولا يُحسب لها مستحقٌّ بنسبة اليوم. والبوتيكُ بحسب بطاقة الصنف
+     * **اليوم** — فهو خبرٌ يُراجَع لا نسبة. وفاتورةُ الطلب خارجة: بيعُها في طلبها.
+     *
+     * @param  list<int>|null  $ids
+     * @return array{lines: int, invoices: int, amount: float}
+     */
+    private static function uncounted(int $businessId, ?array $ids, Carbon $from, Carbon $to): array
+    {
+        $row = DB::table('customer_invoice_items as cii')
+            ->join('customer_invoices as ci', 'ci.id', '=', 'cii.customer_invoice_id')
+            ->join('products as p', 'p.id', '=', 'cii.product_id')
+            ->where('ci.business_id', $businessId)->where('p.business_id', $businessId)
+            ->where('ci.status', CustomerInvoice::ISSUED)
+            ->whereNull('cii.order_item_id')
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('customer_invoice_orders as cio')->whereColumn('cio.customer_invoice_id', 'ci.id'))
+            ->when($ids !== null, fn ($q) => $q->whereIn('p.boutique_id', $ids ?: [0]), fn ($q) => $q->whereNotNull('p.boutique_id'))
+            ->where('ci.issued_at', '>=', $from->toDateString())->where('ci.issued_at', '<', $to->copy()->startOfMonth()->addMonth()->toDateString())
+            ->selectRaw('COUNT(*) as line_count, COUNT(DISTINCT ci.id) as invoice_count, COALESCE(SUM(cii.line_total), 0) as amount')
+            ->first();
+
+        return [
+            'lines' => (int) $row->line_count,
+            'invoices' => (int) $row->invoice_count,
+            'amount' => round((float) $row->amount, 3) + 0.0,
+        ];
+    }
+
     /* ═══════════ تفاصيلُ فاتورة ═══════════ */
 
     /**
-     * فاتورةٌ كما تُقرأ من شاشة البوتيك — بنودُها التي لبوتيكٍ فيها نصيب، وحدها.
+     * فاتورةٌ كما تُقرأ من شاشة البوتيك — بنودُها كلُّها ونصيبُ كلّ جهةٍ ومالُها.
      *
-     * لا بياناتُ الزبون ولا بنودُ المتجر الخالصة: الشاشةُ لحساب البوتيكات، ومن
-     * أراد الفاتورةَ كاملةً فتحها من قسم المبيعات بصلاحيّته (`can_open`).
-     * وفاتورةٌ لا نصيبَ فيها لبوتيكٍ تُردّ `null` — فلا يصير البابُ قارئًا
-     * لكلّ فواتير المتجر.
+     * ═══ والكاملةُ لمن يفتح المبيعات ═══
+     *
+     * `$full` لمن يملك قسمَ «المبيعات» — وهو من يفتح الفاتورةَ نفسَها أصلًا. ومن
+     * يقرأ مالَ البوتيك ولا يملكه يرى ما لبوتيكٍ فيه نصيبٌ وحده: بنودَ البوتيكات
+     * وعمولتَها وصافيها، لا منتجاتِ المتجر ولا الخصمَ ولا الضريبةَ ولا ما دُفع.
+     * ولا بياناتُ الزبون في الحالين. وفاتورةٌ لا نصيبَ فيها لبوتيكٍ تُردّ `null` —
+     * فلا يصير البابُ قارئًا لكلّ فواتير المتجر.
      *
      * @return array<string, mixed>|null
      */
-    public static function invoice(int $businessId, int $orderId): ?array
+    public static function invoice(int $businessId, int $orderId, bool $full = true): ?array
     {
         $order = Order::where('business_id', $businessId)->where('is_held', false)->find($orderId);
         if ($order === null) {
@@ -836,12 +875,21 @@ final class BoutiqueSales
         // مجاميعُ الجهات نفسِها — لا حسابٌ ثانٍ قد يفترق عنها
         $sumOf = fn (string $k) => self::money((int) collect($parties)->sum(fn ($p) => self::baisa($p[$k])));
 
+        if (! $full) {
+            return self::boutiquePart($order, $state, $lines, $parties, $void, [
+                'standalone_gross' => $sumOf('standalone_gross'), 'commission' => $sumOf('commission'),
+                'standalone_net' => $sumOf('standalone_net'), 'components_due' => $sumOf('components_due'), 'owed' => $sumOf('owed'),
+            ]);
+        }
+
         return [
+            'full' => true,
             'order' => [
                 'id' => (int) $order->id,
                 'number' => (string) $order->number,
                 'ordered_at' => optional($order->ordered_at)->format('Y-m-d H:i'),
                 'status' => (string) $order->status,
+                'channel' => SalesChannel::label($order->channel),
                 'invoice_state' => $state,
                 'subtotal' => round((float) $order->subtotal, 3),
                 'discount' => $discount,
@@ -856,6 +904,8 @@ final class BoutiqueSales
                 'discount' => $discount,
                 'discount_coupon' => min($discount, round((float) ($order->coupon_discount ?? 0), 3)),
                 'discount_points' => $order->loyaltyDiscount(),
+                // البنودُ بعد خصم الفاتورة كلِّه — وقبل الضريبة المضافة والتوصيل
+                'after_discount' => self::money($linesB - self::baisa($discount)),
                 'tax' => $tax,
                 'tax_basis' => $basis,
                 'delivery_fee' => $fee,
@@ -892,6 +942,47 @@ final class BoutiqueSales
                 'owed' => $sumOf('owed'),
             ],
             'edits' => $edits,
+        ];
+    }
+
+    /**
+     * ما للبوتيكات في الفاتورة وحده — لمن يقرأ مالها ولا يفتح المبيعات.
+     *
+     * لا بندَ من منتجات المتجر، ولا مبلغَ يُستنتج منه ما للمتجر: البندُ الذي دخلته
+     * قطعةُ بوتيكٍ باسمه لا بثمنه. وما غاب `null` لا صفر — صفرٌ يُقرأ مبلغًا.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     * @param  list<array<string, mixed>>  $parties
+     * @param  array<string, float>  $totals
+     * @return array<string, mixed>
+     */
+    private static function boutiquePart(Order $order, string $state, array $lines, array $parties, bool $void, array $totals): array
+    {
+        $lines = array_values(array_filter($lines, fn (array $l) => $l['boutique'] !== null || $l['pieces'] !== []));
+
+        return [
+            'full' => false,
+            'order' => [
+                'id' => (int) $order->id,
+                'number' => (string) $order->number,
+                'ordered_at' => optional($order->ordered_at)->format('Y-m-d H:i'),
+                'status' => (string) $order->status,
+                'channel' => SalesChannel::label($order->channel),
+                'invoice_state' => $state,
+                'subtotal' => null, 'discount' => null, 'tax' => null, 'delivery_fee' => null, 'total' => null, 'tax_basis' => null,
+            ],
+            'lines' => array_map(fn (array $l) => [
+                ...$l,
+                'shop_share' => null,
+                'shop_remaining' => null,
+                // إضافاتُ المتجر على بند البوتيك للمتجر، وثمنُ بندٍ من المتجر دخلته قطعةٌ للمتجر
+                'addons_total' => null,
+                ...($l['boutique'] === null ? ['price' => null, 'total' => null] : []),
+            ], $lines),
+            'money' => null,
+            'shares' => ['boutiques' => $parties, 'shop' => null, 'void' => $void, 'lines_total' => null, 'reconciles' => true],
+            'totals' => $totals,
+            'edits' => [],
         ];
     }
 }

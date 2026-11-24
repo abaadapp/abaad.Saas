@@ -326,9 +326,56 @@ class AnyShopMayHostBoutiquesAndReadsOnlyItsOwnSalesTest extends TestCase
         $this->assertSame(1, BoutiqueSettlement::where('boutique_id', $noor->id)->count());
         $this->assertGreaterThan(0, (float) BoutiqueSettlement::where('boutique_id', $noor->id)->value('net'));
 
-        // وإعادةُ الفتح من المنصّة ترجع كلَّ شيءٍ كما كان
-        $this->platformSaves($shop, ['boutiques_enabled' => '1', 'boutique_components_enabled' => '1']);
-        $this->assertTrue($this->summary($owner)['hosting']);
+        /*
+         * وإعادةُ الفتح من المنصّة ترجع كلَّ شيءٍ كما كان — ولا تكرّر شيئًا: لا بندَ
+         * ولا مستحقَّ ولا ورقة، ولو أُطفئ وأُعيد مرّاتٍ. وما سُوّي لا يُسوّى ثانيةً.
+         */
+        $kept = $counts();
+        $rows = $this->rows($owner)['rows'];
+        $money = fn () => collect($this->summary($owner))->only(['standalone', 'components', 'owed', 'settlement', 'returns'])->all();
+        $was = $money();
+        foreach (range(1, 3) as $_) {
+            $this->platformSaves($shop, ['boutiques_enabled' => '1', 'boutique_components_enabled' => '1']);
+            $this->assertTrue($this->summary($owner)['hosting']);
+            $this->assertSame($kept, $counts(), 'إعادةُ التفعيل كرّرت معاملةً');
+            $this->assertEquals($rows, $this->rows($owner)['rows']);
+            $this->assertEquals($was, $money(), 'إعادةُ التفعيل غيّرت رقمًا');
+            $this->platformSaves($shop, ['boutiques_enabled' => '0']);
+            $this->assertSame($kept, $counts());
+        }
+        $this->actingAs($owner)->post(route('admin.boutiques.settle', $noor->id), ['period' => self::PERIOD])->assertSessionHasErrors('settlement');
+        $this->assertSame(1, BoutiqueSettlement::where('boutique_id', $noor->id)->count(), 'صدرت ورقةٌ ثانيةٌ لما سُوّي');
+    }
+
+    /** متجران جديدان مستقلّان: بوتيكاتٌ بأسماءٍ واحدة ونسبٍ مختلفة — ولا يتأثّر أحدُهما بالآخر */
+    public function test_two_new_shops_with_different_rates_are_each_their_own_to_the_baisa(): void
+    {
+        $make = function (string $name, float $lama, float $reem) {
+            [$shop, $owner] = $this->shop($name);
+            $this->platformSaves($shop, ['boutiques_enabled' => '1']);
+            $a = $this->boutique($shop, $owner, 'بوتيك لمى', $lama);
+            $b = $this->boutique($shop, $owner, 'بوتيك ريم', $reem);
+            $order = $this->sell($owner, [[$this->product($shop, 'باقة', 20)], [$this->product($shop, 'فضّة', 12, $a->id)], [$this->product($shop, 'شال', 10, $b->id)]]);
+
+            return [$shop, $owner, $order];
+        };
+        [$one, $first, $orderOne] = $make('متجر أوّل', 20, 10);
+        [$two, $second, $orderTwo] = $make('متجر ثانٍ', 12.5, 33.33);
+
+        // ٤٢ = ٢٠ + ١٢ + ١٠ في المتجرين، وكلٌّ بنسبه: ٩٫٦ + ٩ ثمّ ١٠٫٥ + ٦٫٦٦٧
+        $this->assertEquals([22.0, 3.4, 18.6], [$this->summary($first)['standalone']['gross'], $this->summary($first)['standalone']['commission'], $this->summary($first)['owed']]);
+        $this->assertEquals([22.0, 4.833, 17.167], [$this->summary($second)['standalone']['gross'], $this->summary($second)['standalone']['commission'], $this->summary($second)['owed']]);
+        $share = fn (User $u, Order $o) => $this->actingAs($u)->getJson(route('admin.boutiques.sales.order', $o->id))->assertOk()->json('shares');
+        $this->assertEquals([23.4, 42.0], [$share($first, $orderOne)['shop'], $share($first, $orderOne)['lines_total']]);
+        $this->assertEquals([24.833, 42.0], [$share($second, $orderTwo)['shop'], $share($second, $orderTwo)['lines_total']]);
+
+        // إطفاءُ أحدهما لا يمسّ الآخر، ولا يفتح أحدُهما فاتورةَ جاره
+        $before = $this->summary($first);
+        $this->platformSaves($two, ['boutiques_enabled' => '0']);
+        $this->assertEquals($before, $this->summary($first));
+        $this->actingAs($first)->getJson(route('admin.boutiques.sales.order', $orderTwo->id))->assertNotFound();
+        $this->actingAs($second)->getJson(route('admin.boutiques.sales.order', $orderOne->id))->assertNotFound();
+        $this->assertNotSame($one->id, $two->id);
     }
 
     /**

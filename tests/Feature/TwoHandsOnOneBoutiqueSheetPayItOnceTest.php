@@ -165,7 +165,7 @@ class TwoHandsOnOneBoutiqueSheetPayItOnceTest extends TestCase
         BoutiqueDues::pay($sheet->fresh(), 'نقدي');
         $this->actingAs($this->owner);
         $items = OrderItem::where('order_id', $order->id)->whereNotNull('boutique_id')->get();
-        OrderCorrection::cancel($order->fresh(), 'رُدّ', boutiqueReturned: true, boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sound' => (int) $i->quantity, 'damaged' => 0]])->all());
+        OrderCorrection::cancel($order->fresh(), 'رُدّ', boutiqueReturned: true, boutiqueLines: $items->mapWithKeys(fn ($i) => [$i->id => ['sellable' => (int) $i->quantity, 'damaged' => 0]])->all());
         $credit = round(array_sum(BoutiqueDues::credits($this->shop->id, $this->lama->id)), 3);
         $this->assertEquals(7, $credit);
 
@@ -178,5 +178,63 @@ class TwoHandsOnOneBoutiqueSheetPayItOnceTest extends TestCase
         $this->assertSame(1, BoutiqueSettlement::where('kind', BoutiqueSettlement::REFUND)->count());
         $this->assertEquals(0, round(array_sum(BoutiqueDues::credits($this->shop->id, $this->lama->id)), 3));
         $this->assertEquals(7, round((float) BoutiqueSettlement::where('kind', BoutiqueSettlement::REFUND)->sum('components_credit'), 3));
+    }
+
+    /** بيعةٌ حملتها ورقةٌ وأُلغيت بثلاث أيدٍ معًا: مرتجعٌ واحد، والرفُّ يعود مرّةً، والورقةُ كما صدرت */
+    public function test_three_hands_returning_one_settled_sale_return_it_once(): void
+    {
+        $order = $this->sell();
+        $sheet = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+        $kept = [(float) $sheet->gross, (float) $sheet->commission, (float) $sheet->net, (float) $sheet->components_due];
+        $item = OrderItem::where('order_id', $order->id)->whereNotNull('boutique_id')->sole();
+        $shelf = fn () => (int) Product::where('name', 'قطعة')->where('business_id', $this->shop->id)->value('quantity');
+        $before = $shelf();
+
+        $out = $this->hands(sprintf(
+            'Illuminate\\Support\\Facades\\Auth::loginUsingId(%d); App\\Support\\OrderCorrection::cancel(App\\Models\\Order::find(%d), "رُدّ", boutiqueReturned: true, boutiqueLines: [%d => ["sellable" => 1, "damaged" => 0]]);',
+            $this->owner->id, $order->id, $item->id,
+        ));
+        $this->assertContains('ok', $out);
+        foreach ($out as $hand) {
+            $this->assertTrue($hand === 'ok' || str_starts_with($hand, 'RuntimeException:') || $hand === 'refused', $hand);
+        }
+
+        $this->assertSame(Order::CANCELLED, $order->fresh()->status);
+        $this->assertSame(1, DB::table('boutique_returns')->where('order_id', $order->id)->count(), 'مرتجعٌ ثانٍ للقطعة نفسها');
+        $this->assertSame(1, BoutiqueComponentDue::where('order_id', $order->id)->where('kind', BoutiqueComponentDue::CREDIT)->count(), 'رصيدٌ ثانٍ للقطعة نفسها');
+        $this->assertSame($before + 2, $shelf(), 'المنفردُ وقطعةُ الباقة عادتا مرّةً واحدة');
+        $fresh = $sheet->fresh();
+        $this->assertEquals($kept, [(float) $fresh->gross, (float) $fresh->commission, (float) $fresh->net, (float) $fresh->components_due], 'أُعيدت كتابةُ ورقةٍ صدرت');
+        // والدفترُ متوازن: كلُّ قيدٍ مدينُه دائنُه
+        $this->assertEquals(0, round((float) DB::table('journal_lines')->selectRaw('SUM(debit) - SUM(credit) as d')->value('d'), 3));
+    }
+
+    /** إلغاءٌ وإصدارُ ورقةٍ في اللحظة نفسها: إمّا بيعةٌ في ورقةٍ لها مرتجعُها، أو لا ورقةَ تحملها — لا ثالث */
+    public function test_a_return_and_a_sheet_at_once_never_leave_a_returned_sale_owed(): void
+    {
+        $order = $this->sell();
+        $item = OrderItem::where('order_id', $order->id)->whereNotNull('boutique_id')->sole();
+        $start = microtime(true) + 1.2;
+        $running = [
+            $this->hand(sprintf('App\\Support\\Boutiques::settle(App\\Models\\Business::find(%d), App\\Models\\Boutique::find(%d), "%s");', $this->shop->id, $this->lama->id, self::PERIOD), $start),
+            $this->hand(sprintf('Illuminate\\Support\\Facades\\Auth::loginUsingId(%d); App\\Support\\OrderCorrection::cancel(App\\Models\\Order::find(%d), "رُدّ", boutiqueReturned: true, boutiqueLines: [%d => ["sellable" => 1, "damaged" => 0]]);', $this->owner->id, $order->id, $item->id), $start),
+        ];
+        foreach ($running as [$proc, $pipes]) {
+            stream_get_contents($pipes[1]);
+            $this->assertSame('', trim(stream_get_contents($pipes[2])));
+            proc_close($proc);
+        }
+
+        $cancelled = $order->fresh()->status === Order::CANCELLED;
+        $onSheet = OrderItem::whereKey($item->id)->value('boutique_settlement_id') !== null;
+        $notes = DB::table('boutique_returns')->where('order_id', $order->id)->count();
+        if ($cancelled && $onSheet) {
+            $this->assertSame(1, $notes, 'بيعةٌ رُدّت وحملتها ورقةٌ بلا مرتجع — للبوتيك ثمنُ قطعةٍ عادت');
+        } elseif ($cancelled) {
+            $this->assertSame([0, 0], [$notes, BoutiqueSettlement::count()], 'ورقةٌ بلا بيع');
+        } else {
+            $this->assertTrue($onSheet, 'لا أُلغيت ولا سُوّيت');
+        }
+        $this->assertEquals(0, round((float) DB::table('journal_lines')->selectRaw('SUM(debit) - SUM(credit) as d')->value('d'), 3));
     }
 }

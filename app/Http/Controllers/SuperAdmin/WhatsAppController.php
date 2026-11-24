@@ -604,6 +604,8 @@ class WhatsAppController extends Controller
             'own_needs_addon' => WhatsAppFeature::needsOwnNumberAddon($business),
             // مفتوحٌ تلقائيًّا لمن تشمل باقتُه واتساب ولم يُطفأ عنه — قراءةٌ لا مقبض
             'inbox_available' => WhatsAppInbox::available($business),
+            // ‏‏«أرسل رابطًا لعميلك» — حالُ آخر رابط، ولا رمزَ فيه (`WhatsAppClientLinks`)
+            'client_link' => \App\Support\WhatsAppClientLinks::view($business),
         ];
     }
 }

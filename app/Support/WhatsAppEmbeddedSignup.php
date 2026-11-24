@@ -62,6 +62,28 @@ class WhatsAppEmbeddedSignup
             && filled(WhatsAppMerchantLink::configId());
     }
 
+    /**
+     * ‏‏ما يلزم المتصفّحَ ليفتح نافذة Meta — معرّفُ التطبيق ورقمُ إعداده، ولا سرَّ فيه.
+     * تأخذه شاشةُ التاجر وصفحةُ رابط العميل معًا.
+     *
+     * @return array<string, mixed>
+     */
+    public static function publicConfig(): array
+    {
+        return [
+            'configured' => self::configured(),
+            'app_id' => (string) config('whatsapp.app_id'),
+            'config_id' => WhatsAppMerchantLink::configId(),
+            'graph_version' => (string) config('whatsapp.api_version'),
+            'feature_type' => (string) config('whatsapp.feature_type'),
+            'session_info_version' => (string) config('whatsapp.session_info_version'),
+            // نسخةُ التسجيل المدمج إن كُتبت — وبلا نسخةٍ تخدمها ميتا بـv4
+            'version' => config('whatsapp.es_version'),
+            // والتعايشُ يُعرض اختيارًا مطفأً بسببه ما لم يُفتح على الخادم
+            'coexistence_open' => WhatsAppOnboarding::coexistenceOpen(),
+        ];
+    }
+
     private static function base(): string
     {
         return rtrim((string) config('whatsapp.graph_url'), '/').'/'.config('whatsapp.api_version');

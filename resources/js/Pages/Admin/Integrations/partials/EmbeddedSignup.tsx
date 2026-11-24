@@ -209,6 +209,13 @@ interface Props {
     onCode: (code: string, assets: SignupAssets) => void;
     onCancel?: (step: string | null) => void;
     onError?: (message: string | null) => void;
+    /**
+     * تُحمَّل عدّةُ ميتا مع الصفحة لا مع الضغطة — لصفحة رابط العميل وحدها.
+     *
+     * متصفّحُ الهاتف يمنع نافذةً تُفتح بعد انتظار: تحميلُ العدّة بعد الضغطة يأخذ ثوانيَ على شبكةٍ
+     * ضعيفة، فتُمنع النافذةُ بلا رسالة. وهذه صفحةٌ لا تُفتح إلّا للربط.
+     */
+    preload?: boolean;
     /** يُرسم بالحال: مُعطَّلًا أثناء الفتح وأثناء انتظار الخادم */
     children: (state: { open: () => void; busy: boolean }) => React.ReactNode;
 }
@@ -226,8 +233,13 @@ interface Props {
  * ولا يمسّ `localStorage` ولا `sessionStorage`: الكودُ عمرُه ثلاثون ثانية
  * وليس ممّا يُخزَّن، والرمزُ لا يمرّ من هنا أصلًا.
  */
-export default function EmbeddedSignup({ config, kind = 'cloud_api', onCode, onCancel, onError, children }: Props) {
+export default function EmbeddedSignup({ config, kind = 'cloud_api', onCode, onCancel, onError, preload = false, children }: Props) {
     const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        // وفشلُه هنا لا يُقال: الضغطةُ تُعيد المحاولة وتقوله
+        if (preload && config.configured) loadSdk(config.app_id, config.graph_version).catch(() => undefined);
+    }, [preload, config.configured, config.app_id, config.graph_version]);
 
     /*
      * آخرُ ما التقطه المستمع — ويُقرأ لحظةَ يردّ `FB.login`.

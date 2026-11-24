@@ -243,6 +243,8 @@ export interface SharedProps {
         paymentLink?: import('@/Components/PaymentLinks').PaymentLinkRow | null;
         /** وأُنشئ مع إصدار الفاتورة في ضغطةٍ واحدة */
         paymentLinkIssued?: boolean;
+        /** رابطُ ربط واتساب الذي أُنشئ الآن ورسالتُه — يمرّ مرّةً ولا يُحفظ (`WhatsAppClientLinks`) */
+        whatsappClientLink?: { url: string; message: string } | null;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

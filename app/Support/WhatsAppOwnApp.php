@@ -112,6 +112,59 @@ class WhatsAppOwnApp
         return $connection !== null && $connection->link_type === self::TYPE;
     }
 
+    /** ‏‏وصلةُ تطبيق تاجرٍ قائمة — لم يفصلها صاحبُها، تعمل أو تعثّرت */
+    public static function holds(?WhatsAppConnection $connection): bool
+    {
+        return self::is($connection) && $connection->status !== WhatsAppConnection::INACTIVE;
+    }
+
+    /**
+     * ‏‏أيربط هذا المتجرُ بتطبيقه؟ — المفتاحُ للجدد (`enabled`)، ومن ربط بتطبيقه يبقى عليه حتى يفصله.
+     *
+     * كان المفتاحُ وحده يقرّر: فمتجرٌ على تطبيقه يُنقل المفتاحُ فوقه تعرض له صفحتُه زرَّ تطبيق أبعاد
+     * ونموذجَه، وضغطُ أيٍّ منهما يكتب رمزَ تطبيق أبعاد فوق صفٍّ نوعُه «تطبيقه» وسرُّه وعنوانُ إشعاراته له:
+     * وصلةٌ نصفُها لتطبيقٍ ونصفُها لآخر. فيبقى له طريقُه وشاشتُه كما كانا.
+     */
+    public static function onOwnApp(int $businessId): bool
+    {
+        return self::enabled() || self::holds(WhatsAppConnections::forBusiness($businessId));
+    }
+
+    /**
+     * ‏‏ما يُنزع من صفّ متجرٍ فصل تطبيقه ثمّ ربط عبر تطبيق أبعاد — سرُّ تطبيقه وعنوانُ إشعاراته ومراجعةُ
+     * فوترته لا تصف وصلةَ تطبيقٍ آخر. والصفُّ نفسُه يبقى (الرقمُ فريدٌ في الجدول)، وما رُوجع يُحفظ أثرًا.
+     *
+     * @return array<string, mixed>
+     */
+    public static function leave(?WhatsAppConnection $existing): array
+    {
+        if (! self::is($existing) || self::holds($existing)) {
+            return [];
+        }
+
+        $metadata = array_diff_key((array) $existing->metadata, ['billing_facts' => 1, 'app_webhook' => 1]);
+
+        return [
+            'link_type' => null,
+            'app_secret' => null,
+            'webhook_key' => null,
+            'webhook_verify_token' => null,
+            'webhook_verified_at' => null,
+            'billing_state' => null,
+            'billing_owner_id' => null,
+            'billing_owner_name' => null,
+            'billing_checked_at' => null,
+            'billing_evidence' => null,
+            'metadata' => $metadata + ['left_own_app' => [
+                'app_id' => $existing->token_app_id,
+                'waba_id' => $existing->waba_id,
+                'billing_state' => $existing->billing_state,
+                'billing_evidence' => $existing->billing_evidence,
+                'at' => now()->toIso8601String(),
+            ]],
+        ];
+    }
+
     public static function callbackUrl(WhatsAppConnection $connection): string
     {
         return self::callbackFor((string) $connection->webhook_key);
@@ -136,9 +189,7 @@ class WhatsAppOwnApp
      */
     public static function awaitsBilling(?WhatsAppConnection $connection): bool
     {
-        return self::is($connection)
-            && $connection->status !== WhatsAppConnection::INACTIVE
-            && ! self::billed($connection);
+        return self::holds($connection) && ! self::billed($connection);
     }
 
     /**
@@ -838,10 +889,11 @@ class WhatsAppOwnApp
      */
     public static function view(?WhatsAppConnection $connection, bool $mayManage): array
     {
-        $mine = self::is($connection) && $connection->status !== WhatsAppConnection::INACTIVE;
+        $mine = self::holds($connection);
 
         return [
-            'enabled' => self::enabled(),
+            // ‏‏ومن ربط بتطبيقه تبقى له شاشتُه وإن نُقل الجددُ إلى تطبيق أبعاد (`onOwnApp`)
+            'enabled' => self::enabled() || $mine,
             'connection' => $mine ? [
                 'app_id' => $connection->token_app_id,
                 'waba_id' => $connection->waba_id,

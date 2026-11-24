@@ -521,7 +521,7 @@ class CustomerInvoiceController extends Controller
     private function catalogProducts(int $bid): array
     {
         $products = Product::where('business_id', $bid)->orderBy('name')
-            ->limit(self::CATALOG_LIMIT)->get(['id', 'business_id', 'name', 'name_en', 'sku', 'barcode', 'price']);
+            ->limit(self::CATALOG_LIMIT)->get(['id', 'business_id', 'boutique_id', 'name', 'name_en', 'sku', 'barcode', 'price']);
 
         $variants = ProductVariant::where('business_id', $bid)->where('active', true)
             ->whereIn('product_id', $products->pluck('id'))
@@ -530,11 +530,15 @@ class CustomerInvoiceController extends Controller
 
         $all = Addon::where('business_id', $bid)->orderBy('id')->get();
         $map = \App\Support\ProductAddons::map($bid);
+        // اسمُ بوتيكه حين يكون له — فيُنبَّه كاتبُ الورقة أنّها لا تدخل حسابَه (`BoutiqueInvoiceReview`)
+        $boutiques = \App\Models\Boutique::where('business_id', $bid)
+            ->whereIn('id', $products->pluck('boutique_id')->filter()->unique())->get(['id', 'name', 'name_en'])->keyBy('id');
 
         return $products->map(fn (Product $p) => [
             'id' => $p->id,
             'name' => $p->name,
             'name_en' => $p->name_en,
+            'boutique' => $p->boutique_id ? $boutiques->get($p->boutique_id)?->label() : null,
             'sku' => $p->sku,
             'barcode' => $p->barcode,
             'price' => (float) $p->price,

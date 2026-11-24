@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Http\Controllers\Admin\BoutiqueController;
+use App\Http\Controllers\Admin\BoutiqueInvoiceReviewController;
 use App\Http\Controllers\Admin\CustomOrderTemplateController;
 use App\Http\Controllers\Admin\DocumentPrintController;
 use App\Http\Controllers\Admin\EmployeeController;
@@ -819,6 +820,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      */
     Route::get('/products/boutiques', [BoutiqueController::class, 'index'])->name('boutiques.index');
     Route::post('/products/boutiques', [BoutiqueController::class, 'store'])->name('boutiques.store');
+    // فواتيرُ عملاءٍ فيها صنفُ بوتيكٍ لم يدخل حسابَه — قراءةٌ للمراجعة (`BoutiqueInvoiceReview`)
+    Route::get('/products/boutiques/invoice-review', [BoutiqueInvoiceReviewController::class, 'index'])->name('boutiques.invoiceReview');
     Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
     Route::put('/products/boutiques/{id}', [BoutiqueController::class, 'update'])->name('boutiques.update');
     Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');

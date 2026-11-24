@@ -15,6 +15,7 @@ import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
 import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
+import InvoiceReviewPanel from './InvoiceReviewPanel';
 
 interface Line {
     product_id: number | null;
@@ -392,6 +393,9 @@ export default function BoutiqueShow() {
                     </div>
                 )}
             </Card>
+
+            {/* فواتيرُ عملاءٍ فيها صنفُه ولم تدخل هذا الكشف — للمراجعة */}
+            <InvoiceReviewPanel boutiqueId={boutique.id} currency={currency} />
 
             {/*
                 وما صدر من قبل — فيُقرأ تاريخُه بلا تنقّلٍ بين الشهور.

@@ -87,6 +87,8 @@ export function customerMatches(c: Pick<CustomerRow, 'name' | 'name_en' | 'phone
 }
 
 interface ProductRow {
+    /** بوتيكُه إن كان لبوتيك — فاتورةُ العميل لا تدخل حسابَه */
+    boutique?: string | null;
     id: number;
     name: string;
     /** اسمُه الإنجليزيّ — يُبحث به ويُعرض في الواجهة الإنجليزيّة */
@@ -1207,6 +1209,12 @@ export default function CustomerInvoiceCreate({
                                                                 {t(product ? 'المقاس والإضافات والتفاصيل' : 'الخيارات والملاحظة')}
                                                                 {count > 0 && ` (${count})`}
                                                             </button>
+                                                            {/* صنفُ بوتيكٍ في فاتورة عميل لا يدخل حسابَه — يُقال لكاتبها ولا يُمنع */}
+                                                            {product?.boutique && (
+                                                                <p data-testid="line-boutique-note" className="mt-1 px-1 text-[12px] leading-5 text-[#b45309]">
+                                                                    {t('صنف بوتيك «:name»: فاتورة العميل لا تدخل حسابه. سجّله بيعًا آجلًا من نقطة البيع ليُحتسب.', { name: product.boutique })}
+                                                                </p>
+                                                            )}
                                                         </>
                                                     )}
                                                 </td>

@@ -181,6 +181,11 @@ class WhatsAppAutoReply
             return;
         }
 
+        // ‏‏ومن طلب إيقافَ العروض (زرُّ الحملة أو كلمتُها) يُجاب بذلك وحده — قبل كلّ ردٍّ آليّ
+        if (WhatsAppOptOuts::receive($connection, $message, $row)) {
+            return;
+        }
+
         /*
          * ═══ والطلبُ الآليُّ أوّلًا — ولا ردّان ═══
          *

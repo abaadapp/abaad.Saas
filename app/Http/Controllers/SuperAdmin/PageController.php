@@ -647,6 +647,8 @@ class PageController extends Controller
             'whatsappLink' => WhatsAppMerchantLink::state(),
             // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات — مقفلةٌ افتراضًا (`ChannelAutomationsSwitch`)
             'channelAutomations' => \App\Support\ChannelAutomationsSwitch::state(),
+            // ‏‏ولمن تُفتح حملاتُ واتساب — مقفلةٌ افتراضًا (`WhatsAppCampaignsSwitch`)
+            'whatsappCampaigns' => \App\Support\WhatsAppCampaignsSwitch::state(),
             // ‏‏وتطبيقُ إنستقرام ولمن يُفتح ربطُه، والعناوينُ التي تُلصق في لوحة Meta (`InstagramPlatform`)
             'instagram' => \App\Support\InstagramPlatform::state(),
             /*

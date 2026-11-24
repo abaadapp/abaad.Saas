@@ -561,7 +561,14 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
         $this->assertSame($this->owner->id, (int) $this->prep($cancelled)->activated_by);
     }
 
-    /** والإرسالُ باليد لا يُرسل فاتورةً لم تُسدَّد */
+    /**
+     * والإرسالُ باليد لا يُرسل فاتورةً لم تُسدَّد.
+     *
+     * وكان التحصيلُ النقديّ ينتظر هذا الزرَّ ولو سدّد الفاتورةَ كلَّها، فتبقى
+     * خارج اللوحة حتّى يتذكّره أحد (قرارُ المالك 2026-11-24: تظهر بسدادها
+     * الكامل أيًّا كانت وسيلتُه). فبقي الزرُّ لما لا يُحتسب بابًا وحده: هنا
+     * مالٌ سُجّل والميزةُ مغلقة.
+     */
     public function test_sending_by_hand_reads_the_payment_on_the_server(): void
     {
         $invoice = $this->invoice();
@@ -569,11 +576,25 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
         $this->post(route('admin.customerInvoices.preparation.activate', $invoice->id))->assertSessionHasErrors('preparation');
         $this->assertNull($this->prep($invoice)->activated_at);
 
-        CustomerPayments::record($this->shop->id, $this->customer, 105, ['method' => 'نقدي', 'occurred_at' => '2026-10-19'], [$invoice->id => 105]);
-        $this->assertNull($this->prep($invoice)->activated_at, 'التحصيلُ النقديّ لا يُظهرها وحده');
+        // جزءٌ لا يكفي — لا وحدَه ولا بالزرّ
+        CustomerPayments::record($this->shop->id, $this->customer, 60, ['method' => 'نقدي', 'occurred_at' => '2026-10-19'], [$invoice->id => 60]);
+        $this->post(route('admin.customerInvoices.preparation.activate', $invoice->id))->assertSessionHasErrors('preparation');
+        $this->assertNull($this->prep($invoice)->activated_at);
+
+        // والباقي سُجّل والميزةُ مغلقة: لا يُظهرها، ثمّ يُرسلها بيده من يملك التحصيل
+        $this->open($this->shop, false);
+        CustomerPayments::record($this->shop->id, $this->customer, 45, ['method' => 'نقدي', 'occurred_at' => '2026-10-19'], [$invoice->id => 45]);
+        $this->assertNull($this->prep($invoice)->activated_at, 'والمفتاحُ مغلق لا يُفعِّل');
+        $this->open($this->shop);
 
         $this->post(route('admin.customerInvoices.preparation.activate', $invoice->id))->assertSessionHasNoErrors();
-        $this->assertNotNull($this->prep($invoice)->activated_at);
+        $this->assertSame(CustomerInvoicePreparations::FROM_HAND, $this->prep($invoice)->activation_source);
+
+        // وتحصيلٌ نقديٌّ أتمّها والميزةُ مفتوحة يُظهرها وحده — وتحصيلُه بابُها
+        $cash = $this->invoice();
+        $payment = CustomerPayments::record($this->shop->id, $this->customer, 105, ['method' => 'نقدي', 'occurred_at' => '2026-10-19'], [$cash->id => 105]);
+        $this->assertSame(CustomerInvoicePreparations::FROM_PAYMENT, $this->prep($cash)->activation_source);
+        $this->assertSame((int) $payment->id, (int) $this->prep($cash)->activation_payment_id);
     }
 
     /** ودفعةٌ أُلغيت بعد الظهور لا تُخفي العمل — لكنّها لا تُقال «مدفوعة» */
@@ -627,7 +648,9 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
     /**
      * ودفعةُ رابطٍ أُلغيت لا تُحتسب — ولو سُدّدت الفاتورةُ بغيرها.
      *
-     * الإشعارُ المكرَّر بعدها لا يُظهر المهمّة بدفعةٍ ملغاة: تُرسلها يدٌ بعد المراجعة.
+     * الإشعارُ المكرَّر بعدها لا يُظهر المهمّة بدفعةٍ ملغاة. والتحصيلُ الذي
+     * سدّدها حقًّا بابٌ يُحتسب: تُظهرها به المطابقة — وهو بابُها في السجلّ لا
+     * الدفعةُ الملغاة.
      */
     public function test_a_cancelled_link_payment_never_activates_even_when_the_invoice_is_paid_otherwise(): void
     {
@@ -645,10 +668,13 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
 
         $this->open($this->shop);
         $this->hook($obj);
-        Artisan::call('customer-invoices:reconcile-preparations');
-
         $this->assertNull($this->prep($invoice)->activated_at, 'دفعةٌ ملغاةٌ لا تكون بابًا');
         $this->assertFalse(CustomerInvoicePreparations::linkCounts($link->fresh()));
+
+        Artisan::call('customer-invoices:reconcile-preparations');
+        $prep = $this->prep($invoice);
+        $this->assertSame(CustomerInvoicePreparations::FROM_PAYMENT, $prep->activation_source);
+        $this->assertSame((int) CustomerPayment::whereNull('cancelled_at')->value('id'), (int) $prep->activation_payment_id, 'بابُها التحصيلُ القائم');
     }
 
     /** ومتجرٌ مغلقٌ لا تُفعَّل فيه مهمّةٌ ولو كُتبت قبل إغلاقه */

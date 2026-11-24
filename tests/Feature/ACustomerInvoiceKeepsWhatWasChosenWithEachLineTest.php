@@ -353,9 +353,9 @@ class ACustomerInvoiceKeepsWhatWasChosenWithEachLineTest extends TestCase
             'recipient_name' => 'مريم', 'recipient_phone' => '99887766', 'delivery_address' => 'الخوير',
         ], $this->owner->id);
         CustomerPayments::record($this->shop->id, $this->customer, (float) $invoice->total, ['method' => 'نقدي', 'occurred_at' => '2026-10-20'], [$invoice->id => (float) $invoice->total]);
-        [$task] = CustomerInvoicePreparations::activate($invoice->id, CustomerInvoicePreparations::FROM_HAND);
 
-        return $task->fresh(['invoice.items', 'branch']);
+        // وسدادُها الكامل أظهرها — تُقرأ ولا تُفعَّل ثانية
+        return $invoice->preparation()->firstOrFail()->fresh(['invoice.items', 'branch']);
     }
 
     public function test_the_internal_copy_shows_the_details_with_their_money_and_the_delivery_note_without(): void

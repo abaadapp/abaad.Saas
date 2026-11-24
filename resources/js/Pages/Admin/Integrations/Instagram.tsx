@@ -1,5 +1,5 @@
-import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Camera as InstagramIcon, LogIn, Unlink } from 'lucide-react';
+import { Link, router, usePage } from '@inertiajs/react';
+import { AlertTriangle, Bot, Camera as InstagramIcon, LogIn, Unlink } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackLink from '@/Components/BackLink';
@@ -22,6 +22,8 @@ export interface InstagramLinkView {
     connected_at: string | null;
     missing_permissions: string[];
     subscribed: boolean;
+    /** أيصل ما يكتبه التاجرُ بيده من تطبيق إنستقرام؟ — فتصمت الأتمتةُ عن زبونٍ يحادثه */
+    hears_phone: boolean;
     error: string | null;
 }
 
@@ -29,6 +31,8 @@ export interface InstagramPageView {
     link: InstagramLinkView | null;
     may_manage: boolean;
     scopes: string[];
+    /** أتمتتُه — `null` لمتجرٍ لم تُفتح له (`InstagramAutomations::available`) */
+    automations?: { published: number; total: number } | null;
 }
 
 const PERMISSION_LABEL: Record<string, string> = {
@@ -168,7 +172,28 @@ export function InstagramScreen({ view }: { view: InstagramPageView }) {
                 </SettingsSection>
             )}
 
-            <SettingsSection title="ما الذي يأتي بعد الربط" description="الرد الآلي على التعليقات برسالة خاصة، وعلى الرسائل بالكلمات — بالمحرّك نفسه الذي يرد على واتساب. يُفتح في الخطوة التالية." />
+            {view.automations ? (
+                <SettingsSection
+                    title="أتمتة إنستقرام"
+                    description="يعلّق أحد «بكم؟» فيصله ردك على الخاص، أو يكتب رسالة فيصلها ردها — بقوالب جاهزة."
+                    icon={Bot}
+                    status={
+                        <span className="text-[12px] text-[#6b7280] tabular-nums" data-testid="ig-automations-count">
+                            {t(':n تعمل من :total', { n: view.automations.published, total: view.automations.total })}
+                        </span>
+                    }
+                    action={
+                        <Button asChild variant="outline">
+                            <Link href={route('admin.integrations.instagram.automations')}>
+                                <Bot />
+                                {t('أتمتة إنستقرام')}
+                            </Link>
+                        </Button>
+                    }
+                />
+            ) : (
+                <SettingsSection title="ما الذي يأتي بعد الربط" description="الرد الآلي على التعليقات برسالة خاصة، وعلى الرسائل بالكلمات — تفتحه إدارة أبعاد لمتجرك." />
+            )}
         </>
     );
 }

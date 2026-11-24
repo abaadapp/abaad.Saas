@@ -13,7 +13,7 @@ import InstagramPlatformCard, { type InstagramPlatformState } from '@/Pages/Plat
 const LINK: InstagramLinkView = {
     state: 'connected', username: 'rose.shop', name: 'محل الورد', account_type: 'BUSINESS', picture: null,
     expires_at: '2027-01-20T10:00:00+04:00', last_webhook_at: null, connected_at: '2026-11-23T10:00:00+04:00',
-    missing_permissions: [], subscribed: true, error: null,
+    missing_permissions: [], subscribed: true, hears_phone: true, error: null,
 };
 
 const VIEW: InstagramPageView = { link: null, may_manage: true, scopes: [] };

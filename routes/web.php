@@ -603,6 +603,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/instagram/mode', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'mode'])->name('instagram.mode');
     // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات: مقفلة، أو لمتاجر تجربة، أو للجميع (`ChannelAutomationsSwitch`)
     Route::post('/automations/switch', [App\Http\Controllers\SuperAdmin\ChannelAutomationsController::class, 'switch'])->name('automations.switch');
+    // ‏‏ولمن تُفتح حملاتُ واتساب: مقفلة، أو لمتاجر تجربة، أو للجميع (`WhatsAppCampaignsSwitch`)
+    Route::post('/whatsapp-campaigns/switch', [App\Http\Controllers\SuperAdmin\WhatsAppCampaignsController::class, 'switch'])->name('whatsappCampaigns.switch');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
@@ -637,6 +639,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/setup', [SetupController::class, 'index'])->name('setup.index');
     Route::post('/setup/confirm', [SetupController::class, 'confirm'])->name('setup.confirm');
     Route::get('/dashboard/stats', [DashboardController::class, 'adminStats'])->name('dashboard.stats');
+    // إغلاقُ تنبيه بيانات العملاء إلى آخر الجلسة — قسمُه `dashboard` من اسمه
+    Route::post('/dashboard/phone-review/dismiss', [DashboardController::class, 'dismissPhoneReview'])->name('dashboard.phoneReview.dismiss');
 
     /*
      * لوحة التجهيز — قسمُها `preparation` يُشتقّ من اسم المسار.
@@ -1570,6 +1574,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         Route::get('/instagram/callback', [App\Http\Controllers\Admin\InstagramController::class, 'callback'])
             ->middleware('throttle:10,1,instagram-link')->name('instagram.callback');
         Route::post('/instagram/disconnect', [App\Http\Controllers\Admin\InstagramController::class, 'disconnect'])->name('instagram.disconnect');
+        // ‏‏وأتمتتُه — لمتجرٍ فُتح له إنستقرامُ والأتمتةُ معًا (`InstagramAutomations::available`)
+        Route::get('/instagram/automations', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'index'])->name('instagram.automations');
+        Route::get('/instagram/automations/posts', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'posts'])
+            ->middleware('throttle:30,1,instagram-automations')->name('instagram.automations.posts');
+        Route::post('/instagram/automations', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'store'])
+            ->middleware('throttle:30,1,instagram-automations')->name('instagram.automations.store');
+        Route::put('/instagram/automations/{automation}', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'update'])
+            ->whereNumber('automation')->middleware('throttle:60,1,instagram-automations')->name('instagram.automations.update');
+        Route::post('/instagram/automations/{automation}/status', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'status'])
+            ->whereNumber('automation')->middleware('throttle:60,1,instagram-automations')->name('instagram.automations.status');
+        Route::delete('/instagram/automations/{automation}', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'destroy'])
+            ->whereNumber('automation')->name('instagram.automations.destroy');
 
         /*
          * ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`).
@@ -1618,6 +1634,30 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * ومعرّفُه يُقرأ من الجلسة في المتحكّم لا من العنوان.
      */
     Route::get('/marketing/whatsapp/log', [App\Http\Controllers\Admin\WhatsAppController::class, 'log'])->name('marketing.whatsapp.log');
+
+    /*
+     * ‏‏وحملاتُ واتساب — لمتجرٍ فتحتها له المنصّة وحده (`WhatsAppCampaignsSwitch`)، والكتابةُ لصاحب الحساب:
+     * كلُّ رسالةٍ تُحتسب على حسابه عند Meta.
+     */
+    Route::get('/marketing/whatsapp/campaigns', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'index'])->name('marketing.whatsapp.campaigns');
+    Route::post('/marketing/whatsapp/campaigns/preview', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'preview'])
+        ->middleware('throttle:60,1,whatsapp-campaigns-preview')->name('marketing.whatsapp.campaigns.preview');
+    Route::post('/marketing/whatsapp/campaigns', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'store'])
+        ->middleware('throttle:10,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.store');
+    Route::post('/marketing/whatsapp/campaigns/templates', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'storeTemplate'])
+        ->middleware('throttle:10,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.templates.store');
+    Route::post('/marketing/whatsapp/campaigns/templates/sync', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'syncTemplates'])
+        ->middleware('throttle:10,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.templates.sync');
+    Route::delete('/marketing/whatsapp/campaigns/templates/{template}', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'destroyTemplate'])
+        ->whereNumber('template')->name('marketing.whatsapp.campaigns.templates.destroy');
+    Route::post('/marketing/whatsapp/campaigns/optouts', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'optOut'])
+        ->middleware('throttle:30,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.optouts.store');
+    Route::post('/marketing/whatsapp/campaigns/{campaign}/pause', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'pause'])
+        ->whereNumber('campaign')->name('marketing.whatsapp.campaigns.pause');
+    Route::post('/marketing/whatsapp/campaigns/{campaign}/resume', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'resume'])
+        ->whereNumber('campaign')->name('marketing.whatsapp.campaigns.resume');
+    Route::post('/marketing/whatsapp/campaigns/{campaign}/cancel', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'cancel'])
+        ->whereNumber('campaign')->name('marketing.whatsapp.campaigns.cancel');
 
     /*
      * «محادثات واتساب» — صندوقُ المتجر مع زبائنه، بفعلٍ لا بقسم.

@@ -20,6 +20,7 @@ use App\Support\OrderTransition;
 use App\Support\Permissions;
 use App\Support\PrepChecklist;
 use App\Support\PrepSheet;
+use App\Support\PreparationScope;
 use App\Support\PrintJobs;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
@@ -49,6 +50,14 @@ class PreparationController extends Controller
 {
     /** أقصى ما يُرسم على اللوحة دفعةً واحدة — وما زاد يُقال عددُه لا يُبتلع */
     private const BOARD_LIMIT = 200;
+
+    /**
+     * وسقفُ «عرض المزيد» — ما يحمله متصفّحٌ على جهاز طاولة ويستطلعه كلّ عشرين ثانية.
+     *
+     * وليس سقفَ ما يُبلغ: ما بعده نوافذُ بطوله (`from`)، «التالي» و«السابق» —
+     * فلا طلبَ ينتظر لا يصل إليه من يجهّز مهما كثرت.
+     */
+    public const BOARD_MAX = 1000;
 
     /**
      * أعمدةُ اللوحة — تجميعُ حالاتٍ قائمة، لا حالاتٌ جديدة.
@@ -102,32 +111,33 @@ class PreparationController extends Controller
             : null;
 
         /*
+         * ونطاقُ اللوحة صلاحيّةٌ لا جلسة — انظر `PreparationScope`.
+         *
+         * كلُّ ما يُجهَّز في فروعه، أيًّا كان من أنشأه أو قبض ثمنَه. والفرعُ
+         * المختار مُرشِّحٌ في العنوان كأخويه (`?branch=`): يُكتب فوق اللوحة
+         * ويُلغى منها، ولا يبقى في جلسةٍ تُخفي طلبًا بعد شهر.
+         */
+        $own = $this->scope();
+        $scope = $own->filtered($request->query('branch'));
+
+        // و«عرض المزيد» في العنوان كذلك: الاستطلاعُ يسأل عنه بما فيه فلا ترتدّ اللوحةُ إلى سقفها
+        $limit = max(self::BOARD_LIMIT, min(self::BOARD_MAX, (int) $request->query('show')));
+
+        /*
          * الاستعلام لا يحمل تاريخًا لا يلزم.
          *
          * `awaitingPreparation` يستبعد المغلق والمعلَّق وبيعةَ المنضدة، فلا
          * تُحمَّل ستّمئة فاتورةٍ أُغلقت منذ شهور. والفهرس المركّب
          * [business_id, scheduled_for] يخدم الترشيح والترتيب معًا.
-         *
-         * و`with('items')` لا حلقةٌ على الطلبات: بدونها استعلامٌ لكل طلب —
-         * عشرون طلبًا على اللوحة تعني واحدًا وعشرين استعلامًا.
          */
-        $q = $this->base()
-            ->when($type, fn ($w) => $w->where('fulfillment_type', $type))
-            ->with([
-                // `variant_name` في الانتقاء وإلّا عاد الاسم بلا مقاسه:
-                // عمودٌ لم يُنتقَ يُقرأ فارغًا لا مفقودًا، فيصمت العطب
-                'items:id,order_id,name,variant_name,quantity,note,product_id,custom_details,price,total',
-                // موادُّ الطلب المخصَّص — تُحمَّل مع البنود لا باستعلامٍ لكلّ بطاقة
-                'items.components',
-                // الصورة من المنتج — لا سعرَه اليوم ولا تكلفتَه: سعرُ البيع على البند
-                // والعلامةُ والمتجرُ معها: بندُ الكرت يُعرف بها بلا سؤالٍ لكلّ بند (`GiftCardProduct::cardLine`)
-                'items.product:id,business_id,image,is_gift_card,tracks_stock',
-                'items.addons',
-                // وهاتفُ صاحب الطلب — من سجلّ العميل، فالطلبُ لا يحمله
-                'customer:id,phone',
-            ]);
-
+        $q = $this->base($scope)->when($type, fn ($w) => $w->where('fulfillment_type', $type));
         $this->applyWindow($q, $filter);
+
+        $tasks = null;
+        if ($this->invoicesOn()) {
+            $tasks = $this->invoiceBase($scope)->when($type, fn ($w) => $w->where('fulfillment_type', $type));
+            $this->applyWindow($tasks, $filter);
+        }
 
         /*
          * السقف يبقى، والصمتُ عنه لا يبقى.
@@ -142,21 +152,36 @@ class PreparationController extends Controller
          * شاشة.
          *
          * فيُقال العدد صراحةً ويُدلّ على المرشّح الذي يُظهر الباقي — والعدّ
-         * على الاستعلام نفسه بنافذته ومرشّحه، لا على «الكلّ» فوقه.
+         * على الاستعلام نفسه بنافذته ومرشّحه، لا على «الكلّ» فوقه. ويُبلغ
+         * كلُّه: «عرض المزيد» يرفع السقفَ في العنوان (`show`) حتّى `BOARD_MAX`،
+         * وما بعده نوافذُ بطوله (`from`).
          */
-        $total = (clone $q)->count();
+        $total = (clone $q)->count() + ($tasks ? (clone $tasks)->count() : 0);
+
+        // ونافذةٌ خلت — سُلّم ما فيها — تردّ إلى آخر نافذةٍ فيها شيء، لا إلى لوحةٍ فارغة
+        $from = max(0, (int) $request->query('from'));
+        $from = min(intdiv($from, $limit), intdiv(max(0, $total - 1), $limit)) * $limit;
+
+        [$orderIds, $taskIds, $place] = $this->boardPage($q, $tasks, $from, $limit);
+
         /*
-         * والترتيبُ بالموعد، ومن لا موعدَ له بساعة وصوله.
-         *
-         * `orderBy('scheduled_for')` وحدَها تُرتّب الفراغَ بما يقوله المحرّك:
-         * PostgreSQL تضعه آخرًا وSQLite أوّلًا. فطلبُ الموقع بلا موعد يقف على
-         * الإنتاج في ذيلٍ يقصّه `BOARD_LIMIT` — يظهر في العدّاد ولا يُرى.
-         *
-         * و`coalesce` لا تبدّل ترتيبَ ما هو على اللوحة اليوم: كلُّ بطاقةٍ
-         * عليها لها موعد، فتقرأ موعدَها نفسَه.
+         * و`with('items')` لا حلقةٌ على الطلبات: بدونها استعلامٌ لكل طلب —
+         * عشرون طلبًا على اللوحة تعني واحدًا وعشرين استعلامًا.
          */
-        $orders = $q->orderByRaw('coalesce(scheduled_for, ordered_at)')
-            ->limit(self::BOARD_LIMIT)->get();
+        $orders = Order::where('business_id', $this->bid())->whereKey($orderIds)
+            ->with([
+                // `variant_name` في الانتقاء وإلّا عاد الاسم بلا مقاسه:
+                // عمودٌ لم يُنتقَ يُقرأ فارغًا لا مفقودًا، فيصمت العطب
+                'items:id,order_id,name,variant_name,quantity,note,product_id,custom_details,price,total',
+                // موادُّ الطلب المخصَّص — تُحمَّل مع البنود لا باستعلامٍ لكلّ بطاقة
+                'items.components',
+                // الصورة من المنتج — لا سعرَه اليوم ولا تكلفتَه: سعرُ البيع على البند
+                // والعلامةُ والمتجرُ معها: بندُ الكرت يُعرف بها بلا سؤالٍ لكلّ بند (`GiftCardProduct::cardLine`)
+                'items.product:id,business_id,image,is_gift_card,tracks_stock',
+                'items.addons',
+                // وهاتفُ صاحب الطلب — من سجلّ العميل، فالطلبُ لا يحمله
+                'customer:id,phone',
+            ])->get();
 
         /*
          * والعلاماتُ تُقرأ دفعةً واحدة.
@@ -175,27 +200,41 @@ class PreparationController extends Controller
          *
          * بطاقةٌ لكلّ مهمّة، بمفتاحٍ مصنَّف (`customer-invoice:{id}`) لا برقم:
          * فلا تتصادم بطلبٍ. وتُرتَّب مع الطلبات بموعدها كأنّها منها، والسقفُ
-         * سقفُ اللوحة كلّها. ولمتجرٍ لم يُفتح له: الطلباتُ وحدها كما كانت.
+         * سقفُ اللوحة كلّها (`boardPage`). ولمتجرٍ لم يُفتح له: الطلباتُ وحدها.
          */
-        $cards = $orders->map(fn ($o) => [$o->scheduled_for ?? $o->ordered_at, $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal)])->all();
-
-        if ($this->invoicesOn()) {
-            [$more, $count] = $this->invoiceCards($type, $filter);
-            $total += $count;
-            $cards = array_merge($cards, $more);
-            $at = fn ($when) => $when ? $when->getTimestamp() : PHP_INT_MAX;
-            usort($cards, fn ($a, $b) => $at($a[0]) <=> $at($b[0]));
-            $cards = array_slice($cards, 0, self::BOARD_LIMIT);
+        $cards = [];
+        foreach ($orders as $o) {
+            $cards[$place['o'.$o->id]] = $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal);
         }
+        foreach ($taskIds === [] ? [] : $this->invoiceCards($taskIds) as $id => $card) {
+            $cards[$place['t'.$id]] = $card;
+        }
+        ksort($cards);
+        $cards = array_values($cards);
 
-        $cards = array_column($cards, 1);
+        // وما لا فرعَ له لا يراه من قُيِّد بفروع — فيُقال عددُه لمن يراه (`PreparationScope`)
+        $mine = $own->branches();
+        $unassigned = $scope->allowed === null && $scope->chosen === null && count($mine) > 1
+            ? array_sum($this->summed($scope, fn ($base) => ['n' => $base->whereNull('branch_id')->count()]))
+            : 0;
 
         return Inertia::render('Admin/Preparation/Index', [
             'orders' => $cards,
-            'filters' => ['when' => $filter, 'type' => $type],
-            'counts' => $this->counts($type),
-            'typeCounts' => $this->typeCounts($filter),
-            'columnCounts' => $this->columnCounts($filter, $type),
+            'filters' => [
+                'when' => $filter,
+                'type' => $type,
+                'branch' => $scope->chosen,
+                'show' => $limit > self::BOARD_LIMIT ? $limit : null,
+                'from' => $from > 0 ? $from : null,
+            ],
+            // والمُرشِّحُ لمن له أكثرُ من فرع — فرعٌ واحدٌ لا يُرشَّح به شيء
+            'branches' => count($mine) > 1 ? $mine : [],
+            // ومن قُيِّد بفروعٍ يُقال له ما تعرضه لوحتُه — لا لوحةٌ ناقصةٌ بلا سبب
+            'limited' => $own->limits($mine),
+            'unassigned' => $unassigned,
+            'counts' => $this->counts($scope, $type),
+            'typeCounts' => $this->typeCounts($scope, $filter),
+            'columnCounts' => $this->columnCounts($scope, $filter, $type),
             /*
              * وخريطةُ الأعمدة تصل من الخادم لا تُكتب في الشاشة.
              *
@@ -205,7 +244,15 @@ class PreparationController extends Controller
              */
             'columns' => self::COLUMNS,
             'truncated' => $total > count($cards)
-                ? ['shown' => count($cards), 'total' => $total]
+                ? [
+                    'shown' => count($cards),
+                    'total' => $total,
+                    'from' => $from,
+                    // «عرض المزيد» حتّى السقف، ثمّ نوافذُ بطوله — حتّى آخر بطاقة
+                    'more' => $from === 0 && $limit < self::BOARD_MAX ? min(self::BOARD_MAX, $limit + self::BOARD_LIMIT) : null,
+                    'next' => ($from > 0 || $limit >= self::BOARD_MAX) && $from + $limit < $total ? $from + $limit : null,
+                    'prev' => $from > 0 ? max(0, $from - $limit) : null,
+                ]
                 : null,
             /*
              * وختمُ القراءة — به تقيس الشاشةُ عمرَ ما تعرض.
@@ -248,9 +295,9 @@ class PreparationController extends Controller
      *
      * @return array<string, int>
      */
-    private function columnCounts(?string $when, ?string $type): array
+    private function columnCounts(PreparationScope $scope, ?string $when, ?string $type): array
     {
-        return $this->summed(fn ($base) => $this->columnCountsOf($base, $when, $type));
+        return $this->summed($scope, fn ($base) => $this->columnCountsOf($base, $when, $type));
     }
 
     private function columnCountsOf($base, ?string $when, ?string $type): array
@@ -282,24 +329,33 @@ class PreparationController extends Controller
         return $out;
     }
 
-    /** ما تنتظره اللوحة: متجرُ المستخدم، وفرعُه، وما لم يُغلق بعد */
-    private function base()
+    /** نطاقُ هذا المستخدم على اللوحة — متجرُه وفروعُه، بلا ترشيح (`PreparationScope`) */
+    private function scope(): PreparationScope
     {
-        return Order::where('business_id', $this->bid())
-            ->awaitingPreparation()
-            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()));
+        return PreparationScope::of(auth()->user(), $this->bid());
     }
 
     /**
-     * مهامُّ فواتير العملاء — في متجره، وفي الفرع الحاليّ إن كان.
+     * ما تنتظره اللوحة: متجرُ المستخدم، وفروعُه، وما لم يُغلق بعد.
+     *
+     * وبلا نطاقٍ مُمرَّرٍ فهو نطاقُه كلُّه: النقلُ والعلامةُ والورقةُ والسجلُّ
+     * تبلغ كلَّ ما يراه، والترشيحُ عرضٌ لا باب.
+     */
+    private function base(?PreparationScope $scope = null)
+    {
+        return ($scope ?? $this->scope())->orders()->awaitingPreparation();
+    }
+
+    /**
+     * مهامُّ فواتير العملاء — في متجره وفروعه، بالنطاق نفسِه.
      *
      * ظهرت بسدادٍ كاملٍ ولم تُغلق (`CustomerInvoicePreparations::board`). وأعمدتُها
      * بأسماء أعمدة الطلب (`status` و`scheduled_for` و`fulfillment_type`): فالعدُّ
      * والنوافذُ والتبويبات تُقرأ بالدوالّ نفسِها لا بنسخةٍ ثانية.
      */
-    private function invoiceBase()
+    private function invoiceBase(?PreparationScope $scope = null)
     {
-        return CustomerInvoicePreparations::board($this->bid(), Demo::currentBranchId());
+        return CustomerInvoicePreparations::board($this->bid(), $scope ?? $this->scope());
     }
 
     private ?bool $invoicesOn = null;
@@ -318,12 +374,12 @@ class PreparationController extends Controller
      * @param  callable(mixed): array<string, int>  $count
      * @return array<string, int>
      */
-    private function summed(callable $count): array
+    private function summed(PreparationScope $scope, callable $count): array
     {
-        $out = $count($this->base());
+        $out = $count($this->base($scope));
 
         if ($this->invoicesOn()) {
-            foreach ($count($this->invoiceBase()) as $k => $v) {
+            foreach ($count($this->invoiceBase($scope)) as $k => $v) {
                 $out[$k] = ($out[$k] ?? 0) + $v;
             }
         }
@@ -359,9 +415,9 @@ class PreparationController extends Controller
      *
      * @return array<string, int>
      */
-    private function counts(?string $type): array
+    private function counts(PreparationScope $scope, ?string $type): array
     {
-        return $this->summed(fn ($base) => $this->countsOf($base, $type));
+        return $this->summed($scope, fn ($base) => $this->countsOf($base, $type));
     }
 
     private function countsOf($base, ?string $type): array
@@ -399,9 +455,9 @@ class PreparationController extends Controller
      *
      * @return array<string, int>
      */
-    private function typeCounts(?string $when): array
+    private function typeCounts(PreparationScope $scope, ?string $when): array
     {
-        return $this->summed(fn ($base) => $this->typeCountsOf($base, $when));
+        return $this->summed($scope, fn ($base) => $this->typeCountsOf($base, $when));
     }
 
     private function typeCountsOf($base, ?string $when): array
@@ -640,7 +696,7 @@ class PreparationController extends Controller
      *
      * ═══ والحصرُ حصرُ اللوحة نفسِها ═══
      *
-     * `base()` لا `Order::where(...)`: متجرُه، وفرعُه المختار، وما لم يُغلق
+     * `base()` لا `Order::where(...)`: متجرُه، وفروعُه، وما لم يُغلق
      * بعدُ. فلا يطبع سندَ طلبٍ ليس على لوحته — ولا سندَ طلبٍ سُلّم وأُغلق.
      * و«خرج للتوصيل» ليست من `CLOSED`، فالورقةُ تبقى في متناوله بعد الضغطة.
      */
@@ -676,7 +732,7 @@ class PreparationController extends Controller
      * و`DocumentRenderer` نفسُه، وعرضُ طابعة الصندوق (٥٨ أو ٨٠). لا نسخةَ
      * هنا تفترق عنها يوم يُضاف إلى الإيصال سطر.
      *
-     * والحصرُ حصرُ اللوحة (`base()`) قبلها: متجرُه، وفرعُه المختار، وما لم
+     * والحصرُ حصرُ اللوحة (`base()`) قبلها: متجرُه، وفروعُه، وما لم
      * يُغلق — كسند التسليم أعلاه.
      */
     public function receipt(string $number)
@@ -718,7 +774,7 @@ class PreparationController extends Controller
      *
      * ═══ وحارسان لا واحد ═══
      *
-     * الطلبُ من `base()`: متجرُه وفرعُه وما لم يُغلق. والمفتاحُ من الطلب نفسِه
+     * الطلبُ من `base()`: متجرُه وفروعُه وما لم يُغلق. والمفتاحُ من الطلب نفسِه
      * (`PrepChecklist::allows`) — فلا يُؤشَّر بندُ طلبٍ آخر برقمٍ يُبدَّل في
      * الطلب، ولا مفتاحٌ مخترَعٌ يُكتب في الجدول فيتراكم ما لا يُعرض.
      */
@@ -839,11 +895,8 @@ class PreparationController extends Controller
             'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
         ]);
 
-        $order = Order::where('business_id', $this->bid())
-            ->where('is_held', false)
-            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()))
-            ->where('number', $number)
-            ->firstOrFail();
+        // بنطاق البطاقات نفسِه، ومغلقُها معها: طلبٌ سُلّم قبل لحظةٍ يُردّ نقلُه برسالته لا بـ٤٠٤
+        $order = $this->scope()->orders()->toPrepare()->where('number', $number)->firstOrFail();
 
         /*
          * و«من» تُقرأ مقفلةً داخل النقل لا هنا.
@@ -897,44 +950,87 @@ class PreparationController extends Controller
     /* ═══════════════════════ مهامُّ فواتير العملاء ═══════════════════════ */
 
     /**
-     * بطاقاتُ مهامّ الفواتير — بالمرشّحات نفسِها، ومعها مفتاحُ ترتيبها.
+     * بطاقاتُ مهامّ الفواتير — بمعرّفاتها في نافذة اللوحة.
      *
      * والاستعلاماتُ ثابتةٌ مهما كثرت: الفاتورةُ وبنودُها وعميلُها وفرعُها
      * محمَّلةٌ معًا، وباقيها محسوبٌ في الاستعلام نفسِه، وآخرُ ورقةٍ لكلّ مهمّة
      * في استعلامٍ واحد.
      *
-     * @return array{0: list<array{0: mixed, 1: array<string, mixed>}>, 1: int}
+     * @param  list<int>  $ids
+     * @return array<int, array<string, mixed>>
      */
-    private function invoiceCards(?string $type, ?string $when): array
+    private function invoiceCards(array $ids): array
     {
-        $q = $this->invoiceBase()->when($type, fn ($w) => $w->where('fulfillment_type', $type));
-        $this->applyWindow($q, $when);
-
-        $count = (clone $q)->count();
-
-        $tasks = $q->with([
+        $tasks = CustomerInvoicePreparation::where('business_id', $this->bid())->whereKey($ids)->with([
             'invoice' => fn ($i) => $i->select('customer_invoices.*')
                 ->selectRaw(CustomerInvoice::outstandingSql().' as board_outstanding')
                 ->with(['items', 'customer:id,phone']),
             'branch:id,name',
-        ])->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
+        ])->get();
 
         // وما انقضت مهلةُ حجزه يُعرض «لم يؤكَّد» بأزراره، لا «يطبعها الصندوق الآن» أبدًا
         PrintJobs::expireClaims((int) $this->bid());
 
         $jobs = PrintJob::where('business_id', $this->bid())
             ->where('subject_type', 'customer_invoice_preparation')
-            ->whereIn('subject_id', $tasks->pluck('id')->all())
+            ->whereIn('subject_id', $ids)
             ->orderBy('id')->get()->keyBy('subject_id');
 
         // ويُسأل مرّةً للوحة كلّها — لا مرّةً لكلّ بطاقة
         $mayEdit = $this->mayEditDetails();
 
-        $cards = $tasks->filter(fn (CustomerInvoicePreparation $p) => $p->invoice !== null)
-            ->map(fn (CustomerInvoicePreparation $p) => [$p->scheduled_for, $this->invoiceCard($p, $jobs->get($p->id), $mayEdit)])
-            ->values()->all();
+        return $tasks->filter(fn (CustomerInvoicePreparation $p) => $p->invoice !== null)
+            ->mapWithKeys(fn (CustomerInvoicePreparation $p) => [(int) $p->id => $this->invoiceCard($p, $jobs->get($p->id), $mayEdit)])
+            ->all();
+    }
 
-        return [$cards, $count];
+    /**
+     * نافذةٌ من اللوحة — معرّفاتُ بطاقاتها من الجدولين وموضعُ كلٍّ منها.
+     *
+     * ═══ ولمَ معرّفاتٌ أوّلًا ═══
+     *
+     * جدولان يُرتَّبان بموعدٍ واحد، والنافذةُ الثانيةُ تحتاج ما قبلها من
+     * الجدولين ليُعرف أين تبدأ. فتُقرأ المعرّفاتُ وحدها — عمودان — ثمّ تُحمَّل
+     * بطاقاتُ النافذة بنودًا وصورًا، لا بطاقاتُ ما قبلها.
+     *
+     * ═══ والترتيبُ لا يتأرجح ═══
+     *
+     * بالموعد، ومن لا موعدَ له بساعة وصوله: `orderBy('scheduled_for')` وحدَها
+     * تُرتّب الفراغَ بما يقوله المحرّك — PostgreSQL آخرًا وSQLite أوّلًا — فيقف
+     * طلبُ الموقع بلا موعدٍ في ذيلٍ يقصّه السقف. ثمّ بالمعرّف: موعدان سواء
+     * يقعان في نافذتين أو في واحدةٍ مرّتين إن لم يُحسم بينهما.
+     *
+     * @return array{0: list<int>, 1: list<int>, 2: array<string, int>}
+     */
+    private function boardPage($orders, $tasks, int $from, int $limit): array
+    {
+        $keys = [];
+        $read = function ($q, string $kind, string $at) use (&$keys, $from, $limit) {
+            $rows = (clone $q)->toBase()->select('id')->selectRaw($at.' as board_at')
+                ->orderByRaw($at)->orderBy('id')->limit($from + $limit)->get();
+
+            foreach ($rows as $r) {
+                // نصٌّ من القاعدة في الجدولين (`Y-m-d H:i:s`) — يُقارن كما هو، والفراغُ آخرًا
+                $keys[] = [$r->board_at !== null ? (string) $r->board_at : '~', $kind, (int) $r->id];
+            }
+        };
+
+        $read($orders, 'o', 'coalesce(scheduled_for, ordered_at, created_at)');
+        if ($tasks) {
+            $read($tasks, 't', 'coalesce(scheduled_for, activated_at)');
+        }
+
+        sort($keys);
+        $page = array_slice($keys, $from, $limit);
+
+        $ids = ['o' => [], 't' => []];
+        $place = [];
+        foreach ($page as $i => [, $kind, $id]) {
+            $ids[$kind][] = $id;
+            $place[$kind.$id] = $i;
+        }
+
+        return [$ids['o'], $ids['t'], $place];
     }
 
     /**
@@ -969,6 +1065,7 @@ class PreparationController extends Controller
             'payment_verified' => $paid,
             'payment_source' => match ($p->activation_source) {
                 CustomerInvoicePreparations::FROM_PAYMOB, CustomerInvoicePreparations::FROM_RECONCILE => __('عبر رابط الدفع'),
+                CustomerInvoicePreparations::FROM_PAYMENT => __('بتحصيل مسجَّل'),
                 CustomerInvoicePreparations::FROM_HAND => __('أرسلها موظف بعد السداد'),
                 default => null,
             },
@@ -1027,7 +1124,7 @@ class PreparationController extends Controller
         ];
     }
 
-    /** مهمّةُ فاتورةٍ في اللوحة — في متجرها وفرعها، ظهرت ولم تُغلق */
+    /** مهمّةُ فاتورةٍ في اللوحة — في متجره وفروعه، ظهرت ولم تُغلق */
     private function invoiceTask(int $id): CustomerInvoicePreparation
     {
         abort_unless($this->invoicesOn(), 404);
@@ -1050,7 +1147,7 @@ class PreparationController extends Controller
         ]);
 
         $from = null;
-        if ($error = CustomerInvoicePreparations::move($this->bid(), $id, Demo::currentBranchId(), $data['status'], $from)) {
+        if ($error = CustomerInvoicePreparations::move($this->bid(), $id, $this->scope(), $data['status'], $from)) {
             return back()
                 ->with('toast', ['msg' => $error, 'type' => 'danger'])
                 ->withErrors(['status' => $error]);
@@ -1089,11 +1186,10 @@ class PreparationController extends Controller
         abort_unless($this->invoicesOn(), 404);
         $user = auth()->user();
 
-        // ظهرت في لوحة متجره وفرعه — والمسلَّمةُ تُردّ بسببها تحت القفل لا بـ٤٠٤
-        $prep = CustomerInvoicePreparation::where('business_id', $this->bid())
-            ->whereNotNull('activated_at')
-            ->when(Demo::currentBranchId(), fn ($q, $branch) => $q->where('branch_id', $branch))
-            ->whereKey($id)->with('invoice')->firstOrFail();
+        // ظهرت في لوحة متجره وفروعه — والمسلَّمةُ تُردّ بسببها تحت القفل لا بـ٤٠٤
+        $prep = $this->scope()->apply(
+            CustomerInvoicePreparation::where('business_id', $this->bid())->whereNotNull('activated_at')
+        )->whereKey($id)->with('invoice')->firstOrFail();
 
         $request->merge(['preparation' => array_merge((array) $request->input('preparation'), ['enabled' => true])]);
         $data = $request->validate(

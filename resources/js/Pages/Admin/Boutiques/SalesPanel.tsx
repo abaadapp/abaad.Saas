@@ -648,7 +648,7 @@ function MoneyBlock({ money, fmt }: { money: NonNullable<InvoiceDetails['money']
             {row(t('المتبقي على العميل'), fmt(money.balance))}
             <div className="mt-1 border-t border-[var(--ui-border,#e8e8e8)] pt-1">
                 {row(t('مستحق البوتيكات'), fmt(money.boutiques_owed))}
-                {row(t('حصة المتجر بعد تحمّل الخصومات'), fmt(money.shop_after_discount), 'text-[#047857]')}
+                {row(t('حصة المتجر بعد تحمّل الخصومات'), fmt(money.shop_after_discount), money.shop_after_discount < 0 ? 'font-semibold text-[#b91c1c]' : 'text-[#047857]')}
                 {money.tax_basis === 'inside' && money.tax > 0 && row(t('منها ضريبة يورّدها المتجر'), fmt(money.tax))}
                 {money.shop_after_discount < 0 && (
                     <p className="mt-1 rounded-md bg-[#fef2f2] px-2 py-1.5 text-[12px] leading-5 text-[#b91c1c]" data-testid="boutique-invoice-discount-over">

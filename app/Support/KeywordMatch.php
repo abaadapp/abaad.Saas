@@ -16,6 +16,13 @@ namespace App\Support;
  *
  *  - `contains`: الكلمةُ في أيّ موضعٍ من الرسالة («كم سعر الباقة» فيها «سعر»).
  *  - `exact`: الرسالةُ كلُّها هي الكلمة لا غير («سعر» وحدها).
+ *  - `any`: أيُّ تعليق — لتعليقات منشوراتٍ اختارها التاجر وحدها (`ChannelAutomations::unpublishable`).
+ *
+ * ═══ و`contains` من أوّل كلمة لا من وسطها ═══
+ *
+ * «بكم» حروفٌ في «نحبكم»، و«link» في «blink» — وزبونٌ كتب «نحبكم» تحت منشورٍ لم يسأل عن سعر.
+ * فالكلمةُ تبدأ كلمةً في الرسالة، ويُقبل قبلها ما يلتصق بها في العربيّة (وبالسعر، للتوصيل،
+ * عالموقع، هالباقة) وبعدها ما يلحقها (سعره، طلباتي).
  */
 class KeywordMatch
 {
@@ -23,7 +30,12 @@ class KeywordMatch
 
     public const EXACT = 'exact';
 
+    public const ANY = 'any';
+
     public const MODES = [self::CONTAINS, self::EXACT];
+
+    /** ‏‏ما يلتصق بأوّل الكلمة: واوٌ أو فاء، ثمّ باءٌ أو لامٌ أو كافٌ أو عينٌ أو هاء، ثمّ «ال» أو لامُها المدغمة */
+    private const ATTACHED = '[وف]?[بلكعه]?(?:ال|ل)?';
 
     public static function normalize(string $text): string
     {
@@ -70,7 +82,7 @@ class KeywordMatch
 
             $hit = $mode === self::EXACT
                 ? $haystack === $needle
-                : str_contains($haystack, $needle);
+                : preg_match('/(?:^|\s)'.self::ATTACHED.preg_quote($needle, '/').'/u', $haystack) === 1;
 
             if ($hit) {
                 return (string) $keyword;

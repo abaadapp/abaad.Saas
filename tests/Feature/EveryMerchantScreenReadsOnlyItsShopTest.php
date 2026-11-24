@@ -94,6 +94,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
             ['addons', $b['addon'], 'name', 'ADDON'],
             ['product_variants', $b['variant'], 'name', 'VARIANT'],
             ['channel_automations', $b['channel_automation'], 'name', 'AUTOMATION'],
+            ['channel_automations', $b['instagram_automation'], 'name', 'IG-AUTOMATION'],
             ['instagram_connections', $b['instagram_connection'], 'username', 'INSTAGRAM'],
         ];
 

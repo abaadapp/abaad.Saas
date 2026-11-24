@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\ChannelAutomationRun;
 use App\Models\InstagramConnection;
 use App\Models\InstagramDataDeletion;
 use App\Models\InstagramEvent;
@@ -15,7 +16,7 @@ use Illuminate\Support\Str;
  *
  * Meta تعيد الإشعار ستًّا وثلاثين ساعةً ما لم يُجب بـ200، ومنشورٌ ينتشر يجلب آلاف التعليقات دفعةً.
  * فكلُّ تعليقٍ أو رسالةٍ يُكتب صفًّا بمفتاحٍ فريد (معرّفُ التعليق أو الرسالة) ويُجاب فورًا — والمكرَّرُ
- * لا يُكتب ثانية. والأتمتةُ تقرأ هذه الصفوف (الخطوة التالية)، ولا يُردّ هنا على أحد.
+ * لا يُكتب ثانية. ولا يُردّ هنا على أحد: الردُّ في الطابور (`InstagramAutomations::queue`).
  *
  * ولا يُحفظ ما ليس لحسابٍ مربوطٍ يعمل في متجرٍ فُتح له إنستقرام: إشعارُ حسابٍ فصله صاحبُه يُجاب
  * بـ200 ويُترك.
@@ -56,16 +57,24 @@ class InstagramWebhooks
         $saved = 0;
 
         foreach ((array) ($payload['entry'] ?? []) as $entry) {
-            $account = (string) ($entry['id'] ?? '');
-            $connection = $account === '' ? null : InstagramConnection::where('ig_user_id', $account)->first();
+            $entry = (array) $entry;
+            $connection = self::connectionOf($entry);
+            $account = (string) ($connection?->ig_user_id ?? '');
 
             if ($connection === null || ! $connection->usable() || ! InstagramPlatform::allows((int) $connection->business_id)) {
                 continue;
             }
 
             $events = [];
+            $listening = InstagramAutomations::listening((int) $connection->business_id);
+            $changes = (array) ($entry['changes'] ?? []);
 
-            foreach ((array) ($entry['changes'] ?? []) as $change) {
+            // ‏‏والوثيقةُ تعرض الشكلين: الحقلُ في `changes[]`، والحقلُ في المدخل نفسِه
+            if (isset($entry['field'])) {
+                $changes[] = ['field' => $entry['field'], 'value' => $entry['value'] ?? []];
+            }
+
+            foreach ($changes as $change) {
                 $value = (array) ($change['value'] ?? []);
                 $field = (string) ($change['field'] ?? 'unknown');
                 $id = (string) ($value['id'] ?? $value['comment_id'] ?? '');
@@ -90,17 +99,48 @@ class InstagramWebhooks
                     'instagram_connection_id' => $connection->id,
                     'event_key' => mb_substr($key, 0, 191),
                     'field' => mb_substr($field, 0, 40),
+                    'counterpart' => InstagramAutomations::counterpart($field, (array) $body),
                     'payload' => ['account' => $account, 'time' => $entry['time'] ?? null] + (array) $body,
                     'received_at' => now(),
                 ]));
 
-                $saved += $row instanceof InstagramEvent ? 1 : 0;
+                if (! $row instanceof InstagramEvent) {
+                    continue;
+                }
+
+                $saved++;
+                InstagramAutomations::queue($row, $listening);
             }
 
             $connection->forceFill(['last_webhook_at' => now()])->save();
         }
 
         return $saved;
+    }
+
+    /**
+     * ‏‏الحسابُ الذي يعنيه المدخل — بمعرّفه.
+     *
+     * ومثالُ ضغطة الزرّ في الوثيقة يضع في `entry.id` معرّفَ الزبون لا الحساب: فهذا الشكلُ وحده (المدخلُ
+     * باسم من ضغط، ولا تعليقَ فيه) يُسأل فيه عن المستلِم.
+     *
+     * @param  array<string, mixed>  $entry
+     */
+    private static function connectionOf(array $entry): ?InstagramConnection
+    {
+        $id = (string) ($entry['id'] ?? '');
+        $found = $id === '' ? null : InstagramConnection::where('ig_user_id', $id)->first();
+
+        if ($found !== null || isset($entry['changes']) || isset($entry['field'])) {
+            return $found;
+        }
+
+        $first = (array) (((array) ($entry['messaging'] ?? []))[0] ?? []);
+        $to = (string) ($first['recipient']['id'] ?? '');
+
+        return isset($first['postback']) && $to !== '' && $id === (string) ($first['sender']['id'] ?? '')
+            ? InstagramConnection::where('ig_user_id', $to)->first()
+            : null;
     }
 
     /**
@@ -163,6 +203,8 @@ class InstagramWebhooks
 
             if ($connection !== null) {
                 InstagramEvent::where('instagram_connection_id', $connection->id)->delete();
+                // ‏‏وسجلُّ الردود فيه معرّفاتُ من كتبوا إلى الحساب — يُحذف معها، ويبقى ما كتبه التاجرُ من أتمتة
+                ChannelAutomationRun::where('business_id', $businessId)->where('channel', ChannelAutomations::INSTAGRAM)->delete();
                 $connection->delete();
 
                 Activity::log('settings', 'إنستقرام: حُذفت بيانات الحساب @'.$connection->username.' بطلب صاحبه من Meta', [

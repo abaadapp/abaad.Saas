@@ -5,10 +5,8 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\InstagramConnection;
 use App\Models\User;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -30,8 +28,11 @@ class InstagramLink
 {
     public const SCOPES = ['instagram_business_basic', 'instagram_business_manage_messages', 'instagram_business_manage_comments'];
 
-    /** ‏‏حقولُ الإشعارات التي يُشترك فيها الحساب — التعليقاتُ والرسائلُ وضغطاتُ الأزرار */
+    /** ‏‏حقولُ الإشعارات التي لا تعمل الأتمتةُ بلا واحدٍ منها — التعليقاتُ والرسائلُ وضغطاتُ الأزرار */
     public const FIELDS = ['comments', 'messages', 'messaging_postbacks'];
+
+    /** ‏‏ومعها ما كتبه التاجرُ بيده من تطبيق إنستقرام — فتصمت الأتمتةُ عن زبونٍ يحادثه. وبلاه يبقى الربطُ صحيحًا */
+    public const ECHOES = 'message_echoes';
 
     public const STATE_TTL_MINUTES = 10;
 
@@ -102,7 +103,7 @@ class InstagramLink
             return self::refused(__('لم يكتمل الربط — لم يصل رمز من إنستقرام.'));
         }
 
-        $short = self::post((string) config('services.instagram.token_url'), [
+        $short = InstagramGraph::form((string) config('services.instagram.token_url'), [
             'client_id' => InstagramPlatform::appId(),
             'client_secret' => InstagramPlatform::appSecret(),
             'grant_type' => 'authorization_code',
@@ -119,7 +120,7 @@ class InstagramLink
 
         $granted = self::permissions($token['permissions'] ?? null);
 
-        $long = self::get('/access_token', [
+        $long = InstagramGraph::get('/access_token', [
             'grant_type' => 'ig_exchange_token',
             'client_secret' => InstagramPlatform::appSecret(),
             'access_token' => (string) $token['access_token'],
@@ -132,7 +133,7 @@ class InstagramLink
         $access = (string) $long['body']['access_token'];
         $expires = now()->addSeconds(max(3600, (int) ($long['body']['expires_in'] ?? 5184000)));
 
-        $me = self::get('/me', [
+        $me = InstagramGraph::get('/me', [
             'fields' => 'id,user_id,username,name,account_type,profile_picture_url',
             'access_token' => $access,
         ]);
@@ -168,7 +169,7 @@ class InstagramLink
                 'access_token' => $access,
                 'token_expires_at' => $expires,
                 'permissions' => $granted,
-                'subscribed_fields' => $subscribed['ok'] ? self::FIELDS : [],
+                'subscribed_fields' => $subscribed['fields'],
                 'status' => InstagramConnection::ACTIVE,
                 'last_error' => $subscribed['ok'] ? null : mb_substr(__('لم يُشترك في الإشعارات: :why', ['why' => $subscribed['error']]), 0, 255),
                 'connected_by' => $user->id,
@@ -209,7 +210,7 @@ class InstagramLink
             return ['ok' => false, 'skipped' => true, 'error' => null];
         }
 
-        $r = self::get('/refresh_access_token', [
+        $r = InstagramGraph::get('/refresh_access_token', [
             'grant_type' => 'ig_refresh_token',
             'access_token' => (string) $connection->access_token,
         ], versioned: false);
@@ -227,10 +228,7 @@ class InstagramLink
 
         // ‏‏خطأُ رمزٍ (١٩٠) لا يُعاد: الرمزُ أُلغي أو انتهى — يعيد التاجرُ الربط. وغيرُه يُحاول غدًا
         if ($r['code'] === 190 || ($r['status'] === 400 && $r['type'] === 'OAuthException')) {
-            $connection->forceFill([
-                'status' => InstagramConnection::NEEDS_RELINK,
-                'last_error' => mb_substr(__('انتهى إذن إنستقرام — أعد ربط الحساب.').' ('.$r['error'].')', 0, 255),
-            ])->save();
+            self::needsRelink($connection, $r['error']);
         } else {
             $connection->forceFill(['last_error' => mb_substr(__('تعذّر تجديد رمز إنستقرام — نحاول غدًا.').' ('.$r['error'].')', 0, 255)])->save();
         }
@@ -240,13 +238,22 @@ class InstagramLink
         return ['ok' => false, 'skipped' => false, 'error' => $r['error']];
     }
 
+    /** ‏‏رمزٌ رفضته Meta — الوصلةُ «أعد الربط» بسببها، ولا يُرسل منها شيءٌ بعده */
+    public static function needsRelink(InstagramConnection $connection, string $error): void
+    {
+        $connection->forceFill([
+            'status' => InstagramConnection::NEEDS_RELINK,
+            'last_error' => mb_substr(__('انتهى إذن إنستقرام — أعد ربط الحساب.').' ('.$error.')', 0, 255),
+        ])->save();
+    }
+
     /**
      * ‏‏يفصل التاجرُ حسابه — يُمحى الرمز، ويُطلب من Meta وقفُ الإشعارات (محاولةٌ لا شرط).
      */
     public static function disconnect(InstagramConnection $connection, ?User $by = null): void
     {
         if (filled($connection->access_token)) {
-            self::delete('/'.$connection->ig_user_id.'/subscribed_apps', (string) $connection->access_token);
+            InstagramGraph::delete('/'.$connection->ig_user_id.'/subscribed_apps', (string) $connection->access_token);
         }
 
         self::revoke($connection, 'فُصل من أبعاد');
@@ -299,19 +306,36 @@ class InstagramLink
             'connected_at' => $c->connected_at?->toIso8601String(),
             'missing_permissions' => array_values(array_diff(self::SCOPES, (array) ($c->permissions ?? []))),
             'subscribed' => array_values(array_intersect(self::FIELDS, (array) ($c->subscribed_fields ?? []))) === self::FIELDS,
+            'hears_phone' => in_array(self::ECHOES, (array) ($c->subscribed_fields ?? []), true),
             'error' => $c->last_error,
         ];
     }
 
-    /** @return array{ok: bool, error: ?string} */
+    /**
+     * ‏‏يشترك في الإشعارات — بحقل الرسائل المرتدّة إن قبلته Meta، وإلّا بالحقول الثلاثة وحدها.
+     *
+     * فحقلٌ إضافيٌّ لا تقبله Meta لا يُسقط الربط: يبقى كلُّ شيءٍ إلّا أنّ الأتمتة لا ترى ردَّ التاجر من هاتفه.
+     *
+     * @return array{ok: bool, fields: list<string>, error: ?string}
+     */
     private static function subscribe(string $igUserId, string $token): array
     {
-        $r = self::post(self::graph('/'.$igUserId.'/subscribed_apps'), [
-            'subscribed_fields' => implode(',', self::FIELDS),
-            'access_token' => $token,
-        ]);
+        $error = null;
 
-        return ['ok' => $r['ok'] && ($r['body']['success'] ?? false) === true, 'error' => $r['error'] ?: __('جواب غير متوقع')];
+        foreach ([[...self::FIELDS, self::ECHOES], self::FIELDS] as $fields) {
+            $r = InstagramGraph::form(InstagramGraph::url('/'.$igUserId.'/subscribed_apps'), [
+                'subscribed_fields' => implode(',', $fields),
+                'access_token' => $token,
+            ]);
+
+            if ($r['ok'] && ($r['body']['success'] ?? false) === true) {
+                return ['ok' => true, 'fields' => $fields, 'error' => null];
+            }
+
+            $error = $r['error'] ?: __('جواب غير متوقع');
+        }
+
+        return ['ok' => false, 'fields' => [], 'error' => $error];
     }
 
     /** @return list<string> */
@@ -331,62 +355,5 @@ class InstagramLink
     private static function refused(string $message): array
     {
         return ['ok' => false, 'message' => $message, 'connection' => null];
-    }
-
-    private static function graph(string $path, bool $versioned = true): string
-    {
-        return rtrim((string) config('services.instagram.graph_url'), '/')
-            .($versioned ? '/'.config('services.instagram.api_version') : '')
-            .$path;
-    }
-
-    /** @return array{ok: bool, status: int, body: array, error: string, code: ?int, type: ?string} */
-    private static function get(string $path, array $query, bool $versioned = true): array
-    {
-        try {
-            return self::read(Http::timeout((int) config('services.instagram.timeout', 15))->acceptJson()->get(self::graph($path, $versioned), $query));
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'status' => 0, 'body' => [], 'error' => 'network_error', 'code' => null, 'type' => null];
-        }
-    }
-
-    /** @return array{ok: bool, status: int, body: array, error: string, code: ?int, type: ?string} */
-    private static function post(string $url, array $form): array
-    {
-        try {
-            return self::read(Http::timeout((int) config('services.instagram.timeout', 15))->acceptJson()->asForm()->post($url, $form));
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'status' => 0, 'body' => [], 'error' => 'network_error', 'code' => null, 'type' => null];
-        }
-    }
-
-    private static function delete(string $path, string $token): void
-    {
-        try {
-            Http::timeout((int) config('services.instagram.timeout', 15))->acceptJson()->delete(self::graph($path).'?'.http_build_query(['access_token' => $token]));
-        } catch (\Throwable $e) {
-            // ‏‏محاولةٌ لا شرط: الرمزُ يُمحى عندنا على أيّ حال
-        }
-    }
-
-    /** @return array{ok: bool, status: int, body: array, error: string, code: ?int, type: ?string} */
-    private static function read(Response $r): array
-    {
-        $body = (array) ($r->json() ?? []);
-        $err = (array) ($body['error'] ?? []);
-
-        // ‏‏وأخطاءُ تسجيل الدخول تأتي مسطّحةً (`error_type`/`error_message`)، وأخطاءُ Graph في `error{}`
-        $message = (string) ($err['message'] ?? $body['error_message'] ?? '');
-        $code = $err['code'] ?? $body['code'] ?? null;
-        $type = $err['type'] ?? $body['error_type'] ?? null;
-
-        return [
-            'ok' => $r->successful() && $err === [] && ! isset($body['error_type']),
-            'status' => $r->status(),
-            'body' => $body,
-            'error' => mb_substr(trim(($code !== null ? $code.' · ' : '').$message) ?: ($r->successful() ? '' : 'HTTP '.$r->status()), 0, 160),
-            'code' => is_numeric($code) ? (int) $code : null,
-            'type' => is_string($type) ? $type : null,
-        ];
     }
 }

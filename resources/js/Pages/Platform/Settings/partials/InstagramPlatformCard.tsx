@@ -142,6 +142,7 @@ export default function InstagramPlatformCard({ state }: { state: InstagramPlatf
                     </div>
                 )}
                 {errors.pilot && <p className="text-[12px] text-[#b91c1c]" data-testid="ig-platform-error">{errors.pilot}</p>}
+                <p className="text-[12px] text-[#9ca3af]">{t('والرد الآلي على التعليقات والرسائل يُفتح من تبويب واتساب: «أتمتة الردود بالكلمات».')}</p>
                 <div className="flex justify-end">
                     <Button type="button" onClick={saveMode} data-testid="ig-mode-save">{t('حفظ')}</Button>
                 </div>

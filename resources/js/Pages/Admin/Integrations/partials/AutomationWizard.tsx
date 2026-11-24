@@ -1,11 +1,12 @@
 import { useForm } from '@inertiajs/react';
-import { ArrowLeft, ArrowRight, Hash, Link2, MessageSquareText, Plus, Send, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Hash, Link2, MessageCircle, MessageSquareText, Plus, Send, Sparkles, X } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 import Field, { Select } from '@/Components/Field';
 import { SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import InstagramPosts, { type AutomationPost } from '@/Pages/Admin/Integrations/partials/InstagramPosts';
 
 export interface AutomationButton {
     type: 'reply' | 'link';
@@ -13,11 +14,37 @@ export interface AutomationButton {
     url?: string;
 }
 
+export type AutomationChannel = 'whatsapp' | 'instagram';
+
+/** ما يشغّلها — كلمةٌ في واتساب، وتعليقٌ أو رسالةٌ في إنستقرام (`ChannelAutomations::TRIGGERS`) */
+export type AutomationTrigger = 'keyword' | 'comment' | 'message';
+
+export type AutomationMatch = 'contains' | 'exact' | 'any';
+
+/** أبوابُ كلّ قناة — بأسمائها كاملةً، ومحرّكٌ واحد خلفها */
+export const AUTOMATION_ROUTES: Record<AutomationChannel, { store: string; update: string; status: string; destroy: string }> = {
+    whatsapp: {
+        store: 'admin.integrations.whatsapp.automations.store',
+        update: 'admin.integrations.whatsapp.automations.update',
+        status: 'admin.integrations.whatsapp.automations.status',
+        destroy: 'admin.integrations.whatsapp.automations.destroy',
+    },
+    instagram: {
+        store: 'admin.integrations.instagram.automations.store',
+        update: 'admin.integrations.instagram.automations.update',
+        status: 'admin.integrations.instagram.automations.status',
+        destroy: 'admin.integrations.instagram.automations.destroy',
+    },
+};
+
 export interface AutomationRow {
     id: number;
     name: string;
     template: string | null;
-    match: 'contains' | 'exact';
+    trigger?: AutomationTrigger;
+    posts?: AutomationPost[];
+    public_replies?: string[];
+    match: AutomationMatch;
     keywords: string[];
     excluded: string[];
     reply_ar: string;
@@ -34,6 +61,9 @@ export interface AutomationTemplate {
     key: string;
     name: string;
     description: string;
+    trigger?: AutomationTrigger;
+    match?: AutomationMatch;
+    public_replies?: string[];
     keywords: string[];
     reply_ar: string;
     reply_en: string;
@@ -57,6 +87,11 @@ export interface AutomationLimits {
     buttons: number;
     button_title: number;
     cooldown_max: number;
+    posts?: number;
+    public_replies?: number;
+    public_reply?: number;
+    /** سقفُ النصّ بالبايت حيث تعدّ القناةُ البايت لا الحرف (إنستقرام) */
+    bytes?: number | null;
 }
 
 export interface WizardContext {
@@ -64,11 +99,14 @@ export interface WizardContext {
     store_link: string | null;
 }
 
-/** ما يُحفظ — كما يقبله `WhatsAppAutomationsController::validated` */
+/** ما يُحفظ — كما يقبله `AutomationsController::validated`. والثلاثةُ الأخيرة لإنستقرام وحده */
 export interface AutomationDraft {
     name: string;
     template: string | null;
-    match: 'contains' | 'exact';
+    trigger?: AutomationTrigger;
+    posts?: AutomationPost[];
+    public_replies?: string[];
+    match: AutomationMatch;
     keywords: string[];
     excluded: string[];
     reply_ar: string;
@@ -95,7 +133,8 @@ export const PLACEHOLDER = /\[[^\]\n]{1,80}\]/u;
 
 export const COOLDOWNS = [5, 15, 30, 60, 180, 720, 1440];
 
-export const blankDraft = (): AutomationDraft => ({
+export const blankDraft = (channel: AutomationChannel = 'whatsapp'): AutomationDraft => ({
+    ...(channel === 'instagram' ? { trigger: 'comment' as const, posts: [], public_replies: [] } : {}),
     name: '',
     template: null,
     match: 'contains',
@@ -109,7 +148,8 @@ export const blankDraft = (): AutomationDraft => ({
     status: 'published',
 });
 
-export const draftFrom = (a: AutomationRow): AutomationDraft => ({
+export const draftFrom = (a: AutomationRow, channel: AutomationChannel = 'whatsapp'): AutomationDraft => ({
+    ...(channel === 'instagram' ? { trigger: a.trigger ?? 'comment', posts: a.posts ?? [], public_replies: a.public_replies ?? [] } : {}),
     name: a.name,
     template: a.template,
     match: a.match,
@@ -123,8 +163,9 @@ export const draftFrom = (a: AutomationRow): AutomationDraft => ({
     status: a.status === 'draft' ? 'draft' : 'published',
 });
 
-export const draftFromTemplate = (tpl: AutomationTemplate): AutomationDraft => ({
-    ...blankDraft(),
+export const draftFromTemplate = (tpl: AutomationTemplate, channel: AutomationChannel = 'whatsapp'): AutomationDraft => ({
+    ...blankDraft(channel),
+    ...(channel === 'instagram' ? { trigger: tpl.trigger ?? 'comment', public_replies: tpl.public_replies ?? [], match: tpl.match ?? 'contains' } : {}),
     name: tpl.name,
     template: tpl.key,
     keywords: tpl.keywords,
@@ -148,9 +189,22 @@ export function renderReply(text: string, values: Record<string, string>): strin
     return out.replace(/[ \t]+([،,.!؟?])/gu, '$1').replace(/[ \t]{2,}/gu, ' ').trim();
 }
 
+/** ‏‏النصُّ كما يعدّه إنستقرام — الحرفُ العربيّ بايتان */
+export const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
+
+/** ‏‏وأطولُ نصٍّ فوق زرّ رابطٍ في إنستقرام — `InstagramMessenger::BUTTON_TEXT` */
+export const BUTTON_TEXT = 640;
+
 /** ‏‏أيمنع شيءٌ النشر؟ — كما يرفضه الخادم (`ChannelAutomations::unpublishable`) */
-export function publishProblem(d: Pick<AutomationDraft, 'keywords' | 'reply_ar' | 'reply_en'>): string | null {
-    if (d.keywords.length === 0) {
+export function publishProblem(
+    d: Pick<AutomationDraft, 'keywords' | 'reply_ar' | 'reply_en'> & Partial<Pick<AutomationDraft, 'match' | 'posts' | 'public_replies' | 'buttons'>>,
+    bytes: number | null = null,
+): string | null {
+    if (d.match === 'any') {
+        if ((d.posts ?? []).length === 0) {
+            return '«أي تعليق» يعمل على منشورات تختارها — اختر منشورًا واحدًا على الأقل.';
+        }
+    } else if (d.keywords.length === 0) {
         return 'اكتب كلمة واحدة على الأقل يكتبها الزبون.';
     }
 
@@ -158,8 +212,22 @@ export function publishProblem(d: Pick<AutomationDraft, 'keywords' | 'reply_ar' 
         return 'اكتب نص الرد قبل النشر.';
     }
 
-    if (PLACEHOLDER.test(`${d.reply_ar} ${d.reply_en}`)) {
+    const texts = [d.reply_ar, d.reply_en, ...(d.public_replies ?? [])].join(' ');
+
+    if (PLACEHOLDER.test(texts)) {
         return 'أكمل ما بين القوسين [ ] في نص الرد قبل النشر.';
+    }
+
+    if (bytes !== null) {
+        if (/\{(آخر_طلب|last_order)\}/u.test(texts)) {
+            return '«حالة آخر طلب» لا تعمل على إنستقرام — لا رقم للزبون هناك.';
+        }
+
+        const link = (d.buttons ?? []).some((b) => b.type === 'link');
+
+        if ([d.reply_ar, d.reply_en].some((text) => utf8Bytes(text.trim()) > bytes || (link && [...text.trim()].length > BUTTON_TEXT))) {
+            return 'النص أطول مما يقبله إنستقرام (نحو 500 حرف عربي) — قصّره.';
+        }
     }
 
     return null;
@@ -223,7 +291,8 @@ function Chips({ value, onChange, max, maxLength, placeholder, testId }: {
 /**
  * ‏‏المعالج — ثلاثُ خطوات: ما يشغّلها، ومن يصله الردّ، والردّ نفسُه. وبجانبها معاينةُ المحادثة.
  */
-export default function AutomationWizard({ initial, editingId, products, context, limits, mayManage, onClose, onWelcome }: {
+export default function AutomationWizard({ channel = 'whatsapp', initial, editingId, products, context, limits, mayManage, onClose, onWelcome }: {
+    channel?: AutomationChannel;
     initial: AutomationDraft;
     editingId: number | null;
     products: AutomationProduct[];
@@ -238,6 +307,12 @@ export default function AutomationWizard({ initial, editingId, products, context
     const [lang, setLang] = useState<'ar' | 'en'>('ar');
     const form = useForm<AutomationDraft>(initial);
     const d = form.data;
+    const instagram = channel === 'instagram';
+    const onComment = instagram && d.trigger === 'comment';
+    const posts = d.posts ?? [];
+    const publicReplies = d.public_replies ?? [];
+    const variables = instagram ? VARIABLES.filter((v) => v.en !== '{last_order}') : VARIABLES;
+    const errors = form.errors as Record<string, string>;
 
     const product = products.find((p) => p.id === d.product_id) ?? null;
     const usesProduct = /\{(المنتج|السعر|رابط_المنتج|product|price|product_link)\}/u.test(`${d.reply_ar} ${d.reply_en}`)
@@ -246,7 +321,7 @@ export default function AutomationWizard({ initial, editingId, products, context
     const buttonMode: 'none' | 'reply' | 'link' = linkButton ? 'link' : d.buttons.length > 0 ? 'reply' : 'none';
 
     const sample = {
-        name: t('أحمد'),
+        name: onComment ? 'sara' : instagram ? '' : t('أحمد'),
         store: context.store,
         store_link: context.store_link ?? '',
         product: product?.name ?? '',
@@ -256,7 +331,7 @@ export default function AutomationWizard({ initial, editingId, products, context
     };
     const replyText = lang === 'en' ? (d.reply_en || d.reply_ar) : (d.reply_ar || d.reply_en);
     const preview = renderReply(replyText, sample);
-    const problem = publishProblem(d);
+    const problem = publishProblem(onComment ? { ...d, buttons: [] } : d, limits.bytes ?? null);
 
     const insert = (token: string) => {
         const key = lang === 'en' ? 'reply_en' : 'reply_ar';
@@ -271,14 +346,32 @@ export default function AutomationWizard({ initial, editingId, products, context
     };
 
     const save = (status: 'draft' | 'published') => {
-        form.transform((data) => ({ ...data, status, buttons: data.buttons.filter((b) => b.title.trim() !== '') }));
+        form.transform((data) => ({
+            ...data,
+            status,
+            buttons: onComment ? [] : data.buttons.filter((b) => b.title.trim() !== ''),
+            ...(instagram ? {
+                posts: onComment ? (data.posts ?? []) : [],
+                public_replies: onComment ? (data.public_replies ?? []).filter((r) => r.trim() !== '') : [],
+            } : {}),
+        }));
         const options = { preserveScroll: true, onSuccess: () => onClose() };
 
         if (editingId === null) {
-            form.post(route('admin.integrations.whatsapp.automations.store'), options);
+            form.post(route(AUTOMATION_ROUTES[channel].store), options);
         } else {
-            form.put(route('admin.integrations.whatsapp.automations.update', editingId), options);
+            form.put(route(AUTOMATION_ROUTES[channel].update, editingId), options);
         }
+    };
+
+    /** ‏‏ومن نقل المشغّلَ إلى الرسائل لا تبقى معه «أي تعليق» */
+    const setTrigger = (trigger: AutomationTrigger) => {
+        form.setData({ ...d, trigger, match: trigger === 'message' && d.match === 'any' ? 'contains' : d.match });
+    };
+
+    /** ‏‏و«أي تعليق» تسقط حين تُفرَّغ المنشورات: لا تعمل على كلّ منشورات الحساب */
+    const setPosts = (next: AutomationPost[]) => {
+        form.setData({ ...d, posts: next, match: next.length === 0 && d.match === 'any' ? 'contains' : d.match });
     };
 
     const STEPS = ['اختر ما يشغّلها', 'حدّد من يصله الرد', 'جهّز الرد'];
@@ -302,7 +395,26 @@ export default function AutomationWizard({ initial, editingId, products, context
                     ))}
                 </ol>
 
-                {step === 1 && (
+                {step === 1 && instagram && (
+                    <div className="space-y-5">
+                        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" data-testid="wizard-trigger">
+                            {([
+                                ['comment', MessageCircle, 'تعليق على منشور أو ريلز', 'يصل صاحب التعليق رد خاص، ويُكتب تحته رد علني إن شئت.'],
+                                ['message', MessageSquareText, 'رسالة خاصة أو رد على قصة', 'حين يكتب الزبون في رسائلك كلمة تحددها.'],
+                            ] as const).map(([value, Icon, label, hint]) => (
+                                <button key={value} type="button" role="radio" aria-checked={d.trigger === value} onClick={() => setTrigger(value)} data-testid={`wizard-trigger-${value}`}
+                                    className={`rounded-[12px] border p-4 text-start ${d.trigger === value ? 'border-2 border-[#111]' : 'border-[#e5e7eb] hover:border-[#111]'}`}>
+                                    <Icon className="mb-2 size-5" />
+                                    <p className="font-bold text-[#111]">{t(label)}</p>
+                                    <p className="mt-1 text-[12px] leading-relaxed text-[#6b7280]">{t(hint)}</p>
+                                </button>
+                            ))}
+                        </div>
+                        {onComment && <InstagramPosts value={posts} onChange={setPosts} max={limits.posts ?? 20} />}
+                    </div>
+                )}
+
+                {step === 1 && ! instagram && (
                     <div className="grid gap-3 sm:grid-cols-2" data-testid="wizard-trigger">
                         <div className="rounded-[12px] border-2 border-[#111] p-4">
                             <Hash className="mb-2 size-5" />
@@ -319,18 +431,26 @@ export default function AutomationWizard({ initial, editingId, products, context
 
                 {step === 2 && (
                     <div className="space-y-5">
-                        <Field label="الكلمات التي يكتبها الزبون" hint="اكتب الكلمة واضغط Enter. «السعر» تطابق «السّعر؟» و«سعره» أيضًا." error={form.errors.keywords}>
-                            <Chips value={d.keywords} onChange={(v) => form.setData('keywords', v)} max={limits.keywords} maxLength={limits.keyword} placeholder="مثل: السعر، بكم" testId="wizard-keywords" />
-                        </Field>
-                        <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" data-testid="wizard-match">
-                            {([['contains', 'في أي موضع من الرسالة', '«كم سعر الباقة» فيها «سعر»'], ['exact', 'الرسالة كلها هي الكلمة', '«سعر» وحدها لا غير']] as const).map(([value, label, hint]) => (
+                        {d.match !== 'any' && (
+                            <Field label="الكلمات التي يكتبها الزبون" hint="اكتب الكلمة واضغط Enter. «السعر» تطابق «السّعر؟» و«سعره» أيضًا." error={form.errors.keywords}>
+                                <Chips value={d.keywords} onChange={(v) => form.setData('keywords', v)} max={limits.keywords} maxLength={limits.keyword} placeholder="مثل: السعر، بكم" testId="wizard-keywords" />
+                            </Field>
+                        )}
+                        <div className={`grid gap-2 ${onComment ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`} role="radiogroup" data-testid="wizard-match">
+                            {([
+                                ['contains', onComment ? 'في أي موضع من التعليق' : 'في أي موضع من الرسالة', '«كم سعر الباقة» فيها «سعر»'],
+                                ['exact', onComment ? 'التعليق كله هو الكلمة' : 'الرسالة كلها هي الكلمة', '«سعر» وحدها لا غير'],
+                                ...(onComment ? [['any', 'أي تعليق', posts.length === 0 ? 'اختر منشورًا في الخطوة الأولى لتفتحه' : 'كل من يعلّق على ما اخترته'] as const] : []),
+                            ] as const).map(([value, label, hint]) => (
                                 <button
                                     key={value}
                                     type="button"
                                     role="radio"
                                     aria-checked={d.match === value}
+                                    disabled={value === 'any' && posts.length === 0}
+                                    data-testid={`wizard-match-${value}`}
                                     onClick={() => form.setData('match', value)}
-                                    className={`rounded-[12px] border p-3 text-start ${d.match === value ? 'border-2 border-[#111]' : 'border-[#e5e7eb]'}`}
+                                    className={`rounded-[12px] border p-3 text-start disabled:opacity-50 ${d.match === value ? 'border-2 border-[#111]' : 'border-[#e5e7eb]'}`}
                                 >
                                     <p className="text-[13px] font-bold text-[#111]">{t(label)}</p>
                                     <p className="mt-0.5 text-[12px] text-[#6b7280]">{t(hint)}</p>
@@ -345,7 +465,7 @@ export default function AutomationWizard({ initial, editingId, products, context
 
                 {step === 3 && (
                     <div className="space-y-5">
-                        <Field label="اسم الأتمتة" hint="يراه فريقك في المحادثة وفي القائمة — لا يراه الزبون." error={form.errors.name} required>
+                        <Field label="اسم الأتمتة" hint={instagram ? 'يراه فريقك في القائمة — لا يراه الزبون.' : 'يراه فريقك في المحادثة وفي القائمة — لا يراه الزبون.'} error={form.errors.name} required>
                             <Input value={d.name} onChange={(e) => form.setData('name', e.target.value)} maxLength={limits.name} data-testid="wizard-name" />
                         </Field>
 
@@ -358,8 +478,10 @@ export default function AutomationWizard({ initial, editingId, products, context
                             ))}
                         </div>
                         <Field
-                            label={lang === 'ar' ? 'نص الرد' : 'نص الرد بالإنجليزية (اختياري)'}
-                            hint={lang === 'ar' ? 'يصل بالعربية لمن لا نعرف لغته.' : 'يصل لمن لغته في ملفه الإنجليزية — وإن تركته يصله العربي.'}
+                            label={lang === 'ar' ? (onComment ? 'الرسالة الخاصة' : 'نص الرد') : (onComment ? 'الرسالة الخاصة بالإنجليزية (اختياري)' : 'نص الرد بالإنجليزية (اختياري)')}
+                            hint={instagram
+                                ? (lang === 'ar' ? 'تصل لمن كتب بالعربية أو بلا حروف.' : 'تصل لمن كتب بالإنجليزية — وإن تركتها تصله العربية.')
+                                : (lang === 'ar' ? 'يصل بالعربية لمن لا نعرف لغته.' : 'يصل لمن لغته في ملفه الإنجليزية — وإن تركته يصله العربي.')}
                             error={lang === 'ar' ? form.errors.reply_ar : form.errors.reply_en}
                         >
                             <Textarea
@@ -371,8 +493,13 @@ export default function AutomationWizard({ initial, editingId, products, context
                                 data-testid="wizard-reply"
                             />
                         </Field>
+                        {limits.bytes != null && (
+                            <p className="-mt-3 text-[12px] text-[#9ca3af] tabular-nums" data-testid="wizard-bytes">
+                                {t('مساحة النص: :used من :max (الحرف العربي بمكانين)', { used: utf8Bytes(lang === 'ar' ? d.reply_ar : d.reply_en), max: limits.bytes })}
+                            </p>
+                        )}
                         <div className="flex flex-wrap gap-1.5" data-testid="wizard-variables">
-                            {VARIABLES.map((v) => (
+                            {variables.map((v) => (
                                 <button key={v.token} type="button" onClick={() => insert(v.token)} className="rounded-full border border-[#e5e7eb] px-2.5 py-1 text-[12px] text-[#4b4b4b] hover:border-[#111]">
                                     + {t(v.label)}
                                 </button>
@@ -389,7 +516,34 @@ export default function AutomationWizard({ initial, editingId, products, context
                             </Field>
                         )}
 
-                        <Field label="الأزرار (اختياري)" hint="ثلاثة أزرار رد، أو زر رابط واحد — واتساب لا يجمع بينهما." error={form.errors.buttons}>
+                        {onComment && (
+                            <Field label="رد علني تحت التعليق (اختياري)" hint="يُكتب بعد أن تصل الرسالة الخاصة. اكتب أكثر من صيغة فتتبدّل بين التعليقات." error={errors.public_replies ?? errors['public_replies.0']}>
+                                <div className="space-y-2" data-testid="wizard-public">
+                                    {publicReplies.map((r, i) => (
+                                        <div key={i} className="flex gap-2">
+                                            <Input value={r} maxLength={limits.public_reply ?? 300} placeholder={t('مثل: أرسلنا لك التفاصيل على الخاص')}
+                                                onChange={(e) => form.setData('public_replies', publicReplies.map((x, j) => (j === i ? e.target.value : x)))} />
+                                            <Button type="button" variant="outline" aria-label={t('إزالة')} onClick={() => form.setData('public_replies', publicReplies.filter((_, j) => j !== i))}>
+                                                <X />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {publicReplies.length < (limits.public_replies ?? 5) && (
+                                        <Button type="button" variant="outline" onClick={() => form.setData('public_replies', [...publicReplies, ''])} data-testid="wizard-public-add">
+                                            <Plus />
+                                            {publicReplies.length === 0 ? t('أضف ردًا علنيًا') : t('صيغة أخرى')}
+                                        </Button>
+                                    )}
+                                </div>
+                            </Field>
+                        )}
+
+                        {onComment ? (
+                            <p className="rounded-[10px] bg-[#f9fafb] px-3 py-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="wizard-no-buttons">
+                                {t('الرد الخاص على التعليق نص بلا أزرار عند إنستقرام — ضع الرابط داخل النص.')}
+                            </p>
+                        ) : (
+                        <Field label="الأزرار (اختياري)" hint={instagram ? 'ثلاثة أزرار رد، أو زر رابط واحد. وأزرار الرد لا تظهر على الحاسوب.' : 'ثلاثة أزرار رد، أو زر رابط واحد — واتساب لا يجمع بينهما.'} error={form.errors.buttons}>
                             <div className="space-y-3" data-testid="wizard-buttons">
                                 <div className="flex flex-wrap gap-2">
                                     {([['none', 'بلا أزرار'], ['reply', 'أزرار رد'], ['link', 'زر رابط']] as const).map(([mode, label]) => (
@@ -436,13 +590,14 @@ export default function AutomationWizard({ initial, editingId, products, context
                                             <Input className="sm:col-span-2" dir="ltr" value={linkButton.url ?? ''} placeholder="https://"
                                                 onChange={(e) => form.setData('buttons', [{ ...linkButton, url: e.target.value }])} />
                                         )}
-                                        {form.errors['buttons.0.url' as keyof AutomationDraft] && (
-                                            <p className="text-[12px] text-[#b91c1c] sm:col-span-2">{form.errors['buttons.0.url' as keyof AutomationDraft]}</p>
+                                        {errors['buttons.0.url'] && (
+                                            <p className="text-[12px] text-[#b91c1c] sm:col-span-2">{errors['buttons.0.url']}</p>
                                         )}
                                     </div>
                                 )}
                             </div>
                         </Field>
+                        )}
 
                         <Field label="لا يتكرر للزبون نفسه قبل" hint="من سأل عن السعر الآن لا يصله الرد نفسه ثانية قبل هذه المدة." error={form.errors.cooldown_minutes}>
                             <Select
@@ -454,9 +609,9 @@ export default function AutomationWizard({ initial, editingId, products, context
                     </div>
                 )}
 
-                {(form.errors as Record<string, string>).status && (
+                {errors.status && (
                     <p className="mt-4 rounded-[10px] bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="wizard-error">
-                        {(form.errors as Record<string, string>).status}
+                        {errors.status}
                     </p>
                 )}
 
@@ -494,29 +649,67 @@ export default function AutomationWizard({ initial, editingId, products, context
                 )}
             </SettingsSection>
 
-            <ChatPreview customer={d.keywords[0] ?? t('كم السعر؟')} reply={preview} buttons={d.buttons.filter((b) => b.title.trim() !== '')} store={context.store} />
+            <ChatPreview
+                channel={channel}
+                customer={(d.match === 'any' ? null : d.keywords[0]) ?? t('كم السعر؟')}
+                reply={preview}
+                buttons={onComment ? [] : d.buttons.filter((b) => b.title.trim() !== '')}
+                store={context.store}
+                comment={onComment}
+                publicReply={onComment ? renderPublic(publicReplies.find((r) => r.trim() !== '') ?? '', 'sara') : ''}
+            />
         </div>
     );
 }
 
-/** ‏‏معاينةُ المحادثة الناتجة — رسالةُ الزبون، ثمّ الردُّ بأزراره */
-export function ChatPreview({ customer, reply, buttons, store }: { customer: string; reply: string; buttons: AutomationButton[]; store: string }) {
+/** ‏‏الردُّ العلنيّ كما يُكتب — الاسمُ وحده، وما سواه من متغيّراتٍ يُحذف (`ChannelAutomations::renderPublic`) */
+export function renderPublic(text: string, name: string): string {
+    return renderReply(text, { name });
+}
+
+const PREVIEW_SKIN: Record<AutomationChannel, { panel: string; customer: string; reply: string; button: string }> = {
+    whatsapp: { panel: 'bg-[#efeae2]', customer: 'bg-white text-[#111]', reply: 'bg-[#d9fdd3] text-[#111]', button: 'bg-white text-[#027eb5]' },
+    instagram: { panel: 'bg-[#f5f5f5]', customer: 'bg-[#e4e6eb] text-[#111]', reply: 'bg-[#3797f0] text-white', button: 'bg-white text-[#0064d1]' },
+};
+
+/** ‏‏معاينةُ المحادثة الناتجة — ما كتبه الزبون، ثمّ الردُّ بأزراره. والتعليقُ تحته الردُّ العلنيّ ثمّ الرسالةُ الخاصّة */
+export function ChatPreview({ customer, reply, buttons, store, channel = 'whatsapp', comment = false, publicReply = '' }: {
+    customer: string;
+    reply: string;
+    buttons: AutomationButton[];
+    store: string;
+    channel?: AutomationChannel;
+    comment?: boolean;
+    publicReply?: string;
+}) {
     const t = useTranslate();
+    const skin = PREVIEW_SKIN[channel];
 
     return (
-        <aside className="h-fit rounded-[16px] bg-[#efeae2] p-4" data-testid="chat-preview" aria-label={t('معاينة المحادثة')}>
+        <aside className={`h-fit rounded-[16px] p-4 ${skin.panel}`} data-testid="chat-preview" aria-label={t('معاينة المحادثة')}>
             <p className="mb-3 text-center text-[11px] font-medium text-[#6b7280]">{t('معاينة')} · {store}</p>
             <div className="space-y-2">
-                <div className="ms-auto w-fit max-w-[85%] rounded-[12px] rounded-se-none bg-white px-3 py-2 text-[13px] text-[#111] shadow-sm" data-testid="preview-customer">
-                    {customer}
-                </div>
+                {comment ? (
+                    <div className="rounded-[12px] bg-white p-3 text-[13px] text-[#111]" data-testid="preview-comment">
+                        <p className="text-[11px] text-[#6b7280]">{t('تحت منشورك')}</p>
+                        <p className="mt-1" data-testid="preview-customer"><span className="font-bold" dir="ltr">sara</span> {customer}</p>
+                        {publicReply !== '' && (
+                            <p className="mt-1.5 ms-4" data-testid="preview-public"><span className="font-bold">{store}</span> {publicReply}</p>
+                        )}
+                    </div>
+                ) : (
+                    <div className={`ms-auto w-fit max-w-[85%] rounded-[12px] rounded-se-none px-3 py-2 text-[13px] shadow-sm ${skin.customer}`} data-testid="preview-customer">
+                        {customer}
+                    </div>
+                )}
+                {comment && <p className="text-center text-[11px] text-[#6b7280]">{t('ثم على الخاص')}</p>}
                 {reply !== '' ? (
                     <div className="w-fit max-w-[85%]">
-                        <div className="whitespace-pre-line rounded-[12px] rounded-ss-none bg-[#d9fdd3] px-3 py-2 text-[13px] leading-relaxed text-[#111] shadow-sm" data-testid="preview-reply">
+                        <div className={`whitespace-pre-line break-words rounded-[12px] rounded-ss-none px-3 py-2 text-[13px] leading-relaxed shadow-sm ${skin.reply}`} data-testid="preview-reply">
                             {reply}
                         </div>
                         {buttons.map((b, i) => (
-                            <div key={i} className="mt-1 flex items-center justify-center gap-1 rounded-[10px] bg-white px-3 py-1.5 text-[13px] font-medium text-[#027eb5] shadow-sm" data-testid="preview-button">
+                            <div key={i} className={`mt-1 flex items-center justify-center gap-1 rounded-[10px] px-3 py-1.5 text-[13px] font-medium shadow-sm ${skin.button}`} data-testid="preview-button">
                                 {b.type === 'link' && <Link2 className="size-3.5" />}
                                 {b.title}
                             </div>

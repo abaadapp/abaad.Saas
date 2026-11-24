@@ -41,7 +41,7 @@ export default function ChannelAutomationsSwitch({ state }: { state: ChannelAuto
             title: 'أتمتة الردود بالكلمات',
             message: mode === 'off'
                 ? 'إقفالها يسكت أتمتات التجار المنشورة — ولا يمحوها. متابعة؟'
-                : 'تصير الأتمتة :state. تعمل على أرقام التجار الحقيقية حين ينشرون أتمتة. متابعة؟',
+                : 'تصير الأتمتة :state. تعمل على أرقام التجار وحساباتهم الحقيقية حين ينشرون أتمتة. متابعة؟',
             values: { state: t(AUTOMATIONS_LABEL[mode]) },
             action: 'حفظ',
         });
@@ -59,7 +59,7 @@ export default function ChannelAutomationsSwitch({ state }: { state: ChannelAuto
                     <span className="flex size-9 items-center justify-center rounded-[10px] bg-[#f3f4f6]"><Bot className="size-[18px]" /></span>
                     <div>
                         <h2 className="font-bold text-[#111]">{t('أتمتة الردود بالكلمات')}</h2>
-                        <p className="mt-0.5 text-[13px] text-[#6b7280]">{t('يكتب التاجر كلمات وردًا، فيخرج الرد وحده من رقمه حين يكتبها زبون.')}</p>
+                        <p className="mt-0.5 text-[13px] text-[#6b7280]">{t('يكتب التاجر كلمات وردًا، فيخرج الرد وحده من رقمه في واتساب أو حسابه في إنستقرام حين يكتبها زبون.')}</p>
                     </div>
                 </div>
                 <Badge variant={state.mode === 'off' ? 'neutral' : 'success'} data-testid="automations-state">{t(AUTOMATIONS_LABEL[state.mode])}</Badge>

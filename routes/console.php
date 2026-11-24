@@ -15,6 +15,10 @@ Schedule::command('subscriptions:expire')->dailyAt('00:10')->withoutOverlapping(
 // ‏‏رموزُ إنستقرام تُجدَّد قبل انتهاء أيّامها الستّين، والإشعاراتُ الخام بعد ثلاثين يومًا تُحذف
 Schedule::command('instagram:refresh-tokens')->dailyAt('04:30')->withoutOverlapping();
 
+// ‏‏وما بقي من تعليقات إنستقرام ورسائله بلا ردّ (عاملٌ توقّف، أو حدُّ ساعةٍ امتلأ) — يُلتقط كلَّ خمس دقائق
+Schedule::command('instagram:answer-pending')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => \App\Support\InstagramPlatform::mode() !== \App\Support\InstagramPlatform::OFF);
+
 // روابطُ الدفع المنتهية تُوسَم كلَّ ساعة — والشاشةُ توسمها عند فتحها أيضًا
 Schedule::command('payment-links:expire')->hourly()->withoutOverlapping();
 

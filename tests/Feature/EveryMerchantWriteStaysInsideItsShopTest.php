@@ -43,6 +43,9 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
          * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
          */
         \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        // ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`) — أبوابُ أتمتته تردّ ٤٠٤ بلا مفتاحه
+        \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
+        \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
     }
 
     /**
@@ -262,6 +265,9 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['أتمتة واتساب', 'put', 'admin.integrations.whatsapp.automations.update', ['automation' => 'channel_automation']],
                 ['أتمتة واتساب', 'post', 'admin.integrations.whatsapp.automations.status', ['automation' => 'channel_automation'], [], ['status' => 'paused']],
                 ['أتمتة واتساب', 'delete', 'admin.integrations.whatsapp.automations.destroy', ['automation' => 'channel_automation']],
+                ['أتمتة إنستقرام', 'put', 'admin.integrations.instagram.automations.update', ['automation' => 'instagram_automation']],
+                ['أتمتة إنستقرام', 'post', 'admin.integrations.instagram.automations.status', ['automation' => 'instagram_automation'], [], ['status' => 'paused']],
+                ['أتمتة إنستقرام', 'delete', 'admin.integrations.instagram.automations.destroy', ['automation' => 'instagram_automation']],
             ],
             'website' => [
                 ['صفحات الموقع', 'put', 'admin.website.pages.update', ['id' => 'page']],

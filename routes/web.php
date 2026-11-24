@@ -1566,6 +1566,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         Route::get('/instagram/callback', [App\Http\Controllers\Admin\InstagramController::class, 'callback'])
             ->middleware('throttle:10,1,instagram-link')->name('instagram.callback');
         Route::post('/instagram/disconnect', [App\Http\Controllers\Admin\InstagramController::class, 'disconnect'])->name('instagram.disconnect');
+        // ‏‏وأتمتتُه — لمتجرٍ فُتح له إنستقرامُ والأتمتةُ معًا (`InstagramAutomations::available`)
+        Route::get('/instagram/automations', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'index'])->name('instagram.automations');
+        Route::get('/instagram/automations/posts', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'posts'])
+            ->middleware('throttle:30,1,instagram-automations')->name('instagram.automations.posts');
+        Route::post('/instagram/automations', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'store'])
+            ->middleware('throttle:30,1,instagram-automations')->name('instagram.automations.store');
+        Route::put('/instagram/automations/{automation}', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'update'])
+            ->whereNumber('automation')->middleware('throttle:60,1,instagram-automations')->name('instagram.automations.update');
+        Route::post('/instagram/automations/{automation}/status', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'status'])
+            ->whereNumber('automation')->middleware('throttle:60,1,instagram-automations')->name('instagram.automations.status');
+        Route::delete('/instagram/automations/{automation}', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'destroy'])
+            ->whereNumber('automation')->name('instagram.automations.destroy');
 
         /*
          * ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`).

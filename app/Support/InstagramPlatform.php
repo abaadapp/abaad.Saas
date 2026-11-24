@@ -226,7 +226,7 @@ class InstagramPlatform
             'deauthorize_url' => route('webhooks.instagram.deauthorize'),
             'deletion_url' => route('webhooks.instagram.deletion'),
             'scopes' => InstagramLink::SCOPES,
-            'fields' => InstagramLink::FIELDS,
+            'fields' => [...InstagramLink::FIELDS, InstagramLink::ECHOES],
         ];
     }
 

@@ -639,6 +639,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/setup', [SetupController::class, 'index'])->name('setup.index');
     Route::post('/setup/confirm', [SetupController::class, 'confirm'])->name('setup.confirm');
     Route::get('/dashboard/stats', [DashboardController::class, 'adminStats'])->name('dashboard.stats');
+    // إغلاقُ تنبيه بيانات العملاء إلى آخر الجلسة — قسمُه `dashboard` من اسمه
+    Route::post('/dashboard/phone-review/dismiss', [DashboardController::class, 'dismissPhoneReview'])->name('dashboard.phoneReview.dismiss');
 
     /*
      * لوحة التجهيز — قسمُها `preparation` يُشتقّ من اسم المسار.

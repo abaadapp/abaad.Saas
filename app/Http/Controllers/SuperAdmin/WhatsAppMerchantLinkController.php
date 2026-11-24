@@ -4,6 +4,7 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Support\WhatsAppMerchantLink;
+use App\Support\WhatsAppSender;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,6 +49,37 @@ class WhatsAppMerchantLinkController extends Controller
                 : __('أُقفل على التجّار خيار البقاء في تطبيق واتساب للأعمال. الأرقام المربوطة به لا تتغيّر.'));
 
         return back()->with('toast', ['msg' => $msg, 'type' => $r['changed'] ? 'success' : 'info']);
+    }
+
+    /** ‏‏يوقف اعتمادَ رقم التاجر آليًّا أو يعيده — ولا يمسّ رقمًا اعتُمد */
+    public function autoSender(Request $request): RedirectResponse
+    {
+        $on = (bool) $request->validate(['enabled' => ['required', 'boolean']])['enabled'];
+        $changed = WhatsAppSender::setEnabled($on);
+
+        return back()->with('toast', [
+            'msg' => match (true) {
+                ! $changed => __('اعتماد الأرقام تلقائيًّا كما هو — لم يتغيّر شيء.'),
+                $on => __('عاد اعتماد أرقام التجّار تلقائيًّا.'),
+                default => __('أُوقف اعتماد الأرقام تلقائيًّا. الأرقام المعتمدة لا تتغيّر.'),
+            },
+            'type' => $changed ? 'success' : 'info',
+        ]);
+    }
+
+    public function pilot(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['pilot' => ['nullable', 'string', 'max:300', 'regex:/^[0-9\s,،]*$/u']], [], ['pilot' => __('متاجر التجربة')]);
+        $r = WhatsAppMerchantLink::setPilot((string) ($data['pilot'] ?? ''));
+
+        if (! $r['ok']) {
+            return back()->withErrors(['pilot' => $r['message']]);
+        }
+
+        return back()->with('toast', [
+            'msg' => $r['changed'] ? __('حُفظت متاجر التجربة. بقيّة المتاجر كما هي.') : __('متاجر التجربة كما هي — لم يتغيّر شيء.'),
+            'type' => $r['changed'] ? 'success' : 'info',
+        ]);
     }
 
     public function configId(Request $request): RedirectResponse

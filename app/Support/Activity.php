@@ -65,8 +65,9 @@ class Activity
 
         ActivityLog::create([
             'business_id' => $opts['business_id'] ?? $u?->business_id,
-            'user_id' => $u?->id,
-            'user_name' => $u?->name ?? 'زائر',
+            // ‏‏وما فعله النظامُ وحده من الجدول يُسمّى باسمه (`by`) — لا «زائر» لم يزر شيئًا ولا من كان داخلًا ساعتَها
+            'user_id' => isset($opts['by']) ? null : $u?->id,
+            'user_name' => $opts['by'] ?? $u?->name ?? 'زائر',
             'impersonator_id' => $impersonator?->id,
             'impersonator_name' => $impersonator?->name,
             'action' => $action,

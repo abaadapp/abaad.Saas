@@ -136,6 +136,8 @@ class WhatsAppController extends Controller
                 'published' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('channel', \App\Support\ChannelAutomations::WHATSAPP)->where('status', \App\Models\ChannelAutomation::PUBLISHED)->count(),
                 'total' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('channel', \App\Support\ChannelAutomations::WHATSAPP)->count(),
             ] : null,
+            // ‏‏وحملاتُ واتساب — لمتجرٍ فتحتها له المنصّة وحده
+            'campaigns' => \App\Support\WhatsAppCampaigns::available($business),
             // والنصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ
             'auto_reply_defaults' => $ownAllowed ? [
                 'ar' => WhatsAppAutoReply::defaultText($business->id, 'ar'),

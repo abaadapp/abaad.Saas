@@ -7,6 +7,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 
 export type InstagramMode = 'off' | 'pilot' | 'all';
@@ -95,7 +96,7 @@ export default function InstagramPlatformCard({ state }: { state: InstagramPlatf
                 <h3 className="text-[13px] font-bold text-[#111]">{t('1. تطبيق إنستقرام')}</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                     <Input value={appId} onChange={(e) => setAppId(e.target.value)} dir="ltr" placeholder="Instagram app ID" data-testid="ig-app-id" />
-                    <Input value={secret} onChange={(e) => setSecret(e.target.value)} dir="ltr" type="password" autoComplete="off"
+                    <PasswordInput value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off"
                         placeholder={state.secret_set ? t('السر محفوظ — اكتب سرًا جديدًا لتبديله') : 'Instagram app secret'} data-testid="ig-app-secret" />
                 </div>
                 {errors.app_id && <p className="text-[12px] text-[#b91c1c]">{errors.app_id}</p>}

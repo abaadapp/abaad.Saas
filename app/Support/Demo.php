@@ -4485,6 +4485,40 @@ class Demo
             /*
              * ‏‏ومتجرٌ ربط رقمَه من رابطٍ أرسله الفريق — من أرسله ينتظر الخبر (`WhatsAppClientLinks`).
              */
+            /*
+             * ‏‏ورقمُ متجرٍ صار رقمَ إرساله وحده، أو رُبط وما زال ينتظر، أو تعطّل وهو يُرسل منه
+             * (`WhatsAppSender`) — لا تُنقل رسائلُه إلى رقم أبعاد، فيعرف الفريقُ قبل أن يسأل التاجر.
+             */
+            $senders = WhatsAppSender::bell($limit, null, ['merchant', 'abaad']);
+            foreach ($senders['broken'] as $b) {
+                $add('wa-sender-down-'.$b['connection']->id, [
+                    'text' => __('رقم واتساب «:shop» متعطّل ورسائله لا تخرج: :why', [
+                        'shop' => $b['business']->name, 'why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text'],
+                    ]),
+                    'time' => $b['problem']['since'] ?? __('الآن'),
+                    'icon' => 'message-circle', 'color' => 'danger',
+                    'url' => route('super-admin.businesses.show', $b['business']->id),
+                ]);
+            }
+            foreach ($senders['waiting'] as $r) {
+                $add('wa-sender-wait-'.$r->id, [
+                    'text' => __('رقم واتساب «:shop» مربوط ولم يصر رقم إرساله بعد: :why', [
+                        'shop' => $r->business?->name ?? '—', 'why' => WhatsAppSender::waitingFor($r)['text'],
+                    ]),
+                    'time' => optional($r->created_at)->diffForHumans(),
+                    'icon' => 'message-circle', 'color' => 'warning',
+                    'url' => route('super-admin.businesses.show', $r->business_id),
+                ]);
+            }
+            foreach ($senders['adopted'] as $r) {
+                $add('wa-sender-on-'.$r->id, [
+                    'text' => __('رسائل «:shop» تخرج من رقمه :phone — اعتُمد تلقائيًّا', ['shop' => $r->business?->name ?? '—', 'phone' => $r->phone ?: '—']),
+                    'time' => optional($r->adopted_at)->diffForHumans(),
+                    'icon' => 'message-circle', 'color' => 'success',
+                    'url' => route('super-admin.businesses.show', $r->business_id),
+                ]);
+            }
+
             foreach (WhatsAppClientLinks::recent($limit) as $l) {
                 $add('wa-client-link-'.$l->id, [
                     'text' => __('ربط «:shop» رقم واتساب :phone من الرابط الذي أُرسل له', [
@@ -4609,7 +4643,35 @@ class Demo
          * وعميلٌ لا يستقبل رقمُه والربطُ يعمل يُقال تنبيهًا لا عطبًا: يعرفه
          * التاجر ليتّصل بزبونه، ولا يظنّ واتساب انقطع.
          */
-        if ($waAlert !== null || $waDelivery['state'] === WhatsAppHealth::PARTIAL) {
+        /*
+         * ‏‏ورقمُ المتجر نفسُه متعطّل؟ يُقال بسببه وما يُصلحه — لا «رسائل لم تصل» فوقه بسببٍ آخر
+         * (`WhatsAppSender`). ولا تخرج رسائلُه من رقم أبعاد بدلًا منه.
+         */
+        $waSender = WhatsAppSender::bell($limit, $bid, ['merchant']);
+
+        foreach ($waSender['broken'] as $b) {
+            $add('wa-sender-down-'.$b['connection']->id, [
+                'text' => __('رقم واتساب متجرك متعطّل ورسائلك لا تخرج: :why', ['why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text']]),
+                'time' => $b['problem']['since'] ?? __('الآن'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'danger',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
+        }
+
+        foreach ($waSender['waiting'] as $r) {
+            $add('wa-sender-wait-'.$r->id, [
+                'text' => __('رقمك مربوط ولم يصر رقم إرسال متجرك بعد: :why', ['why' => WhatsAppSender::waitingFor($r)['text']]),
+                'time' => optional($r->created_at)->format('Y-m-d H:i'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'warning',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
+        }
+
+        if ($waSender['broken'] === [] && ($waAlert !== null || $waDelivery['state'] === WhatsAppHealth::PARTIAL)) {
             $add('wa-delivery', [
                 'text' => match (true) {
                     $waAlert === null => __('لم تصل :n رسالة واتساب إلى :c عميل — واتساب يعمل، فتحقّق من أرقامهم', [
@@ -5050,6 +5112,17 @@ class Demo
          * ‏‏ورقمٌ رُبط بالمتجر من رابطٍ أرسله فريقُ أبعاد — من ربطه لم يدخل الحساب، فيُقال لصاحبه
          * ليعرفه، أو ليفصله إن لم يكن منه (`WhatsAppClientLinks`).
          */
+        foreach ($waSender['adopted'] as $r) {
+            $add('wa-sender-on-'.$r->id, [
+                'text' => __('رسائل متجرك تخرج الآن من رقمك :phone', ['phone' => $r->phone ?: '—']),
+                'time' => optional($r->adopted_at)->format('Y-m-d H:i'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'success',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
+        }
+
         foreach (WhatsAppClientLinks::recent($limit, $bid) as $l) {
             $add('wa-client-link-'.$l->id, [
                 'text' => __('رُبط رقم واتساب :phone بمتجرك من رابطٍ أرسله فريق أبعاد — إن لم يكن منك فافصله وراسلنا', [

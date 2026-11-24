@@ -2,6 +2,7 @@ import { router, useForm } from '@inertiajs/react';
 import { Check, MessageCircle, RefreshCw, Save, X } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
+import WhatsappSender, { type SenderView } from '@/Components/WhatsappSender';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -67,6 +68,8 @@ export interface BusinessWhatsApp {
     inbox_available?: boolean;
     /** «أرسل رابطًا لعميلك» — حالُ آخر رابط (`WhatsAppClientLinks::view`) */
     client_link?: ClientLinkView;
+    /** رقمُ الإرسال: ينتظر ماذا، أو صار، أو تعطّل (`WhatsAppSender::view`) */
+    sender?: SenderView;
 }
 
 /** ما يراه فريقُ أبعاد قبل أن يؤكّد أنّ فوترة ميتا على التاجر */
@@ -413,11 +416,18 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                 </dl>
             )}
 
+            {data.sender && (
+                <div className="mb-5 empty:hidden">
+                    <WhatsappSender sender={data.sender} audience="platform" />
+                </div>
+            )}
+
             {data.client_link && (
                 <ClientLinkBox
                     businessId={businessId}
                     data={data.client_link}
                     stillShared={data.own_connection?.usable === true && data.effective_mode !== 'business_own'}
+                    switchesItself={data.sender?.state === 'checking'}
                 />
             )}
 

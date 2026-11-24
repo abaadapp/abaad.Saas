@@ -76,6 +76,10 @@ class Notifications
         'wa-delivery' => [self::TASK, self::AUTO],
         // ‏‏رقمٌ رُبط من رابطٍ أرسله فريقُ أبعاد — خبرٌ يُقرأ ويُخفى (`WhatsAppClientLinks`)
         'wa-client-link-' => [self::INFO, self::MANUAL],
+        // ‏‏ورقمٌ صار رقمَ إرسال متجره خبرٌ يُخفى؛ وما ينتظر أو تعطّل يُغلق وحده حين يزول سببه (`WhatsAppSender`)
+        'wa-sender-on-' => [self::INFO, self::MANUAL],
+        'wa-sender-wait-' => [self::TASK, self::AUTO],
+        'wa-sender-down-' => [self::TASK, self::AUTO],
         'daily-' => [self::INFO, self::MANUAL],
         'archive-' => [self::INFO, self::MANUAL],
         'grn-' => [self::TASK, self::AUTO],

@@ -392,11 +392,12 @@ class OneCalculationForEveryBoutiqueBaisaTest extends TestCase
         $this->tax('inclusive');
         $b = $this->boutique('لمى', 20);
         $p = $this->product('قطعة', 12.6, $b);
-        Coupon::create(['business_id' => $this->shop->id, 'code' => 'TEN', 'type' => 'percent', 'value' => 10, 'active' => true]);
+        Coupon::create(['business_id' => $this->shop->id, 'code' => 'TEN', 'type' => 'نسبة', 'value' => 10, 'active' => true]);
 
         foreach ([[null, 10.08], ['2027-02-01', 9.6]] as [$from, $net]) {
             $this->beforeVat($from);
             $order = $this->sell([[$p]], ['coupon_code' => 'TEN', 'discount' => 1.26]);
+            $this->assertEquals([1.26, 11.34], [(float) $order->discount, (float) $order->total], 'كوبونٌ لم يُطبَّق — الاختبارُ لا يقيس شيئًا');
             $this->assertEquals($net, self::split(OrderItem::where('order_id', $order->id)->sole())[2], 'الصندوق');
             // وخصمُ بند الفاتورة ولو جاوز حصّةَ المتجر كلَّها
             $this->invoice([[$p, 1, 5.0]]);

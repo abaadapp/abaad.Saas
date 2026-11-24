@@ -11316,6 +11316,8 @@
     "نُسخت الرسالة": "Message copied",
     "رسائل المتجر ما زالت تخرج من رقم أبعاد — اختر «API مستقل للمتجر» أدناه واحفظ لتخرج من رقمه.": "The shop’s messages still go out from Abaad’s number — choose “Dedicated API for the shop” below and save so they go out from its number.",
     "متجرك مربوط بتطبيقك الخاص على Meta — لا يبدّله الربط عبر تطبيق أبعاد. إن أردت الانتقال فافصل التكامل أوّلًا.": "Your shop is linked with your own Meta app — linking through Abaad’s app doesn’t replace it. To move, disconnect the integration first.",
+    "أصناف هذا البوتيك": "This boutique's products",
+    "ليس لديك صلاحية على مال البوتيكات.": "You do not have permission on boutique money.",
     "صنف بوتيك «:name»: فاتورة العميل لا تدخل حسابه. سجّله بيعًا آجلًا من نقطة البيع ليُحتسب.": "Boutique item “:name”: a customer invoice does not reach its account. Sell it on credit at the till so it is counted.",
     "فواتير عملاء لا تدخل حساب هذا البوتيك": "Customer invoices outside this boutique’s account",
     ":lines بندًا في :invoices فاتورة، كُتبت بمبلغ :amount. فاتورة العميل لا تحفظ صاحب الصنف ولا نسبته يوم البيع، فلا تدخل مبيعات البوتيك ولا مستحقه ولا أوراقه.": ":lines lines on :invoices invoices, written for :amount. A customer invoice keeps neither who owned the item nor the rate on that day, so it is in none of the boutique’s sales, dues or sheets.",

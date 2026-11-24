@@ -6,6 +6,7 @@ use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
+use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderEdit;
@@ -512,6 +513,13 @@ final class BoutiqueSales
             'bundles' => $bundles,
             // هل تُحسب قطعُ البوتيك داخل منتجات المتجر الآن؟ يُقال على الشاشة ولا يُتجاوز رفضُه
             'pieces' => self::piecesState($businessId),
+            /*
+             * أثرُ الإطفاء يُقال ولا يُخفي شيئًا. `hosting` مفتاحُ المنصّة لهذا
+             * المتجر؛ والشاشةُ تبقى ولو أُطفئ ما دام عنده بوتيك (`Boutiques::holds`).
+             * و`pieces_recorded`: أفي القاعدة مستحقُّ قطعٍ كُتب قبل إطفاء حسابها؟
+             */
+            'hosting' => Boutiques::hosts(Business::find($businessId)),
+            'pieces_recorded' => BoutiqueComponentDue::where('business_id', $businessId)->exists(),
             // ما للبوتيك عن مبيعات الشهر قبل التسوية: صافي المنفرد + مستحقُّ القطع — لا إجماليُّ الباقات
             'owed' => round($standalone['net'] + $components['due'], 3),
             /*

@@ -54,6 +54,8 @@ const summary: SalesSummary = {
     bundles: { lines: 1, revenue: 20, boutiques_due: 6, shop_remaining: 14 },
     owed: 15.6,
     pieces: 'on',
+    hosting: true,
+    pieces_recorded: false,
     rounding: { lines_commission: 2.4, report_commission: 2.4, report_difference: 0, lines_pending_net: 9.6, sheet_pending_net: 9.6, sheet_difference: 0 },
     settlement: { sheets: 0, issued: 0, paid: 0, unpaid: 0, remaining: 15.6, pending: { standalone: 9.6, components: 6, credit: 0, total: 15.6 } },
     returns: { notes: 0, amount: 0, reduced: 0, claims_open: 0, review: 0, shop: 0, component_credits: 0, cancelled_gross: 0 },
@@ -136,12 +138,21 @@ describe('مبيعات البوتيك وفواتيره', () => {
         const first = mount();
         await screen.findByTestId('boutique-sales-summary');
         expect(screen.queryByTestId('boutique-pieces-note')).toBeNull();
+        expect(screen.queryByTestId('boutique-hosting-off')).toBeNull();
         first.unmount();
 
         respond = (url) => (url.includes('summary') ? { ...summary, pieces: 'off' } : page([]));
         const off = mount();
         expect((await screen.findByTestId('boutique-pieces-note')).textContent).toContain('مطفأ لهذا المتجر');
         off.unmount();
+
+        respond = (url) => (url.includes('summary') ? { ...summary, pieces: 'off', pieces_recorded: true, hosting: false } : page([]));
+        const recorded = mount();
+        const note = await screen.findByTestId('boutique-pieces-note');
+        expect(note.textContent).toContain('معروض ومحسوب كما هو');
+        expect(note.textContent).not.toContain('فلا تظهر صفوف');
+        expect(screen.getByTestId('boutique-hosting-off').textContent).toContain('ولم يُحذف');
+        recorded.unmount();
 
         respond = (url) => (url.includes('summary') ? { ...summary, pieces: 'taxed' } : page([]));
         mount();

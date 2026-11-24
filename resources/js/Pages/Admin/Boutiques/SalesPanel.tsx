@@ -68,6 +68,10 @@ export interface SalesSummary {
     bundles: { lines: number; revenue: number; boutiques_due: number; shop_remaining: number };
     owed: number;
     pieces: 'on' | 'off' | 'taxed';
+    /** مفتاحُ المنصّة لهذا المتجر — والشاشةُ تبقى لمن عنده بوتيكٌ ولو أُطفئ */
+    hosting: boolean;
+    /** مستحقُّ قطعٍ كُتب قبل إطفاء حسابها — معروضٌ محسوب ولم يُحذف */
+    pieces_recorded: boolean;
     /** مطابقةُ التقريب بالبيسة: الفرقُ موجبٌ حين تقول دالّةُ النظام أكثر */
     rounding: {
         lines_commission: number; report_commission: number; report_difference: number;
@@ -348,6 +352,11 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
 
     return (
         <div className="space-y-3 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3" data-testid="boutique-sales-summary">
+            {!s.hosting && (
+                <p className="rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-hosting-off">
+                    {t('إيواء البوتيكات مطفأ لهذا المتجر من إدارة المنصة. الشاشة باقية لأن لديك بوتيكات، وما سُجّل من مبيعات والتزامات معروض كما هو ولم يُحذف.')}
+                </p>
+            )}
             <section>
                 <p className="mb-1.5 text-[12px] font-semibold text-[#4b4b4b]">{t('مبيعات الشهر')}</p>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
@@ -396,7 +405,9 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                     <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-pieces-note">
                         {s.pieces === 'taxed'
                             ? t('هذا المتجر يحتسب الضريبة، والنظام لا يحسب قطع البوتيك داخل منتجات المتجر في متجر بضريبة — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية». تفعيلها هنا قرار منفصل.')
-                            : t('حساب قطع البوتيك داخل منتجات المتجر مطفأ لهذا المتجر — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية»، وما بيع قبل تشغيله لا يُعرف. تشغيله قرار منفصل.')}
+                            : s.pieces_recorded
+                              ? t('حساب قطع البوتيك داخل منتجات المتجر مطفأ الآن — ما يُباع بعد إطفائه لا يُحتسب، وما سُجّل قبله معروض ومحسوب كما هو. وسداد ما صدر منه في ورقة تسوية يحتاج إعادة تشغيله من إدارة المنصة.')
+                              : t('حساب قطع البوتيك داخل منتجات المتجر مطفأ لهذا المتجر — فلا تظهر صفوف «ضمن باقة» ولا «إضافة اختيارية»، وما بيع قبل تشغيله لا يُعرف. تشغيله قرار منفصل.')}
                     </p>
                 )}
             </section>

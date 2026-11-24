@@ -11040,5 +11040,7 @@
     "تقرير مبيعات البوتيك يقرّبها على المجموع: :report (فرق :d)": "The boutique sales report rounds it on the total: :report (difference :d)",
     "ورقة التسوية لما لم يُسوَّ تحسب صافي البوتيك :sheet مقابل :lines هنا (فرق :d) — المعتمد للدفع الورقة حتى يُقرَّر.": "For what is not settled yet, the settlement sheet works out the boutique's net as :sheet against :lines here (difference :d) — the sheet is what gets paid until this is decided.",
     "الفاتورة ملغاة — بنودها كما سُجّلت، ولا نصيب فيها لأحد.": "The invoice is cancelled — its lines are shown as recorded, and no one has a share in it.",
-    "صنف مستبدل": "Replaced item"
+    "صنف مستبدل": "Replaced item",
+    "إيواء البوتيكات مطفأ لهذا المتجر من إدارة المنصة. الشاشة باقية لأن لديك بوتيكات، وما سُجّل من مبيعات والتزامات معروض كما هو ولم يُحذف.": "Boutique hosting is off for this shop by the platform. The screen stays because you have boutiques, and the sales and obligations already recorded are shown as they are and nothing was deleted.",
+    "حساب قطع البوتيك داخل منتجات المتجر مطفأ الآن — ما يُباع بعد إطفائه لا يُحتسب، وما سُجّل قبله معروض ومحسوب كما هو. وسداد ما صدر منه في ورقة تسوية يحتاج إعادة تشغيله من إدارة المنصة.": "Counting boutique pieces inside the shop's products is off now — what is sold after it was switched off is not counted, and what was recorded before is shown and counted as it is. Paying what was issued on a settlement sheet needs it switched back on by the platform."
 }

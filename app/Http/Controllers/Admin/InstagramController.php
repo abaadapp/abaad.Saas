@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Models\ChannelAutomation;
+use App\Support\ChannelAutomations;
 use App\Support\Demo;
+use App\Support\InstagramAutomations;
 use App\Support\InstagramLink;
 use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
@@ -30,6 +33,11 @@ class InstagramController extends Controller
                 'link' => InstagramLink::view(InstagramLink::forBusiness((int) $business->id)),
                 'may_manage' => $this->mayManage(),
                 'scopes' => InstagramLink::SCOPES,
+                // ‏‏والأتمتةُ لمتجرٍ فُتحت له — وكم منها يعمل
+                'automations' => InstagramAutomations::available($business) ? [
+                    'published' => ChannelAutomation::where('business_id', $business->id)->where('channel', ChannelAutomations::INSTAGRAM)->where('status', ChannelAutomation::PUBLISHED)->count(),
+                    'total' => ChannelAutomation::where('business_id', $business->id)->where('channel', ChannelAutomations::INSTAGRAM)->count(),
+                ] : null,
             ],
         ]);
     }

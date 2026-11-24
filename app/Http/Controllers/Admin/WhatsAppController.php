@@ -133,8 +133,8 @@ class WhatsAppController extends Controller
             'auto_reply_state' => $ownAllowed ? WhatsAppAutoReply::state($business) : null,
             // ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده، وكم منها يعمل
             'keyword_automations' => \App\Support\ChannelAutomations::available($business) ? [
-                'published' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('status', \App\Models\ChannelAutomation::PUBLISHED)->count(),
-                'total' => \App\Models\ChannelAutomation::where('business_id', $business->id)->count(),
+                'published' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('channel', \App\Support\ChannelAutomations::WHATSAPP)->where('status', \App\Models\ChannelAutomation::PUBLISHED)->count(),
+                'total' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('channel', \App\Support\ChannelAutomations::WHATSAPP)->count(),
             ] : null,
             // والنصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ
             'auto_reply_defaults' => $ownAllowed ? [

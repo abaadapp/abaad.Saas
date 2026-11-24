@@ -73,7 +73,7 @@ class AShopLinksItsInstagramAccountTest extends TestCase
                 str_starts_with($url, 'https://api.instagram.test/oauth/access_token') => Http::response($this->meta['token']),
                 str_contains($url, '/refresh_access_token') => Http::response($this->meta['refresh'], $this->meta['refresh_status']),
                 str_contains($url, 'graph.instagram.test/access_token') => Http::response($this->meta['long']),
-                str_contains($url, '/subscribed_apps') => Http::response($this->meta['subscribe']),
+                str_contains($url, '/subscribed_apps') => is_callable($this->meta['subscribe']) ? $this->meta['subscribe']($r) : Http::response($this->meta['subscribe']),
                 str_contains($url, '/me') => Http::response($this->meta['me']),
                 default => Http::response(['error' => ['message' => 'unexpected '.$url]], 500),
             };
@@ -193,7 +193,7 @@ class AShopLinksItsInstagramAccountTest extends TestCase
         $this->assertSame('LONG-TOKEN', $c->access_token);
         $this->assertNotSame('LONG-TOKEN', DB::table('instagram_connections')->value('access_token'), 'الرمزُ مشفَّرٌ في عموده');
         $this->assertEqualsWithDelta(now()->addDays(60)->timestamp, $c->token_expires_at->timestamp, 60);
-        $this->assertSame(InstagramLink::FIELDS, $c->subscribed_fields);
+        $this->assertSame([...InstagramLink::FIELDS, InstagramLink::ECHOES], $c->subscribed_fields);
         $this->assertSame($this->owner->id, (int) $c->connected_by);
         $this->assertTrue($c->usable());
 
@@ -201,13 +201,35 @@ class AShopLinksItsInstagramAccountTest extends TestCase
             && $r['code'] === 'AUTH-CODE' && $r['grant_type'] === 'authorization_code' && $r['client_secret'] === self::SECRET);
         Http::assertSent(fn (HttpRequest $r) => str_contains($r->url(), 'graph.instagram.test/access_token') && str_contains($r->url(), 'grant_type=ig_exchange_token'));
         Http::assertSent(fn (HttpRequest $r) => $r->method() === 'POST' && str_contains($r->url(), '/v27.0/17841400000000001/subscribed_apps')
-            && $r['subscribed_fields'] === 'comments,messages,messaging_postbacks');
+            && $r['subscribed_fields'] === 'comments,messages,messaging_postbacks,message_echoes');
 
         $this->assertSame(1, ActivityLog::where('subject_type', InstagramConnection::class)->where('description', 'like', '%rose.shop%')->count());
 
         $this->actingAs($this->owner)->get(route('admin.integrations.instagram'))
             ->assertInertia(fn ($p) => $p->where('instagram.link.state', 'connected')->where('instagram.link.username', 'rose.shop')
                 ->where('instagram.link.missing_permissions', [])->where('instagram.link.subscribed', true)->missing('instagram.link.access_token'));
+    }
+
+    public function test_a_field_meta_refuses_does_not_lose_the_link(): void
+    {
+        $this->open($this->shop);
+        $tried = [];
+        $this->meta['subscribe'] = function (HttpRequest $r) use (&$tried) {
+            $tried[] = (string) $r['subscribed_fields'];
+
+            return str_contains((string) $r['subscribed_fields'], 'message_echoes')
+                ? Http::response(['error' => ['message' => '(#100) Invalid parameter', 'code' => 100, 'type' => 'OAuthException']], 400)
+                : Http::response(['success' => true]);
+        };
+
+        $this->actingAs($this->owner)->get(route('admin.integrations.instagram.callback', ['state' => $this->start(), 'code' => 'AUTH-CODE']))->assertSessionHasNoErrors();
+
+        $c = InstagramConnection::where('business_id', $this->shop->id)->firstOrFail();
+        $this->assertSame(['comments,messages,messaging_postbacks,message_echoes', 'comments,messages,messaging_postbacks'], $tried);
+        $this->assertSame(InstagramLink::FIELDS, $c->subscribed_fields);
+        $this->assertNull($c->last_error);
+        $this->assertTrue(InstagramLink::view($c)['subscribed']);
+        $this->assertFalse(InstagramLink::view($c)['hears_phone'], 'الردُّ من الهاتف لا يُسمع — ويُقال للتاجر');
     }
 
     public function test_the_seal_is_for_one_use_by_the_one_who_pressed(): void

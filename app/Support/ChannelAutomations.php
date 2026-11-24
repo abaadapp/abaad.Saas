@@ -46,9 +46,24 @@ class ChannelAutomations
 {
     public const WHATSAPP = 'whatsapp';
 
-    public const CHANNELS = [self::WHATSAPP];
+    public const INSTAGRAM = 'instagram';
+
+    public const CHANNELS = [self::WHATSAPP, self::INSTAGRAM];
 
     public const TRIGGER_KEYWORD = 'keyword';
+
+    /** ‏‏ما يشغّل أتمتةً في كلّ قناة — وإنستقرام تعليقٌ أو رسالةٌ خاصّة (`InstagramAutomations`) */
+    public const TRIGGERS = [
+        self::WHATSAPP => [self::TRIGGER_KEYWORD],
+        self::INSTAGRAM => [InstagramAutomations::COMMENT, InstagramAutomations::MESSAGE],
+    ];
+
+    /** ‏‏منشوراتٌ يختارها التاجر لأتمتة تعليق — وردودٌ علنيّة تُكتب تحته بالدور */
+    public const MAX_POSTS = 20;
+
+    public const MAX_PUBLIC = 5;
+
+    public const POST_ID = '/^[0-9]{5,40}$/';
 
     public const MAX_AUTOMATIONS = 50;
 
@@ -181,8 +196,11 @@ class ChannelAutomations
      * ‏‏الأتمتةُ التي تأخذ هذا النصّ — أو `null`.
      *
      * التامّةُ قبل الجزئيّة، ثمّ الكلمةُ الأطول، ثمّ الأقدم. والمستثناةُ تُخرجها من الحساب.
+     * وفي تعليقات إنستقرام: أتمتةُ منشورٍ بعينه قبل أتمتة كلّ المنشورات.
+     *
+     * @param  list<string>  $posts  المنشورُ الذي كُتب تحته التعليق (وأصلُه إن كان إعلانًا)
      */
-    public static function pick(int $businessId, string $channel, string $text): ?ChannelAutomation
+    public static function pick(int $businessId, string $channel, string $text, ?string $trigger = null, array $posts = []): ?ChannelAutomation
     {
         $best = null;
         $score = null;
@@ -195,17 +213,29 @@ class ChannelAutomations
             ->get();
 
         foreach ($rows as $automation) {
+            if ($trigger !== null && $automation->trigger !== $trigger) {
+                continue;
+            }
+
+            $chosen = self::postIds($automation);
+
+            if ($chosen !== [] && array_intersect($chosen, $posts) === []) {
+                continue;
+            }
+
             if (filled($automation->excluded) && KeywordMatch::first($text, (array) $automation->excluded) !== null) {
                 continue;
             }
 
-            $hit = KeywordMatch::first($text, (array) $automation->keywords, (string) $automation->match);
+            $hit = $automation->match === KeywordMatch::ANY && $chosen !== []
+                ? ''
+                : KeywordMatch::first($text, (array) $automation->keywords, (string) $automation->match);
 
             if ($hit === null) {
                 continue;
             }
 
-            $mine = [$automation->match === KeywordMatch::EXACT ? 1 : 0, mb_strlen(KeywordMatch::normalize($hit))];
+            $mine = [$chosen !== [] ? 1 : 0, $automation->match === KeywordMatch::EXACT ? 1 : 0, mb_strlen(KeywordMatch::normalize($hit))];
 
             if ($score === null || $mine > $score) {
                 [$best, $score] = [$automation, $mine];
@@ -213,6 +243,12 @@ class ChannelAutomations
         }
 
         return $best;
+    }
+
+    /** @return list<string> */
+    public static function postIds(ChannelAutomation $automation): array
+    {
+        return array_values(array_filter(array_map(fn ($p) => (string) (is_array($p) ? ($p['id'] ?? '') : $p), (array) ($automation->posts ?? []))));
     }
 
     /** ما يُسكت الأتمتةَ عن هذا الزبون الآن — غيرُ حرّاس الإرسال */
@@ -244,10 +280,24 @@ class ChannelAutomations
     private static function claim(Business $business, ChannelAutomation $automation, WhatsAppInboundMessage $row): ?ChannelAutomationRun
     {
         return DB::transaction(function () use ($business, $automation, $row) {
+            $run = self::reserve($business, $automation, self::WHATSAPP, self::sourceKey($row), (string) $row->from_phone);
+
+            if ($run !== null) {
+                $row->forceFill(['replied_at' => now()])->save();
+            }
+
+            return $run;
+        });
+    }
+
+    /** ‏‏الحجزُ نفسُه لكلّ قناة — تحت قفل المتجر: سبق ردٌّ من هذه الأتمتة في مدّتها أو سبقت الرسالةُ نفسُها، فـ`null` */
+    public static function reserve(Business $business, ChannelAutomation $automation, string $channel, string $sourceKey, string $recipient): ?ChannelAutomationRun
+    {
+        return DB::transaction(function () use ($business, $automation, $channel, $sourceKey, $recipient) {
             Business::whereKey($business->id)->lockForUpdate()->first();
 
             $taken = ChannelAutomationRun::where('business_id', $business->id)
-                ->where('recipient', (string) $row->from_phone)
+                ->where('recipient', $recipient)
                 ->where('automation_id', $automation->id)
                 ->whereIn('status', [self::SENDING, ChannelAutomationRun::SENT])
                 ->where('created_at', '>', now()->subMinutes(max(1, (int) $automation->cooldown_minutes)))
@@ -260,16 +310,12 @@ class ChannelAutomations
             $run = Contention::attempt(fn () => ChannelAutomationRun::create([
                 'business_id' => $business->id,
                 'automation_id' => $automation->id,
-                'channel' => self::WHATSAPP,
-                'source_key' => self::sourceKey($row),
-                'recipient' => (string) $row->from_phone,
+                'channel' => $channel,
+                'source_key' => $sourceKey,
+                'recipient' => $recipient,
                 'status' => self::SENDING,
                 'created_at' => now(),
             ]));
-
-            if ($run instanceof ChannelAutomationRun) {
-                $row->forceFill(['replied_at' => now()])->save();
-            }
 
             return $run instanceof ChannelAutomationRun ? $run : null;
         });
@@ -277,18 +323,24 @@ class ChannelAutomations
 
     private static function skip(Business $business, ChannelAutomation $automation, WhatsAppInboundMessage $row, string $reason): void
     {
+        self::skipped($business, $automation, self::WHATSAPP, self::sourceKey($row), (string) $row->from_phone, $reason);
+
+        $row->forceFill(['reply_status' => WhatsAppInboundMessage::SKIPPED, 'reply_reason' => mb_substr('automation_'.$reason, 0, 60)])->save();
+    }
+
+    /** ‏‏طابقت ولم يُردّ — وبأيّ سبب، في السجلّ */
+    public static function skipped(Business $business, ChannelAutomation $automation, string $channel, string $sourceKey, string $recipient, string $reason): void
+    {
         Contention::attempt(fn () => ChannelAutomationRun::create([
             'business_id' => $business->id,
             'automation_id' => $automation->id,
-            'channel' => self::WHATSAPP,
-            'source_key' => self::sourceKey($row),
-            'recipient' => (string) $row->from_phone,
+            'channel' => $channel,
+            'source_key' => $sourceKey,
+            'recipient' => $recipient,
             'status' => ChannelAutomationRun::SKIPPED,
             'reason' => mb_substr($reason, 0, 60),
             'created_at' => now(),
         ]));
-
-        $row->forceFill(['reply_status' => WhatsAppInboundMessage::SKIPPED, 'reply_reason' => mb_substr('automation_'.$reason, 0, 60)])->save();
     }
 
     private static function sourceKey(WhatsAppInboundMessage $row): string
@@ -377,9 +429,12 @@ class ChannelAutomations
     /**
      * ‏‏نصُّ الردّ بلغة الزبون، والمتغيّراتُ بقيمها لهذا المتجر وهذا الزبون — تُقرأ لحظةَ الردّ.
      *
-     * ومتغيّرٌ بلا قيمة يُحذف ولا يخرج بقوسيه.
+     * ومتغيّرٌ بلا قيمة يُحذف ولا يخرج بقوسيه. و`$known`: ما تعرفه القناةُ عن الزبون بلا رقم هاتف
+     * (اسمُه في إنستقرام) — فلا يُسأل عنه.
+     *
+     * @param  array<string, string>  $known
      */
-    public static function render(ChannelAutomation $automation, Business $business, string $lang, ?string $phone = null, ?WhatsAppChat $chat = null): string
+    public static function render(ChannelAutomation $automation, Business $business, string $lang, ?string $phone = null, ?WhatsAppChat $chat = null, array $known = []): string
     {
         $text = trim($lang === 'en'
             ? ((string) $automation->reply_en ?: (string) $automation->reply_ar)
@@ -397,7 +452,7 @@ class ChannelAutomations
                 continue;
             }
 
-            $values[$key] = match ($key) {
+            $values[$key] = $known[$key] ?? match ($key) {
                 'name' => self::name($business, $phone, $chat),
                 'store' => trim((string) ($lang === 'en' ? ($business->name_en ?: $business->name) : $business->name)),
                 'store_link' => (string) self::storeLink($business),
@@ -414,6 +469,16 @@ class ChannelAutomations
         $text = preg_replace('/[ \t]{2,}/u', ' ', $text) ?? $text;
 
         return trim($text);
+    }
+
+    /** ‏‏الاسمُ وحده في الردّ العلنيّ — وما سواه من متغيّراتٍ يُحذف: لا سعرَ ولا طلبَ يُكتب تحت منشور */
+    public static function renderPublic(string $text, ?string $name): string
+    {
+        foreach (self::VARIABLES as $key => $tokens) {
+            $text = str_replace($tokens, $key === 'name' ? (string) $name : '', $text);
+        }
+
+        return trim(preg_replace('/[ \t]{2,}/u', ' ', $text) ?? $text);
     }
 
     /** @param list<string> $tokens */
@@ -494,20 +559,34 @@ class ChannelAutomations
      * @param  array<string, mixed>  $data
      * @return array{ok: bool, automation: ?ChannelAutomation, message: ?string}
      */
-    public static function save(Business $business, array $data, ?ChannelAutomation $automation, ?User $user): array
+    public static function save(Business $business, array $data, ?ChannelAutomation $automation, ?User $user, string $channel = self::WHATSAPP): array
     {
+        $channel = $automation?->channel ?? $channel;
+        $triggers = self::TRIGGERS[$channel];
+        $trigger = in_array($data['trigger'] ?? null, $triggers, true) ? $data['trigger'] : ($automation?->trigger ?? $triggers[0]);
+        $onComment = $trigger === InstagramAutomations::COMMENT;
+        $posts = $onComment ? self::posts((array) ($data['posts'] ?? [])) : [];
+        $public = $onComment ? self::publicReplies((array) ($data['public_replies'] ?? [])) : [];
+        $match = in_array($data['match'] ?? null, $onComment ? [...KeywordMatch::MODES, KeywordMatch::ANY] : KeywordMatch::MODES, true)
+            ? $data['match'] : KeywordMatch::CONTAINS;
         $keywords = self::words((array) ($data['keywords'] ?? []));
         $excluded = self::words((array) ($data['excluded'] ?? []));
-        $buttons = self::buttons((array) ($data['buttons'] ?? []));
+        // ‏‏والردُّ الخاصّ على التعليق نصٌّ لا غير — لا زرَّ فيه عند Meta
+        $buttons = $onComment ? [] : self::buttons((array) ($data['buttons'] ?? []));
         $status = ($data['status'] ?? null) === ChannelAutomation::PUBLISHED ? ChannelAutomation::PUBLISHED : ChannelAutomation::DRAFT;
         $ar = trim((string) ($data['reply_ar'] ?? ''));
         $en = trim((string) ($data['reply_en'] ?? ''));
 
-        if ($status === ChannelAutomation::PUBLISHED && ($problem = self::unpublishable($keywords, $ar, $en)) !== null) {
+        $draft = new ChannelAutomation([
+            'channel' => $channel, 'trigger' => $trigger, 'match' => $match, 'keywords' => $keywords,
+            'reply_ar' => $ar, 'reply_en' => $en, 'buttons' => $buttons, 'posts' => $posts, 'public_replies' => $public,
+        ]);
+
+        if ($status === ChannelAutomation::PUBLISHED && ($problem = self::unpublishable($draft)) !== null) {
             return ['ok' => false, 'automation' => null, 'message' => $problem];
         }
 
-        if ($automation === null && ChannelAutomation::where('business_id', $business->id)->count() >= self::MAX_AUTOMATIONS) {
+        if ($automation === null && ChannelAutomation::where('business_id', $business->id)->where('channel', $channel)->count() >= self::MAX_AUTOMATIONS) {
             return ['ok' => false, 'automation' => null, 'message' => __('وصلت إلى :max أتمتة — احذف واحدة قبل أن تضيف غيرها.', ['max' => self::MAX_AUTOMATIONS])];
         }
 
@@ -518,13 +597,15 @@ class ChannelAutomations
         $values = [
             'name' => mb_substr(trim((string) $data['name']), 0, self::MAX_NAME),
             'template' => filled($data['template'] ?? null) ? mb_substr((string) $data['template'], 0, 40) : ($automation?->template),
-            'trigger' => self::TRIGGER_KEYWORD,
-            'match' => in_array($data['match'] ?? null, KeywordMatch::MODES, true) ? $data['match'] : KeywordMatch::CONTAINS,
+            'trigger' => $trigger,
+            'match' => $match,
             'keywords' => $keywords,
             'excluded' => $excluded === [] ? null : $excluded,
             'reply_ar' => mb_substr($ar, 0, self::MAX_TEXT),
             'reply_en' => mb_substr($en, 0, self::MAX_TEXT),
             'buttons' => $buttons === [] ? null : $buttons,
+            'posts' => $posts === [] ? null : $posts,
+            'public_replies' => $public === [] ? null : $public,
             'product_id' => $productId,
             'status' => $status,
             'cooldown_minutes' => min(self::COOLDOWN_MAX, max(1, (int) ($data['cooldown_minutes'] ?? self::DEFAULT_COOLDOWN))),
@@ -534,14 +615,14 @@ class ChannelAutomations
         if ($automation === null) {
             $automation = ChannelAutomation::create($values + [
                 'business_id' => $business->id,
-                'channel' => self::WHATSAPP,
+                'channel' => $channel,
                 'created_by' => $user?->id,
             ]);
         } else {
             $automation->forceFill($values)->save();
         }
 
-        Activity::log('settings', 'واتساب — أتمتة «'.$automation->name.'»: '.($status === ChannelAutomation::PUBLISHED ? 'نُشرت' : 'حُفظت مسوّدة'), [
+        Activity::log('settings', self::label($channel).' — أتمتة «'.$automation->name.'»: '.($status === ChannelAutomation::PUBLISHED ? 'نُشرت' : 'حُفظت مسوّدة'), [
             'subject_type' => ChannelAutomation::class,
             'subject_id' => $automation->id,
         ]);
@@ -556,8 +637,7 @@ class ChannelAutomations
             return ['ok' => false, 'message' => __('حال غير معروفة.')];
         }
 
-        if ($status === ChannelAutomation::PUBLISHED
-            && ($problem = self::unpublishable((array) $automation->keywords, (string) $automation->reply_ar, (string) $automation->reply_en)) !== null) {
+        if ($status === ChannelAutomation::PUBLISHED && ($problem = self::unpublishable($automation)) !== null) {
             return ['ok' => false, 'message' => $problem];
         }
 
@@ -566,7 +646,7 @@ class ChannelAutomations
             'published_at' => $status === ChannelAutomation::PUBLISHED ? ($automation->published_at ?? now()) : $automation->published_at,
         ])->save();
 
-        Activity::log('settings', 'واتساب — أتمتة «'.$automation->name.'»: '.($status === ChannelAutomation::PUBLISHED ? 'شُغّلت' : 'أُوقفت'), [
+        Activity::log('settings', self::label((string) $automation->channel).' — أتمتة «'.$automation->name.'»: '.($status === ChannelAutomation::PUBLISHED ? 'شُغّلت' : 'أُوقفت'), [
             'subject_type' => ChannelAutomation::class,
             'subject_id' => $automation->id,
         ]);
@@ -578,27 +658,89 @@ class ChannelAutomations
     {
         $name = $automation->name;
         $id = $automation->id;
+        $channel = self::label((string) $automation->channel);
         $automation->delete();
 
-        Activity::log('settings', 'واتساب — حُذفت أتمتة «'.$name.'»', ['subject_type' => ChannelAutomation::class, 'subject_id' => $id]);
+        Activity::log('settings', $channel.' — حُذفت أتمتة «'.$name.'»', ['subject_type' => ChannelAutomation::class, 'subject_id' => $id]);
     }
 
-    /** @param list<string> $keywords */
-    private static function unpublishable(array $keywords, string $ar, string $en): ?string
+    private static function label(string $channel): string
     {
-        if ($keywords === []) {
+        return $channel === self::INSTAGRAM ? 'إنستقرام' : 'واتساب';
+    }
+
+    /** ‏‏ما يمنع نشرَها — بكلماتٍ يفهمها التاجر، أو `null` */
+    private static function unpublishable(ChannelAutomation $a): ?string
+    {
+        $instagram = $a->channel === self::INSTAGRAM;
+        $ar = trim((string) $a->reply_ar);
+        $en = trim((string) $a->reply_en);
+        $texts = [$ar, $en, ...array_map('strval', (array) ($a->public_replies ?? []))];
+
+        if ($a->match === KeywordMatch::ANY) {
+            if (self::postIds($a) === []) {
+                return __('«أي تعليق» يعمل على منشورات تختارها — اختر منشورًا واحدًا على الأقل.');
+            }
+        } elseif ((array) $a->keywords === []) {
             return __('اكتب كلمة واحدة على الأقل يكتبها الزبون.');
         }
 
-        if (trim($ar) === '' && trim($en) === '') {
+        if ($ar === '' && $en === '') {
             return __('اكتب نص الرد قبل النشر.');
         }
 
-        if (preg_match(self::PLACEHOLDER, $ar.' '.$en)) {
+        if (preg_match(self::PLACEHOLDER, implode(' ', $texts))) {
             return __('أكمل ما بين القوسين [ ] في نص الرد قبل النشر.');
         }
 
+        // ‏‏ولا رقمَ للزبون في إنستقرام يُعرف به طلبُه
+        if ($instagram && self::uses(implode(' ', $texts), self::VARIABLES['last_order'])) {
+            return __('«حالة آخر طلب» لا تعمل على إنستقرام — لا رقم للزبون هناك.');
+        }
+
+        if ($instagram) {
+            $link = collect((array) ($a->buttons ?? []))->contains(fn ($b) => is_array($b) && ($b['type'] ?? null) === self::BUTTON_LINK);
+
+            foreach ([$ar, $en] as $text) {
+                if (strlen($text) > InstagramMessenger::TEXT_BYTES || ($link && mb_strlen($text) > InstagramMessenger::BUTTON_TEXT)) {
+                    return __('النص أطول مما يقبله إنستقرام (نحو 500 حرف عربي) — قصّره.');
+                }
+            }
+        }
+
         return null;
+    }
+
+    /**
+     * ‏‏منشوراتٌ اختارها التاجر — بمعرّفها عند Meta وأوّلِ سطرٍ منها، بلا تكرار.
+     *
+     * @param  array<int, mixed>  $posts
+     * @return list<array{id: string, caption: string}>
+     */
+    public static function posts(array $posts): array
+    {
+        $out = [];
+
+        foreach ($posts as $p) {
+            $id = trim((string) (is_array($p) ? ($p['id'] ?? '') : $p));
+
+            if (preg_match(self::POST_ID, $id) && ! array_key_exists($id, $out)) {
+                $out[$id] = ['id' => $id, 'caption' => mb_substr(trim((string) (is_array($p) ? ($p['caption'] ?? '') : '')), 0, 120)];
+            }
+        }
+
+        return array_slice(array_values($out), 0, self::MAX_POSTS);
+    }
+
+    /**
+     * @param  array<int, mixed>  $replies
+     * @return list<string>
+     */
+    public static function publicReplies(array $replies): array
+    {
+        $clean = array_map(fn ($r) => mb_substr(trim((string) $r), 0, InstagramMessenger::COMMENT_TEXT), $replies);
+
+        return array_slice(array_values(array_unique(array_filter($clean, fn ($r) => $r !== ''))), 0, self::MAX_PUBLIC);
     }
 
     /**
@@ -653,9 +795,10 @@ class ChannelAutomations
     /* ═══════════ ما تعرضه الشاشة ═══════════ */
 
     /** @return array<string, mixed> */
-    public static function view(Business $business, bool $mayManage): array
+    public static function view(Business $business, bool $mayManage, string $channel = self::WHATSAPP): array
     {
-        $rows = ChannelAutomation::where('business_id', $business->id)->where('channel', self::WHATSAPP)->orderBy('id')->get();
+        $instagram = $channel === self::INSTAGRAM;
+        $rows = ChannelAutomation::where('business_id', $business->id)->where('channel', $channel)->orderBy('id')->get();
         $currency = Storefront::currency($business);
         $root = self::storeLink($business);
         $theme = Storefront::serves($business) === Storefront::SERVES_THEME;
@@ -668,7 +811,7 @@ class ChannelAutomations
             ->groupBy('automation_id');
 
         return [
-            'available' => self::available($business),
+            'available' => $instagram ? InstagramAutomations::available($business) : self::available($business),
             'may_manage' => $mayManage,
             'automations' => $rows->map(function (ChannelAutomation $a) use ($counts) {
                 $mine = $counts->get($a->id, collect());
@@ -678,6 +821,9 @@ class ChannelAutomations
                     'id' => $a->id,
                     'name' => $a->name,
                     'template' => $a->template,
+                    'trigger' => $a->trigger,
+                    'posts' => array_values((array) ($a->posts ?? [])),
+                    'public_replies' => array_values((array) ($a->public_replies ?? [])),
                     'match' => $a->match,
                     'keywords' => array_values((array) $a->keywords),
                     'excluded' => array_values((array) ($a->excluded ?? [])),
@@ -696,11 +842,11 @@ class ChannelAutomations
                 ];
             })->values()->all(),
             // ‏‏والترحيبُ أوّلُ أتمتةٍ في القائمة — بإعداداته القائمة كما هي، يُحرَّر في صفحة واتساب
-            'welcome' => WhatsAppFeature::canUseOwnNumber($business) ? [
+            'welcome' => ! $instagram && WhatsAppFeature::canUseOwnNumber($business) ? [
                 'enabled' => WhatsAppAutoReply::settings((int) $business->id)['enabled'],
                 'state' => WhatsAppAutoReply::state($business),
             ] : null,
-            'templates' => ChannelAutomationTemplates::all(),
+            'templates' => $instagram ? ChannelAutomationTemplates::instagram() : ChannelAutomationTemplates::all(),
             // ‏‏والعملةُ وجذرُ المتجر يُقرآن مرّةً لا لكلّ منتج
             'products' => Product::where('business_id', $business->id)->where('active', true)
                 ->orderBy('name')->limit(self::PICKER_PRODUCTS)->get(['id', 'name', 'price', 'active', 'published'])
@@ -714,7 +860,7 @@ class ChannelAutomations
                 'store' => (string) $business->name,
                 'store_link' => $root,
             ],
-            'variables' => array_map(fn ($t) => $t[0], self::VARIABLES),
+            'variables' => array_map(fn ($t) => $t[0], $instagram ? array_diff_key(self::VARIABLES, ['last_order' => true]) : self::VARIABLES),
             'limits' => [
                 'automations' => self::MAX_AUTOMATIONS,
                 'keywords' => self::MAX_KEYWORDS,
@@ -724,6 +870,10 @@ class ChannelAutomations
                 'buttons' => self::MAX_BUTTONS,
                 'button_title' => self::BUTTON_TITLE_MAX,
                 'cooldown_max' => self::COOLDOWN_MAX,
+                'posts' => self::MAX_POSTS,
+                'public_replies' => self::MAX_PUBLIC,
+                'public_reply' => InstagramMessenger::COMMENT_TEXT,
+                'bytes' => $instagram ? InstagramMessenger::TEXT_BYTES : null,
             ],
         ];
     }

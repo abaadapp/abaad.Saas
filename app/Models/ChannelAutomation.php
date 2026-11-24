@@ -25,6 +25,8 @@ class ChannelAutomation extends Model
         'keywords' => 'array',
         'excluded' => 'array',
         'buttons' => 'array',
+        'posts' => 'array',
+        'public_replies' => 'array',
         'cooldown_minutes' => 'integer',
         'published_at' => 'datetime',
     ];

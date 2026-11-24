@@ -29,6 +29,8 @@ return [
             'recovery.*',
             'device.forget',
             'language.guest',
+            // ‏‏صفحةُ رابط ربط واتساب لصاحب المتجر (`ClientLinkController`)
+            'clientLink.*',
         ],
 
         'pos' => [

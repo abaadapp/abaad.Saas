@@ -156,6 +156,9 @@ trait TwoFullShops
             'channel_automation' => $this->row('channel_automations', ['business_id' => $bid, 'channel' => 'whatsapp', 'name' => "أتمتة {$tag}", 'keywords' => '["سعر"]', 'reply_ar' => "رد {$tag}", 'status' => 'published']),
             // ‏‏وأتمتةُ تعليقٍ على إنستقرام — وتُطرق أبوابُها كأختها
             'instagram_automation' => $this->row('channel_automations', ['business_id' => $bid, 'channel' => 'instagram', 'trigger' => 'comment', 'name' => "أتمتة إنستقرام {$tag}", 'keywords' => '["سعر"]', 'reply_ar' => "رد {$tag}", 'status' => 'published']),
+            // ‏‏وقالبُ عرضٍ وحملةٌ تُرسل — تُطرق أبوابُ حذفه وإيقافها واستئنافها وإلغائها
+            'campaign_template' => $campaignTemplate = $this->row('whatsapp_campaign_templates', ['business_id' => $bid, 'waba_id' => "WABA-{$tag}", 'meta_name' => 'abaad_offer_'.strtolower($tag), 'title' => "قالب {$tag}", 'language' => 'ar', 'body' => "عرض {$tag}", 'status' => 'APPROVED']),
+            'campaign' => $this->row('whatsapp_campaigns', ['business_id' => $bid, 'template_id' => $campaignTemplate, 'name' => "حملة {$tag}", 'message' => '{}', 'audience' => '{}', 'status' => 'sending']),
             // ‏‏وحسابُ إنستقرام مربوط — اسمُه لا يظهر في شاشات المتجر الآخر
             'instagram_connection' => $this->row('instagram_connections', ['business_id' => $bid, 'ig_user_id' => 'IG-'.$tag, 'username' => "ig_{$tag}", 'status' => 'active']),
         ];

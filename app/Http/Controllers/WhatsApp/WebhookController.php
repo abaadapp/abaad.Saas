@@ -17,6 +17,7 @@ use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOptOuts;
 use App\Support\WhatsAppOwnApp;
+use App\Support\WhatsAppSender;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -85,6 +86,8 @@ class WebhookController extends Controller
                  */
                 if ($field === WhatsAppCoexistence::ACCOUNT_UPDATE) {
                     WhatsAppCoexistence::account((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []));
+                    // ‏‏وحسابٌ تبدّل حالُه عند Meta (حُذف، قُيّد، سُحب تطبيقُنا) لا ينتظر فحصَ الساعة
+                    WhatsAppSender::accountChanged((string) ($change['value']['waba_info']['waba_id'] ?? $entry['id'] ?? ''));
 
                     continue;
                 }
@@ -92,6 +95,8 @@ class WebhookController extends Controller
                 // ‏‏وحالُ قالبِ عرضٍ عند Meta — على حساب الأعمال أيضًا (`WhatsAppCampaignTemplates`)
                 if ($field === self::TEMPLATE_STATUS) {
                     WhatsAppCampaignTemplates::statusChanged((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []));
+                    // ‏‏وقالبُ إشعارٍ اعتُمد قد يُكمل ما ينتظره رقمُ متجر
+                    WhatsAppSender::accountChanged((string) ($entry['id'] ?? ''));
 
                     continue;
                 }

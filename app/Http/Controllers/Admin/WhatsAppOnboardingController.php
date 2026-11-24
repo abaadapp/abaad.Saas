@@ -16,6 +16,7 @@ use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppOnboarding;
 use App\Support\WhatsAppOrders;
 use App\Support\WhatsAppOwnApp;
+use App\Support\WhatsAppSender;
 use Illuminate\Http\Request;
 
 /**
@@ -95,7 +96,7 @@ class WhatsAppOnboardingController extends Controller
         }
 
         // والتجّارُ يربطون بتطبيقاتهم — التسجيلُ المدمج عبر تطبيق أبعاد ليس طريقَهم (`WhatsAppOwnApp`)
-        if (WhatsAppOwnApp::enabled()) {
+        if (WhatsAppOwnApp::enabledFor((int) $business->id)) {
             return back()->withErrors(['code' => __('الربط يتمّ بتطبيقك الخاص على Meta — اتبع خطوات «اربط تطبيقك» في الصفحة.')]);
         }
 
@@ -188,6 +189,11 @@ class WhatsAppOnboardingController extends Controller
 
         $result = WhatsAppEmbeddedSignup::inspectNumber($connection->phone_number_id, $connection->access_token);
 
+        // ‏‏وما لم نصل إلى Meta لا يُكتب عطبًا على رقمٍ يعمل: «خطأ» تُوقف إرسالَه
+        if (! $result['ok'] && $result['code'] === 'network_error') {
+            return back()->withErrors(['code' => __('تعذّر الوصول إلى Meta — لم يتغيّر شيء. أعد المحاولة بعد قليل.')]);
+        }
+
         if (! $result['ok']) {
             /*
              * وفشلُ الفحص يُكتب على الوصلة — لا يُقال في إشعارٍ يزول.
@@ -238,6 +244,8 @@ class WhatsAppOnboardingController extends Controller
          * أبعاد، ويُكتب ذلك في أعمدة الفحص وحدها (`WhatsAppLinkCheck::recheck`).
          */
         WhatsAppLinkCheck::recheck($connection->refresh());
+        // ‏‏ورقمٌ ينتظر أن يصير رقمَ الإرسال لا ينتظر موعدَ فحصه التالي
+        WhatsAppSender::soon((int) $business->id);
         $health = WhatsAppLinkHealth::state($connection->refresh());
 
         return back()->with('toast', [

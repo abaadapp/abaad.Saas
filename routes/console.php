@@ -23,6 +23,14 @@ Schedule::command('whatsapp:run-campaigns')->everyMinute()->withoutOverlapping(1
 Schedule::command('whatsapp:run-campaigns --templates')->hourlyAt(40)->withoutOverlapping()->runInBackground()
     ->when(fn () => \App\Support\WhatsAppCampaigns::templatesWaiting());
 
+// ‏‏ورقمُ متجرٍ رُبط حديثًا يُفحص حتى يجهز فيصير رقمَ إرساله — وبلا رقمٍ ينتظر لا تُشغَّل
+Schedule::command('whatsapp:adopt-numbers')->everyMinute()->withoutOverlapping(10)->runInBackground()
+    ->when(fn () => \App\Support\WhatsAppSender::waiting());
+
+// ‏‏وما اعتُمد يُفحص كلَّ ساعة — قراءةٌ عند Meta لا غير، فإن تعطّل قيل لصاحبه وللفريق
+Schedule::command('whatsapp:adopt-numbers --watch')->hourlyAt(25)->withoutOverlapping()->runInBackground()
+    ->when(fn () => \App\Support\WhatsAppSender::watching());
+
 // ‏‏وما بقي من تعليقات إنستقرام ورسائله بلا ردّ (عاملٌ توقّف، أو حدُّ ساعةٍ امتلأ) — يُلتقط كلَّ خمس دقائق
 Schedule::command('instagram:answer-pending')->everyFiveMinutes()->withoutOverlapping()
     ->when(fn () => \App\Support\InstagramPlatform::mode() !== \App\Support\InstagramPlatform::OFF);

@@ -42,11 +42,13 @@ const TONE: Record<NonNullable<ClientLinkView['link']>['state'], string> = {
  * والعنوانُ يُعرض مرّةً عند إنشائه (`flash.whatsappClientLink`) ولا يُحفظ في الخادم — فمن أغلق الصفحة
  * قبل نسخه يُنشئ رابطًا جديدًا، والجديدُ يُلغي ما قبله.
  */
-export default function ClientLinkBox({ businessId, data, stillShared = false }: {
+export default function ClientLinkBox({ businessId, data, stillShared = false, switchesItself = false }: {
     businessId: number;
     data: ClientLinkView;
-    /** رُبط رقمُه ويعمل، والإرسالُ ما زال من رقم أبعاد — الربطُ لا يبدّل رقمَ الإرسال */
+    /** رُبط رقمُه ويعمل، والإرسالُ ما زال من رقم أبعاد */
     stillShared?: boolean;
+    /** ويُبدَّل وحده حين تكتمل مراحل التحقّق (`WhatsAppSender`) */
+    switchesItself?: boolean;
 }) {
     const { flash, errors } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -114,7 +116,9 @@ export default function ClientLinkBox({ businessId, data, stillShared = false }:
                     )}
                     {link.state === 'used' && stillShared && (
                         <p className="text-[#b45309]" data-testid="client-link-still-shared">
-                            {t('رسائل المتجر ما زالت تخرج من رقم أبعاد — اختر «API مستقل للمتجر» أدناه واحفظ لتخرج من رقمه.')}
+                            {switchesItself
+                                ? t('رسائل المتجر ما زالت تخرج من رقم أبعاد — تُبدَّل إلى رقمه تلقائيًّا حين تكتمل مراحل التحقّق.')
+                                : t('رسائل المتجر ما زالت تخرج من رقم أبعاد — اختر «API مستقل للمتجر» أدناه واحفظ لتخرج من رقمه.')}
                         </p>
                     )}
                     {link.problem && link.state !== 'used' && (

@@ -10,6 +10,7 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
+import WhatsappSender, { type SenderView } from '@/Components/WhatsappSender';
 import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 import WhatsappAutoReply, { type AutoReplySettings, type AutoReplyState } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
 import WhatsappGuidedOrders, { type GuidedOrdersView } from '@/Pages/Admin/Integrations/partials/WhatsappGuidedOrders';
@@ -43,6 +44,8 @@ export interface Automation {
     embedded: EmbeddedConfig;
     /** الربطُ بتطبيق التاجر — عنوانُ إشعارات وصلته وفوترتُها (`WhatsAppOwnApp::view`) */
     own_app?: OwnAppView | null;
+    /** رقمُ الإرسال: يُعتمد وحده أم ينتظر ولماذا، أم تعطّل (`WhatsAppSender::view`) */
+    sender?: SenderView | null;
     /** حالُ الربط بحالاتها الستّ — من الخادم لا تُستنتج هنا */
     link: WhatsappLink;
     /** أيستقبل فعلًا؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
@@ -193,8 +196,12 @@ export default function IntegrationsWhatsapp() {
                         // «تخرج رسائلك من رقم أبعاد» تُقال لمن يُرسل منه فعلًا — لا لمن يبدأ على رقمه
                         sharedAllowed={automation.shared_allowed && automation.effective_mode === 'abaad_shared'}
                         ownApp={automation.own_app ?? null}
+                        stillShared={automation.sender?.sends_from === 'shared'}
                     />
                 )}
+
+                {/* ‏‏ورقمُ الإرسال — يصير رقمَ المتجر وحده حين يجهز، ويُقال ما بقي ومن يفعله */}
+                {automation.sender && <WhatsappSender sender={automation.sender} audience="merchant" mayManage={automation.may_manage} />}
 
                 {/* الاستهلاك للمشترك وحده: من ربط رقمه يُرسل على حسابه فلا حدَّ عليه منّا */}
                 {automation.usage && (

@@ -345,6 +345,41 @@ class MetaWhatsAppClient
         ];
     }
 
+    /**
+     * ‏‏يرفع نموذجًا لرأس قالبٍ من نوع «مستند» — Meta تطلبه مع القالب لتراجعه (Resumable Upload).
+     *
+     * نداءان: جلسةُ رفعٍ على التطبيق، ثمّ الملفُّ نفسُه. والرمزُ في الترويسة لا في العنوان.
+     *
+     * @return array{ok: bool, handle: ?string, code: ?string, message: ?string}
+     */
+    public static function uploadSample(WhatsAppConnection $connection, string $name, string $bytes, string $mime): array
+    {
+        $no = fn (?string $code, ?string $message) => ['ok' => false, 'handle' => null, 'code' => $code, 'message' => $message];
+        $session = self::graph($connection, 'post', config('whatsapp.app_id').'/uploads?'.http_build_query([
+            'file_name' => $name, 'file_length' => strlen($bytes), 'file_type' => $mime,
+        ]));
+        $id = (string) ($session['body']['id'] ?? '');
+
+        if (! $session['ok'] || $id === '') {
+            return $no($session['code'] ?? 'no_session', $session['message']);
+        }
+
+        try {
+            $response = Http::withHeaders(['Authorization' => 'OAuth '.$connection->access_token, 'file_offset' => '0'])
+                ->timeout((int) config('whatsapp.timeout', 15))->acceptJson()
+                ->withBody($bytes, $mime)
+                ->post(rtrim((string) config('whatsapp.graph_url'), '/').'/'.config('whatsapp.api_version').'/'.$id);
+        } catch (\Throwable $e) {
+            return $no('network_error', __('تعذّر الاتصال بواتساب — حاول بعد قليل.'));
+        }
+
+        $handle = $response->successful() ? (string) $response->json('h') : '';
+
+        return $handle !== ''
+            ? ['ok' => true, 'handle' => $handle, 'code' => null, 'message' => null]
+            : $no((string) ($response->json('error.code') ?? $response->status()), mb_substr((string) $response->json('error.message'), 0, 300));
+    }
+
     /** @return array{ok: bool, code: ?string, message: ?string} */
     public static function removeTemplate(WhatsAppConnection $connection, string $name): array
     {

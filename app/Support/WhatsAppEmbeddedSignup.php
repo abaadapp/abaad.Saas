@@ -775,6 +775,52 @@ class WhatsAppEmbeddedSignup
     }
 
     /**
+     * ‏‏أيُرسل هذا الرقمُ الآن؟ — حالُه عند Meta وما تقوله عن قدرته على الإرسال. قراءةٌ لا غير.
+     *
+     * `status` للرقم وحده: لا بدّ أن يكون `CONNECTED`. و`health_status` تجمع الرقمَ وحسابَه ونشاطَه
+     * والتطبيق: `BLOCKED` لا يُرسل ومعه السببُ والحلّ، و`LIMITED` يُرسل بقيد. وما لم تقله Meta يبقى `null`.
+     *
+     * @return array{ok: bool, status: ?string, can_send: ?string, why: ?string, code: ?string, message: ?string}
+     */
+    public static function numberState(string $phoneNumberId, string $token): array
+    {
+        $none = ['ok' => false, 'status' => null, 'can_send' => null, 'why' => null];
+
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$phoneNumberId, ['fields' => 'status,health_status']);
+        } catch (\Throwable $e) {
+            return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            return $none + ['code' => $code, 'message' => $message];
+        }
+
+        $word = fn (mixed $v) => is_string($v) && $v !== '' ? strtoupper($v) : null;
+
+        // ‏‏وسببُ المنع من أوّل طرفٍ ممنوع — بنصّ Meta كما كتبته، وحلِّها إن ذكرته
+        $blocked = collect((array) $response->json('health_status.entities'))
+            ->first(fn ($e) => is_array($e) && $word($e['can_send_message'] ?? null) === 'BLOCKED');
+        $error = (array) (((array) ($blocked['errors'] ?? []))[0] ?? []);
+        $why = trim(implode(' ', array_filter([
+            is_string($error['error_description'] ?? null) ? $error['error_description'] : null,
+            is_string($error['possible_solution'] ?? null) ? $error['possible_solution'] : null,
+        ])));
+
+        return [
+            'ok' => true,
+            'status' => $word($response->json('status')),
+            'can_send' => $word($response->json('health_status.can_send_message')),
+            'why' => $why !== '' ? mb_substr(self::scrub($why), 0, 240) : null,
+            'code' => isset($error['error_code']) ? (string) $error['error_code'] : null,
+            'message' => null,
+        ];
+    }
+
+    /**
      * رمزُ خطأِ ميتا ونصُّه — ولا شيءَ من الاعتماد.
      *
      * @param  array<string, mixed>|null  $payload

@@ -80,8 +80,8 @@ final class WhatsAppClientLinks
     /** ‏‏لماذا لا يُربط هذا المتجرُ برابطٍ الآن — نصٌّ لفريق أبعاد، و`null`: يُربط */
     public static function refusal(Business $business): ?string
     {
-        if (WhatsAppOwnApp::enabled()) {
-            return __('الرابط يعمل بعد نقل التجّار الجدد إلى تطبيق أبعاد — من إعدادات المنصة، تبويب واتساب.');
+        if (WhatsAppOwnApp::enabledFor((int) $business->id)) {
+            return __('الرابط يعمل بعد نقل التجّار الجدد إلى تطبيق أبعاد، أو إضافة هذا المتجر إلى متاجر التجربة — من إعدادات المنصة، تبويب واتساب.');
         }
 
         if (! WhatsAppEmbeddedSignup::configured()) {
@@ -108,7 +108,8 @@ final class WhatsAppClientLinks
             return __('رقم المتجر رُبط وينتظر رمز التفعيل — يكتبه صاحبه من صفحة واتساب في حسابه.');
         }
 
-        if ($existing?->isUsable()) {
+        // ‏‏ورقمٌ سُحب إذنُه عند Meta «مربوطٌ» عندنا ولا يُرسل — يُعاد ربطُه بالرابط كما يُعاد من الحساب
+        if ($existing?->isUsable() && ! WhatsAppSender::needsRelink($business, $existing)) {
             return __('رقم المتجر مربوط ويعمل — لا يبدّله رابط. إن أراد رقمًا آخر فليفصله من حسابه أوّلًا.');
         }
 

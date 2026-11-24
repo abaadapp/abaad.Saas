@@ -29,6 +29,11 @@ export interface WhatsAppLinkState {
     ready: boolean;
     /** ‏أمفتوحٌ للتجّار خيارُ البقاء في تطبيق واتساب للأعمال؟ */
     coexistence?: boolean;
+    /** ‏متاجرُ تجربةٍ تربط عبر تطبيق أبعاد قبل غيرها */
+    pilot?: { id: number; name: string }[];
+    pilot_max?: number;
+    /** ‏أيُعتمد رقمُ التاجر رقمًا للإرسال آليًّا؟ */
+    auto_sender?: boolean;
     /** ‏حقولُ إشعارات Meta التي يحتاجها ذلك الخيار */
     coexistence_fields?: string[];
     history: { at: string; by: string; what: string }[];
@@ -53,7 +58,10 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
     const [busy, setBusy] = useState(false);
     const [saving, setSaving] = useState(false);
     const [configId, setConfigId] = useState(state.config_source === 'platform' ? state.config_id : '');
-    const [errors, setErrors] = useState<{ mode?: string; config_id?: string; enabled?: string }>({});
+    const [errors, setErrors] = useState<{ mode?: string; config_id?: string; enabled?: string; pilot?: string }>({});
+    const pilot = state.pilot ?? [];
+    const [pilotText, setPilotText] = useState(pilot.map((p) => String(p.id)).join('، '));
+    const [pilotBusy, setPilotBusy] = useState(false);
     const [coexBusy, setCoexBusy] = useState(false);
     const when = (iso: string) =>
         new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ar-OM', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Muscat' }).format(new Date(iso));
@@ -103,6 +111,33 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
             preserveScroll: true,
             onStart: () => setSaving(true),
             onFinish: () => setSaving(false),
+            onSuccess: () => setErrors({}),
+            onError: (e) => setErrors(e as typeof errors),
+        });
+
+    const [autoBusy, setAutoBusy] = useState(false);
+    const autoOn = state.auto_sender !== false;
+    const flipAuto = async () => {
+        const ok = await confirm({
+            title: autoOn ? t('إيقاف اعتماد الأرقام تلقائيًّا') : t('إعادة اعتماد الأرقام تلقائيًّا'),
+            message: autoOn
+                ? t('الأرقام التي تُربط لا تصير أرقام إرسال حتى تعيده. الأرقام المعتمدة لا تتغيّر.')
+                : t('كلّ رقم يُربط يُفحص، ويصير رقم إرسال متجره حين يجهز.'),
+            action: autoOn ? t('إيقاف') : t('إعادة'),
+        });
+        if (!ok) return;
+        router.post(route('super-admin.whatsapp.merchant-link.auto-sender'), { enabled: !autoOn }, {
+            preserveScroll: true,
+            onStart: () => setAutoBusy(true),
+            onFinish: () => setAutoBusy(false),
+        });
+    };
+
+    const savePilot = () =>
+        router.post(route('super-admin.whatsapp.merchant-link.pilot'), { pilot: pilotText }, {
+            preserveScroll: true,
+            onStart: () => setPilotBusy(true),
+            onFinish: () => setPilotBusy(false),
             onSuccess: () => setErrors({}),
             onError: (e) => setErrors(e as typeof errors),
         });
@@ -195,6 +230,47 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
                 <p className="mt-2 text-[12px] text-[#b91c1c]" data-testid="wa-link-error">{errors.mode}</p>
             )}
 
+            {/* ‏‏ومتاجرُ تجربةٍ قبل نقل الجميع — لا معنى لها والجميعُ على تطبيق أبعاد */}
+            {toAbaad && (
+                <form
+                    className="mt-4 flex flex-wrap items-end gap-2 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3"
+                    data-testid="wa-pilot"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        savePilot();
+                    }}
+                >
+                    <label className="flex flex-col gap-1 text-[12px] text-[#6b7280]">
+                        {t('متاجر التجربة — أرقامها مفصولة بفاصلة')}
+                        <Input
+                            dir="ltr"
+                            value={pilotText}
+                            onChange={(e) => setPilotText(e.target.value)}
+                            className="w-64 tabular-nums"
+                            data-testid="wa-pilot-input"
+                        />
+                    </label>
+                    <Button type="submit" variant="outline" loading={pilotBusy} disabled={!state.ready && pilot.length === 0} data-testid="wa-pilot-save">
+                        {t('حفظ')}
+                    </Button>
+                    <p className="basis-full text-[12px] leading-relaxed text-[#6b7280]">
+                        {t('تربط هذه المتاجر وحدها عبر تطبيق أبعاد قبل نقل الجميع. وصلة تطبيق التاجر القائمة لا تتغيّر ولو كُتب متجرها.')}
+                    </p>
+                    {pilot.length > 0 && (
+                        <ul className="basis-full text-[12px] text-[#374151]" data-testid="wa-pilot-list">
+                            {pilot.map((p) => (
+                                <li key={p.id}>
+                                    <span dir="ltr">{p.id}</span> — {p.name}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {errors.pilot && (
+                        <p className="basis-full text-[12px] text-[#b91c1c]" data-testid="wa-pilot-error">{errors.pilot}</p>
+                    )}
+                </form>
+            )}
+
             {/* ‏‏وخيارُ البقاء في تطبيق واتساب للأعمال — يُفتح بعد النقل إلى تطبيق أبعاد */}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3" data-testid="wa-coex">
                 <span className="text-sm text-[#111]">
@@ -205,7 +281,7 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
                     data-testid="wa-coex-flip"
                     variant={coexOpen ? 'outline' : 'primary'}
                     loading={coexBusy}
-                    disabled={!coexOpen && (state.mode !== 'abaad_app' || !state.ready)}
+                    disabled={!coexOpen && ((state.mode !== 'abaad_app' && pilot.length === 0) || !state.ready)}
                     onClick={() => void flipCoexistence()}
                 >
                     {coexOpen ? t('أقفله') : t('افتحه')}
@@ -215,11 +291,21 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
                 {t('يحتاج أن يكون تطبيق أبعاد عند Meta مشتركًا في حقول الإشعارات')}:{' '}
                 <span dir="ltr" className="font-medium text-[#374151]">{(state.coexistence_fields ?? []).join(' · ')}</span>{' '}
                 {t('(لوحة Meta ← WhatsApp ← Configuration).')}
-                {!coexOpen && state.mode !== 'abaad_app' && <> {t('ويُفتح بعد نقل التجّار الجدد إلى تطبيق أبعاد.')}</>}
+                {!coexOpen && state.mode !== 'abaad_app' && pilot.length === 0 && <> {t('ويُفتح بعد نقل التجّار الجدد إلى تطبيق أبعاد.')}</>}
             </p>
             {errors.enabled && (
                 <p className="mt-2 text-[12px] text-[#b91c1c]" data-testid="wa-coex-error">{errors.enabled}</p>
             )}
+
+            {/* ‏‏ورقمُ التاجر يصير رقمَ إرساله وحده حين يجهز — ويُوقف من هنا عند الحاجة */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3" data-testid="wa-auto">
+                <span className="text-sm text-[#111]">
+                    {t('اعتماد رقم التاجر رقمًا للإرسال تلقائيًّا')}: <strong data-testid="wa-auto-state">{autoOn ? t('يعمل') : t('موقوف')}</strong>
+                </span>
+                <Button variant={autoOn ? 'outline' : 'primary'} loading={autoBusy} onClick={() => void flipAuto()} data-testid="wa-auto-flip">
+                    {autoOn ? t('أوقفه') : t('أعِده')}
+                </Button>
+            </div>
 
             {state.history.length > 0 && (
                 <div className="mt-5">

@@ -26,6 +26,7 @@ use App\Support\WhatsAppOnboarding;
 use App\Support\WhatsAppOwnApp;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
+use App\Support\WhatsAppSender;
 use App\Support\WhatsAppStatus;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\Request;
@@ -113,7 +114,10 @@ class WhatsAppController extends Controller
              * والربطُ بتطبيق التاجر: عنوانُ إشعارات وصلته ورمزُ تحقّقها وحالُ فوترتها
              * (`WhatsAppOwnApp::view`) — ورمزُ التحقّق لصاحب الحساب وحده.
              */
-            'own_app' => WhatsAppOwnApp::view($own, \App\Support\Permissions::isOwner(auth()->user())),
+            'own_app' => WhatsAppOwnApp::view($own, \App\Support\Permissions::isOwner(auth()->user()), (int) $business->id),
+
+            /* ‏‏ورقمُ الإرسال: يُعتمد آليًّا أم ينتظر ولماذا، أم تعطّل (`WhatsAppSender`) */
+            'sender' => $ownAllowed ? WhatsAppSender::view($business) : null,
 
             /* والردُّ التلقائيّ: ما حُفظ، وفروعُ المتجر التي يُختار منها */
             'auto_reply' => $ownAllowed ? WhatsAppAutoReply::settings($business->id) : null,
@@ -256,14 +260,18 @@ class WhatsAppController extends Controller
                 return back()->withErrors(['mode' => __('اربط رقم متجرك أولًا — لا وصلة صالحة بعد.')]);
             }
 
-            // ولا يُحوَّل قبل أن يُراجَع دليلُ الفوترة ويُعرف حسابُ الرسائل — ويبقى إرسالُه كما هو
-            if (! WhatsAppOwnApp::readyForOwnMode($own)) {
-                return back()->withErrors(['mode' => __('لا يُحوَّل الإرسال إلى رقم متجرك قبل أن يُراجَع دليل فوترته ويُعرف حساب رسائله — ويبقى إرسالك كما هو حتى ذلك.')]);
+            // ولا يُحوَّل قبل أن تثبت جاهزيّتُه آليًّا، أو يُراجَع دليلُ الفوترة ويُعرف حسابُ الرسائل — ويبقى إرسالُه كما هو
+            if (! WhatsAppSender::mayOwn($own)) {
+                return back()->withErrors(['mode' => WhatsAppSender::checking((int) $business->id)
+                    ? __('رقمك قيد التحقّق — يصير رقم إرسال متجرك تلقائيًّا حين تكتمل مراحله، ويبقى إرسالك كما هو حتى ذلك.')
+                    : __('لا يُحوَّل الإرسال إلى رقم متجرك قبل أن يُراجَع دليل فوترته ويُعرف حساب رسائله — ويبقى إرسالك كما هو حتى ذلك.')]);
             }
         }
 
         $from = $business->whatsapp_mode;
         $business->update(['whatsapp_mode' => $data['mode']]);
+        // ‏‏وما اختاره بيده لا يُبدَّل عليه آليًّا
+        WhatsAppSender::chosen((int) $business->id, $data['mode']);
 
         Activity::log('settings', 'واتساب — بدّل وضع الإرسال: '
             .WhatsAppMode::label($from).' ← '.WhatsAppMode::label($data['mode']));
@@ -435,8 +443,11 @@ class WhatsAppController extends Controller
 
         Activity::log('settings', 'واتساب — ربط رقم المتجر ('.($attributes['display_phone_number'] ?? $data['phone_number_id']).')');
 
+        // ‏‏ويُعتمد رقمَ إرسالٍ حين تثبت جاهزيّتُه — كالربط بضغطة
+        WhatsAppSender::linked($connection, WhatsAppSender::VIA_MANUAL, $request->user());
+
         return back()->with('toast', [
-            'msg' => WhatsAppOnboarding::linkedMessage($hook['state']),
+            'msg' => WhatsAppOnboarding::withSender($business, WhatsAppOnboarding::linkedMessage($hook['state'])),
             'type' => $hook['state'] === WhatsAppLinkCheck::SUBSCRIBED ? 'success' : 'warning',
         ]);
     }
@@ -469,6 +480,7 @@ class WhatsAppController extends Controller
          * والفصلُ محلّيٌّ كما كان: لا `deregister` ولا حذفَ عند ميتا — الرقمُ
          * وحسابُ الأعمال يبقيان ملكَ صاحبهما، ويُربطان من جديد متى شاء.
          */
+        WhatsAppSender::unlinked((int) $business->id);
         Activity::log('settings', 'واتساب — فصل رقم المتجر');
 
         return back()->with('toast', ['msg' => __('فُصل رقم المتجر — لا تخرج رسائل واتساب حتى تربطه من جديد أو تختار رقم أبعاد.'), 'type' => 'success']);

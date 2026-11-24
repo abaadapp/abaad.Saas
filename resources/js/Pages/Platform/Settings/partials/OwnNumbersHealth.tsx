@@ -13,6 +13,8 @@ export interface OwnNumberRow {
     phone: string | null;
     inbox: boolean;
     health: LinkHealth;
+    /** ورقمُ إرساله: معتمَد، أو ينتظر، أو تعطّل (`WhatsAppSender::brief`) */
+    sender?: { state: 'checking' | 'adopted' | 'problem' | 'own' | 'shared'; text: string };
 }
 
 const TONE: Record<LinkHealth['tone'], string> = {
@@ -72,6 +74,15 @@ export default function OwnNumbersHealth({ rows }: { rows: OwnNumberRow[] }) {
                                     )}
                                     <p className={cn('mt-0.5 text-[13px] font-medium', TONE[row.health.tone])}>{t(row.health.label)}</p>
                                     <p className="mt-0.5 text-[12px] leading-relaxed text-[#6b7280]">{t(row.health.hint)}</p>
+                                    {row.sender && (
+                                        <p
+                                            className={cn('mt-0.5 text-[12px] leading-relaxed', row.sender.state === 'problem' ? 'font-medium text-[#b91c1c]' : row.sender.state === 'checking' ? 'text-[#92400e]' : 'text-[#6b7280]')}
+                                            data-testid="own-number-sender"
+                                            data-state={row.sender.state}
+                                        >
+                                            {row.sender.text}
+                                        </p>
+                                    )}
                                     <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[#9ca3af]">
                                         <div>
                                             <dt className="inline">{t('آخر حالة تسليم')}: </dt>

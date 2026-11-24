@@ -107,6 +107,12 @@ class WhatsAppOwnApp
         return WhatsAppMerchantLink::ownApp();
     }
 
+    /** ‏‏ولمتجرٍ بعينه — متجرُ التجربة على تطبيق أبعاد وإن بقي الجددُ على تطبيقاتهم */
+    public static function enabledFor(?int $businessId): bool
+    {
+        return $businessId === null ? self::enabled() : WhatsAppMerchantLink::ownAppFor($businessId);
+    }
+
     public static function is(?WhatsAppConnection $connection): bool
     {
         return $connection !== null && $connection->link_type === self::TYPE;
@@ -127,7 +133,7 @@ class WhatsAppOwnApp
      */
     public static function onOwnApp(int $businessId): bool
     {
-        return self::enabled() || self::holds(WhatsAppConnections::forBusiness($businessId));
+        return self::enabledFor($businessId) || self::holds(WhatsAppConnections::forBusiness($businessId));
     }
 
     /**
@@ -887,13 +893,13 @@ class WhatsAppOwnApp
      *
      * @return array<string, mixed>
      */
-    public static function view(?WhatsAppConnection $connection, bool $mayManage): array
+    public static function view(?WhatsAppConnection $connection, bool $mayManage, ?int $businessId = null): array
     {
         $mine = self::holds($connection);
 
         return [
             // ‏‏ومن ربط بتطبيقه تبقى له شاشتُه وإن نُقل الجددُ إلى تطبيق أبعاد (`onOwnApp`)
-            'enabled' => self::enabled() || $mine,
+            'enabled' => self::enabledFor($businessId ?? ($connection?->business_id !== null ? (int) $connection->business_id : null)) || $mine,
             'connection' => $mine ? [
                 'app_id' => $connection->token_app_id,
                 'waba_id' => $connection->waba_id,

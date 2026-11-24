@@ -201,6 +201,8 @@ interface Props {
     sharedAllowed?: boolean;
     /** الربطُ بتطبيق التاجر — يحلّ محلَّ زرّ تطبيق أبعاد حين يكون الطريقَ (`WhatsAppOwnApp`) */
     ownApp?: OwnAppView | null;
+    /** رُبط رقمُه ورسائلُه ما زالت من رقم أبعاد — فلا يُقال إنّها تخرج منه */
+    stillShared?: boolean;
 }
 
 /**
@@ -213,7 +215,7 @@ interface Props {
  * ضغطةً: لا حساب مطوّرين، ولا رمزٌ دائمٌ يُصنع بيد التاجر ويُلصق في حقلٍ
  * يمرّ بالمتصفّح.
  */
-export default function WhatsappLinkCard({ link, health = null, config, mayManage, sharedAllowed = true, ownApp = null }: Props) {
+export default function WhatsappLinkCard({ link, health = null, config, mayManage, sharedAllowed = true, ownApp = null, stillShared = false }: Props) {
     const own = ownApp?.enabled === true;
     const t = useTranslate();
     const [sending, setSending] = useState(false);
@@ -266,7 +268,7 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                           : 'text-[13px] leading-relaxed text-[#6b7280]'
                 }
             >
-                {state === 'connected' && t('رقمك مربوط، والرسائل تخرج منه.')}
+                {state === 'connected' && (stillShared ? t('رقمك مربوط، ورسائلك ما زالت تخرج من رقم أبعاد.') : t('رقمك مربوط، والرسائل تخرج منه.'))}
                 {state === 'connecting' && t('تمّ التفويض — وحسابك لم يُظهر رقمًا بعد. تكتمل عادةً خلال دقائق.')}
                 {state === 'billing_unproven' &&
                     t('رُبط رقمك بتطبيقك، ولم يثبت أنّ رسائل حسابك تُحتسب عليك عند ميتا — لا تخرج رسالة حتى يثبت. أرسل لأبعاد ما يثبت وسيلة الدفع في حسابك.')}

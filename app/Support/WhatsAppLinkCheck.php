@@ -98,6 +98,9 @@ final class WhatsAppLinkCheck
     /** العنوانُ في التطبيق ليس `/webhooks/whatsapp` عندنا */
     public const APP_CALLBACK_ELSEWHERE = 'callback_elsewhere';
 
+    /** ‏‏ما يحتاجه كلُّ متجرٍ من حقول تطبيق أبعاد — وحقولُ التعايش فوقها حين يُفتح (`WhatsAppCoexistence::FIELDS`) */
+    public const APP_FIELDS = ['messages', 'account_update', 'message_template_status_update', 'user_preferences'];
+
     /** حقلُ `messages` غيرُ مُشعَلٍ في التطبيق — لا يصل من متجرٍ حرف */
     public const APP_MESSAGES_OFF = 'messages_off';
 

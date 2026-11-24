@@ -154,10 +154,10 @@ export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
                         <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('صدر في')}</dt><dd dir="ltr" className="text-[#111]">{now.issued}</dd></div>
                         <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('آخر دخول به')}</dt><dd dir="ltr" className="text-[#111]">{now.used ?? '—'}</dd></div>
                     </dl>
-                    {(now.urls.reissue || now.urls.revoke) && (
+                    {now.urls.reissue && now.urls.revoke && (
                         <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
-                            {now.urls.reissue && <Button variant="outline" size="sm" loading={busy === 'reissue'} disabled={busy !== null} onClick={() => void reissue()} data-testid="portal-reissue"><RefreshCw />{t('إعادة إصدار الرابط')}</Button>}
-                            {now.urls.revoke && <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy === 'revoke'} disabled={busy !== null} onClick={() => void revoke()} data-testid="portal-revoke">{t('إلغاء الرابط')}</Button>}
+                            <Button variant="outline" size="sm" loading={busy === 'reissue'} disabled={busy !== null} onClick={() => void reissue()} data-testid="portal-reissue"><RefreshCw />{t('إعادة إصدار الرابط')}</Button>
+                            <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy === 'revoke'} disabled={busy !== null} onClick={() => void revoke()} data-testid="portal-revoke">{t('إلغاء الرابط')}</Button>
                         </div>
                     )}
                 </div>

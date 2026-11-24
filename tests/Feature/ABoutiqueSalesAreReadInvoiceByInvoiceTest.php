@@ -11,6 +11,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Coupon;
 use App\Models\Currency;
+use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -395,6 +396,50 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertEquals(30, $all['bundles']['revenue']);
     }
 
+    public function test_pieces_inside_a_set_stay_out_of_what_is_owed_while_the_switch_is_off(): void
+    {
+        Business::whereKey($this->shop->id)->update(['boutique_components_enabled' => false]);
+
+        $alone = $this->sell([$this->line($this->set)]);
+        $this->assertSame(0, BoutiqueComponentDue::count(), 'المفتاحُ مطفأ: لا مستحقَّ يُكتب');
+        $this->assertSame(0, $this->rows()['total'], 'الطقمُ لسعود وحده');
+        $this->actingAs($this->owner)->getJson(route('admin.boutiques.sales.order', $alone->id))->assertNotFound();
+
+        $mixed = $this->sell([$this->line($this->set), $this->line($this->silver)]);
+        $rows = $this->rows()['rows'];
+        $this->assertCount(1, $rows, 'المنفردُ وحده');
+        $this->assertSame('standalone', $rows[0]['type']);
+
+        $s = $this->summary();
+        $this->assertSame('off', $s['pieces']);
+        $this->assertEquals(0, $s['components']['due']);
+        $this->assertEquals(4.8, $s['owed'], 'صافي المنفرد وحده — لا ثمنُ القطعة في الطقم');
+        $this->assertEquals(0, $s['bundles']['boutiques_due']);
+
+        $inv = $this->invoice($mixed);
+        $set = collect($inv['lines'])->firstWhere('name', 'طقم الفضّة');
+        $this->assertSame([], $set['pieces']);
+        $this->assertEquals(20, $set['shop_share'], 'الطقمُ كلُّه للمتجر ما دام المفتاحُ مطفأ');
+        $this->assertEquals([4.8], collect($inv['shares']['boutiques'])->pluck('owed')->all());
+        $this->assertEquals(21.2, $inv['shares']['shop']);
+        $this->assertEquals(26, $inv['shares']['lines_total']);
+    }
+
+    public function test_a_line_belongs_to_who_owned_it_when_it_was_sold(): void
+    {
+        $this->sell([$this->line($this->silver), $this->line($this->set)]);
+
+        // القطعةُ انتقلت إلى ريم، ولمى غيّرت اسمها ونسبتها — بعد البيع
+        $this->silver->update(['boutique_id' => $this->reem->id]);
+        $this->lama->update(['name' => 'بوتيك لمى الجديد', 'commission_rate' => 50]);
+
+        $rows = collect($this->rows()['rows']);
+        $this->assertSame([$this->lama->id], $rows->pluck('boutique_id')->unique()->values()->all(), 'صاحبُ البند صاحبُه ساعةَ البيع');
+        $this->assertEquals(1.2, $rows->firstWhere('type', 'standalone')['commission'], 'ونسبتُه نسبةُ يومها');
+        $this->assertEquals(4.8 + 6, $this->summary(['boutique' => (string) $this->lama->id])['owed']);
+        $this->assertEquals(0, $this->summary(['boutique' => (string) $this->reem->id])['owed']);
+    }
+
     /* ═══════════ ٣ · اللقطة ═══════════ */
 
     public function test_a_price_or_rate_changed_after_the_sale_changes_nothing_that_was_sold(): void
@@ -518,6 +563,49 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
     }
 
     /* ═══════════ ٥ · الإلغاء والإرجاع ═══════════ */
+
+    public function test_a_full_return_of_one_boutiques_line_leaves_the_rest_of_the_invoice(): void
+    {
+        $order = $this->sell([$this->line($this->plain), $this->line($this->silver, 2), $this->line($this->perfume)]);
+        $this->actingAs($this->owner);
+        $silver = OrderItem::where('order_id', $order->id)->where('boutique_id', $this->lama->id)->firstOrFail();
+        OrderCorrection::setQuantity($order->fresh(), $silver, 0, 'رُدّ الصنف كلُّه');
+        $order->refresh();
+
+        $rows = $this->rows()['rows'];
+        $this->assertSame(['بوتيك ريم'], collect($rows)->pluck('boutique')->all());
+        $this->assertSame('partial', $rows[0]['invoice_state']);
+        $this->assertEquals(0, $this->summary(['boutique' => (string) $this->lama->id])['owed']);
+        $this->assertEquals(10.8, $this->summary(['boutique' => (string) $this->reem->id])['owed']);
+
+        $inv = $this->invoice($order);
+        $this->assertSame(['بوتيك ريم'], collect($inv['shares']['boutiques'])->pluck('name')->all());
+        $this->assertEquals(32, $inv['shares']['lines_total'], '٢٠ + ١٢ — ما رُدّ خرج مرّةً واحدة');
+        $this->assertEquals(21.2, $inv['shares']['shop'], '٢٠ + عمولة ريم ١٫٢');
+        $this->assertTrue($inv['shares']['reconciles']);
+        $this->assertFalse($inv['shares']['void']);
+    }
+
+    public function test_a_delivery_fee_and_redeemed_points_are_on_the_invoice_not_on_the_shares(): void
+    {
+        foreach (['loyalty_enabled' => '1', 'loyalty_redeem_max_pct' => '50', 'loyalty_redeem_min' => '100'] as $key => $value) {
+            Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => $key], ['value' => $value]);
+        }
+        $customer = Customer::create(['business_id' => $this->shop->id, 'language' => 'ar', 'name' => 'زبون', 'phone' => '90000000', 'points' => 100000]);
+
+        $order = $this->sell([$this->line($this->plain), $this->line($this->silver)], [
+            'customer_id' => $customer->id, 'redeem_points' => 999999, 'delivery_fee' => 2,
+        ]);
+        $this->assertGreaterThan(0, (float) $order->discount, 'الاستبدالُ لم يقع — الاختبارُ لا يقيس شيئًا');
+
+        $inv = $this->invoice($order);
+        $this->assertEquals(2, $inv['order']['delivery_fee']);
+        $this->assertEquals(round((float) $order->discount, 3), $inv['order']['discount']);
+        $this->assertEquals(26, $inv['shares']['lines_total']);
+        $this->assertEquals(4.8, $inv['shares']['boutiques'][0]['owed'], 'النقاطُ والتوصيلُ لا تمسّان نصيبَ البوتيك');
+        $this->assertEquals(21.2, $inv['shares']['shop']);
+        $this->assertTrue($inv['shares']['reconciles'], 'البنودُ − الخصم + التوصيل = الإجمالي');
+    }
 
     public function test_a_cancelled_invoice_of_several_boutiques_keeps_its_lines_and_owes_nobody(): void
     {

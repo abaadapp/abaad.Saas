@@ -269,6 +269,8 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $cookie = $this->device('91234567');
         $this->approve($this->owner, $this->maryam, $this->other($this->shown($cookie)))->assertStatus(422);
         $this->approve($this->owner, $this->maryam, strtr($this->shown($cookie), array_combine(range('0', '9'), mb_str_split('٠١٢٣٤٥٦٧٨٩'))))->assertOk();
+        $spaced = $this->device('91234567');
+        $this->approve($this->owner, $this->maryam, implode(' ', str_split($this->shown($spaced))))->assertOk();
         $this->approve($this->owner, $this->maryam, '')->assertStatus(422)->assertJsonPath('errors.device.0', fn ($m) => str_contains((string) $m, 'رقم الجهاز'));
     }
 

@@ -396,6 +396,13 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $clerk->delete();
         $rows = $this->staff($this->owner)->get(route('admin.settings.portal.index'))->viewData('page')['props']['links'];
         $this->assertSame([['منى', 'shop'], ['سعود', 'call']], array_map(fn ($d) => [$d['by'], $d['how']], $rows[0]['devices']));
+
+        // وجهازٌ خرج منه صاحبُه، أو انقضت جلستُه، لا يبقى بين المعتمدة
+        $this->visitor($cookie)->post('http://ribbon.abaadapp.om/my/logout')->assertRedirect();
+        $left = fn () => array_column($this->staff($this->owner)->get(route('admin.customers.show', $this->maryam->id))->viewData('page')['props']['portalCustomer']['devices'], 'by');
+        $this->assertSame(['منى'], $left());
+        CustomerPortalSession::query()->update(['expires_at' => now()->subMinute()]);
+        $this->assertSame([], $left());
     }
 
     public function test_another_shops_customer_and_a_twin_number_are_kept_apart(): void
@@ -666,7 +673,13 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->assertSame($raw, Access::held($both, Access::session((int) $this->ribbon->id, $both)));
         // ولا يُقرأ متجرٌ آخر بها
         $this->assertNull(Access::session((int) $this->neighbour->id, $planted));
-        $this->assertNull(Devices::mine((int) $this->neighbour->id, Request::create('https://ribbon.abaadapp.om/my', cookies: ['__Host-rb_my' => $this->device('92220000')])));
+        $elsewhere = Request::create('https://ribbon.abaadapp.om/my', cookies: ['__Host-rb_my' => $this->device('92220000')]);
+        $this->assertNotNull(Devices::mine((int) $this->ribbon->id, $elsewhere));
+        $this->assertNotNull(Devices::last((int) $this->ribbon->id, $elsewhere));
+        $this->assertNull(Devices::mine((int) $this->neighbour->id, $elsewhere));
+        $this->assertNull(Devices::last((int) $this->neighbour->id, $elsewhere));
+        // ولا الكعكةُ المجرَّدة تُظهر طلبًا انقضى لغيره فيُطلب له رقم
+        $this->assertNull(Devices::last((int) $this->ribbon->id, Request::create('https://ribbon.abaadapp.om/my', cookies: ['rb_my' => $elsewhere->cookie('__Host-rb_my')])));
     }
 
     /* ═════════════ متجرٌ واحد ═════════════ */

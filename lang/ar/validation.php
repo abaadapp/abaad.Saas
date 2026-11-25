@@ -659,6 +659,17 @@ return [
         'evidence_reference' => 'مرجع الدليل',
         'evidence_waba_id' => 'معرّف الحساب في الدليل',
         'evidence_checked' => 'الإقرار بمراجعة الدليل',
+        // ‏‏وقفلُ الفوترة وتجربتُه (`WhatsAppBillingLock`)
+        'evidence_owner' => 'الإقرار بمالك الحساب',
+        'evidence_card' => 'الإقرار بوسيلة الدفع',
+        'charges_accepted' => 'الموافقة على الرسوم الفعلية',
+        'messages' => 'عدد الرسائل',
+        'hours' => 'المدة بالساعات',
+        'price_id' => 'الرسالة المحتسبة',
+        'abaad_reference' => 'مرجع مراجعة حساب أبعاد',
+        'currency' => 'العملة',
+        'merchant_checked' => 'الإقرار برؤية الرسم على حساب التاجر',
+        'abaad_checked' => 'الإقرار بمراجعة حساب أبعاد',
         'display_phone_number' => 'الرقم المعروض',
         'access_token' => 'رمز الوصول',
 

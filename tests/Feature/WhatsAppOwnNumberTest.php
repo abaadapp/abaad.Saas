@@ -74,6 +74,8 @@ class WhatsAppOwnNumberTest extends TestCase
         }
 
         $this->actingAs($this->owner);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function order(): Order
@@ -173,8 +175,13 @@ class WhatsAppOwnNumberTest extends TestCase
             ->assertRedirect()->assertSessionHasErrors('mode');
         $this->assertNotSame(WhatsAppMode::BUSINESS_OWN, $this->business->fresh()->whatsapp_mode);
 
-        // دليلٌ رُوجع على وصلته — فيُحوَّل
+        // ‏‏وعمودٌ قديم لا يفتح وصلةً مقفلة — يفتحها إثباتُ جهة رسومها وحده (`WhatsAppBillingLock`)
         WhatsAppConnection::where('business_id', $this->business->id)->update(['billing_state' => \App\Support\WhatsAppOwnApp::BILLING_CONFIRMED]);
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasErrors('mode');
+
+        // دليلٌ رُوجع على وصلته — وبلا فحصٍ جارٍ يُحوَّل بيد صاحبه
+        $this->proveWhatsAppBilling((int) $this->business->id, 'WABA-SHOP');
+        \App\Support\WhatsAppSender::chosen((int) $this->business->id, WhatsAppMode::ABAAD_SHARED);
 
         $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertRedirect()->assertSessionHasNoErrors();

@@ -7,6 +7,9 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import StatusPill from '@/Components/StatusPill';
+import { BILLING_PILL, type BillingState } from '@/Components/WhatsappBilling';
+import WhatsAppBillingReview, { type PlatformBilling } from '@/Pages/Platform/Businesses/partials/WhatsAppBillingReview';
 import ClientLinkBox, { type ClientLinkView } from '@/Pages/Platform/Businesses/partials/ClientLinkBox';
 import type { LinkHealth } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 
@@ -70,6 +73,10 @@ export interface BusinessWhatsApp {
     client_link?: ClientLinkView;
     /** رقمُ الإرسال: ينتظر ماذا، أو صار، أو تعطّل (`WhatsAppSender::view`) */
     sender?: SenderView;
+    /** على من رسومُه عند Meta — بإحدى خمس (`WhatsAppBillingLock::brief`) */
+    billing?: { state: BillingState; label: string; locked: boolean; own_app: boolean; text: string | null } | null;
+    /** ومراجعتُها لوصلةٍ عبر تطبيق أبعاد (`WhatsAppBillingLock::platformView`) */
+    billing_review?: PlatformBilling | null;
 }
 
 /** ما يراه فريقُ أبعاد قبل أن يؤكّد أنّ فوترة ميتا على التاجر */
@@ -316,6 +323,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                         {t(data.effective_mode === 'business_own' ? 'رقم المتجر' : 'رقم أبعاد')}
                     </dd>
                 </div>
+                {data.billing && (
+                    <div className="flex items-center justify-between gap-3" data-testid="wa-billing-state" data-state={data.billing.state}>
+                        <dt className="text-[#6b7280]">{t('رسوم واتساب عند Meta')}</dt>
+                        <dd><StatusPill state={BILLING_PILL[data.billing.state]} label={data.billing.label} /></dd>
+                    </div>
+                )}
                 <div className="flex justify-between gap-3">
                     <dt className="text-[#6b7280]">{t('رسائل هذا الشهر')}</dt>
                     <dd className="font-medium text-[#111]" dir="ltr">
@@ -415,6 +428,8 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     )}
                 </dl>
             )}
+
+            {data.billing_review && <div className="mb-5"><WhatsAppBillingReview businessId={businessId} review={data.billing_review} /></div>}
 
             {data.sender && (
                 <div className="mb-5 empty:hidden">

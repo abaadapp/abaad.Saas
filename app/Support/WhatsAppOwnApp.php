@@ -524,7 +524,8 @@ class WhatsAppOwnApp
     public static function sendAccount(WhatsAppConnection $connection): array
     {
         if (! self::is($connection)) {
-            return ['account' => null, 'problem' => null];
+            // ‏‏ووصلةٌ عبر تطبيق أبعاد لها قفلُها — وما كان قبله لا يُمسّ
+            return WhatsAppBillingLock::sendAccount($connection);
         }
 
         $reviewed = (string) (((array) $connection->billing_evidence)['waba_id'] ?? '');
@@ -727,7 +728,7 @@ class WhatsAppOwnApp
     }
 
     /** @return list<string> */
-    private static function platformWabas(): array
+    public static function platformWabas(): array
     {
         return WhatsAppConnection::where('owner_type', WhatsAppMode::OWNER_PLATFORM)
             ->whereNotNull('waba_id')->pluck('waba_id')->map(fn ($w) => (string) $w)->all();
@@ -794,6 +795,11 @@ class WhatsAppOwnApp
         }
 
         self::advance($connection);
+
+        // ‏‏ودليلُ وصلةٍ عبر تطبيق أبعاد يمضي مع حسابها إلى قفل الفوترة — فإن أُعيد ربطُها لم يقف إرسالُها
+        if (! self::is($connection)) {
+            WhatsAppBillingLock::carry($connection, $reviewer, $billing, $record);
+        }
 
         return ['ok' => true, 'message' => self::is($connection)
             ? __('أُكّد أنّ فوترة ميتا على التاجر — مضى الربط إلى خطوته التالية.')

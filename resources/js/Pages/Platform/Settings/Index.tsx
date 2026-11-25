@@ -18,6 +18,7 @@ import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwi
 import InstagramPlatformCard, { type InstagramPlatformState } from '@/Pages/Platform/Settings/partials/InstagramPlatformCard';
 import ChannelAutomationsSwitch, { type ChannelAutomationsState } from '@/Pages/Platform/Settings/partials/ChannelAutomationsSwitch';
 import WhatsappCampaignsSwitch, { type WhatsappCampaignsState } from '@/Pages/Platform/Settings/partials/WhatsappCampaignsSwitch';
+import WhatsAppSharedCost, { type SharedCost } from '@/Pages/Platform/Settings/partials/WhatsAppSharedCost';
 import WhatsAppMerchantLinkSwitch, { type WhatsAppLinkState } from './partials/WhatsAppMerchantLinkSwitch';
 
 type Settings = Record<string, string>;
@@ -125,13 +126,14 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, channelAutomations, whatsappCampaigns, instagram } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, whatsappSharedCost, channelAutomations, whatsappCampaigns, instagram } =
         usePage<PageProps<{
             settings: Settings;
             /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
             posCatalog?: PosCatalogState;
             /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
             whatsappLink?: WhatsAppLinkState;
+            whatsappSharedCost?: SharedCost;
             channelAutomations?: ChannelAutomationsState;
             whatsappCampaigns?: WhatsappCampaignsState;
             instagram?: InstagramPlatformState;
@@ -355,6 +357,7 @@ export default function PlatformSettings() {
                 يُقيَّد فيه من بدّله وكان ماذا وصار ماذا (`WhatsAppMerchantLink`).
             */}
             {tab === 'whatsapp' && whatsappLink && <WhatsAppMerchantLinkSwitch state={whatsappLink} locale={locale} />}
+            {tab === 'whatsapp' && whatsappSharedCost && <WhatsAppSharedCost cost={whatsappSharedCost} />}
             {tab === 'whatsapp' && channelAutomations && <ChannelAutomationsSwitch state={channelAutomations} />}
             {tab === 'whatsapp' && whatsappCampaigns && <WhatsappCampaignsSwitch state={whatsappCampaigns} />}
             {tab === 'instagram' && instagram && <InstagramPlatformCard state={instagram} />}

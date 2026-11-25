@@ -549,7 +549,7 @@ class WhatsAppOrders
         ];
 
         $skip = match (true) {
-            $connection === null => WhatsAppStatus::SKIP_NO_CONNECTION,
+            $connection === null => WhatsAppConnections::whyNone($business),
             $template === null => WhatsAppStatus::SKIP_NO_TEMPLATE,
             default => null,
         };

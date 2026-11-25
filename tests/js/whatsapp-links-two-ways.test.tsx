@@ -128,7 +128,9 @@ describe('مدير المنصّة يختار طريق التجّار الجدد'
     });
 
     it('ينقل التجّار الجدد إلى تطبيق أبعاد بعد التأكيد — ولا شيء بلا تأكيد', async () => {
-        render(<WhatsAppMerchantLinkSwitch state={{ ...STATE, ready: true, config_id: '2177821789438050', config_source: 'platform' }} />);
+        // ‏‏وما بعد نجاح تجربة الفوترة — والقفلُ قبلها في `who-pays-for-whatsapp`
+        const launched = { launched: true, passed: null, trial: null, kinds: [], defaults: { messages: 15, hours: 72, max_messages: 50, max_hours: 168 } };
+        render(<WhatsAppMerchantLinkSwitch state={{ ...STATE, ready: true, config_id: '2177821789438050', config_source: 'platform', billing: launched }} />);
         const user = userEvent.setup();
 
         await user.click(screen.getByTestId('wa-link-flip'));

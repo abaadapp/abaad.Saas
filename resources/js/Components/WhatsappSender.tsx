@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { Check, CircleDashed, Clock, XCircle } from 'lucide-react';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
+import WhatsappBilling, { type MerchantBilling } from '@/Components/WhatsappBilling';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -12,6 +13,8 @@ type StepState = 'ok' | 'wait' | 'fail' | 'unknown';
 export interface SenderView {
     sends_from: 'own' | 'shared';
     phone: string | null;
+    /** جهةُ رسومه — للمتجر الذي يشمله قفلُ الفوترة وحده */
+    billing?: MerchantBilling | null;
     own_app: boolean;
     /** `checking` رُبط ويُتحقَّق منه · `adopted` صار رقم الإرسال · `problem` يُرسل منه وتعطّل · `none` لا شيء يُقال */
     state: 'checking' | 'adopted' | 'problem' | 'none';
@@ -59,9 +62,11 @@ export default function WhatsappSender({ sender, audience, mayManage = false }: 
     const t = useTranslate();
     const [ask, dialog] = useConfirm();
 
-    if (sender.state === 'none' && sender.history.length === 0) return null;
-
     const mine = audience === 'merchant';
+    const billing = mine && sender.billing ? <WhatsappBilling billing={sender.billing} mayManage={mayManage} /> : null;
+
+    if (sender.state === 'none' && sender.history.length === 0) return billing;
+
     const pill = sender.state === 'none' ? null : PILL[sender.state];
 
     const useShared = async () => {
@@ -75,6 +80,8 @@ export default function WhatsappSender({ sender, audience, mayManage = false }: 
     };
 
     return (
+        <>
+        {billing}
         <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-white p-4 text-[13px]" data-testid="wa-sender" data-state={sender.state}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-semibold text-[#111]">
@@ -162,5 +169,6 @@ export default function WhatsappSender({ sender, audience, mayManage = false }: 
             )}
             {dialog}
         </div>
+        </>
     );
 }

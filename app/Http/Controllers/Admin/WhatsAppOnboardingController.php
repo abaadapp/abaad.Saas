@@ -8,6 +8,7 @@ use App\Models\WhatsAppConnection;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppFeature;
@@ -253,6 +254,35 @@ class WhatsAppOnboardingController extends Controller
                 .' — '.WhatsAppLinkHealth::label($health),
             'type' => in_array($health, WhatsAppLinkHealth::HEALTHY, true) ? 'success' : 'warning',
         ]);
+    }
+
+    /** ‏‏«أضفت وسيلة الدفع — اطلب التحقق»: طلبٌ يراجعه فريقُ أبعاد، ولا يُثبت بذاته شيئًا */
+    public function billingRequest()
+    {
+        return $this->billing(fn (WhatsAppConnection $c) => WhatsAppBillingLock::request($c, auth()->user()));
+    }
+
+    /** ‏‏«أصلحت وسيلة الدفع — أعد المحاولة» */
+    public function billingRetry()
+    {
+        return $this->billing(fn (WhatsAppConnection $c) => WhatsAppBillingLock::retry($c, auth()->user()));
+    }
+
+    /** @param  callable(WhatsAppConnection): array{ok: bool, message: string}  $do */
+    private function billing(callable $do)
+    {
+        $business = $this->business();
+
+        if (! $this->mayManage()) {
+            return back()->withErrors(['billing' => __('هذا الإعداد لصاحب الحساب أو مديره.')]);
+        }
+
+        $c = WhatsAppConnections::forBusiness($business->id);
+        $r = $c === null ? ['ok' => false, 'message' => __('اربط رقم متجرك أولًا.')] : $do($c);
+
+        return $r['ok']
+            ? back()->with('toast', ['msg' => $r['message'], 'type' => 'success'])
+            : back()->withErrors(['billing' => $r['message']]);
     }
 
     /**

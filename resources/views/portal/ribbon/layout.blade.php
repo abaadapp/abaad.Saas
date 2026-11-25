@@ -65,8 +65,6 @@
     <main><div class="wrap">@yield('main')</div></main>
     <footer>{{ $t('poweredBy') }}</footer>
     <script nonce="{{ $nonce }}">
-        // رابطٌ شخصيٌّ من زمنٍ سبق: لا يبقى في العنوان
-        if (location.hash) history.replaceState(null, '', location.pathname);
         // خروجٌ من صفحةٍ بقيت مفتوحةً ساعات: رمزُها قدُم، فتُجدَّد ولا تُعرض صفحةُ خطأ
         document.querySelectorAll('form[data-leave]').forEach(function (form) {
             form.addEventListener('submit', function (e) {

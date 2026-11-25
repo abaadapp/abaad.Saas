@@ -8,7 +8,6 @@ use App\Models\CustomerPortalSession;
 use App\Support\InvoiceBranding;
 use App\Support\RibbonPortal\Access;
 use App\Support\RibbonPortal\Account;
-use App\Support\RibbonPortal\Devices;
 use App\Support\RibbonPortal\Paper;
 use App\Support\RibbonPortal\Texts;
 use App\Support\Search;
@@ -57,78 +56,48 @@ class RibbonPortalController extends Controller
         ])->withCookie(Access::cookie($request, Access::held($request, $session)));
     }
 
-    /** من لم يُعتمد جهازُه: خانةُ الهاتف، أو رقمُ جهازه وهو ينتظر — ولا اسمَ ولا حرفَ من حساب */
+    /** من لم يدخل من هذا الجهاز: خانةُ الهاتف — ولا اسمَ ولا حرفَ من حساب */
     private function door(Request $request): BaseResponse
     {
-        $last = Devices::last($this->business($request), $request);
-        if ($last !== null) {
-            $left = Devices::left($last);
-
-            return response()->view('portal.ribbon.wait', $this->frame($request, null) + [
-                'left' => $left, 'number' => $left > 0 ? Devices::number($last) : null,
-            ]);
-        }
-
         $response = response()->view('portal.ribbon.door', $this->frame($request, null));
 
-        // جلسةٌ أُلغيت أو طلبٌ مضى يومُه: كعكتُه لا تبقى
+        // جلسةٌ أُغلقت أو انقضت: كعكتُها لا تبقى
         return Access::raw($request) === null ? $response : $response->withCookie(Access::cookie($request, null));
     }
 
     /**
-     * رقمُ الهاتف وحده — ولا يُفتح به شيء: يُكتب أنّ هذا الجهاز ينتظر الاعتماد.
+     * رقمُ الهاتف وحده — فتفتح صفحةُ صاحبه، ويُذكر الجهاز.
      *
-     * وردٌّ واحدٌ لرقمٍ مسجَّلٍ وغيره: من يجرّب الأرقام لا يعرف عميلًا من سواه.
+     * ورقمٌ لا عميلَ له ورقمٌ أوقف المتجرُ صفحتَه ردُّهما واحد.
      */
     public function login(Request $request): JsonResponse
     {
-        $phone = mb_substr((string) $request->string('phone'), 0, 60);
+        $phone = Access::normalize(mb_substr((string) $request->string('phone'), 0, 60));
+        $say = fn (string $key, array $with = []) => Texts::say($this->lang($request, null), $key, $with);
 
-        return Access::normalize($phone) === null
-            ? response()->json(['message' => Texts::say($this->lang($request, null), 'phoneShort')], 422)
-            : $this->waits($request, Devices::key($phone));
-    }
-
-    /** رقمُ جهازٍ جديدٌ بعد أن انقضى السابق — للرقم الذي كتبه هذا الجهازُ من قبل، ولا يُكتب ثانية */
-    public function again(Request $request): JsonResponse
-    {
-        $last = Devices::last($this->business($request), $request);
-
-        return $last === null ? response()->json(['over' => true], 410) : $this->waits($request, $last->phone_hash);
-    }
-
-    private function waits(Request $request, string $key): JsonResponse
-    {
-        $business = $this->business($request);
-
-        if ($this->session($request) !== null || Devices::already($business, $key, $request)) {
-            return response()->json(['ok' => true]);
+        if ($phone === null) {
+            return response()->json(['message' => $say('phoneShort')], 422);
         }
-        if (($wait = Access::blockedFor($key, $request)) > 0) {
+        if (($wait = Access::blockedFor($phone, $request)) > 0) {
             // و`wait` يميّزه عن عدّاد المسار: ذاك ردُّه بالإنجليزيّة ولا مدّةَ فيه
-            return response()->json(['message' => Texts::say($this->lang($request, null), 'tooMany', ['n' => (int) ceil($wait / 60)]), 'wait' => $wait], 429);
+            return response()->json(['message' => $say('tooMany', ['n' => (int) ceil($wait / 60)]), 'wait' => $wait], 429);
         }
 
-        Access::count($key, $request);
+        Access::count($phone, $request);
+        $raw = Access::enter($this->business($request), $phone, $request);
+        if ($raw === null) {
+            Access::count($phone, $request, missed: true);
 
-        return response()->json(['ok' => true])->withCookie(Access::cookie($request, Devices::ask($business, $key, $request)));
+            return response()->json(['message' => $say('notFound', ['shop' => InvoiceBranding::name($this->business($request))])], 422);
+        }
+
+        return response()->json(['ok' => true])->withCookie(Access::cookie($request, $raw));
     }
 
-    /** أاعتُمد؟ — يسألها الجهازُ وهو ينتظر */
-    public function wait(Request $request): JsonResponse
-    {
-        return response()->json(['state' => match (true) {
-            $this->session($request) !== null => 'in',
-            Devices::mine($this->business($request), $request) !== null => 'wait',
-            default => 'over',
-        }]);
-    }
-
-    /** يُنسى الجهاز: جلستُه إن دخل، وطلبُه إن كان ينتظر */
+    /** يُنسى الجهاز */
     public function logout(Request $request): BaseResponse
     {
         Access::logout($this->session($request));
-        Devices::forget($this->business($request), $request);
 
         return redirect()->route('my.index', [], 303)->withCookie(Access::cookie($request, null));
     }

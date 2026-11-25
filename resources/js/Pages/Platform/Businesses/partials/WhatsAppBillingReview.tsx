@@ -164,7 +164,7 @@ export default function WhatsAppBillingReview({ businessId, review }: { business
                 {review.account && <div>{t('حساب الرسائل المربوط')}: <bdi dir="ltr" data-testid="wa-billing-account">{review.account}</bdi></div>}
                 <div>
                     {t('مالكه عند Meta')}: {review.owner ?? t('لم يُقرأ')}
-                    {review.owner_id && <span className="ms-1 text-[#9ca3af]" dir="ltr">{review.owner_id}</span>}
+                    {review.owner_id && <>{' '}<bdi className="text-[#9ca3af]" dir="ltr">{review.owner_id}</bdi></>}
                 </div>
                 {review.requested_at && <div>{t('طلب التحقق')}: {review.requested_by} · <span dir="ltr">{review.requested_at}</span></div>}
             </dl>

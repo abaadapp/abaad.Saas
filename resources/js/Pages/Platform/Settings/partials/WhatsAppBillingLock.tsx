@@ -158,7 +158,7 @@ export default function WhatsAppBillingLock({ state, pilot }: { state: BillingLo
                             <li key={m.id}>
                                 <span dir="ltr">{m.at}</span> · {m.kind} · {m.category} · {m.delivered ? t('وصلت') : t('لم تصل بعد')} ·{' '}
                                 {m.charged === true ? <strong>{t('محتسبة')}</strong> : m.charged === false ? <>{t('مجانية')}{m.why_free && <> ({m.why_free})</>}</> : t('لم تقل Meta')}
-                                <span className="ms-1 text-[#9ca3af]" dir="ltr">…{m.tail}</span>
+                                {' '}<bdi className="text-[#9ca3af]" dir="ltr">…{m.tail}</bdi>
                             </li>
                         ))}
                     </ul>
@@ -186,7 +186,7 @@ export default function WhatsAppBillingLock({ state, pilot }: { state: BillingLo
                             <Input value={pass.data.reference} onChange={(e) => pass.setData('reference', e.target.value)} placeholder={t('مرجع الرسم على حساب التاجر: رقم الفاتورة أو التاريخ')} data-testid="wa-pass-reference" />
                             <Input value={pass.data.abaad_reference} onChange={(e) => pass.setData('abaad_reference', e.target.value)} placeholder={t('متى راجعت حساب أبعاد وأين')} data-testid="wa-pass-abaad" />
                             <div className="flex flex-wrap gap-2">
-                                <Input value={pass.data.amount} onChange={(e) => pass.setData('amount', e.target.value)} placeholder={t('المبلغ كما في Meta (اختياري)')} inputMode="decimal" dir="ltr" className="w-56" data-testid="wa-pass-amount" />
+                                <Input value={pass.data.amount} onChange={(e) => pass.setData('amount', e.target.value)} placeholder={t('المبلغ كما في Meta (اختياري)')} inputMode="decimal" className="w-56" data-testid="wa-pass-amount" />
                                 <Input value={pass.data.currency} onChange={(e) => pass.setData('currency', e.target.value.toUpperCase().slice(0, 3))} placeholder="USD" dir="ltr" className="w-24" data-testid="wa-pass-currency" />
                             </div>
                             <label className="flex items-start gap-2 text-[12px] leading-relaxed text-[#374151]">

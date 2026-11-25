@@ -37,6 +37,58 @@ abstract class TestCase extends BaseTestCase
          * فتتحوّل صفحاتُه على `/s/…` إلى نطاقٍ فرعيّ لم يطلبه اختبارُه.
          */
         config(['storefront.subdomain_businesses' => []]);
+
+        /*
+         * ‏‏وصلةُ واتساب يكتبها اختبارٌ بيده وصلةٌ قائمةٌ قبل قفل الفوترة — ما لم يقل غير ذلك.
+         *
+         * القفلُ يشمل كلَّ وصلةٍ تُكتب بعده (`WhatsAppBillingLock`)، وأبوابُ الربط تكتب العمودَ صراحةً. والاختباراتُ
+         * التي سبقته تصف وصلاتٍ تُرسل: يبقى معناها. وحارسُ القفل نفسه يثبت أنّ صفًّا بلا العمود **مقفل**.
+         */
+        \App\Models\WhatsAppConnection::creating(function ($c) {
+            if (! array_key_exists('billing_exempt', $c->getAttributes())) {
+                $c->billing_exempt = $c->owner_type === 'business';
+            }
+        });
+    }
+
+    /**
+     * ‏‏تجربةُ فوترةٍ نجحت — فيسري اختيارُ «تطبيق أبعاد» للتجّار الجدد (`WhatsAppBillingTrials::launched`).
+     *
+     * للاختبارات التي تصف ما بعد الإطلاق. وما قبله يحرسه `AbaadNeverPaysForAShopsMessagesTest`.
+     */
+    protected function launchWhatsAppForAll(): void
+    {
+        $shop = \App\Models\Business::query()->orderBy('id')->first() ?? \App\Models\Business::create(['name' => 'متجر التجربة', 'status' => 'نشط']);
+
+        \App\Models\WhatsAppBillingTrial::create([
+            'business_id' => $shop->id, 'waba_id' => 'WABA-TRIAL', 'phone_number_id' => 'PN-TRIAL', 'state' => 'passed',
+            'message_limit' => 1, 'messages_used' => 1, 'opened_at' => now()->subDay(), 'expires_at' => now(), 'passed_at' => now(),
+            'opened_by_name' => 'مدير المنصة', 'proof' => ['kind' => 'billing_charge'],
+        ]);
+    }
+
+    /**
+     * ‏‏ثبتت فوترةُ هذا المتجر على هذا الحساب، وMeta لا تُطلع تطبيقَنا على وسيلة الدفع (`#10`) — كما هي حقًّا.
+     *
+     * لاختباراتٍ تصف رقمًا يُرسل بعد الربط ولا شأنَ لها بالإثبات نفسه.
+     */
+    protected function billedToTheShop(int $businessId, string ...$wabas): void
+    {
+        \Illuminate\Support\Facades\Http::fake(['*primary_funding_id*' => \Illuminate\Support\Facades\Http::response(['error' => ['code' => 10, 'message' => '(#10)']], 403)]);
+
+        foreach ($wabas as $waba) {
+            $this->proveWhatsAppBilling($businessId, $waba);
+        }
+    }
+
+    /** ‏‏ثبتت الفوترةُ المباشرة لهذا المتجر على هذا الحساب — وبلا مالكٍ مسمًّى لا يُقاس به مالكُ اليوم */
+    protected function proveWhatsAppBilling(int $businessId, string $waba, string $owner = ''): \App\Models\WhatsAppBilling
+    {
+        return \App\Models\WhatsAppBilling::updateOrCreate(['business_id' => $businessId, 'waba_id' => $waba], [
+            'state' => 'proven', 'code' => null, 'proven_at' => now(), 'checked_at' => now(), 'owner_id' => $owner,
+            'facts' => ['owner_known' => true, 'abaad_known' => true],
+            'evidence' => ['kind' => 'payment_settings', 'reference' => 'صورة', 'waba_id' => $waba, 'owner_id' => $owner, 'reviewed_at' => now()->toIso8601String()],
+        ]);
     }
 
     /**

@@ -83,6 +83,8 @@ final class WhatsAppSender
 
     /** ‏‏علّةٌ لا يزيلها إلّا ربطٌ جديد — فيُرسل لصاحبها رابطُ ربطٍ ولو بقي رقمُه «مربوطًا» (`WhatsAppClientLinks`) */
     private const RELINK = [WhatsAppLinkCheck::INVALID_TOKEN, WhatsAppLinkCheck::WRONG_APP, WhatsAppLinkCheck::MISSING_SCOPES, WhatsAppLinkCheck::WABA_NOT_GRANTED,
+        // ‏‏وحسابٌ ليس للتاجر أو انقطع لا يُصلحه إلّا ربطُ حسابه هو
+        WhatsAppBillingLock::LINK_LOST, WhatsAppBillingLock::NO_ACCOUNT, WhatsAppOwnApp::BILLED_TO_ABAAD, WhatsAppOwnApp::PARTNER_OWNED, WhatsAppOwnApp::ACCOUNT_TAKEN, WhatsAppOwnApp::ACCOUNT_UNBOUND,
         'webhook_missing', 'send_190', 'send_10', 'send_200', 'send_131005', 'send_133010'];
 
     /* ═════════════ مفتاحُ المنصّة ═════════════ */
@@ -135,7 +137,8 @@ final class WhatsAppSender
      */
     public static function linked(?WhatsAppConnection $c, string $via, ?User $actor = null): void
     {
-        if (! self::tracks($c) || ! $c->isUsable()) {
+        // ‏‏ومن لم تثبت جهةُ رسومه يُفحص ويُقال ما بقي — ولا يُعتمد ولا يُرسل حتى تثبت
+        if (! self::tracks($c) || ! $c->isConnected()) {
             return;
         }
 
@@ -342,6 +345,8 @@ final class WhatsAppSender
 
             if (! self::enabled() || $business === null || $fresh === null || $fresh->state !== WhatsAppSenderAdoption::CHECKING
                 || self::stale($fresh, $c) !== null || ! $c->isUsable()
+                // ‏‏وجهةُ رسومه ثابتةٌ الآن — لا كما كانت حين بدأ الفحص
+                || ! WhatsAppBillingLock::mayAdopt($c)
                 || WhatsAppSenderReadiness::gate($business) !== null
                 || WhatsAppSenderReadiness::draining((int) $business->id)) {
                 return null;
@@ -499,6 +504,12 @@ final class WhatsAppSender
     /** ‏‏أيُختار رقمُ المتجر رقمًا لإرساله؟ — ثبتت جاهزيّتُه آليًّا، أو رُوجع دليلُ فوترته (`readyForOwnMode`) */
     public static function mayOwn(?WhatsAppConnection $c): bool
     {
+        // ‏‏ووصلةٌ مقفلة لا يفتحها إلّا إثباتُ جهة رسومها — لا عمودٌ قديم ولا اعتمادٌ سبق
+        if (WhatsAppBillingLock::applies($c)) {
+            // ‏‏ورقمٌ قيد الفحص لا يقفز أحدٌ فوق مراحله بيده
+            return $c->isUsable() && (self::proven($c) || (WhatsAppBillingLock::proven($c) && ! self::checking((int) $c->business_id)));
+        }
+
         return self::proven($c) || WhatsAppOwnApp::readyForOwnMode($c);
     }
 
@@ -529,6 +540,10 @@ final class WhatsAppSender
      */
     private static function problems(Collection $connections): array
     {
+        // ‏‏وأحوالُ الفوترة بسؤالٍ واحد — لا بسؤالٍ لكلّ رقم
+        $connections->filter(fn (WhatsAppConnection $c) => WhatsAppBillingLock::applies($c) && ! $c->relationLoaded('billings'))
+            ->whenNotEmpty(fn ($list) => (new \Illuminate\Database\Eloquent\Collection($list->all()))->load('billings'));
+
         $own = $connections->filter(fn (WhatsAppConnection $c) => $c->business !== null && $c->status !== WhatsAppConnection::INACTIVE
             && WhatsAppFeature::effectiveMode($c->business) === WhatsAppMode::BUSINESS_OWN);
 
@@ -557,6 +572,9 @@ final class WhatsAppSender
             $miss = $failed->get($c->business_id);
 
             $found = match (true) {
+                ! $c->isConnected() => ['code' => 'link_'.WhatsAppLink::state($c), 'params' => [], 'since' => self::stamp($c->last_error_at)],
+                // ‏‏وجهةُ رسومٍ لم تثبت أو تبدّلت تُقال باسمها — لا «انقطع الربط»
+                ($stop = WhatsAppBillingLock::stop($c)) !== null => ['code' => $stop, 'params' => [], 'since' => self::stamp(WhatsAppBillingLock::row($c)?->stopped_at)],
                 ! $c->isUsable() => ['code' => 'link_'.WhatsAppLink::state($c), 'params' => [], 'since' => self::stamp($c->last_error_at)],
                 $row !== null && self::told($row) => ['code' => (string) $row->health_code, 'params' => (array) $row->health_params, 'since' => self::stamp($row->health_since)],
                 $miss !== null && (int) ($after[$c->business_id] ?? 0) < (int) $miss->id => ['code' => 'send_'.$miss->error_code, 'params' => [], 'since' => self::stamp($miss->failed_at ?? $miss->created_at)],
@@ -586,6 +604,8 @@ final class WhatsAppSender
 
         return [
             'sends_from' => $mode === WhatsAppMode::BUSINESS_OWN ? 'own' : 'shared',
+            // ‏‏وجهةُ رسومه بإحدى خمس — للمتجر المقفل وحده (`WhatsAppBillingLock`)
+            'billing' => WhatsAppBillingLock::merchantView($business),
             'phone' => $c !== null && $c->status !== WhatsAppConnection::INACTIVE ? ($c->display_phone_number ?: null) : null,
             // ‏‏واتساب التاجر على تطبيقه لا يُفحص آليًّا ولا يُبدَّل
             'own_app' => WhatsAppOwnApp::holds($c),
@@ -722,7 +742,7 @@ final class WhatsAppSender
     {
         return match ($step) {
             WhatsAppSenderReadiness::LINK => __('الرقم مربوط والتفويض سليم'),
-            WhatsAppSenderReadiness::BILLING => __('حساب واتساب للمتجر لا لأبعاد'),
+            WhatsAppSenderReadiness::BILLING => __('رسوم واتساب على حساب المتجر — مثبتة'),
             WhatsAppSenderReadiness::SEND => __('الرقم متصل ويُرسل'),
             WhatsAppSenderReadiness::RECEIVE => __('رسائل العملاء تصل أبعاد'),
             WhatsAppSenderReadiness::TEMPLATES => __('قوالب الإشعارات معتمدة في حساب المتجر'),
@@ -751,6 +771,7 @@ final class WhatsAppSender
             $code === 'link_'.WhatsAppLink::EXPIRED => [__('انتهى تفويض واتساب — أعد الربط.'), 'merchant'],
             $code === 'link_'.WhatsAppLink::REAUTH, $code === 'link_'.WhatsAppLink::ERROR => [__('انقطع ربط الرقم — أعد الربط.'), 'merchant'],
             str_starts_with($code, 'link_') => [__('الرقم غير مربوط الآن — أعد الربط.'), 'merchant'],
+            WhatsAppBillingLock::owns($code) => array_values(WhatsAppBillingLock::says($code)),
             $code === 'billed_to_abaad' => [__('حساب واتساب المربوط تملكه أبعاد لا المتجر — يربط التاجر حسابه هو.'), 'abaad'],
             $code === 'no_payment_method' => [__('لا وسيلة دفع على حساب واتساب — أضفها من مدير واتساب (WhatsApp Manager) ‹ Overview.'), 'merchant'],
             $code === 'owner_unknown' => [__('لم نعرف بعد من يملك حساب واتساب — نعيد السؤال تلقائيًّا.'), 'meta'],

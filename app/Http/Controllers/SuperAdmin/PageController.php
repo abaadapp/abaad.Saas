@@ -645,6 +645,8 @@ class PageController extends Controller
              * تبدّل فيهما. ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» (`WhatsAppMerchantLink`).
              */
             'whatsappLink' => WhatsAppMerchantLink::state(),
+            // ‏‏وكلفةُ رقم أبعاد المشترك: تصنيفُ Meta وتقديرُها — ولا مبلغَ من عندنا
+            'whatsappSharedCost' => \App\Support\WhatsAppPrices::sharedView(),
             // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات — مقفلةٌ افتراضًا (`ChannelAutomationsSwitch`)
             'channelAutomations' => \App\Support\ChannelAutomationsSwitch::state(),
             // ‏‏ولمن تُفتح حملاتُ واتساب — مقفلةٌ افتراضًا (`WhatsAppCampaignsSwitch`)

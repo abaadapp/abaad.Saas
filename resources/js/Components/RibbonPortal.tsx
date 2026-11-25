@@ -37,7 +37,7 @@ export function PortalLinkBox({ portal, stacked = false }: { portal: PortalPanel
 
     return (
         <div className="space-y-4" data-testid="portal-public-box">
-            <p className="text-sm text-[#6b7280]">{t('رابط واحد ورمز واحد لجميع العملاء. يكتب العميل رقم هاتفه المسجّل، ويعتمد الموظف جهازه مرة واحدة.')}</p>
+            <p className="text-sm text-[#6b7280]">{t('رابط واحد ورمز QR واحد لجميع العملاء. يكتب العميل رقم هاتفه المسجّل، ويعتمد الموظف جهازه مرة واحدة.')}</p>
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-5">
                 <img src={portal.qr} alt={t('رمز QR لبوابة العملاء')} className="size-44 rounded-xl bg-white p-3" />
                 <span dir="ltr" className="break-all text-center text-sm font-semibold text-[#111]">{portal.url}</span>
@@ -73,7 +73,7 @@ function DeviceLine({ devices }: { devices: WaitingDevice[] }) {
 }
 
 /** من ينتظر اعتمادَ جهازه — يتحدّث والنافذةُ مفتوحة */
-export function WaitingList({ url, onCount }: { url: string; onCount?: (n: number) => void }) {
+export function WaitingList({ url, onCount, className }: { url: string; onCount?: (n: number) => void; className?: string }) {
     const t = useTranslate();
     const [rows, setRows] = useState<WaitingCustomer[] | null>(null);
     const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
@@ -99,7 +99,7 @@ export function WaitingList({ url, onCount }: { url: string; onCount?: (n: numbe
     };
 
     return (
-        <section className="space-y-3 border-t border-[var(--ui-border,#e8e8e8)] pt-4" data-testid="portal-waiting">
+        <section className={cn('space-y-3 border-[var(--ui-border,#e8e8e8)]', className)} data-testid="portal-waiting">
             <h4 className="text-sm font-bold text-[#111]">{t('أجهزة تنتظر الاعتماد')}</h4>
             {rows === null && <p className="text-[13px] text-[#9ca3af]">{t('جارٍ التحميل…')}</p>}
             {rows?.length === 0 && <p className="text-[13px] text-[#9ca3af]">{t('لا جهاز ينتظر الآن. يظهر هنا من كتب رقمه في البوابة وهو عميل مسجّل.')}</p>}
@@ -108,7 +108,7 @@ export function WaitingList({ url, onCount }: { url: string; onCount?: (n: numbe
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-[#111]">{row.name}</p>
-                            <p dir="ltr" className="text-start text-[12px] text-[#6b7280]">{row.phone}</p>
+                            <p className="text-[12px] text-[#6b7280]"><span dir="ltr">{row.phone}</span></p>
                             <DeviceLine devices={row.devices} />
                         </div>
                         <Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void dismiss(row)}>{t('رفض')}</Button>
@@ -135,11 +135,12 @@ export function PortalButton({ portal }: { portal: PortalPanel }) {
                 {waiting > 0 && <Badge variant="warning" data-testid="portal-waiting-count">{number(waiting)}</Badge>}
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+                <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>{t('بوابة العملاء')}</DialogTitle></DialogHeader>
-                    <div className="space-y-5 p-5 pt-2">
+                    {/* ومن ينتظر أمامه يسبق الرابطَ ورمزَه: العميلُ واقف */}
+                    <div className="flex flex-col gap-5 p-5 pt-2">
                         <PortalLinkBox portal={portal} />
-                        <WaitingList url={portal.waitingUrl} onCount={setWaiting} />
+                        <WaitingList url={portal.waitingUrl} onCount={setWaiting} className={waiting > 0 ? 'order-first border-b pb-5' : 'border-t pt-4'} />
                     </div>
                 </DialogContent>
             </Dialog>
@@ -186,7 +187,7 @@ export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
                             <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('أجهزة معتمدة')}</dt><dd className="text-[#111]">{number(now.devices)}</dd></div>
                         </dl>
                     )}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <CopyButton text={now.url} label="نسخ رابط البوابة" size="md" className="w-full" />
                         <Button variant="outline" aria-expanded={approving} onClick={() => setApproving(! approving)} data-testid="portal-approve-button">
                             <ShieldCheck />

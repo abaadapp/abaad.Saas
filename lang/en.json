@@ -10637,7 +10637,7 @@
     "بوابة العملاء": "Customer portal",
     "رمز QR لبوابة العملاء": "Customer portal QR code",
     "فتح البوابة": "Open portal",
-    "رابط واحد ورمز واحد لجميع العملاء. يكتب العميل رقم هاتفه المسجّل، ويعتمد الموظف جهازه مرة واحدة.": "One link and one code for all customers. The customer enters their registered phone number, and staff approve their device once.",
+    "رابط واحد ورمز QR واحد لجميع العملاء. يكتب العميل رقم هاتفه المسجّل، ويعتمد الموظف جهازه مرة واحدة.": "One link and one QR code for all customers. The customer enters their registered phone number, and staff approve their device once.",
     "بوابة العميل": "Customer's portal",
     "دخل بوابته": "Has entered",
     "لم يدخل بعد": "Not entered yet",

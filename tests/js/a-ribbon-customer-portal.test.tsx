@@ -56,7 +56,7 @@ describe('قسمُ العملاء', () => {
         fireEvent.click(screen.getByRole('button', { name: 'بوابة العملاء' }));
 
         expect(screen.getByTestId('portal-public-box')).toHaveTextContent(URL_);
-        expect(screen.getByTestId('portal-public-box')).toHaveTextContent('رابط واحد ورمز واحد لجميع العملاء.');
+        expect(screen.getByTestId('portal-public-box')).toHaveTextContent('رابط واحد ورمز QR واحد لجميع العملاء.');
         expect(screen.getByAltText('رمز QR لبوابة العملاء')).toHaveAttribute('src', panel.qr);
         fireEvent.click(screen.getByRole('button', { name: 'نسخ الرابط' }));
         await waitFor(() => expect(write).toHaveBeenCalledWith(URL_));
@@ -74,6 +74,7 @@ describe('قسمُ العملاء', () => {
         fireEvent.click(screen.getByTestId('portal-button'));
 
         const row = await screen.findByTestId('portal-waiting-row');
+        expect(screen.getByTestId('portal-waiting')).toHaveClass('order-first');
         for (const shown of ['مريم البلوشي', '91234567', 'iPhone · Safari', '10:02']) expect(row).toHaveTextContent(shown);
         expect(row).not.toHaveTextContent('أكثر من عميل');
         expect(spy.mock.calls[0]).toMatchObject([panel.waitingUrl, { method: 'GET', cache: 'no-store' }]);
@@ -83,6 +84,7 @@ describe('قسمُ العملاء', () => {
         await waitFor(() => expect(screen.queryByTestId('portal-waiting-row')).toBeNull());
         expect(none).toHaveBeenCalledTimes(1);
         expect(screen.getByText(/لا جهاز ينتظر الآن/)).toBeInTheDocument();
+        expect(screen.getByTestId('portal-waiting')).not.toHaveClass('order-first');
         expect(screen.queryByTestId('portal-waiting-count')).toBeNull();
 
         // وانقطاعٌ لا يمحو ما عُرض، ونافذةٌ أُغلقت لا تسأل

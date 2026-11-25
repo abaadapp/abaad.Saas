@@ -24,7 +24,7 @@
 
         <p class="err" id="offline" role="status" hidden>{{ $t('networkError') }}</p>
         <p class="muted sm" style="margin:14px 0 6px">{{ $t('waitNote', ['shop' => $shop]) }}</p>
-        <form method="post" action="{{ route('my.logout', [], false) }}">@csrf<button class="btn sm text" type="submit" data-testid="portal-change">{{ $t('changePhone') }}</button></form>
+        <form method="post" action="{{ route('my.logout', [], false) }}" data-leave>@csrf<button class="btn sm text" type="submit" data-testid="portal-change">{{ $t('changePhone') }}</button></form>
         <noscript><p class="err">{{ $t('needJs') }}</p></noscript>
     </div>
 @endsection

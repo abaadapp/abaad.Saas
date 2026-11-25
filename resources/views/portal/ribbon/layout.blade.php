@@ -64,8 +64,19 @@
     </header>
     <main><div class="wrap">@yield('main')</div></main>
     <footer>{{ $t('poweredBy') }}</footer>
-    {{-- رابطٌ شخصيٌّ من زمنٍ سبق: لا يبقى في العنوان --}}
-    <script nonce="{{ $nonce }}">if (location.hash) history.replaceState(null, '', location.pathname);</script>
+    <script nonce="{{ $nonce }}">
+        // رابطٌ شخصيٌّ من زمنٍ سبق: لا يبقى في العنوان
+        if (location.hash) history.replaceState(null, '', location.pathname);
+        // خروجٌ من صفحةٍ بقيت مفتوحةً ساعات: رمزُها قدُم، فتُجدَّد ولا تُعرض صفحةُ خطأ
+        document.querySelectorAll('form[data-leave]').forEach(function (form) {
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                fetch(form.action, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content } })
+                    .then(function (r) { if (r.ok) location.replace(location.pathname); else location.reload(); })
+                    .catch(function () { form.submit(); });
+            });
+        });
+    </script>
     @yield('script')
 </body>
 </html>

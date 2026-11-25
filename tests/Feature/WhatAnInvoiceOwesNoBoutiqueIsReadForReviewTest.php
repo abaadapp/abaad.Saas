@@ -395,6 +395,22 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
         $this->assertSame(6, $r['lines']);
     }
 
+    /** لقطةُ بوتيكٍ بلا نسبة لا تقول كم له: تُراجَع بيد، ولا تُحسب «عمولة صفر» */
+    public function test_the_dry_run_never_reads_a_snapshot_without_a_rate_as_no_commission(): void
+    {
+        $this->soldOn('2027-01-05', $this->silver, 25);
+        $invoice = $this->invoice([[$this->silver]], '2027-01-10');
+        DB::table('customer_invoices')->where('id', $invoice->id)->update(['issued_by_at' => '2027-01-10 10:00:00']);
+        $this->collect($invoice);
+        $this->soldOn('2027-01-20', $this->silver, 25);
+        DB::table('order_items')->where('product_id', $this->silver->id)->update(['boutique_rate' => null]);
+
+        $r = BoutiqueInvoiceReview::dryRun((int) $this->shop->id);
+        $this->assertSame(0, $r['reliable']['lines']);
+        $this->assertEquals(0.0, $r['reliable']['net']);
+        $this->assertSame(1, $r['manual']['none']['lines']);
+    }
+
     /** والجردُ لا يكتب حرفًا، ولا يخلط متجرًا بآخر، ولا يطبع عميلًا */
     public function test_the_dry_run_writes_nothing_and_prints_each_shop_alone_and_no_customer(): void
     {

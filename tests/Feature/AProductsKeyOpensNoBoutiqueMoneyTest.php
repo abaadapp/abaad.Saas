@@ -9,6 +9,7 @@ use App\Models\BoutiqueSettlement;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -231,6 +232,59 @@ class AProductsKeyOpensNoBoutiqueMoneyTest extends TestCase
         $this->actingAs($payer)->post(route('admin.boutiques.settle', $this->lama->id), ['period' => self::PERIOD])->assertForbidden();
         $this->actingAs($payer)->post(route('admin.boutiques.components.pay', [$this->lama->id, $sheet->id]), ['method' => 'نقدي'])->assertSessionHasNoErrors();
         $this->assertNotNull($sheet->fresh()->components_paid_at);
+    }
+
+    /**
+     * مصروفُ الورقة يُسدَّد من «المصروفات» — وهو بابُ السداد الحقيقيّ، فيُسأل بإذن السداد.
+     *
+     * كان يكفيه قسمُ «المصروفات»: فكلُّ من أُعطي قراءةَ الكشف يسدّد ورقتَه.
+     */
+    public function test_a_sheet_is_paid_from_the_expenses_screen_by_the_pay_key_alone(): void
+    {
+        $sheet = $this->issued();
+        $this->assertNotNull($sheet->expense_id, 'الورقةُ تحمل مصروفًا');
+        $other = Expense::create(['business_id' => $this->shop->id, 'type' => 'إيجار', 'amount' => 5, 'reference' => 'EXP-77', 'status' => Expense::UNPAID, 'spent_at' => now()]);
+        $books = fn () => [DB::table('journal_entries')->count(), DB::table('transactions')->count(), $sheet->expense()->first()->status];
+        $before = $books();
+
+        $noPay = [
+            'قراءةٌ وحدها' => $this->user('x1', 'sales', ['dashboard', 'products', 'expenses']),
+            'قراءةٌ وإصدار' => $this->user('x2', 'sales', ['dashboard', 'products', 'expenses', Permissions::INVOICE_APPROVE]),
+            'مصروفاتٌ بلا منتجات' => $this->user('x3', 'sales', ['dashboard', 'expenses']),
+            'محاسبٌ بدوره' => $this->user('x4', 'accountant', null),
+        ];
+        foreach ($noPay as $who => $user) {
+            $this->actingAs($user)->post(route('admin.expenses.paid', $sheet->expense_id), ['method' => 'نقدي'])->assertForbidden();
+            $this->assertSame($before, $books(), "{$who} غيّر شيئًا");
+            $rows = collect($this->actingAs($user)->get(route('admin.expenses.index', ['period' => 'all']))->assertOk()->viewData('page')['props']['expenses'])->keyBy('id');
+            $this->assertFalse($rows[$sheet->expense_id]['payable'], "{$who}: زرٌّ يردّه الخادم");
+            $this->assertTrue($rows[$other->id]['payable'], "{$who}: مصروفٌ ليس ورقة");
+        }
+
+        // ومتجرٌ أُطفئت فيه الميزةُ لا يفتح البابَ الخلفيّ: الورقةُ ورقة
+        $this->shop->update(['boutiques_enabled' => false]);
+        $this->actingAs($noPay['قراءةٌ وحدها'])->post(route('admin.expenses.paid', $sheet->expense_id), ['method' => 'نقدي'])->assertForbidden();
+        $this->shop->update(['boutiques_enabled' => true]);
+
+        // ومصروفٌ ليس ورقةً يسدّده من كان يسدّده
+        $this->actingAs($noPay['قراءةٌ وحدها'])->post(route('admin.expenses.paid', $other->id), ['method' => 'نقدي'])->assertSessionHasNoErrors();
+        $this->assertSame(Expense::PAID, $other->fresh()->status);
+
+        // ومن يملك إذنَ السداد يسدّدها مرّةً واحدة
+        $payer = $this->user('x5', 'sales', ['dashboard', 'expenses', Permissions::INVOICE_PAY]);
+        $rows = collect($this->actingAs($payer)->get(route('admin.expenses.index', ['period' => 'all']))->viewData('page')['props']['expenses'])->keyBy('id');
+        $this->assertTrue($rows[$sheet->expense_id]['payable']);
+        $this->actingAs($payer)->post(route('admin.expenses.paid', $sheet->expense_id), ['method' => 'نقدي'])->assertSessionHasNoErrors();
+        $this->assertSame(Expense::PAID, $sheet->expense()->first()->status);
+    }
+
+    public function test_an_owner_and_a_manager_pay_a_sheet_from_the_expenses_screen_as_before(): void
+    {
+        foreach (['المالك' => $this->owner, 'المدير' => $this->user('m2', 'manager', null)] as $who => $user) {
+            $sheet = $this->issued();
+            $this->actingAs($user)->post(route('admin.expenses.paid', $sheet->expense_id), ['method' => 'نقدي'])->assertSessionHasNoErrors();
+            $this->assertSame(Expense::PAID, $sheet->expense()->first()->status, $who);
+        }
     }
 
     public function test_an_owner_and_a_manager_read_issue_and_pay_and_the_accountant_reads(): void

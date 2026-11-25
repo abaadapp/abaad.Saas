@@ -157,6 +157,8 @@ trait TwoFullShops
             // ‏‏وأتمتةُ تعليقٍ على إنستقرام — وتُطرق أبوابُها كأختها
             'instagram_automation' => $this->row('channel_automations', ['business_id' => $bid, 'channel' => 'instagram', 'trigger' => 'comment', 'name' => "أتمتة إنستقرام {$tag}", 'keywords' => '["سعر"]', 'reply_ar' => "رد {$tag}", 'status' => 'published']),
             // ‏‏وقالبُ عرضٍ وحملةٌ تُرسل — تُطرق أبوابُ حذفه وإيقافها واستئنافها وإلغائها
+            // رابطُ عميلٍ إلى بوابة RIBBON
+            'portal_link' => $this->row('customer_portal_links', ['business_id' => $bid, 'customer_id' => $customer, 'token_hash' => hash('sha256', "portal-{$tag}"), 'nonce' => hash('sha256', "nonce-{$tag}"), 'phone_hash' => hash('sha256', "phone-{$tag}")]),
             'campaign_template' => $campaignTemplate = $this->row('whatsapp_campaign_templates', ['business_id' => $bid, 'waba_id' => "WABA-{$tag}", 'meta_name' => 'abaad_offer_'.strtolower($tag), 'title' => "قالب {$tag}", 'language' => 'ar', 'body' => "عرض {$tag}", 'status' => 'APPROVED']),
             'campaign' => $this->row('whatsapp_campaigns', ['business_id' => $bid, 'template_id' => $campaignTemplate, 'name' => "حملة {$tag}", 'message' => '{}', 'audience' => '{}', 'status' => 'sending']),
             // ‏‏وحسابُ إنستقرام مربوط — اسمُه لا يظهر في شاشات المتجر الآخر

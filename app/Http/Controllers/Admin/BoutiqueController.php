@@ -8,6 +8,7 @@ use App\Models\Boutique;
 use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
+use App\Models\BoutiqueSheetHold;
 use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
@@ -15,6 +16,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueDues;
+use App\Support\BoutiqueHolds;
 use App\Support\BoutiqueInvoiceDues;
 use App\Support\BoutiqueReturns;
 use App\Support\BoutiqueSales;
@@ -173,6 +175,8 @@ class BoutiqueController extends Controller
             'canSeeSales' => $seesSales = BoutiqueSales::mayRead(auth()->user()),
             'boutiqueOptions' => $seesSales ? Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
                 ->get(['id', 'name'])->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => (string) $b->name])->all() : [],
+            // تحصيلٌ أُلغي بعد صدور الورقة: ما عُلّق سدادُه وما سُدّد قبل تحصيله — انظر `BoutiqueHolds`
+            'holds' => $seesMoney ? BoutiqueHolds::of((int) $business->id, (int) $boutique->id) : null,
             // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
             'returns' => $seesMoney ? $this->returnsOf((int) $business->id, $boutique) : null,
             'period' => $period,
@@ -493,6 +497,64 @@ class BoutiqueController extends Controller
         }
 
         return back()->with('toast', ['msg' => __('حُفظ حالُ القطع المرتجعة'), 'type' => 'success']);
+    }
+
+    /* ═══════════ تحصيلٌ أُلغي بعد الورقة — `BoutiqueHolds` ═══════════ */
+
+    private function hold(Business $business, Boutique $boutique, int $hold): BoutiqueSheetHold
+    {
+        return BoutiqueSheetHold::where('business_id', $business->id)->where('boutique_id', $boutique->id)->findOrFail($hold);
+    }
+
+    /** يُفرج عن معلَّقٍ بسببٍ مكتوب — بإذن السداد: يُطلق مالًا لم يُقبض ثمنُه */
+    public function releaseHold(Request $request, int $id, int $hold)
+    {
+        $this->money('pay');
+        $business = $this->shop();
+        $row = $this->hold($business, $this->find($id), $hold);
+        $data = $request->validate(['why' => ['required', 'string', 'min:3', 'max:255']]);
+
+        try {
+            BoutiqueHolds::release($row, $data['why']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['holds' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('أُفرج عن المعلّق — يُسدَّد الآن'), 'type' => 'success']);
+    }
+
+    /** «سُدّد قبل تحصيله» رُوجع — لا قيدَ ولا سداد */
+    public function reviewHold(Request $request, int $id, int $hold)
+    {
+        $this->money();
+        $business = $this->shop();
+        $row = $this->hold($business, $this->find($id), $hold);
+        $data = $request->validate(['why' => ['required', 'string', 'min:3', 'max:255']]);
+
+        try {
+            BoutiqueHolds::review($row, $data['why']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['holds' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('حُفظت المراجعة'), 'type' => 'success']);
+    }
+
+    /** يُسدَّد ما سُدّدت الورقةُ دونه بعد أن فُكّ تعليقُه */
+    public function payHold(Request $request, int $id, int $hold)
+    {
+        $this->money('pay');
+        $business = $this->shop();
+        $row = $this->hold($business, $this->find($id), $hold);
+        $data = $request->validate(['method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)]]);
+
+        try {
+            $amount = BoutiqueHolds::pay($row, $data['method']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['holds' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('سُدّد المعلّق :amount', ['amount' => number_format($amount, 3)]), 'type' => 'success']);
     }
 
     /** استلامٌ من البوتيك بمستندٍ ومرجع — يُطفئ مطالباتِه الأقدمَ أوّلًا */

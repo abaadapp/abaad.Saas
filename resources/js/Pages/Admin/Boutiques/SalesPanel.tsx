@@ -459,7 +459,7 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                 )}
                 {s.invoices && s.invoices.reopened.lines > 0 && (
                     <p className="mt-2 rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] leading-5 text-[#b91c1c]" data-testid="boutique-reopened-note">
-                        {t(':n فاتورة عميل أُلغي تحصيلها بعد أن حملت ورقة التسوية :amount منها. الورقة لا تتغير — حصّلها من جديد، أو أصدر إشعار دائن بالقطع المرتجعة.', {
+                        {t(':n فاتورة عميل أُلغي تحصيلها بعد أن حملت ورقة التسوية :amount منها. الورقة لا تتغير، وما لم يُسدَّد منها معلّق — حصّلها من جديد، أو أصدر إشعار دائن بالقطع المرتجعة، أو راجعها في شاشة البوتيك.', {
                             n: number(s.invoices.reopened.invoices), amount: fmt(s.invoices.reopened.net),
                         })}
                     </p>

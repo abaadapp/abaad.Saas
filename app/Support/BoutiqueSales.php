@@ -639,6 +639,9 @@ final class BoutiqueSales
         $payable = fn (BoutiqueSettlement $sheet) => max(0.0, round((float) $sheet->expense->amount
             - round((float) ($reductions[$sheet->id] ?? 0) + (float) ($offsets[$sheet->id] ?? 0), 3), 3));
 
+        // وما سُدّدت ورقتُه دونه لأنّ تحصيلَه أُلغي: صدر ولم يُسدَّد (`BoutiqueHolds::owed`)
+        $withheld = BoutiqueHolds::owedOn($sheetIds);
+
         $issued = 0.0;
         $paid = 0.0;
         $unpaid = 0.0;
@@ -648,7 +651,12 @@ final class BoutiqueSales
             // جزءُ المنفرد بما يُسدَّد فعلًا بعد ما خُفّض منه بمرتجع (`BoutiqueReturns::payable`)
             $part = (int) $s->lines_count === 0 || $s->expense === null ? 0.0 : $payable($s);
             $standalonePaid = (int) $s->lines_count > 0 && $s->expense?->status === Expense::PAID;
-            $standalonePaid ? $paid = round($paid + $part, 3) : $unpaid = round($unpaid + $part, 3);
+            if ($standalonePaid) {
+                $paid = round($paid + $part - ($withheld[$s->id] ?? 0.0), 3);
+                $unpaid = round($unpaid + ($withheld[$s->id] ?? 0.0), 3);
+            } else {
+                $unpaid = round($unpaid + $part, 3);
+            }
 
             $componentsNet = round((float) $s->components_net, 3);
             $s->components_paid_at !== null || (float) $s->components_due <= 0

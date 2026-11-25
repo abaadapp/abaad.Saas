@@ -150,6 +150,8 @@ class TenantTables
         'customer_credit_notes',
         // وما للبوتيكات في بنودها وما رُدّ منه بعد الإشعارات: يشيران إلى الفاتورة وبندها وإشعارها
         'boutique_invoice_lines', 'boutique_invoice_returns',
+        // وما عُلّق سدادُه من أوراقها: يشير إلى بندها
+        'boutique_sheet_holds',
         /*
          * وحركاتُ النقاط بعد التحصيلات: نقاطُ سداد الفاتورة برابطٍ تشير إلى
          * فاتورتها وتحصيلها (`InvoiceLoyalty`).

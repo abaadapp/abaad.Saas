@@ -869,6 +869,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/products/boutiques/{id}/returns/review', [BoutiqueController::class, 'reviewReturn'])->whereNumber('id')->name('boutiques.returns.review');
     Route::post('/products/boutiques/{id}/returns/receive', [BoutiqueController::class, 'receiveReturn'])->whereNumber('id')->name('boutiques.returns.receive');
     Route::post('/products/boutiques/{id}/returns/receipt', [BoutiqueController::class, 'returnReceipt'])->whereNumber('id')->name('boutiques.returns.receipt');
+    Route::post('/products/boutiques/{id}/holds/{hold}/release', [BoutiqueController::class, 'releaseHold'])->whereNumber('id')->whereNumber('hold')->name('boutiques.holds.release');
+    Route::post('/products/boutiques/{id}/holds/{hold}/review', [BoutiqueController::class, 'reviewHold'])->whereNumber('id')->whereNumber('hold')->name('boutiques.holds.review');
+    Route::post('/products/boutiques/{id}/holds/{hold}/pay', [BoutiqueController::class, 'payHold'])->whereNumber('id')->whereNumber('hold')->name('boutiques.holds.pay');
     Route::post('/products/boutiques/{id}/returns/offset', [BoutiqueController::class, 'returnOffset'])->whereNumber('id')->name('boutiques.returns.offset');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');

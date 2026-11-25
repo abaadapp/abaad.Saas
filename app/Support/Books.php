@@ -403,9 +403,9 @@ class Books
             return;
         }
 
-        // وورقةُ بوتيكٍ خُفّض مستحقُّها بمرتجعٍ أو خصمٍ يُسدَّد صافيها — انظر `BoutiqueReturns::payable`
+        // وورقةُ بوتيكٍ خُفّض مستحقُّها بمرتجعٍ أو خصمٍ يُسدَّد صافيها، وما أُلغي تحصيلُه منها موقوف — انظر `BoutiqueHolds::payNow`
         $amount = BoutiqueReturns::sheetOf($expense) !== null
-            ? BoutiqueReturns::payable($expense)
+            ? BoutiqueHolds::payNow($expense)
             : round((float) $expense->amount, 3);
         if ($amount <= 0) {
             return;

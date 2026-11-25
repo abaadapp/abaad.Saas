@@ -31,6 +31,8 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
 
     private static ?Migration $migration = null;
 
+    private static ?Migration $holds = null;
+
     private Business $shop;
 
     private Boutique $lama;
@@ -42,6 +44,24 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
     private function migration(): Migration
     {
         return self::$migration ??= require database_path('migrations/2026_11_29_090000_a_customer_invoice_line_owes_its_boutique.php');
+    }
+
+    /** هجرةُ التعليق فوقها وتشير إلى جدولها: يُتراجع عنها أوّلًا وتُعاد بعدها — كما يفعل `migrate:rollback` */
+    private function undo(): void
+    {
+        $this->holds()->down();
+        $this->migration()->down();
+    }
+
+    private function redo(): void
+    {
+        $this->migration()->up();
+        $this->holds()->up();
+    }
+
+    private function holds(): Migration
+    {
+        return self::$holds ??= require database_path('migrations/2026_11_29_100000_a_sheet_is_paid_without_what_was_not_collected.php');
     }
 
     protected function setUp(): void
@@ -101,13 +121,13 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
         CustomerPayments::record($this->shop->id, $this->company, 5, ['method' => 'نقدي'], [$invoice->id => 5]);
         DB::table('boutique_invoice_lines')->delete();
 
-        $this->migration()->down();
+        $this->undo();
         $this->assertSame([false, false, false, false, false], $this->standing());
         $before = $this->money();
         $old = DB::table('boutique_returns')->find($note);
         $this->assertSame([77, 2], [(int) $old->order_id, (int) $old->quantity]);
 
-        $this->migration()->up();
+        $this->redo();
         $this->assertSame([true, true, true, true, true], $this->standing());
         $this->assertSame($before, $this->money(), 'الهجرةُ غيّرت ما كُتب قبلها');
         $this->assertSame(0, DB::table('boutique_invoice_lines')->count(), 'كُتب مستحقٌّ لفاتورةٍ صدرت قبلها');
@@ -139,12 +159,12 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
     public function test_it_steps_over_the_two_note_columns_when_the_corrections_branch_added_them_first(): void
     {
         DB::table('boutique_invoice_lines')->delete();
-        $this->migration()->down();
+        $this->undo();
         Schema::table('customer_credit_notes', function ($table) {
             $table->json('items')->nullable();
             $table->string('basis', 20)->nullable();
         });
-        $this->migration()->up();
+        $this->redo();
         $this->assertSame([true, true, true, true, true], $this->standing());
     }
 }

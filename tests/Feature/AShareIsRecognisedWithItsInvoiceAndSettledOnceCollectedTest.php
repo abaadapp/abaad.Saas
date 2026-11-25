@@ -35,6 +35,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 /**
@@ -433,7 +434,7 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
     /** شهورٌ عشوائيّة: 2160 و1370 والسجلُّ والفروعُ متطابقةٌ بعد كلّ دفعة */
     public function test_random_months_keep_the_books_and_the_register_equal(): void
     {
-        foreach ([21, 22] as $seed) {
+        foreach ([21, 22, 23] as $seed) {
             mt_srand($seed);
             // بالبذرة وحدها: `random()` على المجموعة لا تتبعها
             $pick = function ($list) {
@@ -443,12 +444,12 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
             };
             $at = Carbon::parse('2027-02-02 09:00:00');
             $invoices = [];
-            for ($n = 0; $n < 110; $n++) {
+            for ($n = 0; $n < 130; $n++) {
                 Carbon::setTestNow($at = $at->copy()->addHours(mt_rand(6, 30)));
                 config(['boutiques.recognise' => mt_rand(0, 4) ? BoutiqueInvoiceDues::AT_ISSUE : BoutiqueInvoiceDues::AT_SHEET]);
                 try {
                     $this->step(mt_rand(0, 9), $pick, $at, $invoices);
-                } catch (\RuntimeException|SettlementRefused|\InvalidArgumentException|\Illuminate\Validation\ValidationException) {
+                } catch (\RuntimeException|SettlementRefused|\InvalidArgumentException|ValidationException) {
                     session()->forget('errors');
                 }
                 if ($n % 6 === 0) {
@@ -457,12 +458,6 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
             }
             $this->assertBooks("بذرة $seed آخرها");
 
-            // وقع من كلٍّ شيء — وإلّا لم يُقَس
-            foreach (['ورقة' => BoutiqueSettlement::count(), 'تعليق' => BoutiqueSheetHold::count(), 'مرتجع بعدها' => BoutiqueReturn::count(),
-                'إلغاء' => BoutiqueInvoiceLine::whereNotNull('voided_at')->count(), 'مع الورقة' => BoutiqueInvoiceLine::whereNull('accrued_on')->count(),
-                'سداد' => Expense::where('status', Expense::PAID)->count(), 'معلّقٌ سُدّد' => BoutiqueSheetHold::whereNotNull('paid_at')->count()] as $what => $count) {
-                $this->assertGreaterThan(0, $count, "بذرة $seed: لم يقع «{$what}»");
-            }
             foreach (['2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07'] as $m) {
                 $from = Carbon::parse($m.'-01');
                 $to = $from->copy()->addMonth();
@@ -470,6 +465,13 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
                 $sum = $one['expenses'] + Profitability::summary($this->shop->id, $from, $to, $this->bausher->id)['expenses'] + $one['unallocated'];
                 $this->assertSame(number_format(Profitability::summary($this->shop->id, $from, $to)['expenses'], 3), number_format($sum, 3), "بذرة $seed فروع $m");
             }
+        }
+
+        // وقع من كلٍّ شيء — وإلّا لم يُقَس
+        foreach (['ورقة' => BoutiqueSettlement::count(), 'تعليق' => BoutiqueSheetHold::count(), 'مرتجع بعدها' => BoutiqueReturn::count(),
+            'إلغاء' => BoutiqueInvoiceLine::whereNotNull('voided_at')->count(), 'مع الورقة' => BoutiqueInvoiceLine::whereNull('accrued_on')->count(),
+            'سداد' => Expense::where('status', Expense::PAID)->count(), 'معلّقٌ سُدّد' => BoutiqueSheetHold::whereNotNull('paid_at')->count()] as $what => $count) {
+            $this->assertGreaterThan(0, $count, "لم يقع «{$what}»");
         }
     }
 
@@ -480,9 +482,9 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
             $what <= 3 => $this->collect(CustomerInvoice::find($pick($invoices)), $pick(['نقدي', 'نقدي', 'شيك'])),
             $what === 4 => CustomerPayments::cancel($pick(CustomerPayment::whereNull('cancelled_at')->orderBy('id')->get()), 'خطأ'),
             $what === 5 => $this->cheque($pick(CustomerPayment::whereNull('cancelled_at')->where('cheque_status', Cheques::PENDING)->orderBy('id')->get())),
-            $what === 6 => mt_rand(0, 3)
+            $what === 6 => mt_rand(0, 2)
                 ? $this->note(CustomerInvoice::find($pick($invoices)), $pick([$this->silver, $this->scent]), 1, 6, ['sellable' => mt_rand(0, 1)])
-                : CustomerInvoices::cancel(CustomerInvoice::find($pick($invoices)), 'خطأ', $this->owner->id),
+                : CustomerInvoices::cancel($pick(CustomerInvoice::where('status', CustomerInvoice::ISSUED)->whereDoesntHave('allocations')->orderBy('id')->get()), 'خطأ', $this->owner->id),
             $what <= 8 => $this->settle($pick([$this->lama, $this->reem]), $at->format('Y-m')),
             default => $this->money($pick),
         };
@@ -500,19 +502,22 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
         mt_rand(0, 2) ? Cheques::clear($p) : Cheques::bounce($p, 'ارتدّ');
     }
 
-    /** سدادُ ورقةٍ، أو قرارٌ في معلَّقٍ وسدادُه */
+    /** سدادُ ورقةٍ (ولو علّق بعضُها)، أو قرارٌ فيما سُدّدت دونه ثمّ سدادُه */
     private function money(\Closure $pick): void
     {
-        $holds = BoutiqueSheetHold::whereNull('paid_at')->orderBy('id')->get();
-        if ($holds->isNotEmpty() && mt_rand(0, 1)) {
-            $h = $pick($holds);
-            if ($h->closed_at === null && ! $h->paid_before) {
+        $withheld = BoutiqueSheetHold::whereNotNull('withheld_at')->whereNull('paid_at')->orderBy('id')->get();
+        if ($withheld->isNotEmpty() && mt_rand(0, 1)) {
+            $h = $pick($withheld);
+            if ($h->closed_at === null) {
                 BoutiqueHolds::release($h, 'قرار');
             }
             BoutiqueHolds::pay($h->fresh(), 'نقدي');
 
             return;
         }
-        $this->post('/admin/expenses/'.$pick(BoutiqueSettlement::whereNotNull('expense_id')->orderBy('id')->get())->expense_id.'/paid', ['method' => 'نقدي']);
+        $held = BoutiqueSheetHold::whereNotNull('live_key')->pluck('boutique_settlement_id');
+        $sheets = BoutiqueSettlement::whereNotNull('expense_id')->whereHas('expense', fn ($q) => $q->where('status', Expense::UNPAID))
+            ->when($held->isNotEmpty() && mt_rand(0, 2), fn ($q) => $q->whereIn('id', $held))->orderBy('id')->get();
+        $this->post('/admin/expenses/'.$pick($sheets)->expense_id.'/paid', ['method' => 'نقدي']);
     }
 }

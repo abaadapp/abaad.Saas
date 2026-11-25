@@ -614,7 +614,7 @@ class BoutiqueController extends Controller
         $targets = BoutiqueSettlement::where('business_id', $businessId)->where('boutique_id', $boutique->id)
             ->where('kind', BoutiqueSettlement::SETTLEMENT)->whereNotNull('expense_id')->with('expense')->latest('id')->limit(24)->get()
             ->filter(fn (BoutiqueSettlement $s) => $s->expense && ! $s->expense->isPaid() && Boutiques::accrual($s->expense) !== null)
-            ->map(fn (BoutiqueSettlement $s) => ['id' => $s->id, 'number' => $s->number, 'payable' => BoutiqueReturns::payable($s->expense)])
+            ->map(fn (BoutiqueSettlement $s) => ['id' => $s->id, 'number' => $s->number, 'payable' => BoutiqueHolds::payNow($s->expense)])
             ->values()->all();
 
         return [

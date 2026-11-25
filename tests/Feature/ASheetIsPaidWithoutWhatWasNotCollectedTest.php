@@ -328,7 +328,7 @@ class ASheetIsPaidWithoutWhatWasNotCollectedTest extends TestCase
         $this->assertEquals($doc, $this->document($s));
         $this->assertEquals($before, (array) DB::table('expenses')->where('id', $s->expense_id)->first(), 'مصروفٌ سُدّد تغيّر');
         $this->assertEquals([$books[0], $books[1]], [$this->payable(), $this->receivable()]);
-        $this->assertSame('paid_before', BoutiqueHolds::of($this->shop->id, $this->lama->id)[0]['state']);
+        $this->assertSame(['paid_before', 0.0], [BoutiqueHolds::of($this->shop->id, $this->lama->id)[0]['state'], BoutiqueHolds::of($this->shop->id, $this->lama->id)[0]['held']]);
 
         // لا يُفرج عنه ولا يُسدَّد: دُفع أصلًا
         $this->post(route('admin.boutiques.holds.release', [$this->lama->id, $h->id]), ['why' => 'خطأ'])->assertSessionHasErrors('holds');
@@ -422,6 +422,39 @@ class ASheetIsPaidWithoutWhatWasNotCollectedTest extends TestCase
         $this->pay($i, 24.0);
         $this->post(route('admin.boutiques.holds.pay', [$this->lama->id, $this->hold()->id]), ['method' => 'نقدي'])->assertSessionHasNoErrors();
         $this->assertEquals([0.0, 0.0], [$this->payable(), $this->receivable()]);
+    }
+
+    /** قطعةٌ رُدّت وحُسمت قبل إلغاء التحصيل ليست من المعلَّق، ولا تُطرح منه مرّةً ثانية */
+    public function test_a_piece_returned_before_the_cancellation_is_not_taken_from_what_is_held(): void
+    {
+        $this->terms('all');
+        $i = $this->invoice(3);
+        $p = $this->pay($i);
+        $this->sell();
+        $s = $this->settle();
+        $this->note($i, 12, 1);
+        $this->assertEquals(28.8, BoutiqueReturns::payable(Expense::find($s->expense_id)));
+        CustomerPayments::cancel($p->fresh(), 'ارتدّ');
+        $this->assertEquals(19.2, (float) $this->hold()->amount);
+        $this->assertSame([19.2, 9.6], [BoutiqueHolds::heldOn($s->id), BoutiqueHolds::payNow(Expense::find($s->expense_id))]);
+    }
+
+    /** مطالبةٌ على البوتيك لا تُخصم من معلَّقٍ لم يُراجَع */
+    public function test_a_claim_is_not_offset_against_what_is_held(): void
+    {
+        $this->terms('all');
+        $old = $this->invoice(2);
+        $this->pay($old);
+        $first = $this->settle();
+        $this->paySheet($first)->assertSessionHasNoErrors();
+        $this->note($old, 24, 2);
+        $this->assertEquals(19.2, $this->receivable());
+
+        [$i, $p, $s] = $this->mixed();
+        CustomerPayments::cancel($p->fresh(), 'ارتدّ');
+        $this->assertSame(9.6, BoutiqueReturns::offset($this->shop, $this->lama, $s));
+        $this->assertSame([9.6, 0.0], [BoutiqueHolds::heldOn($s->id), BoutiqueHolds::payNow(Expense::find($s->expense_id))]);
+        $this->assertEquals([9.6, 9.6], [$this->payable(), $this->receivable()]);
     }
 
     /* ═══════════ بالبيسة ═══════════ */

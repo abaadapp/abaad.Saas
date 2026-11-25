@@ -59,9 +59,11 @@ describe('تحصيلٌ أُلغي بعد صدور الورقة', () => {
         expect(screen.queryByRole('button', { name: 'أفرج عن السداد' })).toBeNull();
     });
 
-    it('ما فُكّ تعليقُه يُسدَّد بطريقته', () => {
+    it('ما فُكّ تعليقُه يُسدَّد بطريقته', async () => {
+        const user = userEvent.setup();
         render(<HoldsPanel boutiqueId={1} holds={[hold({ state: 'payable', closed_as: 'recollected', closed_at: 'x', owed: 9.6 })]} currency={currency} canPay />);
-        fireEvent.change(screen.getByTestId('hold-4').querySelector('select')!, { target: { value: 'تحويل' } });
+        await user.click(screen.getByLabelText('طريقة السداد'));
+        await user.click(await screen.findByRole('option', { name: 'تحويل' }));
         fireEvent.click(screen.getByRole('button', { name: /سدّد 9\.600/ }));
         expect(posts().at(-1)).toEqual({ url: '/admin.boutiques.holds.pay/1/4', data: { method: 'تحويل' } });
     });

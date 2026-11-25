@@ -63,7 +63,7 @@ final class Portal
         return $label === null ? null : strtolower($label.'.'.Storefront::domain());
     }
 
-    /** الرابطُ العامّ — لا يكشف شيئًا وحده */
+    /** الرابطُ الواحد لجميع العملاء */
     public static function url(): string
     {
         return 'https://'.self::host().'/'.self::PATH;
@@ -91,13 +91,13 @@ final class Portal
         );
     }
 
-    /** يرى الرابطَ وقسمَ البوابة ويعتمد أجهزةَ العملاء: صاحبُ النشاط، أو من اختاره — ومن يدير كذلك */
+    /** يرى الرابطَ ورمزَه وحالَ دخول العميل في ملفّه: صاحبُ النشاط، أو من اختاره — ومن يدير كذلك */
     public static function mayShare(?User $user): bool
     {
         return self::granted($user, ['share', 'manage']);
     }
 
-    /** يرى «بوابة العملاء» في الإعدادات ويلغي الدخول */
+    /** يرى «بوابة العملاء» في الإعدادات ويوقف دخولَ عميلٍ أو يسمح به */
     public static function mayManage(?User $user): bool
     {
         return self::granted($user, ['manage']);
@@ -118,23 +118,19 @@ final class Portal
     }
 
     /**
-     * ما يعرضه الصندوقُ بعد بيعةٍ لها عميلٌ مسجَّل: الرابطُ الواحد واعتمادُ جهازه — أو لا شيء.
+     * ما يعرضه الصندوقُ بعد بيعةٍ لها عميلٌ مسجَّل: الرابطُ الواحد لنسخه — أو لا شيء.
      *
-     * @return array{portal?: array{url: string, device: string, phone: string}}
+     * @return array{portal?: array{url: string}}
      */
     public static function sale(?User $user, Order $order): array
     {
-        if ($order->customer_id === null || ! self::mayShare($user) || ($customer = $order->customer) === null) {
-            return [];
-        }
-
-        return ['portal' => ['url' => self::url(), 'device' => route('pos.orders.portal', $order->number, false), 'phone' => Access::shown($customer)]];
+        return $order->customer_id === null || ! self::mayShare($user) || $order->customer === null ? [] : ['portal' => ['url' => self::url()]];
     }
 
     /**
      * ما تعرضه شاشةُ العملاء — أو `null` فلا زرَّ ولا مفتاحَ في الصفحة.
      *
-     * @return array{url: string, qr: string, poster: string, name: string, waiting: int, waitingUrl: string}|null
+     * @return array{url: string, qr: string, poster: string, name: string}|null
      */
     public static function panel(?User $user): ?array
     {
@@ -143,8 +139,6 @@ final class Portal
             'qr' => Qr::dataUri(self::url()),
             'poster' => route('admin.customers.portal.poster'),
             'name' => InvoiceBranding::name((int) $user->business_id),
-            'waiting' => count(Devices::waiting((int) $user->business_id)),
-            'waitingUrl' => route('admin.customers.portal.waiting', [], false),
         ] : null;
     }
 }

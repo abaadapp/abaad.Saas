@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Boutique;
+use App\Models\BoutiqueInvoiceReturn;
 use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
@@ -134,18 +135,31 @@ class OneCalculationForEveryBoutiqueBaisaTest extends TestCase
     /** التقريرُ والكشفُ والورقةُ ومصروفُها والدفترُ — رقمٌ واحد، ويُعاد */
     private function assertOneNumber(Boutique $b, string $why = ''): float
     {
-        $before = Ledger::balance($this->shop->id, 'boutique_payable');
         $report = Boutiques::soldTotals($this->shop->id, $b);
         $s = Boutiques::statement($this->shop->id, $b->id, self::PERIOD);
         $sheet = Boutiques::settle($this->shop->fresh(), $b, self::PERIOD);
         $expense = (float) Expense::findOrFail($sheet->expense_id)->amount;
-        $ledger = round(Ledger::balance($this->shop->id, 'boutique_payable') - $before, 3);
+        $ledger = $this->owedInTheLedger($sheet);
         $rows = round(collect($s['lines'])->sum('net'), 3);
         $this->assertSame(array_fill(0, 6, $s['net']), [$report['net'], $s['net'], $rows, round((float) $sheet->net, 3), $expense, $ledger], $b->name.' — '.$why);
         $this->assertSame([$s['commission'], $s['gross']], [$report['commission'], $report['gross']], $b->name.' — '.$why);
         $this->assertSame($s['gross'], round($s['vat'] + $s['commission'] + $s['net'], 3), 'الإجماليُّ لا يجمع إلى أجزائه');
 
         return $s['net'];
+    }
+
+    /** ما في 2160 لهذه الورقة: ما قيّدته، وما قُيّد قبلها مع فواتيرها ناقصًا ما رُدّ منه */
+    private function owedInTheLedger(BoutiqueSettlement $sheet): float
+    {
+        $lines = BoutiqueInvoiceLine::where('boutique_settlement_id', $sheet->id)->pluck('id');
+
+        return round((float) DB::table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')->join('accounts as a', 'a.id', '=', 'l.account_id')
+            ->where('a.system_key', 'boutique_payable')->where(fn ($q) => $q
+                ->where(fn ($w) => $w->where('e.sourceable_type', BoutiqueSettlement::class)->where('e.sourceable_id', $sheet->id))
+                ->orWhere(fn ($w) => $w->where('e.sourceable_type', BoutiqueInvoiceLine::class)->whereIn('e.sourceable_id', $lines))
+                ->orWhere(fn ($w) => $w->where('e.sourceable_type', BoutiqueInvoiceReturn::class)
+                    ->whereIn('e.sourceable_id', BoutiqueInvoiceReturn::whereIn('boutique_invoice_line_id', $lines)->pluck('id'))))
+            ->selectRaw('coalesce(sum(l.credit - l.debit), 0) as v')->value('v'), 3);
     }
 
     /* ═══════════ ١ · القاعدةُ نفسُها ═══════════ */

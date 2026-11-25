@@ -15,6 +15,7 @@ import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
 import HoldsPanel, { type SheetHold } from './HoldsPanel';
+import MovementsPanel from './MovementsPanel';
 import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
 import SalesPanel from './SalesPanel';
 import InvoiceReviewPanel from './InvoiceReviewPanel';
@@ -293,6 +294,9 @@ export default function BoutiqueShow() {
                     currency={currency}
                 />
             )}
+
+            {/* وكلُّ حركةٍ بينه وبين المتجر بمستندها وقيدها — لمن يقرأ المال */}
+            {canSeeMoney && statement && <MovementsPanel boutiqueId={boutique.id} period={period} currency={currency} />}
 
             {/*
                 أصنافُ البوتيك — ما يحمله اليوم، لا ما بِيع منه في شهر.

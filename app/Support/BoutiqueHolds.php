@@ -342,19 +342,7 @@ final class BoutiqueHolds
             $expense = Expense::withTrashed()->findOrFail($sheet->expense_id);
             $at = now();
 
-            $transaction = Transaction::create([
-                'business_id' => $h->business_id,
-                'branch_id' => ExpenseScope::journalBranch($expense),
-                'reference' => Transaction::nextReference((int) $h->business_id),
-                'description' => Boutiques::EXPENSE_TYPE.' — '.__('معلّق من الورقة :number', ['number' => $sheet->number]),
-                'method' => $method,
-                'type' => 'مصروف',
-                'amount' => $owed,
-                'employee_name' => auth()->user()?->name,
-                'occurred_at' => $at,
-            ]);
-
-            Ledger::post(
+            $entry = Ledger::post(
                 (int) $h->business_id,
                 BooksPeriod::fit(__('سداد معلّق من تسوية بوتيك: ').$sheet->number, (string) $h->line?->name),
                 [
@@ -367,6 +355,9 @@ final class BoutiqueHolds
                 auth()->id(),
                 $h,
             );
+
+            $transaction = BoutiqueMovements::cash((int) $h->business_id, Transaction::BOUTIQUE_HELD, $owed, $method,
+                Boutiques::EXPENSE_TYPE.' — '.__('معلّق من الورقة :number', ['number' => $sheet->number]), $at, $entry, ExpenseScope::journalBranch($expense));
 
             $h->update(['paid_at' => $at, 'paid_amount' => $owed, 'paid_method' => $method, 'transaction_id' => $transaction->id]);
 

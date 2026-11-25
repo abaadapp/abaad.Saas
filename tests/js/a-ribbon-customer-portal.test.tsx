@@ -6,7 +6,7 @@ import { pageProps } from './setup';
 
 /**
  * بوابةُ عملاء RIBBON في شاشات الموظّف — رابطٌ واحدٌ لجميع العملاء. ما لا يرسله الخادمُ
- * لا يُرسم، ورقمُ الجهاز يكتبه الموظّفُ ولا يُعرض له، ولا قناةَ مراسلةٍ فيها.
+ * لا يُرسم، ولا اعتمادَ ولا رقمَ جهاز، ولا قناةَ مراسلةٍ فيها.
  */
 vi.mock('@/Layouts/AdminLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 const toast = vi.hoisted(() => ({ error: vi.fn(), warning: vi.fn(), success: vi.fn() }));
@@ -14,20 +14,13 @@ vi.mock('sonner', () => ({ toast }));
 
 const { CustomerPortalCard, PortalButton, PortalSettingsCard } = await import('@/Components/RibbonPortal');
 const { PortalSale } = await import('@/Components/RibbonPortalSale');
-const { deviceDigits } = await import('@/lib/ribbon-portal');
 const { default: CustomerPortal } = await import('@/Pages/Admin/Settings/CustomerPortal');
 const { router } = await import('@inertiajs/react');
 
 const URL_ = 'https://ribbon.abaadapp.om/my';
-const panel = { url: URL_, qr: 'data:image/svg+xml;base64,AA==', poster: '/admin/customers/portal/poster', name: 'RIBBON', waiting: 0, waitingUrl: '/admin/customers/portal/waiting' };
-const urls = { device: '/admin/customers/7/portal/device', revoke: '/admin/customers/7/portal' as string | null };
-type Approved = { device: string; by: string | null; how: 'shop' | 'call' | null; at: string };
-const state = { urls, url: URL_, phone: '91234567' as string | null, waiting: [] as { device: string; until: string }[], since: null as string | null, used: null as string | null, devices: [] as Approved[] };
-const inside = {
-    ...state, since: '2026-11-01 09:00', used: '2026-11-20 18:30',
-    devices: [{ device: 'iPhone · Safari', by: 'منى', how: 'shop', at: '2026-11-01 09:00' }, { device: 'Windows · Chrome', by: 'هدى', how: 'call', at: '2026-11-03 12:00' }, { device: '', by: null, how: null, at: '2026-10-30 08:00' }] as Approved[],
-};
-const maryam = { id: 7, name: 'مريم البلوشي', phone: '91234567', twin: false, devices: [{ device: 'iPhone · Safari', until: '10:12' }], url: urls.device };
+const panel = { url: URL_, qr: 'data:image/svg+xml;base64,AA==', poster: '/admin/customers/portal/poster', name: 'RIBBON' };
+const state = { manage: '/admin/customers/7/portal' as string | null, url: URL_, phone: '91234567' as string | null, stopped: false, since: null as string | null, used: null as string | null, devices: 0 };
+const inside = { ...state, since: '2026-11-01 09:00', used: '2026-11-20 18:30', devices: 3 };
 
 const answer = (status: number, body: unknown) => {
     const spy = vi.fn(async () => ({ ok: status < 400, status, json: async () => body }));
@@ -36,7 +29,7 @@ const answer = (status: number, body: unknown) => {
     return spy as unknown as { mock: { calls: [string, RequestInit][] } } & typeof spy;
 };
 const write = vi.fn();
-const files = ['Components/RibbonPortal.tsx', 'Components/RibbonPortalDevice.tsx', 'Components/RibbonPortalSale.tsx', 'Pages/Admin/Settings/CustomerPortal.tsx', 'lib/ribbon-portal.ts'];
+const files = ['Components/RibbonPortal.tsx', 'Components/RibbonPortalSale.tsx', 'Pages/Admin/Settings/CustomerPortal.tsx', 'lib/ribbon-portal.ts'];
 const read = (f: string) => readFileSync(`resources/js/${f}`, 'utf8');
 
 beforeEach(() => {
@@ -47,16 +40,14 @@ beforeEach(() => {
     Object.assign(pageProps, { translations: {} });
 });
 afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     Reflect.deleteProperty(navigator, 'clipboard');
 });
 
 describe('قسمُ العملاء', () => {
     it('زرُّه يفتح الرابطَ الواحد ورمزَه ونسخَه وفتحَه وطباعتَه', async () => {
-        answer(200, { waiting: [] });
+        const fetch = answer(200, {});
         render(<PortalButton portal={panel} />);
-        expect(screen.queryByTestId('portal-waiting-count')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'بوابة العملاء' }));
 
         expect(screen.getByTestId('portal-public-box')).toHaveTextContent(URL_);
@@ -67,55 +58,10 @@ describe('قسمُ العملاء', () => {
         expect(screen.getByRole('link', { name: 'فتح البوابة' })).toHaveAttribute('href', URL_);
         expect(screen.getByRole('link', { name: 'فتح البوابة' })).toHaveAttribute('rel', 'noreferrer');
         expect(screen.getByRole('link', { name: 'طباعة الرمز' })).toHaveAttribute('href', panel.poster);
-    });
-
-    it('ومن ينتظر يظهر فيه بعدده، ويتحدّث وهو مفتوح — ولا رقمَ جهازٍ معه', async () => {
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        const spy = answer(200, { waiting: [maryam] });
-        render(<PortalButton portal={{ ...panel, waiting: 1 }} />);
-        expect(screen.getByTestId('portal-waiting-count')).toHaveTextContent('1');
-        expect(spy).not.toHaveBeenCalled();
-        fireEvent.click(screen.getByTestId('portal-button'));
-
-        const row = await screen.findByTestId('portal-waiting-row');
-        expect(screen.getByTestId('portal-waiting')).toHaveClass('order-first');
-        for (const shown of ['مريم البلوشي', '91234567', 'iPhone · Safari', 'ينتهي 10:12']) expect(row).toHaveTextContent(shown);
-        expect(row).not.toHaveTextContent('أكثر من عميل');
-        expect(spy.mock.calls[0]).toMatchObject([panel.waitingUrl, { method: 'GET', cache: 'no-store' }]);
-
-        const none = answer(200, { waiting: [] });
-        await vi.advanceTimersByTimeAsync(8100);
-        await waitFor(() => expect(screen.queryByTestId('portal-waiting-row')).toBeNull());
-        expect(none).toHaveBeenCalledTimes(1);
-        expect(screen.getByText(/لا جهاز ينتظر الآن/)).toBeInTheDocument();
-        expect(screen.getByTestId('portal-waiting')).not.toHaveClass('order-first');
-        expect(screen.queryByTestId('portal-waiting-count')).toBeNull();
-
-        // وانقطاعٌ لا يمحو ما عُرض، ونافذةٌ أُغلقت لا تسأل
-        answer(200, { waiting: [maryam] });
-        await vi.advanceTimersByTimeAsync(8100);
-        await screen.findByTestId('portal-waiting-row');
-        answer(500, {});
-        await vi.advanceTimersByTimeAsync(8100);
-        expect(screen.getByTestId('portal-waiting-row')).toBeInTheDocument();
-        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-        const closed = answer(200, { waiting: [] });
-        await vi.advanceTimersByTimeAsync(30000);
-        expect(closed).not.toHaveBeenCalled();
-    });
-
-    it('ويُعتمد الجهازُ لصاحبه ويُرفض، ورقمٌ لعميلين يُقال', async () => {
-        answer(200, { waiting: [{ ...maryam, twin: true }] });
-        render(<PortalButton portal={{ ...panel, waiting: 1 }} />);
-        fireEvent.click(screen.getByTestId('portal-button'));
-        const row = await screen.findByTestId('portal-waiting-row');
-        expect(row).toHaveTextContent('هذا الرقم مسجّل لأكثر من عميل');
-
-        const spy = answer(200, { waiting: [] });
-        fireEvent.click(screen.getByRole('button', { name: 'رفض' }));
-        await waitFor(() => expect(screen.queryByTestId('portal-waiting-row')).toBeNull());
-        expect(spy.mock.calls[0]).toMatchObject([maryam.url, { method: 'DELETE' }]);
+        // ولا جهازَ ينتظر ولا خانةَ اعتماد، ولا سؤالَ للخادم
+        expect(screen.getByRole('dialog')).not.toHaveTextContent(/اعتماد|رقم الجهاز|تنتظر/);
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it('وشاشاتُه لا ترسم شيئًا بلا ما يرسله الخادم — والزرُّ بجانب «إضافة عميل»', () => {
@@ -130,16 +76,17 @@ describe('قسمُ العملاء', () => {
     it('ولا ذكرَ لواتساب ولا لقناة مراسلة، ولا رابطَ لعميلٍ بعينه', () => {
         for (const f of files) {
             expect(read(f), f).not.toMatch(/whatsapp|wa\.me|واتساب|mailto:|sms:|MessageCircle|navigator\.share/i);
-            expect(read(f), f).not.toMatch(/الرابط الشخصي|رابطه الشخصي|رمز الدخول|رمز دخول|كلمة مرور|portal-make|portal-reissue/);
+            expect(read(f), f).not.toMatch(/الرابط الشخصي|رابطه الشخصي|رمز الدخول|رمز دخول|كلمة مرور|رقم الجهاز|اعتماد جهاز|يعتمد الأجهزة|portal-make|portal-reissue|portal-approve/);
         }
     });
 });
 
 describe('ملفُّ العميل: «بوابة العميل»', () => {
-    it('حالُ دخوله وأجهزتُه، ونسخُ الرابط الواحد', async () => {
+    it('حالُ دخوله وكم جهازًا، ونسخُ الرابط الواحد', async () => {
         const fetch = answer(200, {});
         const { unmount } = render(<CustomerPortalCard state={state} />);
         expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('لم يدخل بعد');
+        expect(screen.queryByTestId('portal-devices')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'نسخ رابط البوابة' }));
         await waitFor(() => expect(write).toHaveBeenCalledWith(URL_));
         expect(fetch).not.toHaveBeenCalled();
@@ -147,189 +94,108 @@ describe('ملفُّ العميل: «بوابة العميل»', () => {
 
         render(<CustomerPortalCard state={inside} />);
         expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('دخل بوابته');
-        for (const shown of ['2026-11-01 09:00', '2026-11-20 18:30', 'أجهزة معتمدة (3)']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
-        // وكلُّ جهازٍ باسمِ من اعتمده وكيف ومتى
-        const list = screen.getByTestId('portal-approved');
-        for (const shown of ['iPhone · Safari اعتمده منى في المحل 2026-11-01 09:00', 'Windows · Chrome اعتمده هدى باتصال على رقمه 2026-11-03 12:00', 'جهاز دخل قبل اعتماد الأجهزة 2026-10-30 08:00']) expect(list).toHaveTextContent(shown);
+        for (const shown of ['2026-11-01 09:00', '2026-11-20 18:30']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
+        expect(screen.getByTestId('portal-devices')).toHaveTextContent('3');
+        expect(screen.queryByRole('textbox')).toBeNull();
     });
 
-    const box = () => screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل');
-    const type = (digits: string) => fireEvent.change(box(), { target: { value: digits } });
-
-    it('يعتمد الجهازَ بالرقم الذي على شاشة العميل — يكتبه الموظّف، ويقول كيف تحقّق', async () => {
-        const fetch = answer(200, { state: inside });
-        render(<CustomerPortalCard state={state} />);
-        expect(screen.queryByTestId('portal-approve')).toBeNull();
-        fireEvent.click(screen.getByTestId('portal-approve-button'));
-        expect(box()).toHaveValue('');
-        // لا اختيارَ مسبقًا: يقوله الموظّف
-        for (const r of screen.getAllByRole('radio')) expect(r).toHaveAttribute('aria-checked', 'false');
-
-        // ستُّ خاناتٍ بلا قولٍ كيف تحقّق لا تُرسَل، وناقصةٌ لا تُرسَل
-        type('٤١٧٩٠٢٥ ');
-        expect(box()).toHaveValue('417902');
-        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
-        fireEvent.submit(screen.getByTestId('portal-approve'));
-        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
-        expect(screen.getByTestId('portal-approve')).toHaveTextContent('تعرف أنه صاحب الرقم');
-        type('41790');
-        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
-        fireEvent.submit(screen.getByTestId('portal-approve'));
-        expect(fetch).not.toHaveBeenCalled();
-
-        type('417902');
-        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
-        await waitFor(() => expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('دخل بوابته'));
-        expect(fetch.mock.calls).toHaveLength(1);
-        expect(fetch.mock.calls[0]).toMatchObject([urls.device, { method: 'POST', cache: 'no-store', body: JSON.stringify({ device: '417902', how: 'shop', called: false }) }]);
-        expect(toast.success).toHaveBeenCalledWith('اعتُمد الجهاز، وتفتح صفحة العميل وحدها');
-        expect(screen.queryByTestId('portal-approve')).toBeNull();
-    });
-
-    it('ومن بعيدٍ: الرقمُ المسجَّل أمامه، ولا اعتمادَ قبل أن يقرّ باتّصاله', async () => {
-        const fetch = answer(200, { state: inside });
-        render(<CustomerPortalCard state={{ ...state, phone: '9123 4567' }} />);
-        fireEvent.click(screen.getByTestId('portal-approve-button'));
-        type('417902');
-        fireEvent.click(screen.getByRole('radio', { name: 'عن بُعد باتصال' }));
-        expect(screen.getByTestId('portal-approve')).toHaveTextContent('اتصل أنت بالرقم المسجّل 9123 4567، واسأله عن اسمه ورقم جهازه. لا تعتمد من اتصل بك أو راسلك.');
-        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
-        fireEvent.submit(screen.getByTestId('portal-approve'));
-        expect(fetch).not.toHaveBeenCalled();
-
-        const called = () => screen.getByRole('checkbox', { name: 'اتصلت بالرقم المسجّل، وتأكدت من العميل ورقم جهازه' });
-        fireEvent.click(called());
-        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeEnabled();
-        // ومن بدّل اختيارَه ثمّ عاد أقرّ من جديد
-        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
-        fireEvent.click(screen.getByRole('radio', { name: 'عن بُعد باتصال' }));
-        expect(called()).not.toBeChecked();
-        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
-        fireEvent.click(called());
-        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
-        await waitFor(() => expect(fetch.mock.calls).toHaveLength(1));
-        expect(fetch.mock.calls[0]).toMatchObject([urls.device, { body: JSON.stringify({ device: '417902', how: 'call', called: true }) }]);
-        // ولا اتّصالَ ولا رسالةَ من النظام
-        expect(screen.queryByRole('link')).toBeNull();
-    });
-
-    it('وجهازٌ ينتظر يُعرض نوعُه ووقتُه، والخانةُ مفتوحة', () => {
-        render(<CustomerPortalCard state={{ ...state, waiting: [{ device: 'iPhone · Safari', until: '10:12' }] }} />);
-        expect(screen.getByTestId('portal-approve')).toBeInTheDocument();
-        for (const shown of ['iPhone · Safari', 'ينتهي 10:12']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
-    });
-
-    it('وخطأُ الخادم يُقال بنصّه في مكانه، ويُمحى ما كُتب', async () => {
-        answer(422, { message: 'لا جهاز ينتظر لهذا العميل بهذا الرقم.' });
-        render(<CustomerPortalCard state={state} />);
-        fireEvent.click(screen.getByTestId('portal-approve-button'));
-        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
-        type('417902');
-        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
-        expect(await screen.findByRole('alert')).toHaveTextContent('لا جهاز ينتظر لهذا العميل بهذا الرقم.');
-        expect(screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل')).toHaveValue('');
-        expect(toast.success).not.toHaveBeenCalled();
-        expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('لم يدخل بعد');
-    });
-
-    it('وإلغاءُ الدخول لمن يدير، وبتأكيدٍ يقول أثرَه', async () => {
-        const gone = answer(200, { state });
+    it('وإيقافُ الدخول لمن يدير، وبتأكيدٍ يقول أثرَه — ثمّ السماحُ به', async () => {
+        const gone = answer(200, { state: { ...state, stopped: true } });
         render(<CustomerPortalCard state={inside} />);
-        fireEvent.click(screen.getByTestId('portal-revoke'));
+        expect(screen.queryByTestId('portal-allow')).toBeNull();
+        fireEvent.click(screen.getByTestId('portal-stop'));
         expect(gone).not.toHaveBeenCalled();
-        expect(screen.getByText(/ولا يدخل حتى يُعتمد جهازه من جديد/)).toBeInTheDocument();
-        fireEvent.click(screen.getAllByRole('button', { name: 'إلغاء الدخول' }).at(-1)!);
-        await waitFor(() => expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('لم يدخل بعد'));
-        expect(gone.mock.calls[0]).toMatchObject([urls.revoke, { method: 'DELETE' }]);
-        // والقولُ يقع عند الإلغاء وحده: أزرارٌ لم تُضغط لم تُرسَل
+        expect(screen.getByText(/ولا تفتح صفحته برقم هاتفه حتى تسمح بذلك/)).toBeInTheDocument();
+        fireEvent.click(screen.getAllByRole('button', { name: 'إيقاف الدخول' }).at(-1)!);
+        await waitFor(() => expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('الدخول موقوف'));
         expect(gone.mock.calls).toHaveLength(1);
+        expect(gone.mock.calls[0]).toMatchObject([state.manage, { method: 'DELETE', cache: 'no-store' }]);
+        expect(toast.success).toHaveBeenCalledWith('أُوقف الدخول وخرج العميل من أجهزته');
+        expect(screen.queryByTestId('portal-stop')).toBeNull();
+
+        const back = answer(200, { state });
+        fireEvent.click(screen.getByTestId('portal-allow'));
+        await waitFor(() => expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('لم يدخل بعد'));
+        expect(back.mock.calls[0]).toMatchObject([state.manage, { method: 'POST' }]);
+        expect(toast.success).toHaveBeenLastCalledWith('سُمح بالدخول، وتفتح صفحة العميل برقم هاتفه');
     });
 
-    it('ومن لا يدير لا زرَّ إلغاءٍ له', () => {
-        render(<CustomerPortalCard state={{ ...inside, urls: { ...urls, revoke: null } }} />);
-        expect(screen.getByTestId('portal-approve-button')).toBeEnabled();
-        expect(screen.queryByTestId('portal-revoke')).toBeNull();
+    it('ومن عدل عن الإيقاف لم يُرسل شيئًا', async () => {
+        const fetch = answer(200, { state });
+        render(<CustomerPortalCard state={inside} />);
+        fireEvent.click(screen.getByTestId('portal-stop'));
+        fireEvent.click(screen.getByRole('button', { name: 'إلغاء' }));
+        await waitFor(() => expect(screen.queryByText(/ولا تفتح صفحته برقم هاتفه/)).toBeNull());
+        expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('ولا زرَّ إلغاءٍ لمن لا جهازَ له ينتظر ولا معتمد', () => {
-        const { unmount } = render(<CustomerPortalCard state={state} />);
-        expect(screen.queryByTestId('portal-revoke')).toBeNull();
+    it('وخطأُ الخادم يُقال بنصّه، وتبقى الحالُ كما هي', async () => {
+        answer(403, { message: 'ليس لك' });
+        render(<CustomerPortalCard state={{ ...state, stopped: true }} />);
+        fireEvent.click(screen.getByTestId('portal-allow'));
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('ليس لك'));
+        expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('الدخول موقوف');
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('ومن لا يدير يرى الحالَ ولا زرَّ له', () => {
+        const { unmount } = render(<CustomerPortalCard state={{ ...inside, manage: null }} />);
+        expect(screen.queryByTestId('portal-stop')).toBeNull();
         unmount();
-        render(<CustomerPortalCard state={{ ...state, waiting: maryam.devices }} />);
-        expect(screen.getByTestId('portal-revoke')).toBeInTheDocument();
+        render(<CustomerPortalCard state={{ ...inside, manage: null, stopped: true }} />);
+        expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('الدخول موقوف');
+        expect(screen.queryByTestId('portal-allow')).toBeNull();
     });
 
     it('ومن لا رقمَ له يُقال له، ولا يُطلب له شيء', () => {
         const fetch = answer(200, {});
         render(<CustomerPortalCard state={{ ...state, phone: null }} />);
         expect(screen.getByText('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')).toBeInTheDocument();
-        expect(screen.queryByTestId('portal-approve-button')).toBeNull();
+        expect(screen.queryByRole('button')).toBeNull();
         expect(fetch).not.toHaveBeenCalled();
-    });
-
-    it('ورقمُ الجهاز ستُّ خاناتٍ بأيّ أرقامٍ كُتب', () => {
-        expect(['417902', '٤١٧٩٠٢', '۴۱۷۹۰۲', ' 417-902 ', '41790299', 'abc', ''].map(deviceDigits)).toEqual(['417902', '417902', '417902', '417902', '417902', '', '']);
-        // كما هو في الخادم
-        expect(readFileSync('app/Support/RibbonPortal/Devices.php', 'utf8')).toMatch(/const DIGITS = 6;/);
     });
 });
 
 describe('الصندوق', () => {
-    const sale = { url: URL_, device: '/pos/orders/INV-1/portal', phone: '91234567' };
-
-    it('ينسخ الرابطَ الواحد بلا سؤال الخادم', async () => {
+    it('ينسخ الرابطَ الواحد بلا سؤال الخادم، ولا شيءَ سواه', async () => {
         const fetch = answer(200, {});
-        render(<PortalSale portal={sale} />);
+        render(<PortalSale portal={{ url: URL_ }} />);
         fireEvent.click(screen.getByRole('button', { name: 'نسخ رابط البوابة' }));
         await waitFor(() => expect(write).toHaveBeenCalledWith(URL_));
         expect(fetch).not.toHaveBeenCalled();
         expect(screen.queryByRole('link')).toBeNull();
-        expect(screen.queryByTestId('portal-approve')).toBeNull();
+        expect(screen.getAllByRole('button')).toHaveLength(1);
     });
 
-    it('ويعتمد جهازَ عميل البيعة، ولا يُرسل نموذجًا حوله', async () => {
-        const fetch = answer(200, { ok: true });
-        const around = vi.fn((e: React.FormEvent) => e.preventDefault());
-        render(<div onSubmit={around}><PortalSale portal={sale} /></div>);
-        fireEvent.click(screen.getByTestId('portal-sale-device'));
-        fireEvent.click(screen.getByRole('radio', { name: 'عن بُعد باتصال' }));
-        expect(screen.getByTestId('portal-approve')).toHaveTextContent('91234567');
-        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
-        fireEvent.change(screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل'), { target: { value: '417902' } });
-        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
-
-        await waitFor(() => expect(screen.getByTestId('portal-sale-device')).toHaveTextContent('اعتُمد الجهاز'));
-        expect(screen.getByTestId('portal-sale-device')).toBeDisabled();
-        expect(fetch.mock.calls[0]).toMatchObject([sale.device, { method: 'POST', body: JSON.stringify({ device: '417902', how: 'shop', called: false }) }]);
-        expect(around).not.toHaveBeenCalled();
-    });
-
-    it('وردُّ البيعة بلا بابٍ كاملٍ لا يرسم شيئًا', () => {
-        expect(read('hooks/usePosCart.ts')).toContain("portal: typeof d.portal?.url === 'string' && typeof d.portal.device === 'string' ? d.portal : null,");
+    it('وردُّ البيعة بلا رابطٍ لا يرسم شيئًا', () => {
+        expect(read('hooks/usePosCart.ts')).toContain("portal: typeof d.portal?.url === 'string' ? d.portal : null,");
     });
 });
 
 describe('الإعدادات', () => {
     const page = (over = {}) => {
         Object.assign(pageProps, {
-            translations: {}, portal: panel, urls: { self: '/s', staff: '/s/staff', revokeAll: '/s/links' }, mayGrant: true,
-            links: [{ id: 3, customer: 'مريم', since: '2026-11-29 10:00', used: null, devices: inside.devices, revokeUrl: '/s/links/3' }],
-            pagination: { current_page: 1, last_page: 1, total: 1 },
+            translations: {}, portal: panel, urls: { self: '/s', staff: '/s/staff', signOut: '/s/links' }, mayGrant: true,
+            links: [
+                { id: 3, customer: 'مريم', since: '2026-11-29 10:00', used: '2026-11-30 11:00', devices: 2, stopped: false, url: '/s/links/3' },
+                { id: 4, customer: 'سارة', since: null, used: null, devices: 0, stopped: true, url: '/s/links/4' },
+            ],
+            pagination: { current_page: 1, last_page: 1, total: 2 },
             employees: [{ id: 1, name: 'منى', role: 'مبيعات', share: false, manage: false }, { id: 2, name: 'خالد', role: 'مبيعات', share: true, manage: true }],
         }, over);
         render(<CustomerPortal />);
     };
 
-    it('حالتُها ورابطُها ومعاينتُها، ومن يدير يعتمد', () => {
+    it('حالتُها ورابطُها ومعاينتُها، ومن يدير يراها', () => {
         page();
         expect(screen.getByTestId('portal-status')).toHaveTextContent('تعمل');
         expect(screen.getByRole('link', { name: 'معاينة الصفحة' })).toHaveAttribute('href', URL_);
         expect(screen.queryByTestId('portal-save-staff')).toBeNull();
 
         fireEvent.click(screen.getByLabelText('يدير البوابة — منى'));
-        expect(screen.getByLabelText('يعتمد الأجهزة — منى')).toBeChecked();
+        expect(screen.getByLabelText('يرى البوابة — منى')).toBeChecked();
         // ومن نُزع عنه عرضُها نُزعت إدارتُها
-        fireEvent.click(screen.getByLabelText('يعتمد الأجهزة — خالد'));
+        fireEvent.click(screen.getByLabelText('يرى البوابة — خالد'));
         expect(screen.getByLabelText('يدير البوابة — خالد')).not.toBeChecked();
 
         fireEvent.click(screen.getByTestId('portal-save-staff'));
@@ -339,10 +205,36 @@ describe('الإعدادات', () => {
     it('ومن ليس صاحبَ النشاط يرى من دخل ولا يمنح', () => {
         page({ mayGrant: false });
         for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled();
-        expect(screen.getAllByTestId('portal-link-row')).toHaveLength(1);
-        expect(screen.getByTestId('portal-link-row')).toHaveTextContent('Windows · Chrome اعتمده هدى باتصال على رقمه 2026-11-03 12:00');
-        expect(screen.getByRole('button', { name: 'إلغاء الدخول' })).toBeEnabled();
-        expect(screen.getByTestId('portal-revoke-all')).toBeInTheDocument();
+        expect(screen.getAllByTestId('portal-link-row')).toHaveLength(2);
+        expect(screen.getByRole('button', { name: 'إيقاف الدخول' })).toBeEnabled();
+        expect(screen.getByTestId('portal-sign-out')).toBeInTheDocument();
+    });
+
+    it('ويقول لصاحب النشاط أثرَ الرقم وحده، ويوقف ويسمح ويُخرج الجميع', async () => {
+        page();
+        expect(screen.getByTestId('portal-open-note')).toHaveTextContent('من يكتب رقم عميل في البوابة يرى مشترياته وفواتيره ونقاطه.');
+        const [maryam, sara] = screen.getAllByTestId('portal-link-row');
+        for (const shown of ['مريم', '2026-11-29 10:00', '2026-11-30 11:00', '2', 'إيقاف الدخول']) expect(maryam).toHaveTextContent(shown);
+        expect(maryam).not.toHaveTextContent('موقوف');
+        for (const shown of ['سارة', 'الدخول موقوف', 'السماح بالدخول']) expect(sara).toHaveTextContent(shown);
+
+        fireEvent.click(screen.getByRole('button', { name: 'السماح بالدخول' }));
+        expect(router.post).toHaveBeenCalledWith('/s/links/4', {}, expect.anything());
+
+        fireEvent.click(screen.getByRole('button', { name: 'إيقاف الدخول' }));
+        expect(router.delete).not.toHaveBeenCalled();
+        fireEvent.click((await screen.findAllByRole('button', { name: 'إيقاف الدخول' })).at(-1)!);
+        await waitFor(() => expect(router.delete).toHaveBeenCalledWith('/s/links/3', expect.anything()));
+
+        fireEvent.click(screen.getByTestId('portal-sign-out'));
+        expect(screen.getByText(/ويدخل كل منهم من جديد برقم هاتفه/)).toBeInTheDocument();
+        fireEvent.click(screen.getAllByRole('button', { name: 'إخراج الجميع' }).at(-1)!);
+        await waitFor(() => expect(router.delete).toHaveBeenLastCalledWith('/s/links', expect.anything()));
+    });
+
+    it('ولا زرَّ «إخراج الجميع» ولا أحدَ داخل', () => {
+        page({ links: [{ id: 4, customer: 'سارة', since: null, used: null, devices: 0, stopped: true, url: '/s/links/4' }] });
+        expect(screen.queryByTestId('portal-sign-out')).toBeNull();
     });
 
     it('وبطاقتُها تفتح صفحتَها', () => {
@@ -354,7 +246,7 @@ describe('الإعدادات', () => {
         const en = JSON.parse(readFileSync('lang/en.json', 'utf8')) as Record<string, string>;
         const code = files.map(read).join('\n');
         const said = [...code.matchAll(/(?:\bt\(|\bmessage: |\baction: |\blabel=|\bdone=|[?:] )['\"]([^'\"]+)['\"]/g)].map((m) => m[1]).filter((k) => /[؀-ۿ]/.test(k));
-        expect(said.length).toBeGreaterThan(35);
+        expect(said.length).toBeGreaterThan(25);
         for (const key of said) expect(en[key], key).toBeTruthy();
     });
 });

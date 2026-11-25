@@ -150,6 +150,8 @@ class OrderCorrection
             // بندٌ حملته ورقةُ بوتيك يُلتقط قبل أن يُنقص — وما نقص منه إشعارٌ بعد التصحيح
             $sheetLine = $locked->boutique_id && $locked->boutique_settlement_id ? BoutiqueReturns::snapshot($locked) : null;
             $grossBefore = round((float) $locked->total, 3);
+            // ونصيبُ البوتيك قبل ورقته: ما تغيّر منه يبقى أثرُه ولو حُذف البند
+            $share = BoutiqueMovements::changed($locked, $newQty === 0 ? 0.0 : round((float) $locked->price * $newQty, 3));
 
             self::moveStock($order, $item, $oldQty - $newQty);
             // ومستحقُّ البوتيك بالكمّيّة الجديدة وبسعر البيعة — عكسٌ ثمّ صفٌّ جديد
@@ -184,7 +186,7 @@ class OrderCorrection
                 'reason' => $reason,
                 'user_id' => PosCashier::id() ?? auth()->id(),
                 'employee_name' => PosCashier::name() ?? auth()->user()?->name,
-            ]);
+            ] + $share);
 
             if ($sheetLine !== null) {
                 $grossAfter = $newQty === 0 ? 0.0 : round((float) $locked->price * $newQty, 3);
@@ -1170,6 +1172,7 @@ class OrderCorrection
             $oldName = $locked->displayName();
             $oldQty = (int) $locked->quantity;
             $oldDesc = self::describe($locked);
+            $share = BoutiqueMovements::changed($locked, 0.0);
 
             // القديمُ يعود إلى الرفّ بطريقه — ثمّ يُحذف كما يحذفه تصحيحُ الكمّيّة إلى صفر
             self::moveStock($order, $locked, $oldQty);
@@ -1197,7 +1200,7 @@ class OrderCorrection
                 'qty_after' => (int) $item->quantity,
                 'value_before' => $oldDesc,
                 'value_after' => self::describe($item),
-            ]);
+            ] + $share);
 
             Activity::log('updated', 'استبدل «'.$oldName.'» بـ«'.$item->displayName().'» في الفاتورة '.$order->number.' — '.$reason,
                 ['subject_id' => $order->id, 'subject_type' => 'order']);

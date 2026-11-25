@@ -22,6 +22,7 @@ class BoutiqueInvoiceLine extends Model
         return [
             'tax_inclusive' => 'boolean',
             'issued_at' => 'datetime',
+            'accrued_on' => 'date',
             'collected_at' => 'datetime',
             'voided_at' => 'datetime',
         ];
@@ -37,7 +38,9 @@ class BoutiqueInvoiceLine extends Model
     protected static function booted(): void
     {
         static::updating(function (self $line) {
-            if (array_intersect(array_keys($line->getDirty()), self::SNAPSHOT) !== []) {
+            // ويومُ الاعتراف يُكتب مرّةً مع قيده
+            if (array_intersect(array_keys($line->getDirty()), self::SNAPSHOT) !== []
+                || ($line->isDirty('accrued_on') && $line->getRawOriginal('accrued_on') !== null)) {
                 throw new \LogicException('لقطةُ مستحقّ البوتيك لا تُعدَّل بعد الإصدار.');
             }
         });

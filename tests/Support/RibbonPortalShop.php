@@ -12,7 +12,6 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\OrderStatus;
 use App\Support\RibbonPortal\Access;
-use App\Support\RibbonPortal\Devices;
 use App\Support\SalesChannel;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\URL;
@@ -32,6 +31,8 @@ trait RibbonPortalShop
     protected Customer $maryam;
 
     protected Product $bouquet;
+
+    private int $doors = 0;
 
     protected function openRibbon(): void
     {
@@ -117,25 +118,12 @@ trait RibbonPortalShop
         return $this->visitor($cookie)->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => $phone]);
     }
 
-    /** كعكةُ جهازٍ كُتب فيه هذا الرقم وهو ينتظر */
-    protected function device(string $phone): string
-    {
-        return (string) $this->ask($phone)->assertOk()->getCookie(Access::COOKIE)->getValue();
-    }
-
-    /** الرقمُ الظاهر على شاشة الجهاز — كما يقرؤه الموظّف */
-    protected function shown(string $cookie): string
-    {
-        preg_match('/data-testid="portal-number">([\d ]+)</', (string) $this->my('', $cookie)->assertOk()->getContent(), $m);
-
-        return str_replace(' ', '', $m[1] ?? '');
-    }
-
-    /** يكتب رقمَه، ويعتمد الموظّفُ جهازَه — ويردّ كعكتَه */
+    /** يكتب رقمَه فتفتح صفحتُه — ويردّ كعكةَ جهازه. من عنوانٍ لا يتكرّر: حدُّ المحاولات يُحرس في اختباره */
     protected function enter(Customer $customer, ?string $phone = null): string
     {
-        $cookie = $this->device($phone ?? (string) $customer->phone);
-        $this->assertNotNull(Devices::approve($customer->fresh(), $this->shown($cookie), $this->owner, 'shop'));
+        $this->withServerVariables(['REMOTE_ADDR' => '10.77.'.intdiv(++$this->doors, 250).'.'.($this->doors % 250)]);
+        $cookie = (string) $this->ask($phone ?? (string) $customer->phone)->assertOk()->getCookie(Access::COOKIE)->getValue();
+        $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1']);
 
         return $cookie;
     }

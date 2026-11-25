@@ -730,6 +730,10 @@ final class Boutiques
                 'employee_name' => $employee,
             ]);
 
+            // ما قُيّد من صافيها مع فواتيره قبل اليوم — فلا تقيّده الورقةُ ثانيةً (`BoutiqueInvoiceDues::accrue`)
+            $accruedAtSale = $invoiceLines === [] ? 0.0 : BoutiqueInvoiceDues::totals(
+                BoutiqueInvoiceLine::query()->whereIn('boutique_invoice_lines.id', $invoiceLines)->whereNotNull('accrued_on'))['net'];
+
             $settlement = BoutiqueSettlement::create([
                 'business_id' => $business->id,
                 'boutique_id' => $boutique->id,
@@ -756,6 +760,7 @@ final class Boutiques
                 'components_credit' => $components['credit'],
                 'components_net' => $components['net'],
                 'expense_id' => $expense?->id,
+                'accrued_at_sale' => $accruedAtSale,
                 'issued_at' => now(),
             ]);
 
@@ -791,19 +796,24 @@ final class Boutiques
                     ExpenseScope::apply($expense, $scope);
                 }
 
-                Ledger::post(
-                    (int) $business->id,
-                    __('استحقاق تسوية بوتيك — ورقة ').$number,
-                    [
-                        ['account' => Books::expenseAccount(self::EXPENSE_TYPE, (int) $business->id), 'debit' => round((float) $expense->amount, 3), 'memo' => $expense->description],
-                        ['account' => 'boutique_payable', 'credit' => round((float) $expense->amount, 3)],
-                    ],
-                    $postedAt,
-                    self::ACCRUAL,
-                    ExpenseScope::journalBranch($expense),
-                    auth()->id(),
-                    $settlement,
-                );
+                // والباقي منها بعد ما قُيّد مع فواتيره — وورقةٌ كلُّها قُيّدت قبلها لا قيدَ لصدورها
+                $rest = round((float) $expense->amount - $accruedAtSale, 3);
+
+                if ($rest > 0) {
+                    Ledger::post(
+                        (int) $business->id,
+                        __('استحقاق تسوية بوتيك — ورقة ').$number,
+                        [
+                            ['account' => Books::expenseAccount(self::EXPENSE_TYPE, (int) $business->id), 'debit' => $rest, 'memo' => $expense->description],
+                            ['account' => 'boutique_payable', 'credit' => $rest],
+                        ],
+                        $postedAt,
+                        self::ACCRUAL,
+                        ExpenseScope::journalBranch($expense),
+                        auth()->id(),
+                        $settlement,
+                    );
+                }
             }
 
             Activity::log('created', 'تسوية بوتيك '.$boutique->name.' عن '.$period.' بمبلغ '.$statement['net'], [
@@ -875,16 +885,26 @@ final class Boutiques
     public static function accruedExpenseIds(int $businessId)
     {
         return BoutiqueSettlement::query()
-            ->join('journal_entries as je', function ($j) {
-                $j->on('je.sourceable_id', '=', 'boutique_settlements.id')
-                    ->where('je.sourceable_type', '=', BoutiqueSettlement::class);
-            })
             ->where('boutique_settlements.business_id', $businessId)
-            ->where('je.business_id', $businessId)
             ->whereNotNull('boutique_settlements.expense_id')
-            ->where('je.source', self::ACCRUAL)->where('je.posted', true)
-            ->whereNull('je.reverses_id')->whereNull('je.reversed_at')
+            ->where(fn ($q) => $q->where('boutique_settlements.accrued_at_sale', '>', 0)
+                ->orWhereExists(fn ($e) => $e->selectRaw('1')->from('journal_entries as je')
+                    ->whereColumn('je.sourceable_id', 'boutique_settlements.id')->where('je.sourceable_type', BoutiqueSettlement::class)
+                    ->where('je.business_id', $businessId)
+                    ->where('je.source', self::ACCRUAL)->where('je.posted', true)
+                    ->whereNull('je.reverses_id')->whereNull('je.reversed_at')))
             ->select('boutique_settlements.expense_id');
+    }
+
+    /**
+     * أدَينُ هذه الورقة في 2160 قبل سدادها؟ — قُيّد يومَ صدورها، أو مع فواتيره قبلها، أو بعضُه هنا وبعضُه هناك.
+     *
+     * به يُعرف كيف تُسدَّد (يُطفأ الدَّين، أو مصروفٌ يومَ السداد لورقةٍ أقدم) وكيف يُخفَّض مرتجعُها.
+     */
+    public static function accrued(Expense $expense): bool
+    {
+        return self::accrual($expense) !== null || BoutiqueSettlement::where('business_id', $expense->business_id)
+            ->where('expense_id', $expense->id)->where('accrued_at_sale', '>', 0)->exists();
     }
 
     /**
@@ -892,7 +912,8 @@ final class Boutiques
      *
      * و`null` لمصروفٍ ليس ورقةَ بوتيك، ولورقةٍ صدرت قبل أن تُقيَّد يومَ
      * صدورها: تلك تُسدَّد على طريقتها الأولى (مصروفٌ يومَ السداد)، فلا
-     * يُطفأ عنها دَينٌ لم يُكتب.
+     * يُطفأ عنها دَينٌ لم يُكتب. ولورقةٍ قُيّد صافيها كلُّه مع فواتيره — و«أدَينُها في
+     * 2160؟» يُسأل من `accrued` لا من هنا.
      */
     public static function accrual(Expense $expense): ?JournalEntry
     {

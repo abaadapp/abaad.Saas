@@ -60,6 +60,8 @@ interface HeldDue {
 
 interface Props {
     holds?: HeldDue[];
+    /** قُيّد للبوتيكات مع فواتير العملاء ولم تحمله ورقة — دَينٌ في 2160 لا يُسدَّد من هنا */
+    boutiqueAccrued?: { awaiting: number; ready: number };
     expenses: ExpenseDue[];
     invoices: InvoiceDue[];
     payroll: PayrollDue[];
@@ -78,11 +80,12 @@ interface Props {
  * دفعٍ في قائمةٍ جامعة يُضغط على السطر الخطأ.
  */
 export default function Dues() {
-    const { expenses, invoices, payroll, totals, context, holds = [] } = usePage<PageProps<Props>>().props;
+    const { expenses, invoices, payroll, totals, context, holds = [], boutiqueAccrued } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
-    const empty = expenses.length === 0 && invoices.length === 0 && payroll.length === 0 && holds.length === 0;
+    const empty = expenses.length === 0 && invoices.length === 0 && payroll.length === 0 && holds.length === 0
+        && (boutiqueAccrued?.awaiting ?? 0) + (boutiqueAccrued?.ready ?? 0) === 0;
 
     const dueCell = (row: Due) =>
         row.due ? (
@@ -194,6 +197,16 @@ export default function Dues() {
                                     </li>
                                 ))}
                             </ul>
+                        </Card>
+                    )}
+
+                    {boutiqueAccrued && boutiqueAccrued.awaiting + boutiqueAccrued.ready > 0 && (
+                        <Card className="p-4 text-[13px] text-[#6b7280]" data-testid="dues-boutique-accrued">
+                            <p className="font-semibold text-[#111]">{t('مقيَّد للبوتيكات من فواتير العملاء، وليس مستحق السداد بعد')}</p>
+                            <p className="mt-1">
+                                {t('ينتظر التحصيل: :awaiting · حُصّل وينتظر ورقته: :ready', { awaiting: m(boutiqueAccrued.awaiting), ready: m(boutiqueAccrued.ready) })}
+                            </p>
+                            <p className="mt-1 text-[12px]">{t('لا يدخل «مجموع ما عليك»: يُسدَّد بورقة البوتيك بعد تحصيل فاتورته.')}</p>
                         </Card>
                     )}
 

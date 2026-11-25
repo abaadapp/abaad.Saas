@@ -425,19 +425,35 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
 
     /* ═══════════ ٣ · لا ازدواج، ولا أثرَ جانبيّ ═══════════ */
 
-    public function test_nothing_but_the_sheet_is_posted_and_no_order_no_stock_and_no_second_revenue(): void
+    public function test_only_the_invoice_and_each_share_are_posted_and_no_order_no_stock_and_no_second_revenue(): void
     {
         $entries = fn () => JournalEntry::where('business_id', $this->shop->id)->count();
         $invoice = $this->mixed();
-        $this->assertSame(1, $entries(), 'الإصدارُ كتب غيرَ قيده');
+        $this->assertSame(3, $entries(), 'الفاتورةُ ونصيبُ كلّ بوتيك — لا غيرُها');
         $this->pay($invoice, 42);
-        $this->assertSame(2, $entries(), 'التحصيلُ كتب غيرَ قيده');
+        $this->assertSame(4, $entries(), 'التحصيلُ كتب غيرَ قيده');
         $this->assertSame(0, Order::count(), 'كُتب طلبٌ وهميّ');
         $this->assertSame([500, 500], [(int) $this->silver->fresh()->quantity, (int) $this->scent->fresh()->quantity]);
 
+        // والورقةُ لا تقيّد ما قُيّد مع فاتورته
+        $this->settle($this->lama);
+        $this->assertSame(4, $entries());
+        $this->assertEquals(42.0, Ledger::balance((int) $this->shop->id, 'sales'));
+        $this->assertEquals(18.6, $this->payable());
+    }
+
+    /** وبالاعتراف مع الورقة: لا قيدَ قبلها */
+    public function test_recognised_with_the_sheet_nothing_but_the_sheet_is_posted(): void
+    {
+        config(['boutiques.recognise' => BoutiqueInvoiceDues::AT_SHEET]);
+        $entries = fn () => JournalEntry::where('business_id', $this->shop->id)->count();
+        $invoice = $this->mixed();
+        $this->assertSame(1, $entries());
+        $this->pay($invoice, 42);
+        $this->assertSame(2, $entries());
         $this->settle($this->lama);
         $this->assertSame(3, $entries());
-        $this->assertEquals(42.0, Ledger::balance((int) $this->shop->id, 'sales'));
+        $this->assertEquals(9.6, $this->payable());
     }
 
     public function test_one_sheet_carries_it_once_however_many_times_it_is_asked(): void
@@ -472,7 +488,9 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
         $this->assertEquals([30.0, 6.0, 24.0], [$s['gross'], $s['commission'], $s['net']]);
         $sheet = $this->settle($this->lama);
         $this->assertEquals([30.0, 6.0, 24.0], [(float) $sheet->gross, (float) $sheet->commission, (float) $sheet->net]);
-        $this->assertEquals(24.0, $this->payable());
+        // 24 لها في ورقتها، و9 لريم قُيّدت مع الفاتورة وتنتظر ورقتها
+        $this->assertEquals(33.0, $this->payable());
+        $this->assertEquals([9.6, 14.4], [(float) $sheet->accrued_at_sale, (float) Boutiques::accrual(Expense::find($sheet->expense_id))->lines()->sum('debit')], 'الورقةُ قيّدت بيعَ الصندوق وحده');
         // وفرعُ المصروف فرعُ بيعه كلِّه
         $this->assertSame((int) $this->branch->id, (int) Expense::find($sheet->expense_id)->branch_id);
     }
@@ -822,7 +840,8 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
         $this->pay($invoice, 42);
         $sheet = $this->settle($this->lama);
         $this->paySheet($sheet);
-        $this->assertEquals(0.0, $this->payable());
+        // ما بقي نصيبُ ريم من الفاتورة: قُيّد معها ولم تصدر ورقتُها
+        $this->assertEquals(9.0, $this->payable());
     }
 
     public function test_a_boutique_with_dues_on_invoices_is_not_deleted_until_they_are_settled(): void

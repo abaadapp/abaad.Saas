@@ -18,6 +18,7 @@ use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueDues;
 use App\Support\BoutiqueHolds;
 use App\Support\BoutiqueInvoiceDues;
+use App\Support\BoutiqueMovements;
 use App\Support\BoutiqueReturns;
 use App\Support\BoutiqueSales;
 use App\Support\Boutiques;
@@ -266,6 +267,20 @@ class BoutiqueController extends Controller
             'total' => $page->total(),
             'per_page' => $page->perPage(),
         ]);
+    }
+
+    /**
+     * حركاتُ البوتيك — ما سُجّل له وما سُدّد وما رُدّ، كلٌّ بمستنده وقيده (`BoutiqueMovements`).
+     *
+     * لمن يقرأ مالَ البوتيكات وحده، كالكشف.
+     */
+    public function movements(Request $request, int $id)
+    {
+        $this->money();
+        $business = $this->shop();
+        $boutique = $this->find($id);
+
+        return response()->json(BoutiqueMovements::page((int) $business->id, (int) $boutique->id, BoutiqueMovements::filters($request), auth()->user()));
     }
 
     /** ملخّصُ الشهر — للبوتيك المختار أو للكلّ */
@@ -613,7 +628,7 @@ class BoutiqueController extends Controller
         // أوراقٌ لم تُسدَّد قُيّدت يومَ صدورها — منها وحدها يُخصم
         $targets = BoutiqueSettlement::where('business_id', $businessId)->where('boutique_id', $boutique->id)
             ->where('kind', BoutiqueSettlement::SETTLEMENT)->whereNotNull('expense_id')->with('expense')->latest('id')->limit(24)->get()
-            ->filter(fn (BoutiqueSettlement $s) => $s->expense && ! $s->expense->isPaid() && Boutiques::accrual($s->expense) !== null)
+            ->filter(fn (BoutiqueSettlement $s) => $s->expense && ! $s->expense->isPaid() && Boutiques::accrued($s->expense))
             ->map(fn (BoutiqueSettlement $s) => ['id' => $s->id, 'number' => $s->number, 'payable' => BoutiqueHolds::payNow($s->expense)])
             ->values()->all();
 

@@ -291,7 +291,7 @@ class ExpenseController extends Controller
          */
         $sheet = BoutiqueReturns::sheetOf($expense) !== null;
         $amount = $sheet ? BoutiqueHolds::payNow($expense) : (float) $expense->amount;
-        $accrued = $sheet && Boutiques::accrual($expense) !== null;
+        $accrued = $sheet && Boutiques::accrued($expense);
 
         // ورقةٌ استُنفد صافيها لا حركةَ لها — وسائرُ المصروفات كما كانت
         if (! $sheet || $amount > 0) {
@@ -304,6 +304,8 @@ class ExpenseController extends Controller
                 'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
                 'method' => $expense->method,
                 'type' => 'مصروف',
+                // وورقةُ البوتيك تُسمّى بنوعها — وسائرُ المصروفات كما كانت
+                'kind' => $sheet ? Transaction::BOUTIQUE_SHEET : null,
                 'amount' => $amount,
                 'employee_name' => $expense->employee_name,
                 'occurred_at' => $accrued ? now() : $expense->spent_at,
@@ -320,6 +322,13 @@ class ExpenseController extends Controller
          * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
          */
         Books::recordExpense($expense->fresh());
+
+        // وحركةُ سداد ورقة البوتيك تحمل قيدَها — فلا تُقرأ «غير مُرحَّلة» وقيدُها في الدفتر
+        if ($sheet && $expense->transaction_id) {
+            Transaction::whereKey($expense->transaction_id)->update([
+                'journal_entry_id' => Books::liveEntriesFor($expense)->last()?->id,
+            ]);
+        }
     }
 
     /**
@@ -371,7 +380,7 @@ class ExpenseController extends Controller
          * (`Boutiques::branchScope`)، وقيدُها كُتب بفرعها. فتغييرُه هنا يُفرّق
          * تقريرَ الفروع عن الدفتر — ولا يُعاد قيدُ الاستحقاق من هذا الباب.
          */
-        if (Boutiques::accrual($expense) !== null) {
+        if (Boutiques::accrued($expense)) {
             return back()->withErrors(['scope' => __('نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.')]);
         }
 
@@ -494,7 +503,7 @@ class ExpenseController extends Controller
                  * ويومُ المصروف يومُ سداده — إلّا ورقةَ بوتيكٍ قُيّدت يومَ صدورها:
                  * مصروفُها في شهر بيعها، فيبقى يومُها ولا تنتقل إلى شهر الدفع.
                  */
-                $accrued = Boutiques::accrual($locked) !== null;
+                $accrued = Boutiques::accrued($locked);
                 $locked->update(['status' => Expense::PAID] + ($accrued ? [] : ['spent_at' => now()]) + ($method ? ['method' => $method] : []));
                 $this->postToLedger($locked->fresh());
                 // ومرتجعاتٌ خُفّض بها صافي ورقةٍ قديمة تدخل الدفترَ يومَ سدادها

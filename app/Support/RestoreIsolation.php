@@ -58,7 +58,8 @@ final class RestoreIsolation
             'product_id' => 'products', 'season_id' => 'seasons',
             'boutique_id' => 'boutiques', 'boutique_settlement_id' => 'boutique_settlements',
         ],
-        'order_edits' => ['order_item_id' => 'order_items', 'user_id' => 'users'],
+        'order_edits' => ['order_item_id' => 'order_items', 'user_id' => 'users', 'boutique_id' => 'boutiques'],
+        'boutique_settlements' => ['transaction_id' => 'transactions'],
         'boutique_component_dues' => [
             'boutique_id' => 'boutiques', 'product_id' => 'products', 'recipe_item_id' => 'recipe_items',
             'addon_id' => 'addons', 'reverses_id' => 'boutique_component_dues', 'user_id' => 'users',
@@ -81,7 +82,7 @@ final class RestoreIsolation
             'customer_payment_id' => 'customer_payments', 'transaction_id' => 'transactions', 'closed_by' => 'users',
         ],
         'boutique_sheet_payments' => ['boutique_settlement_id' => 'boutique_settlements', 'expense_id' => 'expenses', 'created_by' => 'users'],
-        'boutique_return_recoveries' => ['boutique_id' => 'boutiques', 'user_id' => 'users'],
+        'boutique_return_recoveries' => ['boutique_id' => 'boutiques', 'user_id' => 'users', 'transaction_id' => 'transactions'],
         'coupon_redemptions' => ['customer_id' => 'customers'],
         'order_prep_checks' => ['user_id' => 'users'],
         'shifts' => ['user_id' => 'users', 'branch_id' => 'branches'],

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Account;
 use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueInvoiceReturn;
 use App\Models\BoutiqueSettlement;
@@ -11,9 +12,11 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceItem;
 use App\Models\CustomerPayment;
 use App\Models\Expense;
+use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -34,8 +37,16 @@ use RuntimeException;
  * ═══ ولا يُحسب شيءٌ مرّتين ═══
  *
  * فاتورةٌ تغطّي طلبًا لا تُكتب لها لقطة (بيعُها في الطلب)، وبندٌ مولودٌ من بند طلبٍ
- * كذلك، والبندُ لقطةٌ واحدة بمفتاحٍ فريد. ولا قيدَ هنا ولا إيرادَ ولا مخزون: الفاتورةُ
- * قُيّدت يومَ صدورها كما كانت، ومستحقُّ البوتيك يُقيَّد مع ورقته كسائر مستحقّه.
+ * كذلك، والبندُ لقطةٌ واحدة بمفتاحٍ فريد. ولا إيرادَ هنا ولا مخزون: الفاتورةُ قُيّدت
+ * يومَ صدورها كما كانت.
+ *
+ * ═══ الاعترافُ غيرُ التسوية ═══
+ *
+ * نصيبُ البوتيك يُقيَّد يومَ صدور الفاتورة مع إيرادها (مدين حساب تسويته / دائن 2160) —
+ * فلا يُقرأ ربحُ الشهر بإيرادٍ بلا ما يقابله. ولا يُسوّى ولا يُسدَّد قبل اكتمال التحصيل.
+ * والورقةُ لا تقيّده ثانيةً: تقيّد ما لم يُقيَّد (`boutique_settlements.accrued_at_sale`).
+ * وما رُدّ أو أُلغي قبل ورقته يُردّ من القيد بيومه. و`config('boutiques.recognise')` = `sheet`
+ * يعيد القيدَ إلى الورقة لما يصدر بعده — والبندُ يحمل أيَّهما كان (`accrued_on`).
  *
  * ═══ والخصمُ على المتجر ═══
  *
@@ -58,6 +69,14 @@ final class BoutiqueInvoiceDues
     public const RETURNED = 'returned';
 
     public const VOID = 'void';
+
+    /** مصدرُ قيد الاعتراف بنصيب البوتيك من فاتورة عميل، وردِّه قبل ورقته */
+    public const ACCRUAL = 'استحقاق فاتورة بوتيك';
+
+    /** متى يُعترف به — `config('boutiques.recognise')` */
+    public const AT_ISSUE = 'issue';
+
+    public const AT_SHEET = 'sheet';
 
     /* ═══════════ ١. اللقطة ═══════════ */
 
@@ -101,7 +120,7 @@ final class BoutiqueInvoiceDues
             $rateH = BoutiqueMoney::rate($owner['rate']);
             $split = BoutiqueMoney::split(BoutiqueMoney::gross($item->quantity, $item->unit_price), $rateH, self::vatInside($item, $rule));
 
-            BoutiqueInvoiceLine::create([
+            $line = BoutiqueInvoiceLine::create([
                 'business_id' => $invoice->business_id,
                 'boutique_id' => $owner['id'],
                 'boutique_name' => $owner['name'],
@@ -125,7 +144,101 @@ final class BoutiqueInvoiceDues
                 'net' => Baisa::toMoney($split['net']),
                 'issued_at' => $now,
             ]);
+
+            self::accrue($line, $invoice);
         }
+    }
+
+    /* ═══════════ الاعتراف ═══════════ */
+
+    /**
+     * قيدُ نصيب البوتيك يومَ الفاتورة — بتاريخ إيرادها، وقيدٌ لكلّ بند.
+     *
+     * بندٌ لكلّ قيد: ما يُردّ منه أو يُلغى يُقابَل قيدُه هو، وورقةٌ تحمل بعضَ بنود
+     * فاتورةٍ لا تمسّ أخواتها.
+     */
+    private static function accrue(BoutiqueInvoiceLine $line, CustomerInvoice $invoice): void
+    {
+        $net = round((float) $line->net, 3);
+
+        if (config('boutiques.recognise') !== self::AT_ISSUE || $net <= 0) {
+            return;
+        }
+
+        $at = Carbon::parse($invoice->issued_at);
+        Ledger::post(
+            (int) $line->business_id,
+            __('استحقاق بوتيك — فاتورة ').$invoice->number,
+            [
+                ['account' => Books::expenseAccount(Boutiques::EXPENSE_TYPE, (int) $line->business_id), 'debit' => $net, 'memo' => $line->boutique_name.' — '.$line->name],
+                ['account' => 'boutique_payable', 'credit' => $net],
+            ],
+            $at,
+            self::ACCRUAL,
+            $line->branch_id,
+            auth()->id(),
+            $line,
+        );
+
+        $line->update(['accrued_on' => $at->toDateString()]);
+    }
+
+    /** يُردّ من القيد ما سقط من النصيب قبل ورقته — بيومه في الفترة المفتوحة */
+    private static function unaccrue(BoutiqueInvoiceLine $line, float $amount, Model $document): void
+    {
+        $amount = round($amount, 3);
+
+        if ($line->accrued_on === null || $amount <= 0) {
+            return;
+        }
+
+        Ledger::post(
+            (int) $line->business_id,
+            __('ردّ استحقاق بوتيك — فاتورة ').(string) CustomerInvoice::whereKey($line->customer_invoice_id)->value('number'),
+            [
+                ['account' => 'boutique_payable', 'debit' => $amount],
+                ['account' => self::account($line), 'credit' => $amount, 'memo' => $line->boutique_name.' — '.$line->name],
+            ],
+            BooksPeriod::openOr((int) $line->business_id, now()),
+            self::ACCRUAL,
+            $line->branch_id,
+            auth()->id(),
+            $document,
+        );
+    }
+
+    /** الحسابُ الذي حُمّل نصيبَ هذا البند — كما قُيّد، لا كما يقول نوعُ المصروف اليوم */
+    public static function account(BoutiqueInvoiceLine $line): Account|string
+    {
+        $entry = JournalEntry::where('sourceable_type', BoutiqueInvoiceLine::class)->where('sourceable_id', $line->id)
+            ->where('source', self::ACCRUAL)->orderBy('id')->first();
+
+        return $entry?->lines()->where('debit', '>', 0)->with('account')->first()?->account
+            ?? Books::expenseAccount(Boutiques::EXPENSE_TYPE, (int) $line->business_id);
+    }
+
+    /** ما قُيّد مع الفواتير ولم تحمله ورقةٌ بعد — دَينٌ في 2160 لا يُسدَّد قبل ورقته */
+    public static function accruedOpen(int $businessId, ?int $boutiqueId = null): Builder
+    {
+        return BoutiqueInvoiceLine::query()
+            ->where('boutique_invoice_lines.business_id', $businessId)
+            ->when($boutiqueId !== null, fn ($q) => $q->where('boutique_invoice_lines.boutique_id', $boutiqueId))
+            ->whereNotNull('boutique_invoice_lines.accrued_on')
+            ->whereNull('boutique_invoice_lines.boutique_settlement_id')
+            ->whereNull('boutique_invoice_lines.voided_at')
+            ->whereColumn('boutique_invoice_lines.quantity', '>', 'boutique_invoice_lines.returned_quantity');
+    }
+
+    /** ما اعترف به الدفترُ من نصيب البوتيكات مع الفواتير في فترة — بعد ما رُدّ منه، بفرعه */
+    public static function recognised(int $businessId, ?Carbon $start, ?Carbon $end)
+    {
+        return DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.business_id', $businessId)->where('journal_entries.posted', true)
+            ->where('journal_entries.source', self::ACCRUAL)->where('accounts.system_key', 'boutique_payable')
+            ->when($start, fn ($q) => $q->where('journal_entries.entry_date', '>=', $start->toDateString()))
+            ->when($end, fn ($q) => $q->where('journal_entries.entry_date', '<', $end->toDateString()));
     }
 
     /**
@@ -220,6 +333,7 @@ final class BoutiqueInvoiceDues
         foreach ($lines as $line) {
             if ($line->boutique_settlement_id === null) {
                 $line->update(['voided_at' => now(), 'collected_at' => null]);
+                self::unaccrue($line, (float) $line->net - (float) $line->returned_net, $line);
 
                 continue;
             }
@@ -290,7 +404,7 @@ final class BoutiqueInvoiceDues
         $diff = fn (string $k) => Baisa::toMoney($before[$k] - $after[$k]);
         $settled = $line->boutique_settlement_id !== null;
 
-        BoutiqueInvoiceReturn::create([
+        $return = BoutiqueInvoiceReturn::create([
             'business_id' => $line->business_id,
             'boutique_invoice_line_id' => $line->id,
             'customer_credit_note_id' => $note?->id,
@@ -312,6 +426,8 @@ final class BoutiqueInvoiceDues
         // وما حملته ورقةٌ لا يُنقص منها: مرتجعُه إشعارٌ مرتبطٌ بها، بشرط اتّفاقية البوتيك
         if ($settled) {
             BoutiqueReturns::onInvoice($line, $qty, $diff('gross'), $diff('net'), $sellable, $damaged, $reason);
+        } else {
+            self::unaccrue($line, $diff('net'), $return);
         }
     }
 

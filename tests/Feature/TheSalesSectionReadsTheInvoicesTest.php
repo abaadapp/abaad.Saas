@@ -9,6 +9,8 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
@@ -17,6 +19,7 @@ use App\Support\Boutiques;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Ledger;
+use App\Support\OrderCorrection;
 use App\Support\WhatsAppOrderCheckout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -170,6 +173,59 @@ class TheSalesSectionReadsTheInvoicesTest extends TestCase
         $index = $this->actingAs($this->owner)->get(route('admin.boutiques.index', ['period' => '2027-02']))->viewData('page')['props']['boutiques'];
         $lama = collect($index)->firstWhere('id', $this->lama->id);
         $this->assertEquals([30.0, 0.0], [$lama['gross'], $lama['pending']]);
+    }
+
+    /**
+     * مرتجعٌ بعد الورقة يُنقص المبيعَ بقدره من أيّ باب بِيع — في القسم وشاشة البوتيكات والتقرير رقمٌ واحد.
+     *
+     * كانت بنودُ الفواتير تُقرأ بما حملته ورقتُها، وبنودُ الطلبات بما بقي: القطعةُ نفسُها تُردّ
+     * فتنقص «مبيعات الشهر» من الصندوق ولا تنقص من الفاتورة.
+     */
+    public function test_a_return_after_the_sheet_lowers_what_was_sold_alike_from_the_till_and_from_an_invoice(): void
+    {
+        $this->lama->update(['returns_terms' => 'sellable', 'returns_terms_ref' => 'عقد 7']);
+        $read = function () {
+            $s = $this->summary(['boutique' => $this->lama->id]);
+            $index = collect($this->actingAs($this->owner)->get(route('admin.boutiques.index', ['period' => '2027-02']))->viewData('page')['props']['boutiques'])->firstWhere('id', $this->lama->id);
+
+            return [round($s['standalone']['gross'] + $s['invoices']['gross'], 3), round($s['standalone']['commission'] + $s['invoices']['commission'], 3), round($s['standalone']['quantity'] + $s['invoices']['quantity'], 3),
+                $s['owed'], (float) $index['gross'], Boutiques::soldTotals($this->shop->id, $this->lama->fresh())['net'], $s['settlement']['issued']];
+        };
+
+        // من الصندوق: قطعتان في ورقة، ثمّ رُدّت واحدة
+        $this->till(2);
+        Boutiques::settle($this->shop->fresh(), $this->lama, '2027-02');
+        $this->assertEquals([12.0, 2.4, 2.0, 9.6, 12.0, 9.6, 9.6], $read());
+        OrderCorrection::setQuantity(Order::sole(), OrderItem::sole(), 1, 'أُعيدت', 'refunded', 'نقدي');
+        $till = $read();
+        $this->assertEquals([6.0, 1.2, 1.0, 4.8, 6.0, 4.8, 9.6], $till, 'الورقةُ كما صدرت، والمبيعُ ما بقي');
+
+        // ومن فاتورة عميل في متجرٍ مثله
+        $this->setUpAgain();
+        $i = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->company, [], [['product_id' => $this->silver->id, 'description' => 'قطعة فضّة', 'quantity' => 2, 'unit_price' => 6]]));
+        $this->pay($i);
+        Boutiques::settle($this->shop->fresh(), $this->lama, '2027-02');
+        $this->assertEquals([12.0, 2.4, 2.0, 9.6, 12.0, 9.6, 9.6], $read());
+        $item = (int) $i->items()->value('id');
+        CustomerInvoices::creditNote($i->fresh(), 6, 0, 'أُعيدت', null, items: BoutiqueInvoiceDues::noteItems($i->fresh(), [$item => ['quantity' => 1, 'sellable' => 1]]), basis: 'return');
+        $this->assertEquals($till, $read(), 'الفاتورةُ تقول غيرَ ما يقوله الصندوق');
+        // ورُدّت الأخرى: لا بندَ بقي، ولا فاتورةَ تُعدّ
+        CustomerInvoices::creditNote($i->fresh(), 6, 0, 'أُعيدت', null, items: BoutiqueInvoiceDues::noteItems($i->fresh(), [$item => ['quantity' => 1, 'sellable' => 1]]), basis: 'return');
+        $this->assertEquals([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.6], $read());
+        $this->assertEquals([0, 0], [$this->summary()['invoices']['lines'], $this->summary()['invoices']['invoices']]);
+    }
+
+    private function setUpAgain(): void
+    {
+        $this->shop = Business::create(['name' => 'متجر آخر', 'type' => 'عام', 'status' => 'نشط', 'boutiques_enabled' => true]);
+        Currency::create(['business_id' => $this->shop->id, 'code' => 'OMR', 'name' => 'ريال عماني', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
+        Ledger::seedChart($this->shop->id);
+        Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'vat_enabled', 'value' => '0']);
+        $this->owner = User::create(['business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o2@sect.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
+        $this->lama = Boutique::create(['business_id' => $this->shop->id, 'name' => 'بوتيك لمى', 'commission_rate' => 20, 'active' => true, 'returns_terms' => 'sellable', 'returns_terms_ref' => 'عقد 7']);
+        $this->silver = $this->product('قطعة فضّة', 6, $this->lama);
+        $this->company = Customer::create(['language' => 'ar', 'business_id' => $this->shop->id, 'name' => 'شركة سرّيّة', 'phone' => '92222222', 'allow_credit_sales' => true]);
     }
 
     /** ما يُعرض عن فاتورةٍ لا تُحسب: القديمةُ وحدها، وما له لقطةٌ لا يُقال مرّتين */

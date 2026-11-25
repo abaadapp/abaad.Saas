@@ -139,8 +139,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 // وطلبُ دفعةٍ برابط — لعميلٍ من المتجر نفسِه وحده (`PaymentRequestController`)
                 ['العملاء', 'post', 'admin.customers.paymentLink', ['id' => 'customer']],
                 // وبوابةُ عملاء RIBBON — مفتوحةٌ هنا للمتجر A: مغلقةً تردّ أبوابُها ٤٠٤ قبل أن يُسأل لمن العميل
-                ['بوابة العملاء', 'post', 'admin.customers.portal.share', ['id' => 'customer']],
-                ['بوابة العملاء', 'post', 'admin.customers.portal.reissue', ['id' => 'customer']],
+                ['بوابة العملاء', 'post', 'admin.customers.portal.device', ['id' => 'customer']],
+                ['بوابة العملاء', 'delete', 'admin.customers.portal.dismiss', ['id' => 'customer']],
                 ['بوابة العملاء', 'delete', 'admin.customers.portal.revoke', ['id' => 'customer']],
                 ['بوابة العملاء', 'delete', 'admin.settings.portal.revoke', ['link' => 'portal_link']],
                 ['بوابة العملاء', 'post', 'pos.orders.portal', ['number' => 'order_number']],

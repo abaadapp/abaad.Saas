@@ -3,7 +3,7 @@ import { router, usePage } from '@inertiajs/react';
 import { ExternalLink, ShieldOff } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import { PortalLinkBox, type PortalPanel } from '@/Components/RibbonPortal';
+import { ApprovedDevices, PortalLinkBox, type PortalPanel } from '@/Components/RibbonPortal';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import type { ApprovedDevice } from '@/lib/ribbon-portal';
 import type { PageProps } from '@/types';
 import BackToSettings from './partials/BackToSettings';
 
@@ -25,9 +26,9 @@ interface EmployeeRow {
 interface LinkRow {
     id: number;
     customer: string;
-    by: string | null;
-    issued: string | null;
+    since: string | null;
     used: string | null;
+    devices: ApprovedDevice[];
     revokeUrl: string;
 }
 
@@ -37,7 +38,7 @@ interface Props {
     links: LinkRow[];
     pagination: { current_page: number; last_page: number; total: number };
     employees: EmployeeRow[];
-    /** يختار من يشارك — صاحبُ النشاط وحده */
+    /** يختار من يعمل على البوابة — صاحبُ النشاط وحده */
     mayGrant: boolean;
 }
 
@@ -59,18 +60,18 @@ export default function CustomerPortal() {
             { preserveScroll: true, onStart: () => setSaving(true), onFinish: () => setSaving(false) },
         );
     const revoke = async (l: LinkRow) => {
-        if (! await ask({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
+        if (! await ask({ message: 'إلغاء دخول هذا العميل؟ يخرج من أجهزته كلها، ولا يدخل حتى يُعتمد جهازه من جديد.', danger: true, action: 'إلغاء الدخول' })) return;
         router.delete(l.revokeUrl, { preserveScroll: true });
     };
     const revokeAll = async () => {
-        if (! await ask({ message: 'إلغاء كل روابط العملاء؟ يخرجون جميعًا، ويلزم إصدار رابط جديد لكل عميل.', danger: true, action: 'إلغاء الكل' })) return;
+        if (! await ask({ message: 'إلغاء دخول كل العملاء؟ يخرجون جميعًا من أجهزتهم، ولا يدخل أحد حتى يُعتمد جهازه من جديد.', danger: true, action: 'إلغاء الكل' })) return;
         router.delete(urls.revokeAll, { preserveScroll: true });
     };
 
     return (
         <AdminLayout title="بوابة العملاء">
             {confirmDialog}
-            <PageHeader title="بوابة العملاء" subtitle={t('يطّلع عميلك على مشترياته وفواتيره ونقاطه برابطه الشخصي ورقم هاتفه')} />
+            <PageHeader title="بوابة العملاء" subtitle={t('يطّلع عميلك على مشترياته وفواتيره ونقاطه من رابط واحد، برقم هاتفه وجهاز يُعتمد مرة واحدة')} />
             <BackToSettings />
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -89,18 +90,18 @@ export default function CustomerPortal() {
 
                 <Card className="lg:col-span-2">
                     <CardHeader className="flex-row items-center justify-between">
-                        <CardTitle>{t('من يشارك روابط العملاء')}</CardTitle>
+                        <CardTitle>{t('من يعمل على البوابة')}</CardTitle>
                         {mayGrant && dirty && <Button size="sm" loading={saving} onClick={save} data-testid="portal-save-staff">{t('حفظ')}</Button>}
                     </CardHeader>
                     <CardContent>
                         <p className="mb-3 text-[13px] text-[#6b7280]">
-                            {t('صاحب النشاط يملكها كلها. «يشارك الرابط»: ينشئ رابط العميل وينسخه ويعرض رمزه. و«يدير البوابة»: ومعها إعادة الإصدار والإلغاء وهذه الصفحة. ولا تفتح الفواتير ولا تعديل النقاط، وتلزم معها صلاحية الشاشة التي فيها الزر.')}
+                            {t('صاحب النشاط يملكها كلها. «يعتمد الأجهزة»: يرى الرابط والرمز ويعتمد جهاز عميل أمامه، أو عميل اتصل هو برقمه المسجّل. فيفتح به العميل مشترياته، ويُكتب اسم من اعتمده. و«يدير البوابة»: ومعها إلغاء الدخول وهذه الصفحة. ولا تفتح الفواتير ولا تعديل النقاط، وتلزم معها صلاحية الشاشة التي فيها الزر.')}
                         </p>
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>{t('الموظف')}</TableHead>
-                                    <TableHead className="text-center">{t('يشارك الرابط')}</TableHead>
+                                    <TableHead className="text-center">{t('يعتمد الأجهزة')}</TableHead>
                                     <TableHead className="text-center">{t('يدير البوابة')}</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -116,7 +117,7 @@ export default function CustomerPortal() {
                                                     className="size-5 accent-[#111]"
                                                     checked={r[key]}
                                                     disabled={!mayGrant}
-                                                    aria-label={`${t(key === 'share' ? 'يشارك الرابط' : 'يدير البوابة')} — ${r.name}`}
+                                                    aria-label={`${t(key === 'share' ? 'يعتمد الأجهزة' : 'يدير البوابة')} — ${r.name}`}
                                                     onChange={(e) => set(r.id, key, e.target.checked)}
                                                 />
                                             </TableCell>
@@ -130,7 +131,7 @@ export default function CustomerPortal() {
 
                 <Card className="lg:col-span-3">
                     <CardHeader className="flex-row items-center justify-between">
-                        <CardTitle>{t('روابط العملاء الفعّالة')} <span className="text-[13px] font-normal text-[#9ca3af]">({number(pagination.total)})</span></CardTitle>
+                        <CardTitle>{t('من دخل من العملاء')} <span className="text-[13px] font-normal text-[#9ca3af]">({number(pagination.total)})</span></CardTitle>
                         {links.length > 0 && <Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void revokeAll()} data-testid="portal-revoke-all"><ShieldOff />{t('إلغاء الكل')}</Button>}
                     </CardHeader>
                     <CardContent>
@@ -138,21 +139,21 @@ export default function CustomerPortal() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>{t('العميل')}</TableHead>
-                                    <TableHead>{t('أصدره')}</TableHead>
-                                    <TableHead>{t('صدر في')}</TableHead>
-                                    <TableHead>{t('آخر دخول به')}</TableHead>
+                                    <TableHead>{t('أول اعتماد')}</TableHead>
+                                    <TableHead>{t('آخر زيارة')}</TableHead>
+                                    <TableHead>{t('الأجهزة المعتمدة ومن اعتمدها')}</TableHead>
                                     <TableHead />
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {links.length === 0 && <TableEmpty colSpan={5}>{t('لم يصدر رابط لعميل بعد — يصدر من ملف العميل أو بعد البيع')}</TableEmpty>}
+                                {links.length === 0 && <TableEmpty colSpan={5}>{t('لم يدخل عميل بعد')}</TableEmpty>}
                                 {links.map((l) => (
                                     <TableRow key={l.id} data-testid="portal-link-row">
                                         <TableCell className="font-medium">{l.customer}</TableCell>
-                                        <TableCell>{l.by ?? '—'}</TableCell>
-                                        <TableCell><span dir="ltr">{l.issued}</span></TableCell>
+                                        <TableCell><span dir="ltr">{l.since}</span></TableCell>
                                         <TableCell>{l.used ? <span dir="ltr">{l.used}</span> : '—'}</TableCell>
-                                        <TableCell className="text-end"><Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void revoke(l)}>{t('إلغاء الرابط')}</Button></TableCell>
+                                        <TableCell>{l.devices.length > 0 ? <ApprovedDevices devices={l.devices} /> : '—'}</TableCell>
+                                        <TableCell className="text-end"><Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void revoke(l)}>{t('إلغاء الدخول')}</Button></TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>

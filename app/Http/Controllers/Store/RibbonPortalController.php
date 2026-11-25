@@ -8,6 +8,7 @@ use App\Models\CustomerPortalSession;
 use App\Support\InvoiceBranding;
 use App\Support\RibbonPortal\Access;
 use App\Support\RibbonPortal\Account;
+use App\Support\RibbonPortal\Devices;
 use App\Support\RibbonPortal\Paper;
 use App\Support\RibbonPortal\Texts;
 use App\Support\Search;
@@ -37,54 +38,97 @@ class RibbonPortalController extends Controller
             return redirect()->route('my.index', [], 303)->withCookie($this->langCookie($request, $pick));
         }
 
-        $customer = $this->customer($request);
-        if ($customer === null || $request->boolean('switch')) {
-            $response = response()->view('portal.ribbon.door', $this->frame($request, null));
-
-            // جلسةٌ أُلغيت أو انقضت: كعكتُها لا تبقى. ومن فتح رابطَ غيره على جهازه (`switch`) تبقى له جلستُه حتى يدخل الآخر
-            return $customer !== null || $request->cookie(Access::COOKIE) === null ? $response : $response->withCookie(Access::cookie($request, null));
+        $session = $this->session($request);
+        $customer = $session?->link?->customer;
+        if ($customer === null) {
+            return $this->door($request);
         }
 
         $frame = $this->frame($request, $customer);
         $account = new Account($customer, $frame['lang']);
 
+        // والكعكةُ تُجدَّد بالزيارة كما تُجدَّد جلستُها
         return response()->view('portal.ribbon.account', $frame + [
             'summary' => $account->summary(),
             'purchases' => $account->purchases(),
             'points' => $account->points(),
             'rules' => $account->rules(),
             'updated' => now()->format('H:i:s'),
-        ]);
+        ])->withCookie(Access::cookie($request, Access::held($request, $session)));
     }
 
-    /** الدخول: الرابطُ من جسم الطلب ورقمُ الهاتف — وردٌّ واحدٌ لكلّ خطأ */
-    public function login(Request $request): JsonResponse
+    /** من لم يُعتمد جهازُه: خانةُ الهاتف، أو رقمُ جهازه وهو ينتظر — ولا اسمَ ولا حرفَ من حساب */
+    private function door(Request $request): BaseResponse
     {
-        $token = (string) $request->input('key', '');
-        $say = fn (string $key, array $with = []) => Texts::say($this->lang($request, null), $key, $with);
+        $last = Devices::last($this->business($request), $request);
+        if ($last !== null) {
+            $left = Devices::left($last);
 
-        if (($wait = Access::blockedFor($token, $request)) > 0) {
-            return response()->json(['message' => $say('tooMany', ['n' => (int) ceil($wait / 60)])], 429);
+            return response()->view('portal.ribbon.wait', $this->frame($request, null) + [
+                'left' => $left, 'number' => $left > 0 ? Devices::number($last) : null,
+            ]);
         }
 
-        $raw = Access::login($this->business($request), $token, (string) $request->input('phone', ''), $request);
+        $response = response()->view('portal.ribbon.door', $this->frame($request, null));
 
-        return $raw === null
-            ? response()->json(['message' => $say('loginFailed')], 422)
-            : response()->json(['ok' => true])->withCookie(Access::cookie($request, $raw));
+        // جلسةٌ أُلغيت أو طلبٌ مضى يومُه: كعكتُه لا تبقى
+        return Access::raw($request) === null ? $response : $response->withCookie(Access::cookie($request, null));
     }
 
-    /** رابطٌ فُتح وفي الجهاز جلسة: أهو لصاحبها؟ — وإلّا سُئل الداخلُ عن رقمه */
-    public function same(Request $request): JsonResponse
+    /**
+     * رقمُ الهاتف وحده — ولا يُفتح به شيء: يُكتب أنّ هذا الجهاز ينتظر الاعتماد.
+     *
+     * وردٌّ واحدٌ لرقمٍ مسجَّلٍ وغيره: من يجرّب الأرقام لا يعرف عميلًا من سواه.
+     */
+    public function login(Request $request): JsonResponse
     {
-        return response()->json(['same' => Access::sameCustomer(
-            $this->business($request), (string) $request->input('key', ''), $this->session($request),
-        )]);
+        $phone = mb_substr((string) $request->string('phone'), 0, 60);
+
+        return Access::normalize($phone) === null
+            ? response()->json(['message' => Texts::say($this->lang($request, null), 'phoneShort')], 422)
+            : $this->waits($request, Devices::key($phone));
     }
 
+    /** رقمُ جهازٍ جديدٌ بعد أن انقضى السابق — للرقم الذي كتبه هذا الجهازُ من قبل، ولا يُكتب ثانية */
+    public function again(Request $request): JsonResponse
+    {
+        $last = Devices::last($this->business($request), $request);
+
+        return $last === null ? response()->json(['over' => true], 410) : $this->waits($request, $last->phone_hash);
+    }
+
+    private function waits(Request $request, string $key): JsonResponse
+    {
+        $business = $this->business($request);
+
+        if ($this->session($request) !== null || Devices::already($business, $key, $request)) {
+            return response()->json(['ok' => true]);
+        }
+        if (($wait = Access::blockedFor($key, $request)) > 0) {
+            // و`wait` يميّزه عن عدّاد المسار: ذاك ردُّه بالإنجليزيّة ولا مدّةَ فيه
+            return response()->json(['message' => Texts::say($this->lang($request, null), 'tooMany', ['n' => (int) ceil($wait / 60)]), 'wait' => $wait], 429);
+        }
+
+        Access::count($key, $request);
+
+        return response()->json(['ok' => true])->withCookie(Access::cookie($request, Devices::ask($business, $key, $request)));
+    }
+
+    /** أاعتُمد؟ — يسألها الجهازُ وهو ينتظر */
+    public function wait(Request $request): JsonResponse
+    {
+        return response()->json(['state' => match (true) {
+            $this->session($request) !== null => 'in',
+            Devices::mine($this->business($request), $request) !== null => 'wait',
+            default => 'over',
+        }]);
+    }
+
+    /** يُنسى الجهاز: جلستُه إن دخل، وطلبُه إن كان ينتظر */
     public function logout(Request $request): BaseResponse
     {
         Access::logout($this->session($request));
+        Devices::forget($this->business($request), $request);
 
         return redirect()->route('my.index', [], 303)->withCookie(Access::cookie($request, null));
     }

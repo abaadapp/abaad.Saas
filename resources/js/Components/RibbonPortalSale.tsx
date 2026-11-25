@@ -1,45 +1,28 @@
 import { useState } from 'react';
-import { Check, Link2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { ShieldCheck } from 'lucide-react';
 import CopyButton from '@/Components/CopyButton';
+import { DeviceApproval } from '@/Components/RibbonPortalDevice';
 import { Button } from '@/Components/ui/button';
-import { useCopy } from '@/lib/copy';
 import { useTranslate } from '@/lib/i18n';
-import { askPortal, linkOf, type SaleLink } from '@/lib/ribbon-portal';
+import type { SalePortal } from '@/lib/ribbon-portal';
 import { cn } from '@/lib/utils';
 
-/** بعد البيع في الصندوق: ينسخ رابطَ العميل — ولا يمسّ البيعةَ ولا طباعتَها */
-export function PortalSaleLink({ url, className }: { url: string; className?: string }) {
+/** بعد البيع في الصندوق: ينسخ الرابطَ الواحد ويعتمد جهازَ عميل البيعة — ولا يمسّ البيعةَ ولا طباعتَها */
+export function PortalSale({ portal, className }: { portal: SalePortal; className?: string }) {
     const t = useTranslate();
-    const { copyLater, copied } = useCopy();
-    const [busy, setBusy] = useState(false);
-    /** جهازٌ يمنع الحافظة: يُعرض الرابطُ ليُنسخ بيده */
-    const [shown, setShown] = useState<string | null>(null);
-    const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
-
-    const run = async () => {
-        setBusy(true);
-        const asked = askPortal<SaleLink>(url, 'POST', failed);
-        const done = await copyLater(linkOf(asked));
-        const { data, error } = await asked;
-        setBusy(false);
-        // البيعةُ تمّت: خطأُ النسخ يُقال ولا يوقف شيئًا
-        if (error || !data) return void toast.warning(error ?? failed);
-        setShown(done ? null : data.url);
-    };
+    const [open, setOpen] = useState(false);
+    const [done, setDone] = useState(false);
 
     return (
-        <div className={cn('space-y-2', className)}>
-            <Button variant="outline" className="w-full rounded-full" loading={busy} onClick={() => void run()} data-testid="portal-sale">
-                {copied ? <Check className="text-[#047857]" /> : <Link2 />}
-                {copied ? t('نُسخ رابط بوابة العميل') : t('نسخ رابط بوابة العميل')}
-            </Button>
-            {shown && (
-                <div className="flex items-center gap-2 rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2" data-testid="portal-sale-link">
-                    <span dir="ltr" className="min-w-0 flex-1 select-all break-all text-start text-[12px] text-[#374151]">{shown}</span>
-                    <CopyButton text={shown} label={t('نسخ')} />
-                </div>
-            )}
+        <div className={cn('space-y-3', className)} data-testid="portal-sale">
+            <div className="grid grid-cols-2 gap-2">
+                <CopyButton text={portal.url} label="نسخ رابط البوابة" size="md" className="w-full rounded-full" />
+                <Button variant="outline" className="w-full rounded-full" disabled={done} aria-expanded={open} onClick={() => setOpen(! open)} data-testid="portal-sale-device">
+                    <ShieldCheck />
+                    {t(done ? 'اعتُمد الجهاز' : 'اعتماد جهاز العميل')}
+                </Button>
+            </div>
+            {open && !done && <DeviceApproval url={portal.device} phone={portal.phone} onDone={() => setDone(true)} className="rounded-2xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-start" />}
         </div>
     );
 }

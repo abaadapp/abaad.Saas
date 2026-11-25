@@ -57,13 +57,26 @@
             <div>@yield('start')</div>
             <img class="logo" src="{{ route('my.logo', [], false) }}" alt="{{ $shop }}" data-testid="portal-logo">
             <div class="end">
-                <a class="btn sm text" href="{{ route('my.index', ['lang' => $lang === 'en' ? 'ar' : 'en'], false) }}" data-testid="portal-lang" data-keep-hash>{{ $t('langBtn') }}</a>
+                <a class="btn sm text" href="{{ route('my.index', ['lang' => $lang === 'en' ? 'ar' : 'en'], false) }}" data-testid="portal-lang">{{ $t('langBtn') }}</a>
                 @yield('end')
             </div>
         </div>
     </header>
     <main><div class="wrap">@yield('main')</div></main>
     <footer>{{ $t('poweredBy') }}</footer>
+    <script nonce="{{ $nonce }}">
+        // رابطٌ شخصيٌّ من زمنٍ سبق: لا يبقى في العنوان
+        if (location.hash) history.replaceState(null, '', location.pathname);
+        // خروجٌ من صفحةٍ بقيت مفتوحةً ساعات: رمزُها قدُم، فتُجدَّد ولا تُعرض صفحةُ خطأ
+        document.querySelectorAll('form[data-leave]').forEach(function (form) {
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                fetch(form.action, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content } })
+                    .then(function (r) { if (r.ok) location.replace(location.pathname); else location.reload(); })
+                    .catch(function () { form.submit(); });
+            });
+        });
+    </script>
     @yield('script')
 </body>
 </html>

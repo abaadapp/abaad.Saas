@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CopyButton from '@/Components/CopyButton';
-import { useCopy } from '@/lib/copy';
 
 /**
  * زرُّ «انسخ» — واحدٌ في النظام كلّه بعد أن كان ستّة.
@@ -180,63 +179,5 @@ describe('زرُّ النسخ', () => {
 
         expect(await screen.findByRole('button', { name: 'نُسخ' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'نسخ الكاشير' })).toBeInTheDocument();
-    });
-});
-
-/**
- * نصٌّ يأتي من الخادم بعد الضغطة — رابطُ عميلٍ لا يُحمل مع الصفحة.
- *
- * Safari يردّ `writeText` بعد انتظار، فيُسلَّم الوعدُ للحافظة ساعةَ الضغط.
- */
-describe('النسخُ المؤجَّل', () => {
-    const native = vi.fn();
-    const items: Record<string, Promise<Blob>>[] = [];
-
-    function Later({ text }: { text: () => Promise<string> }) {
-        const { copyLater, copied } = useCopy();
-
-        return <button type="button" onClick={() => void copyLater(text())}>{copied ? 'نُسخ' : 'انسخ'}</button>;
-    }
-    const supports = (does: () => Promise<void>) => {
-        native.mockImplementation(does);
-        vi.stubGlobal('ClipboardItem', class { constructor(data: Record<string, Promise<Blob>>) { items.push(data); } });
-        Object.defineProperty(navigator, 'clipboard', { value: { writeText: write, write: native }, configurable: true });
-    };
-
-    beforeEach(() => {
-        native.mockReset();
-        write.mockReset();
-        items.length = 0;
-    });
-    afterEach(() => vi.unstubAllGlobals());
-
-    it('يُسلَّم الوعدُ للحافظة ساعةَ الضغط، قبل أن يصل النصّ', async () => {
-        supports(() => Promise.resolve());
-        let arrive: (v: string) => void = () => {};
-        render(<Later text={() => new Promise((r) => { arrive = r; })} />);
-        fireEvent.click(screen.getByRole('button'));
-
-        expect(native).toHaveBeenCalledTimes(1);
-        arrive('https://x/my#K');
-        expect((await items[0]['text/plain']).size).toBe('https://x/my#K'.length);
-        expect(await screen.findByText('نُسخ')).toBeInTheDocument();
-        expect(write).not.toHaveBeenCalled();
-    });
-
-    it('ومتصفّحٌ لا يقبل الوعد ينتظر النصَّ ثمّ يكتبه', async () => {
-        supports(() => Promise.reject(new Error('no promises here')));
-        write.mockResolvedValue(undefined);
-        render(<Later text={() => Promise.resolve('K')} />);
-        fireEvent.click(screen.getByRole('button'));
-        expect(await screen.findByText('نُسخ')).toBeInTheDocument();
-        expect(write).toHaveBeenCalledWith('K');
-    });
-
-    it('وما لم يصل لا يُقال إنّه نُسخ — ولا يُكتب شيء', async () => {
-        supports(() => Promise.reject(new Error('rejected with the text')));
-        render(<Later text={() => Promise.reject(new Error('offline'))} />);
-        await act(async () => { fireEvent.click(screen.getByRole('button')); });
-        expect(screen.getByText('انسخ')).toBeInTheDocument();
-        expect(write).not.toHaveBeenCalled();
     });
 });

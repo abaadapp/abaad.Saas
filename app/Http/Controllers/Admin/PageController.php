@@ -603,8 +603,8 @@ class PageController extends Controller
                     'order' => $p->order?->number,
                 ])->all(),
         ] + array_filter([
-            // قسمُ «رابط بوابة العميل» — لمتجر سعود ومن يشارك وحدهم
-            'portalLink' => RibbonPortalController::panelFor(auth()->user(), (int) $id),
+            // قسمُ «بوابة العميل» — لمتجر سعود ومن يعمل على البوابة وحدهم
+            'portalCustomer' => RibbonPortalController::panelFor(auth()->user(), (int) $id),
         ]));
     }
 

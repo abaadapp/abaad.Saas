@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPortalSession;
 use App\Models\Order;
 use App\Models\PointTransaction;
 use App\Models\Setting;
@@ -23,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 use Tests\Support\RibbonPortalShop;
@@ -31,7 +33,7 @@ use Tests\TestCase;
 /**
  * عميلُ RIBBON يقرأ ما اشتراه — كما هو في النظام، وكلَّه، وله وحده.
  *
- *   - يدخل برابطه الشخصيّ ورقم هاتفه المسجَّل، بلا OTP ولا حساب، واسمُه من سجلّه.
+ *   - يدخل من الرابط الواحد برقم هاتفه المسجَّل ورمزِ فاتورته، بلا OTP ولا حساب، واسمُه من سجلّه.
  *   - مشترياتُه من سجلّ البيع الواحد: الصندوقُ والموقعُ وفواتيرُ العملاء، كلُّ بيعةٍ
  *     مرّة، ومجموعُها رقمُه في قائمة العملاء.
  *   - وفاتورتُه الورقةُ نفسُها التي تطبعها اللوحة، ونقاطُه رصيدُه وحركاتُه.
@@ -79,7 +81,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
 
     /* ═════════════ الدخول ═════════════ */
 
-    public function test_a_registered_customer_enters_with_their_link_and_phone_and_is_greeted_by_name(): void
+    public function test_a_registered_customer_enters_with_their_phone_on_an_approved_device_and_is_greeted_by_name(): void
     {
         $cookie = $this->enter($this->maryam);
 
@@ -90,9 +92,11 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         $this->assertStringContainsString('لا توجد مشتريات مسجّلة باسمك بعد.', $page->getContent());
         $this->assertSame([], $this->numbers($cookie));
 
-        // وبأيّ صيغةٍ كُتب الرقمُ نفسُه
-        foreach (['91234567', '+968 9123 4567', '00968-91234567', '968 91234567', '٩١٢٣٤٥٦٧', ' 9123-4567 '] as $written) {
-            $this->attempt($this->key($this->maryam), $written)->assertOk()->assertJson(['ok' => true]);
+        // وبأيّ صيغةٍ كُتب الرقمُ نفسُه يُعتمد له
+        foreach (['91234567', '+968 9123 4567', '00968-91234567', '968 91234567', '٩١٢٣٤٥٦٧', '۹۱۲۳۴۵۶۷', ' 9123-4567 '] as $written) {
+            RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
+            Carbon::setTestNow(now()->addMinutes(16));
+            $this->my('', $this->enter($this->maryam, $written))->assertSee('أهلًا مريم البلوشي');
         }
 
         // ولا سجلَّ عميلٍ جديدًا ولا حسابَ نظامٍ
@@ -305,18 +309,17 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         }
 
         $this->assertSame($before, $print());
-        // ولا بابَ كتابةٍ فيها سوى الدخول والخروج
-        foreach (['/data', '/points', "/paper/order/{$order->id}"] as $path) {
+        // ولا بابَ كتابةٍ فيها سوى رقم الهاتف والخروج
+        foreach (['/data', '/points', '/wait', "/paper/order/{$order->id}"] as $path) {
             $this->visitor($cookie)->post('http://ribbon.abaadapp.om/my'.$path)->assertStatus(405);
         }
     }
 
     /* ═════════════ يتحدّث وحده ═════════════ */
 
-    public function test_a_new_sale_its_points_its_payment_and_its_cancellation_show_without_a_new_link(): void
+    public function test_a_new_sale_its_points_its_payment_and_its_cancellation_show_without_entering_again(): void
     {
         $cookie = $this->enter($this->maryam);
-        $link = $this->key($this->maryam);
         $this->assertSame([], $this->numbers($cookie));
 
         // بيعةُ صندوقٍ حقيقيّة بعميلها: تظهر ونقاطُها معها
@@ -325,7 +328,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
             'items' => [['id' => $this->bouquet->id, 'name' => 'باقة', 'qty' => 3]], 'payment_method' => 'نقدي',
             'customer_id' => $this->maryam->id, 'client_uuid' => uniqid('p', true),
         ])->assertOk()->json();
-        $this->assertSame('/pos/orders/'.$sold['invoice'].'/portal', $sold['portal'] ?? null);
+        $this->assertSame('https://ribbon.abaadapp.om/my', $sold['portal']['url'] ?? null, 'الرابطُ الواحد');
         $this->assertGreaterThan(0, $sold['points_earned']);
 
         $this->assertSame([$sold['invoice']], $this->numbers($cookie));
@@ -354,9 +357,8 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         $moves = array_column((new Account($this->maryam->fresh(), 'ar'))->points()['rows'], 'move');
         $this->assertSame(['move.reversed', 'move.earned'], $moves);
 
-        // والرابطُ نفسُه ما زال رابطَه
-        $this->assertSame($link, $this->key($this->maryam));
-        $this->attempt($link, '91234567')->assertOk();
+        // والجلسةُ هي هي: لا دخولَ ثانٍ
+        $this->assertSame(1, CustomerPortalSession::where('customer_id', $this->maryam->id)->count());
     }
 
     /* ═════════════ النقاط ═════════════ */

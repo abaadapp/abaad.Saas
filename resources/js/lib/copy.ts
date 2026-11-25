@@ -24,29 +24,6 @@ const HOLD = 1600;
  *
  * فلا يُعلَن هنا نجاحٌ إلّا بعد أن يفي الوعد.
  */
-/**
- * نصٌّ يأتي من الخادم بعد الضغطة.
- *
- * Safari لا يأذن بالنسخ إلّا والضغطةُ قائمة، فـ`writeText` بعد انتظار الردّ
- * تُرفض فيه. فيُسلَّم الوعدُ نفسُه للحافظة ساعةَ الضغط (`ClipboardItem`)،
- * وما لا يقبل الوعدَ ينتظر النصَّ ثمّ يكتبه.
- */
-async function writeLater(text: Promise<string>): Promise<void> {
-    if (typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function') {
-        const blob = text.then((value) => new Blob([value], { type: 'text/plain' }));
-        // ومن لم يقرأ الوعدَ لا يتركه رفضًا بلا مستمع
-        blob.catch(() => undefined);
-
-        try {
-            return await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
-        } catch {
-            // متصفّحٌ يريد النصَّ لا وعدَه — يُجرَّب ما بعده
-        }
-    }
-
-    await navigator.clipboard.writeText(await text);
-}
-
 export function useCopy(hold: number = HOLD) {
     /*
      * والحالةُ رايةٌ لا نصّ — لأنّها حالةُ مقبضٍ واحد.
@@ -74,17 +51,6 @@ export function useCopy(hold: number = HOLD) {
         [],
     );
 
-    const said = useCallback(() => {
-        setCopied(true);
-
-        if (timer.current !== null) {
-            window.clearTimeout(timer.current);
-        }
-        timer.current = window.setTimeout(() => setCopied(false), hold);
-
-        return true;
-    }, [hold]);
-
     const copy = useCallback(
         async (text: string): Promise<boolean> => {
             try {
@@ -94,24 +60,17 @@ export function useCopy(hold: number = HOLD) {
                 return false;
             }
 
-            return said();
-        },
-        [said],
-    );
+            setCopied(true);
 
-    /** ونصٌّ لم يصل بعد — يُنسخ بالضغطة نفسها متى وصل */
-    const copyLater = useCallback(
-        async (text: Promise<string>): Promise<boolean> => {
-            try {
-                await writeLater(text);
-            } catch {
-                return false;
+            if (timer.current !== null) {
+                window.clearTimeout(timer.current);
             }
+            timer.current = window.setTimeout(() => setCopied(false), hold);
 
-            return said();
+            return true;
         },
-        [said],
+        [hold],
     );
 
-    return { copy, copyLater, copied };
+    return { copy, copied };
 }

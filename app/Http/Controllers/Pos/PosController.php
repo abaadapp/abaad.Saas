@@ -525,9 +525,8 @@ class PosController extends Controller
              * أرخصُ من جلب قائمة العملاء كلِّها بعد كلّ بيعة.
              */
             'points_balance' => $result['loyalty']['balance'],
-        ] + ($order->customer_id !== null && \App\Support\RibbonPortal\Portal::mayShare($request->user())
-            // «نسخ رابط بوابة العميل» — لمتجر سعود ومن يشارك فيه، ولبيعةٍ لها عميلٌ مسجَّل
-            ? ['portal' => route('pos.orders.portal', $order->number, false)] : []));
+            // الرابطُ الواحد واعتمادُ جهاز عميل البيعة — لمتجر سعود ومن يعمل على بوابته، ولبيعةٍ لها عميلٌ مسجَّل
+        ] + \App\Support\RibbonPortal\Portal::sale($request->user(), $order));
     }
 
     /**

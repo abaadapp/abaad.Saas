@@ -19,6 +19,7 @@ use App\Models\Expense;
 use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Support\BooksPeriod;
 use App\Support\BoutiqueHolds;
@@ -359,6 +360,7 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
         $this->assertSame([['held', 0.0], ['hold_closed', 0.0], ['hold_paid', -9.6]], $rows->whereIn('kind', ['held', 'hold_closed', 'hold_paid'])->sortBy('kind')->map(fn ($r) => [$r['kind'], $r['effect']])->values()->all());
         $this->assertNotNull($rows->firstWhere('kind', 'hold_paid')['transaction']);
         $this->assertNotNull($rows->firstWhere('kind', 'hold_paid')['entry']);
+        $this->assertSame([[Transaction::BOUTIQUE_HELD, 'مصروف', 9.6]], Transaction::where('kind', Transaction::BOUTIQUE_HELD)->get()->map(fn ($t) => [$t->kind, $t->type, (float) $t->amount])->all());
     }
 
     public function test_a_cheque_is_recognised_at_issue_and_settled_when_it_clears(): void
@@ -413,6 +415,43 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
             $rows = collect(Profitability::rows($this->shop->id, 'year', $branch))->sum('expenses');
             $this->assertSame(number_format(Profitability::summary($this->shop->id, Carbon::parse('2027-01-01'), Carbon::parse('2028-01-01'), $branch)['expenses'], 3), number_format($rows, 3));
         }
+    }
+
+    /** ورقةٌ عامّة (بندٌ بلا فرع) تُطرح من العامّ، ونصيبُ الفاتورة يبقى على فرعها */
+    public function test_a_sheet_without_a_branch_keeps_each_share_on_its_invoices_branch(): void
+    {
+        $this->pay($this->mixed($this->bausher), 42);
+        $this->pay($this->mixed(null, ['branch_id' => null]), 42);
+        $sheet = $this->settle($this->lama, '2027-02');
+        $this->assertNull($sheet->expense->branch_id);
+        $this->paySheet($sheet);
+
+        $feb = fn (?Branch $x) => Profitability::summary($this->shop->id, Carbon::parse('2027-02-01'), Carbon::parse('2027-03-01'), $x?->id);
+        $this->assertSame([18.6, 18.6, 0.0], [$feb($this->bausher)['expenses'], $feb($this->bausher)['unallocated'], $feb($this->main)['expenses'] + 0.0]);
+        $this->assertSame(37.2, $feb(null)['expenses']);
+    }
+
+    /** ورقةٌ كلُّها قُيّدت مع فواتيرها تُسدَّد كما تُسدَّد ورقةٌ قُيّدت يومَ صدورها */
+    public function test_a_sheet_with_no_entry_of_its_own_is_paid_and_offset_as_one_that_has(): void
+    {
+        $first = $this->mixed();
+        $this->pay($first, 42);
+        $sheet = $this->settle($this->lama, '2027-02');
+        $this->assertNull(Boutiques::accrual($sheet->expense));
+        Carbon::setTestNow('2027-03-20 10:00:00');
+        $this->paySheet($sheet);
+        $expense = $sheet->fresh()->expense;
+        // يومُ الورقة يبقى، ويومُ الحركة يومُ خروج المال
+        $this->assertSame(['2027-02-28', '2027-03-20'], [Carbon::parse($expense->spent_at)->toDateString(), $expense->transaction->occurred_at->toDateString()]);
+
+        // ومطالبةُ مرتجعٍ تُخصم من ورقةٍ تليها كلُّها قُيّدت مع فواتيرها
+        $this->note($first, $this->silver, 1, 6, ['sellable' => 1]);
+        $this->pay($this->mixed(), 42);
+        $next = $this->settle($this->lama, '2027-03');
+        $this->assertNull(Boutiques::accrual($next->expense));
+        $this->assertSame(4.8, BoutiqueReturns::offset($this->shop, $this->lama, $next));
+        $this->assertBooks('خصم مطالبة');
+        $this->assertSame(4.8, BoutiqueReturns::payable($next->fresh()->expense));
     }
 
     public function test_the_dues_screen_says_what_is_posted_and_not_payable_yet(): void

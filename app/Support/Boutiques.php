@@ -888,14 +888,15 @@ final class Boutiques
     public static function accruedExpenseIds(int $businessId)
     {
         return BoutiqueSettlement::query()
+            ->join('journal_entries as je', function ($j) {
+                $j->on('je.sourceable_id', '=', 'boutique_settlements.id')
+                    ->where('je.sourceable_type', '=', BoutiqueSettlement::class);
+            })
             ->where('boutique_settlements.business_id', $businessId)
+            ->where('je.business_id', $businessId)
             ->whereNotNull('boutique_settlements.expense_id')
-            ->where(fn ($q) => $q->where('boutique_settlements.accrued_at_sale', '>', 0)
-                ->orWhereExists(fn ($e) => $e->selectRaw('1')->from('journal_entries as je')
-                    ->whereColumn('je.sourceable_id', 'boutique_settlements.id')->where('je.sourceable_type', BoutiqueSettlement::class)
-                    ->where('je.business_id', $businessId)
-                    ->where('je.source', self::ACCRUAL)->where('je.posted', true)
-                    ->whereNull('je.reverses_id')->whereNull('je.reversed_at')))
+            ->where('je.source', self::ACCRUAL)->where('je.posted', true)
+            ->whereNull('je.reverses_id')->whereNull('je.reversed_at')
             ->select('boutique_settlements.expense_id');
     }
 

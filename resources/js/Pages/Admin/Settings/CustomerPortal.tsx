@@ -142,7 +142,7 @@ export default function CustomerPortal() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>{t('العميل')}</TableHead>
-                                    <TableHead>{t('أول دخول')}</TableHead>
+                                    <TableHead className="hidden sm:table-cell">{t('أول دخول')}</TableHead>
                                     <TableHead>{t('آخر زيارة')}</TableHead>
                                     <TableHead>{t('أجهزة دخل منها')}</TableHead>
                                     <TableHead />
@@ -153,7 +153,7 @@ export default function CustomerPortal() {
                                 {links.map((l) => (
                                     <TableRow key={l.id} data-testid="portal-link-row">
                                         <TableCell><span className="font-medium">{l.customer}</span> {l.stopped && <Badge variant="danger">{t('الدخول موقوف')}</Badge>}</TableCell>
-                                        <TableCell>{l.since ? <span dir="ltr">{l.since}</span> : '—'}</TableCell>
+                                        <TableCell className="hidden sm:table-cell">{l.since ? <span dir="ltr">{l.since}</span> : '—'}</TableCell>
                                         <TableCell>{l.used ? <span dir="ltr">{l.used}</span> : '—'}</TableCell>
                                         <TableCell>{number(l.devices)}</TableCell>
                                         <TableCell className="text-end">

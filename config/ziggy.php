@@ -34,7 +34,6 @@ return [
         ],
 
         'pos' => [
-            '!pos.orders.portal',
             'pos.*',
             'logout',
             // ‏شريطُ «أنت داخلٌ باسم…» وزرُّ ملفّي
@@ -48,7 +47,7 @@ return [
 
         'merchant' => [
             // بوابةُ عملاء RIBBON لمتجرٍ واحد: عناوينُها من الخادم لمن يملكها، ولا تُكتب في جدولٍ يصل كلَّ تاجر
-            '!admin.customers.portal.*', '!admin.settings.portal.*', '!pos.orders.portal',
+            '!admin.customers.portal.*', '!admin.settings.portal.*',
             'admin.*',
             'pos.*',
             'profile.*',

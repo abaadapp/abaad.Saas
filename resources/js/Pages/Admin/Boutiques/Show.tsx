@@ -15,6 +15,7 @@ import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
 import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
+import SalesPanel from './SalesPanel';
 
 interface Line {
     product_id: number | null;
@@ -68,6 +69,10 @@ interface Props {
     }[];
     /** ما يُختار منه في النافذة — مُرشَّحٌ في الخادم ومقطوعٌ عند حدّ */
     catalog: { rows: PickRow[]; more: boolean };
+    /** بوتيكاتُ المتجر لمُرشِّح «مبيعات البوتيك وفواتيره» */
+    boutiqueOptions?: { value: number; label: string }[];
+    /** القسمُ لصاحب المتجر ومن أذن له بالمال — والخادمُ يردّ غيرهما أيضًا */
+    canSeeSales?: boolean;
     q: string;
 }
 
@@ -79,7 +84,7 @@ interface Props {
  */
 export default function BoutiqueShow() {
     // غيابُ المفتاح يعني «كما كان»: الحارسُ الخادمُ وهو لا يُرسل الكشفَ أصلًا لمن لا يقرؤه
-    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, returns, context } =
+    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, returns, context, boutiqueOptions, canSeeSales } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -253,6 +258,21 @@ export default function BoutiqueShow() {
                     terms={boutique.returns_terms}
                     termsRef={boutique.returns_terms_ref}
                     part={returns}
+                    currency={currency}
+                />
+            )}
+
+            {/*
+                مبيعاتُ البوتيك وفواتيرُه — كلُّ بيعٍ بفاتورته: منفردًا، أو قطعةً
+                داخل منتج المتجر. وشهرُها شهرُ الشاشة نفسُه: مُبدِّلٌ واحد للصفحة.
+            */}
+            {canSeeSales && (
+                <SalesPanel
+                    boutiqueId={boutique.id}
+                    boutiques={boutiqueOptions?.length ? boutiqueOptions : [{ value: boutique.id, label: boutique.name }]}
+                    period={period}
+                    periods={periods}
+                    onPeriodChange={go}
                     currency={currency}
                 />
             )}

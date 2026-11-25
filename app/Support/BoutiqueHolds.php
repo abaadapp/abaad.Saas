@@ -8,6 +8,7 @@ use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
 use App\Models\BoutiqueSheetHold;
+use App\Models\BoutiqueSheetPayment;
 use App\Models\Business;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
@@ -43,6 +44,9 @@ final class BoutiqueHolds
 {
     /** مصدرُ قيد سداد ما عُلّق بعد الإفراج عنه */
     public const SOURCE = 'سداد معلّق بوتيك';
+
+    /** قادحُ قاعدة البيانات الذي يردّ سدادَ ورقةٍ لم يُقرأ ما عُلّق منها */
+    public const GUARD = 'boutique_sheet_holds_are_read';
 
     /** حُسم من إشعارات المرتجع: على البوتيك أو على المتجر */
     private const DECIDED = [BoutiqueReturn::REDUCED, BoutiqueReturn::CLAIM, BoutiqueReturn::RECOVERED, BoutiqueReturn::SHOP];
@@ -221,6 +225,22 @@ final class BoutiqueHolds
         }
     }
 
+    /**
+     * سدادٌ قرأ ما عُلّق: صفُّه يُكتب قبل أن تُوسم الورقةُ مسدَّدة، في معاملتها.
+     *
+     * وبغيره تردّ قاعدةُ البيانات سدادَ ورقةٍ فيها بنودُ فواتير (القادح
+     * `boutique_sheet_holds_are_read`): فكودٌ أقدمُ رُجع إليه لا يُخرج ما أُلغي تحصيلُه.
+     */
+    public static function paying(Expense $expense): void
+    {
+        if (($sheet = BoutiqueReturns::sheetOf($expense)) !== null) {
+            BoutiqueSheetPayment::updateOrCreate(['expense_id' => $expense->id], [
+                'business_id' => $expense->business_id, 'boutique_settlement_id' => $sheet->id,
+                'amount' => self::payNow($expense), 'held' => self::heldOn($sheet->id), 'created_by' => auth()->id(),
+            ]);
+        }
+    }
+
     /** سُدّدت الورقةُ دون المعلَّق: يبقى دَينًا في 2160 مستقلًّا بصفّه */
     public static function withhold(Expense $expense): void
     {
@@ -356,6 +376,73 @@ final class BoutiqueHolds
 
             return $owed;
         });
+    }
+
+    /* ═══════════ ٥. قبل الرجوع بالكود وبعده ═══════════ */
+
+    /** أقائمةٌ حمايةُ السداد في قاعدة البيانات؟ — تبقى حين يُرجع بالكود */
+    public static function guarded(): bool
+    {
+        return DB::getDriverName() === 'pgsql'
+            ? DB::table('pg_trigger')->where('tgname', self::GUARD)->whereRaw("tgrelid = to_regclass('expenses')")->whereIn('tgenabled', ['O', 'A'])->exists()
+            : DB::table('sqlite_master')->where('type', 'trigger')->where('name', self::GUARD)->where('tbl_name', 'expenses')->exists();
+    }
+
+    /**
+     * بنودُ أوراقٍ لا يوافق تعليقُها حالَ تحصيلها الآن — أُلغي أو أُعيد بكودٍ لا يعرف التعليق.
+     *
+     * @return Collection<int, BoutiqueInvoiceLine>
+     */
+    public static function drifted(?int $businessId = null): Collection
+    {
+        return BoutiqueInvoiceLine::query()->whereNotNull('boutique_settlement_id')
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->orderBy('id')->get()
+            ->filter(function (BoutiqueInvoiceLine $line) {
+                $last = BoutiqueSheetHold::where('boutique_invoice_line_id', $line->id)->latest('id')->first();
+                $open = $last !== null && $last->live_key !== null;
+
+                return BoutiqueInvoiceDues::collected((int) $line->customer_invoice_id)
+                    // أُعيد تحصيلُه: المفتوحُ يُغلق إلّا ما ينتظر مرتجعَه، والمحسومُ بقرارٍ يُعلَّم أنّه قُبض
+                    ? ($open ? self::pending((int) $line->id) <= 0.0005 : $last !== null && $last->recollected_at === null && $last->closed_as !== BoutiqueSheetHold::RETURNED)
+                    // أُلغي: يُفتح ما لم يُفتح ولم يُحسم بقرار
+                    : (! $open && ($last === null || $last->recollected_at !== null)
+                        && round((float) $line->net - (float) $line->returned_net + self::pending((int) $line->id), 3) > 0);
+            })->values();
+    }
+
+    /**
+     * لكلّ متجرٍ فيه ورقةٌ تحمل بندَ فاتورة — قراءةٌ وحدها.
+     *
+     * @return array<int, array{unpaid_sheets: int, unpaid_amount: float, held: int, held_amount: float, withheld: int, withheld_amount: float, drifted: int, unnamed_notes: list<string>}>
+     */
+    public static function overview(?int $businessId = null): array
+    {
+        $drifted = self::drifted($businessId)->countBy('business_id');
+        $out = [];
+
+        foreach (BoutiqueInvoiceLine::whereNotNull('boutique_settlement_id')->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->distinct()->orderBy('business_id')->pluck('business_id') as $id) {
+            $sheets = BoutiqueSettlement::whereIn('id', BoutiqueInvoiceLine::where('business_id', $id)->whereNotNull('boutique_settlement_id')->distinct()->pluck('boutique_settlement_id'))
+                ->with('expense')->get()->filter(fn (BoutiqueSettlement $s) => $s->expense !== null && ! $s->expense->isPaid());
+            $owed = collect(self::dues((int) $id));
+
+            $out[(int) $id] = [
+                'unpaid_sheets' => $sheets->count(),
+                'unpaid_amount' => round($sheets->sum(fn (BoutiqueSettlement $s) => BoutiqueReturns::payable($s->expense)), 3),
+                'held' => BoutiqueSheetHold::whereIn('boutique_settlement_id', $sheets->pluck('id'))->whereNotNull('live_key')->where('paid_before', false)->whereNull('withheld_at')->count(),
+                'held_amount' => round($sheets->sum(fn (BoutiqueSettlement $s) => self::heldOn((int) $s->id)), 3),
+                'withheld' => $owed->count(),
+                'withheld_amount' => round($owed->sum('amount'), 3),
+                'drifted' => (int) ($drifted[$id] ?? 0),
+                'unnamed_notes' => DB::table('customer_credit_notes as n')->where('n.business_id', $id)->whereNull('n.basis')->where('n.source', CustomerInvoices::NOTE_MANUAL)
+                    ->whereExists(fn ($q) => $q->selectRaw('1')->from('boutique_invoice_lines as l')->whereColumn('l.customer_invoice_id', 'n.customer_invoice_id')
+                        ->whereColumn('l.created_at', '<=', 'n.created_at')->whereColumn('l.quantity', '>', 'l.returned_quantity')->whereNull('l.voided_at'))
+                    ->orderBy('n.id')->pluck('n.number')->map(fn ($n) => (string) $n)->all(),
+            ];
+        }
+
+        return $out;
     }
 
     /* ═══════════ للقراءة ═══════════ */

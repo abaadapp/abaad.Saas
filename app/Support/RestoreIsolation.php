@@ -80,6 +80,7 @@ final class RestoreIsolation
             'boutique_id' => 'boutiques', 'boutique_settlement_id' => 'boutique_settlements', 'customer_invoice_id' => 'customer_invoices',
             'customer_payment_id' => 'customer_payments', 'transaction_id' => 'transactions', 'closed_by' => 'users',
         ],
+        'boutique_sheet_payments' => ['boutique_settlement_id' => 'boutique_settlements', 'expense_id' => 'expenses', 'created_by' => 'users'],
         'boutique_return_recoveries' => ['boutique_id' => 'boutiques', 'user_id' => 'users'],
         'coupon_redemptions' => ['customer_id' => 'customers'],
         'order_prep_checks' => ['user_id' => 'users'],

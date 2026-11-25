@@ -487,6 +487,8 @@ class ExpenseController extends Controller
 
                 // ورقةٌ كلُّ ما بقي منها معلَّق لا تُوسم مسدَّدة
                 BoutiqueHolds::assertSomethingToPay($locked);
+                // وصفُّ السداد قبل الوسم: قاعدةُ البيانات لا تقبل وسمَ ورقةٍ لم يُقرأ ما عُلّق منها
+                BoutiqueHolds::paying($locked);
 
                 /*
                  * ويومُ المصروف يومُ سداده — إلّا ورقةَ بوتيكٍ قُيّدت يومَ صدورها:

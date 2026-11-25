@@ -32,6 +32,7 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
     private static ?Migration $migration = null;
 
     private static ?Migration $holds = null;
+    private static ?Migration $guard = null;
 
     private Business $shop;
 
@@ -49,6 +50,7 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
     /** هجرةُ التعليق فوقها وتشير إلى جدولها: يُتراجع عنها أوّلًا وتُعاد بعدها — كما يفعل `migrate:rollback` */
     private function undo(): void
     {
+        $this->guard()->down();
         $this->holds()->down();
         $this->migration()->down();
     }
@@ -57,6 +59,13 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
     {
         $this->migration()->up();
         $this->holds()->up();
+        $this->guard()->up();
+    }
+
+    /** وفوقهما حمايةُ السداد: قادحُها يقرأ جدولَ هذه الهجرة */
+    private function guard(): Migration
+    {
+        return self::$guard ??= require database_path('migrations/2026_12_02_090000_a_sheet_with_invoice_money_is_paid_only_by_code_that_read_its_holds.php');
     }
 
     private function holds(): Migration

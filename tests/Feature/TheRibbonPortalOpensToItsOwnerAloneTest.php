@@ -11,8 +11,10 @@ use App\Models\Order;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoices;
+use App\Support\Document\PaperSize;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
+use App\Support\DocumentTemplates;
 use App\Support\MarketingSettings;
 use App\Support\PublicDocument;
 use App\Support\RibbonPortal\Access;
@@ -179,7 +181,8 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->attempt('+968 9123 4567', $right)->assertStatus(429);
         $this->assertSame(0, CustomerPortalSession::count());
         // ولا يُكتب الرقمُ في العدّاد
-        $this->assertStringNotContainsString('91234567', (string) json_encode(DB::table('cache')->get()));
+        $keys = (new \ReflectionMethod(Access::class, 'keys'))->invoke(null, '91234567', '', Request::create('/my'));
+        $this->assertStringNotContainsString('91234567', implode(' ', $keys));
 
         Carbon::setTestNow(now()->addMinutes(16));
         $this->attempt('91234567', $right)->assertOk();
@@ -212,6 +215,9 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
     {
         $order = $this->order($this->maryam, 'INV-A');
         $invoice = $this->invoiceOf($this->maryam, $this->owner->id);
+        // فاتورةُ A4 وإيصالُ الصندوق وفاتورةُ العميل: ثلاثُ أوراقٍ بثلاثة قوالب
+        DocumentTemplates::save((int) $this->ribbon->id, 'sale', ['paper' => PaperSize::A4]);
+        $this->assertSame(PaperSize::A4, PdfController::saleHtml((int) $this->ribbon->id, $order)['paper']);
 
         foreach ([[$order, PdfController::saleHtml((int) $this->ribbon->id, $order)['html']], [$order, PdfController::saleHtml((int) $this->ribbon->id, $order, thermal: true)['html']], [$invoice, PdfController::customerInvoiceHtml((int) $this->ribbon->id, $invoice)]] as $i => [$document, $html]) {
             $code = (string) Code::of($document);
@@ -333,6 +339,10 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         // والورقةُ نفسُها تُعاد طباعتُها برمزٍ جديدٍ يعمل
         $again = (string) Code::of($order->fresh());
         $this->assertNotSame($leaked, $again);
+        // وفاتورتُها التالية تحمل رمزًا: جلساتُها أُغلقت كلُّها فلا تُحسب
+        Carbon::setTestNow(now()->addHour());
+        $this->assertSame(0, CustomerPortalSession::whereNull('revoked_at')->count());
+        $this->assertNotNull(Code::of($this->order($this->maryam, 'INV-NEXT')));
         $this->attempt('91234567', $again)->assertOk();
 
         // ومن لم يدخل بعدُ تُوقَف رموزُه كذلك — فاتورةٌ وقعت في يدِ غيره

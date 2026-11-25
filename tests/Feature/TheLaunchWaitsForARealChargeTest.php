@@ -184,7 +184,7 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
             'أكثر من الحد' => [['messages' => 51], 'messages'],
             'صفر رسائل' => [['messages' => 0], 'messages'],
             'أطول من أسبوع' => [['hours' => 169], 'hours'],
-            'متجر لا وجود له' => [['business_id' => 99999], 'business_id'],
+            'متجر لا وجود له' => [['business_id' => 'missing'], 'business_id'],
         ];
     }
 
@@ -193,6 +193,7 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
     {
         $this->pilot();
         $this->link()->assertSessionHasNoErrors();
+        $over = ($over['business_id'] ?? null) === 'missing' ? ['business_id' => Business::max('id') + 500] : $over;
         $this->openTrial($over)->assertSessionHasErrors($field);
         $this->assertSame(0, WhatsAppBillingTrial::count());
     }
@@ -206,14 +207,19 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
         // ‏‏ومتجرٌ على تطبيقه أو رُبط قبل القفل لا تُفتح عليه
         $row = ['owner_type' => 'business', 'business_id' => $this->shop->id, 'provider' => 'meta_cloud', 'purpose' => 'notifications', 'waba_id' => '1001', 'phone_number_id' => 'PN-1', 'access_token' => 'TOKEN-FOR-1001', 'status' => 'active'];
         $own = WhatsAppConnection::create($row + ['link_type' => WhatsAppOwnApp::TYPE, 'billing_state' => 'confirmed', 'billing_evidence' => ['waba_id' => '1001']]);
-        $this->openTrial()->assertSessionHasErrors('business_id');
+        $this->openTrial()->assertSessionHasErrors(['business_id' => __('هذا المتجر على تطبيقه الخاص — لا تُفتح عليه تجربة.')]);
         $own->forceDelete();
         $old = WhatsAppConnection::create($row + ['billing_exempt' => true]);
         $this->openTrial()->assertSessionHasErrors('business_id');
         $old->forceDelete();
 
-        // ‏‏وحسابٌ لأبعاد لا تفتحه تجربة
+        // ‏‏ومتجرٌ رُبط ثمّ رُفع من «متجر التجربة» لا تُفتح عليه
         $this->link()->assertSessionHasNoErrors();
+        $this->platform(WhatsAppMerchantLink::PILOT_KEY, '');
+        $this->openTrial()->assertSessionHasErrors(['business_id' => __('اكتب المتجر في «متاجر التجربة» أولًا.')]);
+        $this->pilot();
+
+        // ‏‏وحسابٌ لأبعاد لا تفتحه تجربة
         $this->meta['owner'] = ['1001' => 'MB-ABAAD'];
         $this->openTrial()->assertSessionHasErrors('business_id');
         $this->meta['owner'] = [];
@@ -255,12 +261,24 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
             $this->assertSame($ok, MetaWhatsAppClient::sendText($c, '96891234567', 'س')['ok']);
         }
         $this->assertCount(3, $this->outgoing());
+
+        // ‏‏والعدّادُ ذرّةٌ واحدة: لا يزيد على حدّه ولو سُئل مباشرة
+        $this->assertSame(WhatsAppBillingLock::TRIAL_SPENT, WhatsAppBillingTrials::spend($c));
+        $this->assertSame(3, WhatsAppBillingTrial::value('messages_used'));
+
+        // ‏‏وما ثبتت فوترتُه لا يقف بحدّ التجربة
+        $this->proveWhatsAppBilling((int) $this->shop->id, '1001');
+        $this->assertNull(WhatsAppBillingTrials::spend($this->c()));
+        $this->assertTrue(MetaWhatsAppClient::sendText($this->c(), '96891234567', 'س')['ok']);
     }
 
     public function test_the_trial_ends_by_its_time_or_by_hand(): void
     {
         $trial = $this->trial();
+        $this->assertTrue($this->c()->isUsable());
         $this->travel(25)->hours();
+        $this->assertSame(WhatsAppBillingLock::UNPROVEN, WhatsAppBillingLock::stop($this->c()));
+        $this->assertSame(WhatsAppBillingLock::TRIAL_SPENT, WhatsAppBillingTrials::spend($this->c()), 'والعدّادُ نفسُه لا يعدّ بعد موعدها');
         $this->order()->update(['status' => OrderStatus::READY]);
         $this->assertSame([], $this->outgoing());
         $this->travelBack();
@@ -300,6 +318,11 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
         $this->actingAs($this->owner)->delete(route('admin.integrations.whatsapp.disconnect'));
         $this->meta['numbers']['1001'] = 'PN-9';
         $this->link(null, '1001', 'PN-9')->assertSessionHasNoErrors();
+        $this->assertFalse($this->c()->isUsable());
+        // ‏‏ورقمُها نفسُه في حسابٍ آخر
+        $this->actingAs($this->owner)->delete(route('admin.integrations.whatsapp.disconnect'));
+        $this->meta['numbers']['1003'] = 'PN-1';
+        $this->link(null, '1003', 'PN-1')->assertSessionHasNoErrors();
         $this->assertFalse($this->c()->isUsable());
     }
 
@@ -378,7 +401,7 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
             'لم يراجع حساب أبعاد' => [['abaad_checked' => false], 'abaad_checked'],
             'بلا مرجع لحساب أبعاد' => [['abaad_reference' => ''], 'abaad_reference'],
             'لم ير الرسم عند التاجر' => [['merchant_checked' => false], 'merchant_checked'],
-            'بلا رسالة' => [['price_id' => 99999], 'price_id'],
+            'بلا رسالة' => [['price_id' => -1], 'price_id'],
             'بطاقة في المرجع' => [['reference' => '4111111111111111'], 'reference'],
             'بطاقة في مرجع أبعاد' => [['abaad_reference' => '4111-1111-1111-1111'], 'abaad_reference'],
             'مبلغ بلا عملة' => [['currency' => ''], 'currency'],
@@ -445,6 +468,16 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
             $this->meta = array_merge($this->meta, $says);
             $this->pass($trial)->assertSessionHasErrors('trial');
         }
+        $this->assertFalse(WhatsAppBillingTrials::launched());
+    }
+
+    /** ‏‏والقاعدةُ عند صاحبها لا في الشاشة وحدها */
+    public function test_an_estimate_is_refused_even_past_the_form(): void
+    {
+        $trial = $this->trial();
+        $message = $this->chargedMessage();
+        $r = WhatsAppBillingTrials::pass($trial, $this->super, ['kind' => 'estimate', 'price_id' => $message->id, 'waba_id' => '1001', 'reference' => 'تقدير', 'abaad_reference' => 'راجعته']);
+        $this->assertSame([false, 'kind'], [$r['ok'], $r['field']]);
         $this->assertFalse(WhatsAppBillingTrials::launched());
     }
 

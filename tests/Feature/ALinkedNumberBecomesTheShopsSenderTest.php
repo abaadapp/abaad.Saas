@@ -961,8 +961,9 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->calls = [];
         $this->meta['send_error'] = ['PN-1' => 190];
         $this->order()->update(['status' => OrderStatus::CONFIRMED]);
-        $this->assertSame(['PN-1'], array_column($this->outgoing(), 'phone'), 'حاول من رقمه وحده');
-        $this->assertSame(WhatsAppStatus::FAILED, WhatsAppMessage::where('business_id', $this->shop->id)->latest('id')->first()->status);
+        // ‏‏وتفويضٌ سُحب لا تُحاول به رسالة (قفل الفوترة، البند ١٠) — ولا تخرج من رقم أبعاد
+        $this->assertSame([], $this->outgoing());
+        $this->assertSame([WhatsAppStatus::SKIPPED, WhatsAppStatus::SKIP_BILLING], array_values(WhatsAppMessage::where('business_id', $this->shop->id)->latest('id')->first()->only(['status', 'error_code'])));
 
         $page = $this->actingAs($this->owner)->get(route('admin.integrations.whatsapp'));
         $page->assertInertia(fn (AssertableInertia $p) => $p
@@ -1069,7 +1070,7 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->assertNull($this->row()->health_checked_at);
         $this->assertTrue(WhatsAppSender::waiting());
         $this->artisan('whatsapp:adopt-numbers')->assertSuccessful();
-        $this->assertSame('invalid_token', WhatsAppSender::problem($this->shop->fresh())['code']);
+        $this->assertSame('billing_link_lost', WhatsAppSender::problem($this->shop->fresh())['code']);
         $this->assertFalse(WhatsAppSender::waiting());
     }
 

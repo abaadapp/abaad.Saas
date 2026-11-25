@@ -83,6 +83,8 @@ final class WhatsAppSender
 
     /** ‏‏علّةٌ لا يزيلها إلّا ربطٌ جديد — فيُرسل لصاحبها رابطُ ربطٍ ولو بقي رقمُه «مربوطًا» (`WhatsAppClientLinks`) */
     private const RELINK = [WhatsAppLinkCheck::INVALID_TOKEN, WhatsAppLinkCheck::WRONG_APP, WhatsAppLinkCheck::MISSING_SCOPES, WhatsAppLinkCheck::WABA_NOT_GRANTED,
+        // ‏‏وحسابٌ ليس للتاجر أو انقطع لا يُصلحه إلّا ربطُ حسابه هو
+        WhatsAppBillingLock::LINK_LOST, WhatsAppBillingLock::NO_ACCOUNT, WhatsAppOwnApp::BILLED_TO_ABAAD, WhatsAppOwnApp::PARTNER_OWNED, WhatsAppOwnApp::ACCOUNT_TAKEN, WhatsAppOwnApp::ACCOUNT_UNBOUND,
         'webhook_missing', 'send_190', 'send_10', 'send_200', 'send_131005', 'send_133010'];
 
     /* ═════════════ مفتاحُ المنصّة ═════════════ */

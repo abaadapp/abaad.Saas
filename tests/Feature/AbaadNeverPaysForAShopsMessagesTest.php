@@ -353,7 +353,7 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
 
         // ‏‏ولا تختاره يدُ أحد: لا التاجرُ ولا الفريق — ولو كُتب عمودٌ قديم
         DB::table('whatsapp_connections')->where('id', $this->c()->id)->update(['billing_state' => WhatsAppOwnApp::BILLING_CONFIRMED]);
-        $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasErrors('mode');
+        $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasErrors(['mode' => WhatsAppBillingLock::says(WhatsAppBillingLock::UNPROVEN)['text']]);
         $this->actingAs($this->super)->put(route('super-admin.businesses.whatsapp.update', $this->shop->id), ['whatsapp_mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasErrors('whatsapp_mode');
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->shop->fresh()->whatsapp_mode);
     }
@@ -551,7 +551,7 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
 
     public function test_a_card_number_is_recognised_and_an_invoice_number_is_not(): void
     {
-        foreach (['4111111111111111', '5500-0000-0000-0004', '3400 0000 0000 009', 'ref 4012888888881881 end'] as $card) {
+        foreach (['4111111111111111', '٤٠١٢٨٨٨٨٨٨٨٨١٨٨١', '5500-0000-0000-0004', '3400 0000 0000 009', 'ref 4012888888881881 end'] as $card) {
             $this->assertTrue(WhatsAppBillingLock::looksLikeCard($card), $card);
         }
         foreach (['FBADS-108-100012345', '25-11-2026', 'INV 2026/11/00045', '1001', 'ملف 12'] as $ref) {
@@ -568,6 +568,21 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $this->review()->assertSessionHasNoErrors();
         $this->tick();
         $this->assertSame(WhatsAppMode::BUSINESS_OWN, $this->shop->fresh()->whatsapp_mode);
+    }
+
+    /** ‏‏وتُقرأ Meta لحظةَ التبديل: ما تبدّل بعد المراجعة أو لم يُقرأ الآن لا يُبدَّل معه */
+    public function test_the_payer_is_read_again_at_the_moment_of_the_switch(): void
+    {
+        $this->link()->assertSessionHasNoErrors();
+        $this->review()->assertSessionHasNoErrors();
+
+        $this->meta['owner'] = [];
+        $this->tick();
+        $this->assertSame([WhatsAppMode::ABAAD_SHARED, 'owner_unknown'], [$this->shop->fresh()->whatsapp_mode, WhatsAppSenderAdoption::latest('id')->first()->code]);
+
+        $this->meta['owner'] = ['1001' => 'MB-NEW'];
+        $this->tick();
+        $this->assertSame([WhatsAppMode::ABAAD_SHARED, WhatsAppBillingLock::OWNER_CHANGED], [$this->shop->fresh()->whatsapp_mode, WhatsAppSenderAdoption::latest('id')->first()->code]);
     }
 
     /** ‏‏وإثباتٌ نُقض في ثواني الفحص يغلب التبديل */
@@ -754,6 +769,43 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $this->assertSame('proven', $this->billing()->state);
     }
 
+    /** ‏‏وحسابٌ كان لغير التاجر ثمّ عاد لا يعود إرسالُه بعودته — يُراجَع من جديد */
+    public function test_an_account_that_left_the_merchant_and_came_back_is_reviewed_again(): void
+    {
+        $this->proven();
+        $this->meta['owner'] = ['1001' => 'MB-ABAAD'];
+        WhatsAppBillingLock::read($this->c(), force: true);
+        $this->assertSame('problem', $this->billing()->state);
+
+        $this->meta['owner'] = ['1001' => 'MB-SHOP'];
+        WhatsAppBillingLock::read($this->c(), force: true);
+        $this->assertSame('recheck', $this->billing()->state);
+        $this->assertFalse($this->c()->isUsable());
+    }
+
+    public function test_a_reviewed_link_from_before_the_lock_shows_a_changed_payer_and_keeps_sending(): void
+    {
+        $c = $this->legacy();
+        $this->actingAs($this->super)->post(route('super-admin.businesses.whatsapp.billing', $this->shop->id), ['evidence_kind' => 'meta_invoice', 'evidence_reference' => 'INV-1', 'evidence_waba_id' => '1001', 'evidence_checked' => true])->assertSessionHasNoErrors();
+        $this->webhook(['field' => 'account_update', 'value' => ['event' => 'PARTNER_ADDED', 'waba_info' => ['waba_id' => '1001', 'solution_partner_business_ids' => ['MB-STRANGER']]]])->assertOk();
+        $this->assertSame('recheck', WhatsAppBillingLock::stateOf($c->fresh()));
+        $this->assertTrue($c->fresh()->isUsable());
+
+        // ‏‏وصفٌّ بقي من ربطٍ سابق لا يمسّه خبرٌ عن وصلة تطبيق التاجر
+        $this->billing()->update(['state' => 'proven', 'code' => null]);
+        $c->update(['link_type' => WhatsAppOwnApp::TYPE]);
+        $this->webhook(['field' => 'account_update', 'value' => ['event' => 'PARTNER_ADDED', 'waba_info' => ['waba_id' => '1001', 'solution_partner_business_ids' => ['MB-STRANGER']]]])->assertOk();
+        $this->assertSame('proven', $this->billing()->state);
+    }
+
+    public function test_asking_for_verification_does_not_hide_a_problem(): void
+    {
+        $this->link()->assertSessionHasNoErrors();
+        $this->meta['owner'] = ['1001' => 'MB-ABAAD'];
+        $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.billing.request'))->assertSessionHasErrors('billing');
+        $this->assertSame(['problem', 'billed_to_abaad', null], [$this->billing()->state, $this->billing()->code, $this->billing()->requested_at]);
+    }
+
     public function test_meta_saying_the_owner_or_a_partner_changed_stops_at_once(): void
     {
         $this->proven();
@@ -779,11 +831,21 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $this->meta['send_error'] = ['PN-1' => 190];
         $this->meta['token_valid'] = false;
         $this->order()->update(['status' => OrderStatus::READY]);
+        $this->assertNull(WhatsAppSenderAdoption::where('state', 'adopted')->latest('id')->first()->health_checked_at, 'فلا يُنتظر فحصُ الساعة');
         $this->tick();
-        $problem = WhatsAppSender::problem($this->shop->fresh());
-        $this->assertNotNull($problem);
+        $this->assertSame(WhatsAppBillingLock::LINK_LOST, WhatsAppBillingLock::stop($this->c()), 'وثبت في الدورة التالية فوقف');
+        $this->assertFalse($this->c()->isUsable());
+        $this->calls = [];
+        $this->order()->update(['status' => OrderStatus::READY]);
+        $this->assertSame([], $this->outgoing());
+        $this->assertStringContainsString('أعد الربط', $this->bell($this->owner)['wa-sender-down-'.$this->c()->id]);
         $this->assertSame(WhatsAppMode::BUSINESS_OWN, $this->shop->fresh()->whatsapp_mode);
-        $this->assertNotContains('PN-ABAAD', $this->outgoing());
+        $this->assertTrue(WhatsAppSender::needsRelink($this->shop->fresh(), $this->c()), 'ويُرسل له رابطُ ربطٍ من جديد');
+
+        // ‏‏وإعادةُ الربط تعيده بدليله القائم
+        $this->meta = array_merge($this->meta, ['send_error' => [], 'token_valid' => true]);
+        $this->link()->assertSessionHasNoErrors();
+        $this->assertTrue($this->c()->isUsable());
     }
 
     public function test_the_team_reopens_the_review_and_the_number_stops(): void

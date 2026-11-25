@@ -82,6 +82,9 @@ final class WhatsAppBillingLock
 
     public const TRIAL_SPENT = 'billing_trial_spent';
 
+    /** ‏‏قالت Meta قاطعةً إنّ التفويض سُحب أو نقص — لا تُحاول رسالةٌ بعدها حتى يُعاد الربط */
+    public const LINK_LOST = 'billing_link_lost';
+
     public const OWNER_UNKNOWN = 'owner_unknown';
 
     public const ABAAD_UNKNOWN = 'abaad_account_unknown';
@@ -91,7 +94,7 @@ final class WhatsAppBillingLock
 
     /** ‏‏كلُّ ما يوقف الإرسال عند هذا القفل — تقف عندها الحملةُ ولا تُحرق بقيّتُها */
     public const STOPS = [
-        self::UNPROVEN, self::REQUESTED, self::NO_ACCOUNT, self::TRIAL_SPENT, self::PAYMENT_REFUSED, self::REVOKED, self::COST_HIDDEN,
+        self::LINK_LOST, self::UNPROVEN, self::REQUESTED, self::NO_ACCOUNT, self::TRIAL_SPENT, self::PAYMENT_REFUSED, self::REVOKED, self::COST_HIDDEN,
         self::OWNER_CHANGED, self::PARTNER_ADDED, WhatsAppOwnApp::FUNDING_CHANGED, WhatsAppOwnApp::BILLED_TO_ABAAD, WhatsAppOwnApp::PARTNER_OWNED,
         WhatsAppOwnApp::ACCOUNT_TAKEN, WhatsAppOwnApp::NO_PAYMENT_METHOD, WhatsAppOwnApp::ACCOUNT_UNBOUND, WhatsAppOwnApp::AMBIGUOUS_ACCOUNT,
     ];
@@ -112,6 +115,9 @@ final class WhatsAppBillingLock
         self::NO_ACCOUNT, self::OWNER_CHANGED, self::PARTNER_ADDED, WhatsAppOwnApp::BILLED_TO_ABAAD, WhatsAppOwnApp::PARTNER_OWNED,
         WhatsAppOwnApp::ACCOUNT_TAKEN, WhatsAppOwnApp::ACCOUNT_UNBOUND,
     ];
+
+    /** ‏‏حكمٌ قاطعٌ على الرمز — لا قراءةٌ فشلت (`WhatsAppLinkCheck::record`) */
+    private const LINK_BROKEN = [WhatsAppLinkCheck::INVALID_TOKEN, WhatsAppLinkCheck::WRONG_APP, WhatsAppLinkCheck::MISSING_SCOPES, WhatsAppLinkCheck::WABA_NOT_GRANTED];
 
     private const FRESH_MINUTES = 30;
 
@@ -190,6 +196,10 @@ final class WhatsAppBillingLock
 
         if (blank($c->waba_id)) {
             return self::NO_ACCOUNT;
+        }
+
+        if (in_array($c->link_problem, self::LINK_BROKEN, true)) {
+            return self::LINK_LOST;
         }
 
         $row = self::row($c);
@@ -460,7 +470,8 @@ final class WhatsAppBillingLock
             $ours = WhatsAppOwnApp::abaadBusinessIds();
 
             WhatsAppConnection::where('waba_id', $waba)->where('owner_type', WhatsAppMode::OWNER_BUSINESS)->whereNotNull('business_id')->get()
-                ->filter(fn (WhatsAppConnection $c) => self::applies($c))
+                // ‏‏وما كان قبل القفل يُحدَّث حالُه ولا يقف إرسالُه؛ ووصلةُ تطبيق التاجر لا شأنَ لها هنا
+                ->filter(fn (WhatsAppConnection $c) => self::reviewable($c))
                 ->each(function (WhatsAppConnection $c) use ($value, $owner, $partners, $ours) {
                     $row = self::row($c);
 
@@ -895,6 +906,7 @@ final class WhatsAppBillingLock
             self::UNPROVEN => [__('لم تثبت جهة رسوم واتساب بعد — أضف وسيلة دفعك في حسابك عند Meta ثم اطلب التحقق.'), 'merchant'],
             self::REQUESTED => [__('وصل طلب التحقق من جهة الرسوم — يراجعه فريق أبعاد.'), 'abaad'],
             self::NO_ACCOUNT => [__('لا معرّف حساب واتساب على هذا الربط — أعد الربط.'), 'merchant'],
+            self::LINK_LOST => [__('سحبت Meta تفويض واتساب أو نقصت صلاحياته — الإرسال متوقف، أعد الربط.'), 'merchant'],
             self::TRIAL_SPENT => [__('انتهى عدد رسائل التجربة المسموح به.'), 'abaad'],
             self::PAYMENT_REFUSED => [__('ردّت Meta رسالة بسبب وسيلة الدفع — أصلحها في حسابك عند Meta ثم اضغط «أعد المحاولة».'), 'merchant'],
             self::OWNER_CHANGED => [__('تبدّل مالك حساب واتساب عند Meta بعد التحقق — الإرسال متوقف حتى يُعاد التحقق.'), 'abaad'],

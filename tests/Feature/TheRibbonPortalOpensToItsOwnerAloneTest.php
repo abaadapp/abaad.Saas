@@ -175,7 +175,7 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
             $this->attempt('91234567', '10000000'.$i)->assertStatus(422);
         }
         // والسادسةُ تُردّ ولو صحّت، وبأيّ صيغةٍ كُتب الرقم — حتّى تنقضي المدّة
-        $this->attempt('91234567', $right)->assertStatus(429);
+        $this->assertGreaterThan(0, $this->attempt('91234567', $right)->assertStatus(429)->json('wait'));
         $this->attempt('+968 9123 4567', $right)->assertStatus(429);
         $this->assertSame(0, CustomerPortalSession::count());
         // ولا يُكتب الرقمُ في العدّاد

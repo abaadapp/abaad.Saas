@@ -64,7 +64,8 @@ class RibbonPortalController extends Controller
         $say = fn (string $key, array $with = []) => Texts::say($this->lang($request, null), $key, $with);
 
         if (($wait = Access::blockedFor($phone, $key, $request)) > 0) {
-            return response()->json(['message' => $say('tooMany', ['n' => (int) ceil($wait / 60)])], 429);
+            // و`wait` يميّزه عن عدّاد المسار: ذاك ردُّه بالإنجليزيّة ولا مدّةَ فيه
+            return response()->json(['message' => $say('tooMany', ['n' => (int) ceil($wait / 60)]), 'wait' => $wait], 429);
         }
 
         $raw = Access::login($this->business($request), $phone, $code, $key, $request);

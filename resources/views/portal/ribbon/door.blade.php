@@ -51,7 +51,7 @@
 @section('script')
     <script nonce="{{ $nonce }}">
         (function () {
-            var texts = {{ \Illuminate\Support\Js::from(['next' => $t('next'), 'enter' => $t('enter'), 'entering' => $t('entering'), 'network' => $t('networkError'), 'phone' => $t('phoneShort'), 'code' => $t('codeShort')]) }};
+            var texts = {{ \Illuminate\Support\Js::from(['next' => $t('next'), 'enter' => $t('enter'), 'entering' => $t('entering'), 'network' => $t('networkError'), 'phone' => $t('phoneShort'), 'code' => $t('codeShort'), 'slow' => $t('slowDown')]) }};
             var csrf = document.querySelector('meta[name=csrf-token]').content;
             var $ = function (id) { return document.getElementById(id); };
             var key = function () { var k = (location.hash || '').replace(/^#/, ''); return /^[A-Za-z0-9_-]{43}$/.test(k) ? k : ''; };
@@ -88,7 +88,7 @@
                     if (r.status === 419) { location.reload(); return; }
                     return r.json().catch(function () { return {}; }).then(function (d) {
                         if (r.ok && d.ok) { history.replaceState(null, '', location.pathname); location.reload(); return; }
-                        throw d.message || texts.network;
+                        throw r.status === 429 && !d.wait ? texts.slow : d.message || texts.network;
                     });
                 }).catch(function (m) { say(typeof m === 'string' ? m : texts.network); enter.disabled = false; enter.textContent = was; });
             });

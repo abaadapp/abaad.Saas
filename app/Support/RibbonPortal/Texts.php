@@ -30,6 +30,7 @@ final class Texts
         'entering' => 'لحظة…',
         'loginFailed' => 'تعذّر الدخول. تأكد من رقم هاتفك المسجّل لدينا ومن رمز الفاتورة.',
         'tooMany' => 'محاولات كثيرة. حاول بعد :n دقيقة.',
+        'slowDown' => 'محاولات كثيرة. انتظر دقيقة وحاول من جديد.',
         'networkError' => 'تعذّر الاتصال. تحقّق من الشبكة وحاول من جديد.',
         'needJs' => 'هذه الصفحة تحتاج إلى تفعيل JavaScript في متصفحك.',
 
@@ -119,6 +120,7 @@ final class Texts
         'entering' => 'One moment…',
         'loginFailed' => 'We could not let you in. Check the phone number registered with us and the invoice code.',
         'tooMany' => 'Too many attempts. Try again in :n minutes.',
+        'slowDown' => 'Too many attempts. Wait a minute and try again.',
         'networkError' => 'No connection. Check your network and try again.',
         'needJs' => 'This page needs JavaScript enabled in your browser.',
 

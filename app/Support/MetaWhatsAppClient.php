@@ -89,7 +89,7 @@ class MetaWhatsAppClient
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
     }
 
     /**
@@ -213,7 +213,7 @@ class MetaWhatsAppClient
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
     }
 
     /**
@@ -253,7 +253,7 @@ class MetaWhatsAppClient
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
     }
 
     /**
@@ -320,7 +320,7 @@ class MetaWhatsAppClient
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
     }
 
     /**
@@ -505,12 +505,57 @@ class MetaWhatsAppClient
     private static function account(WhatsAppConnection $connection): array
     {
         $bind = WhatsAppOwnApp::sendAccount($connection);
+        // ‏‏ورسالةُ متجر التجربة تُعدّ قبل أن تخرج — ولا تزيد على حدّها (`WhatsAppBillingTrials::spend`)
+        $problem = $bind['problem'] ?? WhatsAppBillingTrials::spend($connection);
 
         return [
-            'refusal' => $bind['problem'] === null ? null
-                : self::failure($bind['problem'], WhatsAppOwnApp::say($bind['problem']), retryable: false),
+            'refusal' => $problem === null ? null
+                : self::failure($problem, WhatsAppOwnApp::is($connection) ? WhatsAppOwnApp::say($problem) : WhatsAppBillingLock::says($problem)['text'], retryable: false),
             'field' => $bind['account'] === null ? [] : ['messaging_account_id' => $bind['account']],
         ];
+    }
+
+    /**
+     * ‏‏وما ردّت به Meta يُقرأ لقفل الفوترة: ردُّ الدفع يوقف ما بعده من هذا الرقم (`WhatsAppBillingLock::observe`).
+     *
+     * @param  array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}  $result
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    private static function answered(WhatsAppConnection $connection, array $result): array
+    {
+        if (! $result['ok']) {
+            WhatsAppBillingLock::observe($connection, $result['code']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * ‏‏تقديرُ Meta لكلفة حسابٍ في مدّة — قراءةٌ لا غير، وبحروفها: كلفةٌ لم تأتِ تبقى `null`، لا صفرًا.
+     *
+     * @return array{ok: bool, code: ?string, points: list<array{category: ?string, type: ?string, volume: int, cost: ?float}>}
+     */
+    public static function pricingAnalytics(WhatsAppConnection $connection, int $from, int $to): array
+    {
+        $r = self::graph($connection, 'get', (string) $connection->waba_id, [
+            'fields' => 'pricing_analytics.start('.$from.').end('.$to.').granularity(DAILY).dimensions(PRICING_CATEGORY,PRICING_TYPE)',
+        ]);
+
+        $points = [];
+
+        foreach ((array) ($r['body']['pricing_analytics']['data'] ?? []) as $set) {
+            foreach ((array) (((array) $set)['data_points'] ?? []) as $p) {
+                $p = (array) $p;
+                $points[] = [
+                    'category' => is_string($p['pricing_category'] ?? null) ? mb_substr($p['pricing_category'], 0, 40) : null,
+                    'type' => is_string($p['pricing_type'] ?? null) ? mb_substr($p['pricing_type'], 0, 40) : null,
+                    'volume' => is_numeric($p['volume'] ?? null) ? (int) $p['volume'] : 0,
+                    'cost' => is_numeric($p['cost'] ?? null) ? (float) $p['cost'] : null,
+                ];
+            }
+        }
+
+        return ['ok' => $r['ok'], 'code' => $r['code'], 'points' => $points];
     }
 
     private static function failure(string $code, string $message, bool $retryable): array

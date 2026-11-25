@@ -48,7 +48,7 @@ class WhatsAppConnections
             ->where('owner_type', WhatsAppMode::OWNER_BUSINESS)
             ->whereNotNull('business_id')
             ->when($businessId, fn ($q) => $q->where('business_id', $businessId))
-            ->with('business')
+            ->with('business', 'billings')
             ->orderByDesc('id')->get()
             ->unique('business_id')
             ->reject(fn (WhatsAppConnection $c) => $c->status === WhatsAppConnection::INACTIVE)
@@ -99,6 +99,14 @@ class WhatsAppConnections
         }
 
         return $connection;
+    }
+
+    /** ‏‏لماذا لا وصلةَ لهذا المتجر الآن — برمز سجلّ الإرسال: جهةُ رسومٍ لم تثبت غيرُ وصلةٍ انقطعت */
+    public static function whyNone(Business $business): string
+    {
+        return WhatsAppFeature::effectiveMode($business) === WhatsAppMode::BUSINESS_OWN
+            && WhatsAppBillingLock::stop(self::forBusiness($business->id)) !== null
+            ? WhatsAppStatus::SKIP_BILLING : WhatsAppStatus::SKIP_NO_CONNECTION;
     }
 
     /**

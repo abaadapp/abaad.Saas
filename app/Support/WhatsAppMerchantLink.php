@@ -72,6 +72,15 @@ final class WhatsAppMerchantLink
     /** ‏‏الطريقُ الذي يسري الآن */
     public static function mode(): string
     {
+        $wanted = self::wanted();
+
+        // ‏‏ومقفلٌ حتى تثبت الفوترةُ المباشرة في تجربةٍ حقيقيّة — أيًّا كان مصدرُ الاختيار: الشاشةُ أو إعدادُ الخادم
+        return $wanted === self::ABAAD_APP && ! WhatsAppBillingTrials::launched() ? self::OWN_APP : $wanted;
+    }
+
+    /** ‏‏ما اختير — وقد لا يسري حتى يُفتح القفل (`mode`) */
+    public static function wanted(): string
+    {
         try {
             $value = self::row(self::KEY)?->value;
         } catch (\Throwable $e) {
@@ -108,6 +117,12 @@ final class WhatsAppMerchantLink
         }
     }
 
+    /** ‏‏متجرٌ واحد حتى تنجح التجربة الحقيقيّة — ثمّ عشرون */
+    public static function pilotMax(): int
+    {
+        return WhatsAppBillingTrials::launched() ? self::PILOT_MAX : 1;
+    }
+
     /**
      * ‏‏يكتب متاجرَ التجربة — أرقامَ متاجرَ قائمة. وقائمةٌ فارغة تُنهي التجربة، ولا تمسّ وصلةً رُبطت فيها.
      *
@@ -117,8 +132,10 @@ final class WhatsAppMerchantLink
     {
         $ids = self::ids($list);
 
-        if (count($ids) > self::PILOT_MAX) {
-            return ['ok' => false, 'changed' => false, 'message' => __('متاجر التجربة :max على الأكثر.', ['max' => self::PILOT_MAX])];
+        if (count($ids) > self::pilotMax()) {
+            return ['ok' => false, 'changed' => false, 'message' => WhatsAppBillingTrials::launched()
+                ? __('متاجر التجربة :max على الأكثر.', ['max' => self::PILOT_MAX])
+                : __('متجر اختباري واحد فقط حتى تثبت الفوترة المباشرة في تجربة حقيقية.')];
         }
 
         $missing = array_values(array_diff($ids, Business::whereIn('id', $ids)->pluck('id')->map(fn ($id) => (int) $id)->all()));
@@ -224,7 +241,7 @@ final class WhatsAppMerchantLink
      * ‏‏ما تعرضه شاشةُ مدير المنصّة: الطريقُ الساري، وجاهزيّةُ الربط بضغطة، وآخرُ ما تبدّل.
      * ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» ولا يُعرض.
      *
-     * @return array{mode: string, default: string, platform: ?string, readable: bool, config_id: string, config_source: string, app_id_ready: bool, app_secret_ready: bool, ready: bool, coexistence: bool, pilot: list<array{id: int, name: string}>, pilot_max: int, auto_sender: bool, coexistence_fields: list<string>, history: list<array{at: string, by: string, what: string}>}
+     * @return array{mode: string, default: string, platform: ?string, readable: bool, config_id: string, config_source: string, app_id_ready: bool, app_secret_ready: bool, ready: bool, coexistence: bool, pilot: list<array{id: int, name: string}>, pilot_max: int, billing: ?array<string, mixed>, held: bool, auto_sender: bool, coexistence_fields: list<string>, history: list<array{at: string, by: string, what: string}>}
      */
     public static function state(): array
     {
@@ -267,7 +284,11 @@ final class WhatsAppMerchantLink
             'coexistence' => self::coexistence(),
             // ‏‏متاجرُ التجربة بأسمائها — يراها مديرُ المنصّة وحده
             'pilot' => Business::whereIn('id', self::pilot())->orderBy('id')->get(['id', 'name'])->map(fn ($b) => ['id' => (int) $b->id, 'name' => (string) $b->name])->all(),
-            'pilot_max' => self::PILOT_MAX,
+            'pilot_max' => self::pilotMax(),
+            // ‏‏وقفلُ الفوترة: أمفتوحٌ النقل، والتجربةُ وما خرج فيها (`WhatsAppBillingTrials`)
+            'billing' => self::billingState(),
+            // ‏‏اختير تطبيقُ أبعاد من قبل ولا يسري حتى يُفتح القفل
+            'held' => self::wanted() === self::ABAAD_APP && self::mode() !== self::ABAAD_APP,
             // ‏‏واعتمادُ رقم التاجر رقمًا للإرسال آليًّا — يُوقف من هنا (`WhatsAppSender::enabled`)
             'auto_sender' => WhatsAppSender::enabled(),
             // ‏‏وحقولُ إشعارات Meta التي يحتاجها الخيار — تُختار في لوحة تطبيق أبعاد عند Meta
@@ -287,6 +308,12 @@ final class WhatsAppMerchantLink
      */
     public static function set(string $mode): array
     {
+        // ‏‏والقفلُ على الخادم قبل أيّ شيء: طلبٌ كُتب بيده لا يمرّ، ولو كان الاختيارُ محفوظًا من قبل
+        if ($mode === self::ABAAD_APP && ! WhatsAppBillingTrials::launched()) {
+            return ['ok' => false, 'changed' => false, 'was' => self::mode(), 'now' => self::mode(),
+                'message' => __('مقفل حتى تنجح تجربة حقيقية يظهر فيها رسم الرسالة على حساب التاجر لا على أبعاد.')];
+        }
+
         return DB::transaction(function () use ($mode) {
             $row = self::lockedRow(self::KEY);
             $was = in_array($row?->value, self::MODES, true) ? $row->value : self::fallbackMode();
@@ -348,6 +375,18 @@ final class WhatsAppMerchantLink
 
             return ['ok' => true, 'changed' => true, 'message' => null];
         });
+    }
+
+    /** @return array<string, mixed>|null */
+    private static function billingState(): ?array
+    {
+        try {
+            return WhatsAppBillingTrials::state();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     public static function label(string $mode): string

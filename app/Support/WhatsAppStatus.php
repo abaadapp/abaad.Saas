@@ -50,6 +50,9 @@ class WhatsAppStatus
 
     public const SKIP_NO_CONNECTION = 'no_connection';
 
+    /** ‏‏رقمُ المتجر لم تثبت جهةُ رسومه عند Meta — لا يُرسل ولا يُرسَل من غيره (`WhatsAppBillingLock`) */
+    public const SKIP_BILLING = 'billing_stopped';
+
     public const SKIP_NO_TEMPLATE = 'no_template';
 
     /** لا طلبَ ولا فاتورةَ تتحدّث عنها الرسالة — فلا قيمةَ لمتغيّراتها */
@@ -107,6 +110,7 @@ class WhatsAppStatus
         self::SKIP_NO_RECIPIENT => 'لا رقم هاتفٍ لهذا الزبون — أضِفه في بطاقته.',
         self::SKIP_INVALID_PHONE => 'رقم الزبون غير صالحٍ للواتساب — راجِعه في بطاقته.',
         self::SKIP_NO_CONNECTION => 'لا وصلةَ واتساب صالحةٍ وقتَ الإرسال — راجِع شاشة الربط.',
+        self::SKIP_BILLING => 'رقم متجرك لا يُرسل حتى تثبت جهة رسومه عند Meta — راجِع «التطبيقات التكاملية ‹ واتساب».',
         self::SKIP_NO_TEMPLATE => 'لا قالبَ معتمَدٌ لهذا الحدث عند واتساب — العطب عند أبعاد، ونحن نعالجه.',
         self::SKIP_NO_SUBJECT => 'لا طلبَ ولا فاتورةَ تتحدّث عنها الرسالة — العطب عند أبعاد، ونحن نعالجه.',
         self::SKIP_DUPLICATE => 'أُرسلت رسالةٌ لهذا الحدث من قبل — ولا تُرسَل مرّتين.',

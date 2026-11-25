@@ -10,6 +10,7 @@ use App\Support\CrmWhatsApp;
 use App\Support\MetaWhatsAppClient;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppCampaigns;
 use App\Support\WhatsAppCampaignTemplates;
 use App\Support\WhatsAppCoexistence;
@@ -17,6 +18,7 @@ use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOptOuts;
 use App\Support\WhatsAppOwnApp;
+use App\Support\WhatsAppPrices;
 use App\Support\WhatsAppSender;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
@@ -86,6 +88,8 @@ class WebhookController extends Controller
                  */
                 if ($field === WhatsAppCoexistence::ACCOUNT_UPDATE) {
                     WhatsAppCoexistence::account((string) ($entry['id'] ?? ''), (array) ($change['value'] ?? []));
+                    // ‏‏ومالكٌ تبدّل أو شريكٌ أُضيف يوقف حتى تُراجَع جهةُ الرسوم
+                    WhatsAppBillingLock::accountUpdate((string) ($change['value']['waba_info']['waba_id'] ?? $entry['id'] ?? ''), (array) ($change['value'] ?? []));
                     // ‏‏وحسابٌ تبدّل حالُه عند Meta (حُذف، قُيّد، سُحب تطبيقُنا) لا ينتظر فحصَ الساعة
                     WhatsAppSender::accountChanged((string) ($change['value']['waba_info']['waba_id'] ?? $entry['id'] ?? ''));
 
@@ -288,7 +292,14 @@ class WebhookController extends Controller
         ]))->save();
 
         foreach ((array) ($value['statuses'] ?? []) as $status) {
-            $this->applyStatus($connection, (array) $status);
+            $status = (array) $status;
+            $this->applyStatus($connection, $status);
+            // ‏‏وما تقوله Meta عن احتساب الرسالة يُحفظ كما قيل، وفشلٌ بسبب الدفع يوقف ما بعده من هذا الرقم
+            WhatsAppPrices::record($connection, $status);
+
+            if (($status['status'] ?? null) === 'failed') {
+                WhatsAppBillingLock::observe($connection, (string) (((array) ($status['errors'][0] ?? []))['code'] ?? ''));
+            }
         }
 
         /*

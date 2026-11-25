@@ -259,6 +259,49 @@ class TheDuesAlreadyRecordedAreSettledAfterTheSwitchIsOffTest extends TestCase
 
     /* ═══════════ ومن لم يُفتح له قطّ ═══════════ */
 
+    /* ═══════════ مع صلاحيّات مال البوتيكات ═══════════ */
+
+    /** الإطفاءُ لا يفتح بابًا لمن لا يقرأ المال ولا لمن لا يسدّد — والمسدِّدُ يسدّد ما سُجّل */
+    #[DataProvider('offs')]
+    public function test_switching_off_opens_no_door_the_permissions_keep_closed(bool $hosting, bool $components): void
+    {
+        $this->sell();
+        $sheet = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+        $this->switchTo($hosting, $components);
+        $user = fn (string $mail, array $keys) => User::create(['business_id' => $this->shop->id, 'name' => $mail, 'email' => $mail.'@abaad.om', 'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط', 'permissions' => $keys]);
+        $page = fn (User $u) => $this->actingAs($u)->get(route('admin.boutiques.show', [$this->lama->id, 'period' => self::PERIOD]))->assertOk()->viewData('page')['props'];
+        $pay = fn (User $u) => $this->actingAs($u)->post(route('admin.boutiques.components.pay', [$this->lama->id, $sheet->id]), ['method' => 'نقدي']);
+
+        $goods = $user('goods', ['dashboard', 'products']);
+        $this->assertNull($page($goods)['ledger'], 'من لا يقرأ المال لا رصيدَ له');
+        $pay($goods)->assertForbidden();
+        $this->actingAs($goods)->post(route('admin.boutiques.refund', $this->lama->id), ['method' => 'نقدي'])->assertForbidden();
+
+        $reader = $user('reads', ['dashboard', 'products', 'expenses']);
+        $this->assertEquals(7.0, $page($reader)['ledger']['owed']);
+        $pay($reader)->assertForbidden();
+        $this->assertNull($sheet->fresh()->components_paid_at);
+
+        $payer = $user('pays', ['dashboard', 'products', 'expenses', \App\Support\Permissions::INVOICE_PAY]);
+        $pay($payer)->assertSessionHasNoErrors();
+        $this->assertNotNull($sheet->fresh()->components_paid_at);
+        $this->assertEquals(0.0, Ledger::balance($this->shop->id, 'boutique_payable'));
+    }
+
+    /** قرارُ المالك: الصنفُ المنفردُ ملكُ بوتيكه ولو أُطفئ الإيواء — منطقُه كما كان، ولا مستحقَّ قطعٍ جديد */
+    #[DataProvider('offs')]
+    public function test_a_piece_sold_on_its_own_is_counted_as_before_and_no_piece_due_is_written(bool $hosting, bool $components): void
+    {
+        $this->switchTo($hosting, $components);
+        $this->sell(2, $this->silver);
+        $this->sell(3);
+        $s = Boutiques::statement($this->shop->id, $this->lama->id, self::PERIOD);
+        $this->assertEquals([14.0, 2.8, 11.2], [$s['gross'], $s['commission'], $s['net']], 'منطقُ المنفرد تغيّر');
+        if (! $components) {
+            $this->assertSame(0, DB::table('boutique_component_dues')->where('business_id', $this->shop->id)->count(), 'مستحقُّ قطعٍ كُتب ومفتاحُه مطفأ');
+        }
+    }
+
     public function test_a_shop_that_never_recorded_any_still_meets_a_closed_door(): void
     {
         $this->switchTo(true, false);

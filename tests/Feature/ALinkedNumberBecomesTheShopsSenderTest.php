@@ -124,6 +124,10 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
             'send_error' => [],
         ];
         $this->fakeMeta();
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏وجهةُ رسومه ثابتة — وما قبل إثباتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->proveWhatsAppBilling((int) $this->shop->id, 'WABA-1');
     }
 
     /* ═════════════ التهيئة ═════════════ */
@@ -293,6 +297,10 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
     /** ‏‏ربطٌ بضغطة من شاشة التاجر — الحرفُ الأخير من الكود يختار الحساب */
     private function link(?User $owner = null, string $suffix = 'A', string $waba = 'WABA-1', string $phone = 'PN-1')
     {
+        if ($owner !== null && $owner->id !== $this->owner->id) {
+            $this->proveWhatsAppBilling((int) $owner->business_id, $waba);
+        }
+
         return $this->actingAs($owner ?? $this->owner)->post(route('admin.integrations.whatsapp.embedded.callback'), [
             'code' => self::CODE.$suffix, 'waba_id' => $waba, 'phone_number_id' => $phone,
         ]);
@@ -480,7 +488,7 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
             'لم تقل Meta إنّه يُرسل' => [['status' => null, 'can_send' => null], 'number_unknown', 'meta'],
             'الحساب لأبعاد' => [['owner' => 'MB-ABAAD'], 'billed_to_abaad', 'abaad'],
             'لا يُعرف مالك الحساب' => [['owner' => null], 'owner_unknown', 'meta'],
-            'لا وسيلة دفع' => [['funding' => 'absent'], 'no_payment_method', 'merchant'],
+            'لا وسيلة دفع' => [['funding' => 'absent'], 'billing_no_payment_method', 'merchant'],
             'إشعاراته موجّهة إلى نظام آخر' => [['override' => 'https://elsewhere.example/hook'], 'webhook_elsewhere', 'merchant'],
             'توجيه المحادثات لغير أبعاد' => [['routing' => ['marketing']], 'routed_away', 'merchant'],
             'تطبيق أبعاد لا يستمع' => [['app_fields' => ['account_update']], 'app_deaf', 'abaad'],
@@ -519,11 +527,20 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->meta = array_merge($this->meta, [
             'token_app' => self::APP, 'token_valid' => true, 'down' => false, 'status' => 'CONNECTED', 'can_send' => 'AVAILABLE', 'why' => null,
             'override' => null, 'routing' => null, 'app_fields' => ['messages'], 'app_callback' => route('webhooks.whatsapp'),
-            'owner' => 'MB-SHOP', 'funding' => null, 'review' => 'APPROVED', 'refuse_create' => null,
+            // ‏‏وغيابُ المعلومة لا يزيل «لا وسيلة دفع» — تزيلها قراءةٌ تقول إنّها وُجدت
+            'owner' => 'MB-SHOP', 'funding' => $code === 'billing_no_payment_method' ? 'present' : null, 'review' => 'APPROVED', 'refuse_create' => null,
         ]);
         $this->templates = [];
         Cache::flush();
         $this->tick();
+
+        // ‏‏وحسابٌ كان لأبعاد ثمّ عاد لا يُعتمد بعودته: يُراجَع من جديد
+        if ($code === 'billed_to_abaad') {
+            $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->mode());
+            $this->proveWhatsAppBilling((int) $this->shop->id, 'WABA-1');
+            $this->tick();
+        }
+
         $this->assertSame(WhatsAppMode::BUSINESS_OWN, $this->mode(), json_encode($this->row()->checks, JSON_UNESCAPED_UNICODE));
     }
 
@@ -944,8 +961,9 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->calls = [];
         $this->meta['send_error'] = ['PN-1' => 190];
         $this->order()->update(['status' => OrderStatus::CONFIRMED]);
-        $this->assertSame(['PN-1'], array_column($this->outgoing(), 'phone'), 'حاول من رقمه وحده');
-        $this->assertSame(WhatsAppStatus::FAILED, WhatsAppMessage::where('business_id', $this->shop->id)->latest('id')->first()->status);
+        // ‏‏وتفويضٌ سُحب لا تُحاول به رسالة (قفل الفوترة، البند ١٠) — ولا تخرج من رقم أبعاد
+        $this->assertSame([], $this->outgoing());
+        $this->assertSame([WhatsAppStatus::SKIPPED, WhatsAppStatus::SKIP_BILLING], array_values(WhatsAppMessage::where('business_id', $this->shop->id)->latest('id')->first()->only(['status', 'error_code'])));
 
         $page = $this->actingAs($this->owner)->get(route('admin.integrations.whatsapp'));
         $page->assertInertia(fn (AssertableInertia $p) => $p
@@ -1052,7 +1070,7 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->assertNull($this->row()->health_checked_at);
         $this->assertTrue(WhatsAppSender::waiting());
         $this->artisan('whatsapp:adopt-numbers')->assertSuccessful();
-        $this->assertSame('invalid_token', WhatsAppSender::problem($this->shop->fresh())['code']);
+        $this->assertSame('billing_link_lost', WhatsAppSender::problem($this->shop->fresh())['code']);
         $this->assertFalse(WhatsAppSender::waiting());
     }
 
@@ -1084,8 +1102,15 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->assertStringContainsString('الدفع', $bell[$key]);
         $this->assertArrayNotHasKey('wa-delivery', $bell, 'ولا يُقال مرّتين بسببين');
 
-        // ‏‏ورسالةٌ خرجت بعدها تُغلقه
+        // ‏‏وما بعدها لا يُحاول حتى يُصلح: يقف بسببه، ولا نداءَ إلى Meta ولا خروجَ من رقم أبعاد
         $this->meta['send_error'] = [];
+        $this->calls = [];
+        $this->order()->update(['status' => OrderStatus::CONFIRMED]);
+        $this->assertSame(WhatsAppStatus::SKIP_BILLING, WhatsAppMessage::latest('id')->first()->error_code);
+        $this->assertSame([], array_filter($this->calls, fn ($c) => str_ends_with($c['url'], '/messages')));
+
+        // ‏‏ويعود حين يعيد صاحبُه المحاولة
+        $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.billing.retry'))->assertSessionHasNoErrors();
         $this->order()->update(['status' => OrderStatus::CONFIRMED]);
         $this->assertNull(WhatsAppSender::problem($this->shop->fresh()));
 
@@ -1174,7 +1199,7 @@ class ALinkedNumberBecomesTheShopsSenderTest extends TestCase
         $this->assertStringContainsString('وسيلة دفع', $this->bell($this->super)[$key]);
 
         // ‏‏وما على أبعاد لا يُطلب من التاجر، وما تنتظره Meta لا يُقال لأحد
-        $this->meta = array_merge($this->meta, ['funding' => null, 'app_fields' => ['account_update']]);
+        $this->meta = array_merge($this->meta, ['funding' => 'present', 'app_fields' => ['account_update']]);
         Cache::flush();
         $this->tick();
         $this->assertArrayNotHasKey($key, $this->bell($this->owner));

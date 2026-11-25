@@ -569,6 +569,8 @@ final class WhatsAppInbox
             $expired = $connection?->token_expires_at !== null && $connection->token_expires_at->isPast();
 
             return self::no(match (true) {
+                // ‏‏وجهةُ رسومٍ لم تثبت تُقال باسمها (`WhatsAppBillingLock`)
+                $own && ! $expired && ($stop = WhatsAppBillingLock::stop($connection)) !== null => WhatsAppBillingLock::says($stop)['text'],
                 $own && $expired => __('انتهت صلاحية ربط رقم متجرك لدى ميتا — أعد الربط من «التطبيقات التكاملية ‹ واتساب». ولا يُرسَل الردّ من رقمٍ آخر.'),
                 $own => __('رقم متجرك غير مربوطٍ الآن — ولا يُرسَل الردّ من رقمٍ آخر.'),
                 default => __('رقم أبعاد المشترك متوقّفٌ الآن — ولا يُرسَل الردّ من رقمٍ آخر.'),

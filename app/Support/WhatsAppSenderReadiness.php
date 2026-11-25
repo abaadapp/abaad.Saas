@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Cache;
  * ستُّ مراحل، كلٌّ بحالها:
  *
  *   ١ · الربط: الرمزُ من تطبيق أبعاد وصالحٌ، والرقمُ من حساب المتجر.
- *   ٢ · الرسوم: حسابُ واتساب ليس لأبعاد — فلا تُحتسب رسائلُ المتجر عليها.
+ *   ٢ · الرسوم: ثبتت جهةُ الفوترة — بمراجعةٍ موثّقة، لا بملكيّة الحساب (`WhatsAppBillingLock`).
  *   ٣ · الإرسال: الرقمُ متّصلٌ عند Meta ولا تمنعه.
  *   ٤ · الاستقبال: تطبيقُ أبعاد مشتركٌ في إشعارات الحساب، وعنوانُها عنوانُنا، والواردُ لا يذهب إلى غيره.
  *   ٥ · القوالب: إشعاراتُ المتجر معتمَدةٌ في حسابه هو.
@@ -43,8 +43,6 @@ final class WhatsAppSenderReadiness
     /** ‏‏علّةٌ في الرمز لا يزيلها إلّا إعادةُ الربط — يُحكم بها من أوّل قراءة */
     private const SURE = [WhatsAppLinkCheck::INVALID_TOKEN, WhatsAppLinkCheck::WRONG_APP, WhatsAppLinkCheck::MISSING_SCOPES, WhatsAppLinkCheck::WABA_NOT_GRANTED];
 
-    private const BILLING_HOURS = 24;
-
     /** ‏‏رمزُ Meta لمشكلةٍ في وسيلة الدفع — تقوله على حساب واتساب في `health_status` */
     private const META_PAYMENT = '141006';
 
@@ -53,7 +51,8 @@ final class WhatsAppSenderReadiness
      */
     public static function check(Business $business, WhatsAppConnection $connection): array
     {
-        $gate = self::gate($business) ?? ($connection->isUsable() ? null : 'link_'.WhatsAppLink::state($connection));
+        // ‏‏ومن لم تثبت جهةُ رسومه يُفحص ما سواها — مرحلتُها وحدها تمنعه
+        $gate = self::gate($business) ?? ($connection->isConnected() ? null : 'link_'.WhatsAppLink::state($connection));
 
         if ($gate !== null) {
             return self::sum([self::LINK => self::step('fail', $gate)]);
@@ -71,10 +70,10 @@ final class WhatsAppSenderReadiness
             return self::sum([self::LINK => $link]);
         }
 
-        $billing = self::billing($connection);
+        $billing = WhatsAppBillingLock::step($connection);
 
-        // ‏‏وحسابٌ لأبعاد لا يُنشأ فيه شيءٌ ولا يُشرَك — رُبط خطأً
-        if ($billing['code'] === 'billed_to_abaad') {
+        // ‏‏وحسابٌ نقضته Meta (لأبعاد، أو لشريك، أو لمتجرٍ آخر) لا يُنشأ فيه شيءٌ ولا يُشرَك
+        if (in_array($billing['code'], WhatsAppBillingLock::FOREIGN, true)) {
             return self::sum([self::LINK => $link, self::BILLING => $billing]);
         }
 
@@ -106,6 +105,15 @@ final class WhatsAppSenderReadiness
         if ($link['state'] !== 'ok') {
             return ['state' => $link['state'] === 'unknown' ? 'unknown' : 'fail', 'code' => $link['code'], 'params' => $link['params'],
                 'sure' => in_array($found['problem'], self::SURE, true)];
+        }
+
+        // ‏‏وجهةُ رسومه تُعاد قراءتُها كلَّ يوم، أو حين تقول Meta إنّ شيئًا تبدّل — وما نقضته وقف
+        if (WhatsAppBillingLock::applies($connection)) {
+            WhatsAppBillingLock::daily($connection);
+
+            if (($stop = WhatsAppBillingLock::stop($connection)) !== null) {
+                return ['state' => 'fail', 'code' => $stop, 'params' => [], 'sure' => true];
+            }
         }
 
         foreach ([self::sends($connection), self::receives($connection, (string) $found['webhook'], $found['routing'])] as $step) {
@@ -155,35 +163,6 @@ final class WhatsAppSenderReadiness
             $found['problem'] !== null => self::step('fail', (string) $found['problem']),
             default => self::step('ok'),
         };
-    }
-
-    /** @return array{state: string, code: ?string, params: array<string, string>} */
-    private static function billing(WhatsAppConnection $connection): array
-    {
-        $key = 'whatsapp.sender_billing_ok.'.$connection->waba_id;
-
-        if (Cache::get($key) === true) {
-            return self::step('ok');
-        }
-
-        if (WhatsAppOwnApp::abaadBusinessIds() === []) {
-            return self::step('unknown', 'abaad_account_unknown');
-        }
-
-        $read = WhatsAppOwnApp::billing((string) $connection->waba_id, (string) $connection->access_token);
-
-        $step = match (true) {
-            $read['state'] === WhatsAppOwnApp::BILLING_ABAAD => self::step('fail', 'billed_to_abaad'),
-            blank($read['owner_id']) => self::step('unknown', 'owner_unknown'),
-            $read['facts']['funding'] === 'absent' => self::step('fail', 'no_payment_method'),
-            default => self::step('ok'),
-        };
-
-        if ($step['state'] === 'ok') {
-            Cache::put($key, true, now()->addHours(self::BILLING_HOURS));
-        }
-
-        return $step;
     }
 
     /** @return array{state: string, code: ?string, params: array<string, string>} */

@@ -16,6 +16,7 @@ use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\BoutiqueAccess;
 use App\Support\Boutiques;
 use App\Support\BranchGoogle;
 use App\Support\DeliveryPaper;
@@ -120,17 +121,24 @@ class PageController extends Controller
         $margin = $product['price'] - $product['cost'];
         $marginPct = $product['price'] > 0 ? round(($margin / $product['price']) * 100) : 0;
 
+        /*
+         * كم بيع وهامشُه وحركاتُه — لا تُرسل لمن يفتح المنتجاتِ وحدها في متجرٍ يؤوي
+         * بوتيكات: صاحبُ بوتيكٍ أُعطي حسابًا لأصنافه لا يقرأ مبيعاتٍ ولا ربحًا
+         * (`BoutiqueAccess::hidesSales`). ومتجرٌ بلا بوتيكٍ لا يتغيّر عليه شيء.
+         */
+        $hidden = BoutiqueAccess::hidesSales(auth()->user(), Business::find(auth()->user()->business_id ?? Demo::bid()));
+
         return Inertia::render('Admin/Products/Show', [
             'product' => $product,
-            'stats' => [
+            'stats' => array_values(array_filter([
                 ['label' => __('الكمية المتوفرة'), 'value' => __(':n قطعة', ['n' => $product['qty']]), 'icon' => 'package', 'color' => 'primary'],
-                ['label' => __('إجمالي المبيعات'), 'value' => __(':n قطعة', ['n' => Demo::productSold($id)]), 'icon' => 'shopping-cart', 'color' => 'success'],
+                $hidden ? null : ['label' => __('إجمالي المبيعات'), 'value' => __(':n قطعة', ['n' => Demo::productSold($id)]), 'icon' => 'shopping-cart', 'color' => 'success'],
                 ['label' => __('سعر التكلفة'), 'value' => Demo::money($product['cost']), 'icon' => 'wallet', 'color' => 'info'],
-                ['label' => __('هامش الربح'), 'value' => $marginPct.'%', 'icon' => 'trending-up', 'color' => 'primary',
+                $hidden ? null : ['label' => __('هامش الربح'), 'value' => $marginPct.'%', 'icon' => 'trending-up', 'color' => 'primary',
                     'trend' => Demo::money($margin), 'up' => true],
-            ],
-            // حركات هذا المنتج وحده، لا كل حركات المتجر
-            'movements' => array_slice(array_values(array_filter(
+            ])),
+            // حركات هذا المنتج وحده، لا كل حركات المتجر — و`null` لمن لا يقرؤها
+            'movements' => $hidden ? null : array_slice(array_values(array_filter(
                 Demo::movements(),
                 fn ($m) => $m['product'] === $product['name'],
             )), 0, 6),
@@ -319,7 +327,7 @@ class PageController extends Controller
              * أوّلًا» بابٌ معروضٌ لا يُفتح.
              */
             // قطعُ البوتيك في الطلب — ليُسأل عن كلٍّ منها عند الإلغاء وبعده. انظر `BoutiqueDues::piecesOf`
-            'boutiquePieces' => $this->boutiquePieces($number),
+            'boutiquePieces' => BoutiqueAccess::pieces($this->boutiquePieces($number), auth()->user()),
             // وبنودُ البوتيك التي حملتها ورقة — مرتجعُها إشعارٌ مرتبطٌ بها. انظر `BoutiqueReturns`
             'boutiqueReturns' => $this->boutiqueReturns($number),
             'googleReview' => $this->googleReviewState($number),

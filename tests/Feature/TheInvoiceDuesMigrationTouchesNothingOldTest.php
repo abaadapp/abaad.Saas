@@ -95,15 +95,16 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
         return [
             Schema::hasTable('boutique_invoice_lines'), Schema::hasTable('boutique_invoice_returns'),
             Schema::hasColumn('customer_credit_notes', 'items'), Schema::hasColumn('customer_credit_notes', 'basis'),
-            Schema::hasColumn('boutique_returns', 'boutique_invoice_line_id'),
+            Schema::hasColumn('boutique_returns', 'boutique_invoice_line_id'), Schema::hasColumn('boutique_settlements', 'accrued_at_sale'),
         ];
     }
 
-    /** بصمةُ كلّ جدولٍ له مالٌ قبل الهجرة */
+    /** بصمةُ كلّ جدولٍ له مالٌ قبل الهجرة — بأعمدته قبلها: ما أُضيف إليه يُسأل عنه وحده */
     private function money(): array
     {
         return collect(['boutiques', 'boutique_settlements', 'boutique_component_dues', 'customer_invoices', 'customer_invoice_items', 'customer_payments', 'customer_payment_allocations', 'orders', 'order_items', 'expenses', 'journal_entries', 'journal_lines', 'products'])
-            ->mapWithKeys(fn ($t) => [$t => hash('sha256', json_encode(DB::table($t)->orderBy('id')->get()))])->all();
+            ->mapWithKeys(fn ($t) => [$t => hash('sha256', json_encode(DB::table($t)->orderBy('id')->get()
+                ->map(fn ($r) => array_diff_key((array) $r, ['accrued_at_sale' => 1]))))])->all();
     }
 
     /** مرتجعٌ قديمٌ بكمّيّته الصحيحة وطلبه — يبقى بهما بعد الهجرة */
@@ -131,13 +132,13 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
         DB::table('boutique_invoice_lines')->delete();
 
         $this->undo();
-        $this->assertSame([false, false, false, false, false], $this->standing());
+        $this->assertSame([false, false, false, false, false, false], $this->standing());
         $before = $this->money();
         $old = DB::table('boutique_returns')->find($note);
         $this->assertSame([77, 2], [(int) $old->order_id, (int) $old->quantity]);
 
         $this->redo();
-        $this->assertSame([true, true, true, true, true], $this->standing());
+        $this->assertSame([true, true, true, true, true, true], $this->standing());
         $this->assertSame($before, $this->money(), 'الهجرةُ غيّرت ما كُتب قبلها');
         $this->assertSame(0, DB::table('boutique_invoice_lines')->count(), 'كُتب مستحقٌّ لفاتورةٍ صدرت قبلها');
         $new = DB::table('boutique_returns')->find($note);
@@ -161,7 +162,7 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
             $this->assertStringContainsString('boutique_invoice_lines: 1', $e->getMessage());
             $this->assertStringContainsString('ALLOW_MIGRATIONS', $e->getMessage());
         }
-        $this->assertSame([true, true, true, true, true], $this->standing(), 'حُذف شيءٌ قبل الرفض');
+        $this->assertSame([true, true, true, true, true, true], $this->standing(), 'حُذف شيءٌ قبل الرفض');
     }
 
     /** وطلبُ إشعارات الدائن (#195) يضيف العمودين نفسَيهما: أيُّهما سبق لا يسقط الآخر */
@@ -174,6 +175,6 @@ class TheInvoiceDuesMigrationTouchesNothingOldTest extends TestCase
             $table->string('basis', 20)->nullable();
         });
         $this->redo();
-        $this->assertSame([true, true, true, true, true], $this->standing());
+        $this->assertSame([true, true, true, true, true, true], $this->standing());
     }
 }

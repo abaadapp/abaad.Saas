@@ -252,12 +252,10 @@ class PageController extends Controller
     private function boutiquePieces(string $number): array
     {
         $bid = (int) (auth()->user()->business_id ?? Demo::bid());
-        if (! \App\Support\BoutiqueDues::active($bid)) {
-            return [];
-        }
         $order = \App\Models\Order::where('business_id', $bid)->where('number', $number)->first();
 
-        return $order ? \App\Support\BoutiqueDues::piecesOf($order) : [];
+        // ولو أُطفئ الحسابُ بعد أن سُجّل: قطعُ الطلب المعلّقة تُحسم
+        return $order && \App\Support\BoutiqueDues::reachableFor($order) ? \App\Support\BoutiqueDues::piecesOf($order) : [];
     }
 
     /**

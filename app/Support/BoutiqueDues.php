@@ -59,6 +59,31 @@ class BoutiqueDues
     }
 
     /**
+     * أكُتب مستحقُّ مكوّنٍ لهذا المتجر من قبل — أو لهذا البوتيك منه؟
+     *
+     * المفتاحُ يفتح الجديد، والقديمُ لا يُقفل عليه: ما سُجّل التزامٌ على المتجر
+     * أو رصيدٌ له، وإطفاءُ الحساب لا يُسقط ديْنًا ولا يمنع سداده.
+     */
+    public static function recorded(int $businessId, ?int $boutiqueId = null): bool
+    {
+        return BoutiqueComponentDue::where('business_id', $businessId)
+            ->when($boutiqueId !== null, fn ($q) => $q->where('boutique_id', $boutiqueId))->exists();
+    }
+
+    /** أيُقرأ ويُسوّى ويُسدَّد ما عند هذا البوتيك من مكوّنات؟ — مشغَّلًا كان أم مطفأً وفيه ما سُجّل */
+    public static function reachable(int $businessId, ?int $boutiqueId = null): bool
+    {
+        return self::active($businessId) || self::recorded($businessId, $boutiqueId);
+    }
+
+    /** ولطلبٍ بعينه: أفيه قطعُ بوتيكٍ سُجّل مستحقُّها؟ */
+    public static function reachableFor(Order $order): bool
+    {
+        return self::active((int) $order->business_id)
+            || BoutiqueComponentDue::where('business_id', $order->business_id)->where('order_id', $order->id)->exists();
+    }
+
+    /**
      * بنودٌ مسعَّرة (`SaleLines::priceItems`) يُحمَّل كلٌّ منها مستحقَّ بوتيكاته.
      *
      * يكتب على البند `boutique_dues` (وصفةٌ أو إضافةٌ مستقلّة) وعلى الإضافة
@@ -801,6 +826,17 @@ class BoutiqueDues
     private static function rewrite($query, int $times, ?string $reason): void
     {
         foreach ($query->lockForUpdate()->orderBy('id')->get() as $row) {
+            /*
+             * والمفتاحُ مطفأٌ لا يكتب مستحقًّا جديدًا ولو زِيدت كمّيّةُ بندٍ قبلَه:
+             * الزيادةُ وقعت في فترة الإطفاء، فلا التزامَ عنها. وما نقص يُنقص كما كان.
+             */
+            if (! self::active((int) $row->business_id)) {
+                $had = max(1, (int) round((float) $row->quantity / max(0.001, (float) $row->unit_quantity)));
+                if ($times >= $had) {
+                    continue;
+                }
+            }
+
             $key = $row->live_key;
             self::undo($row, $reason);
 

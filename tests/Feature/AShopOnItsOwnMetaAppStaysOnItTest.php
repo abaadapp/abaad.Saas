@@ -62,6 +62,8 @@ class AShopOnItsOwnMetaAppStaysOnItTest extends TestCase
             'password' => bcrypt('password12345'), 'role' => 'admin', 'status' => 'نشط',
         ]);
 
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->shop->id, 'WABA-1');
         Http::fake([
             '*/oauth/access_token*' => Http::response(['access_token' => 'ABAAD-APP-TOKEN-0123456789'], 200),
             '*/debug_token*' => Http::response(['data' => [
@@ -85,6 +87,8 @@ class AShopOnItsOwnMetaAppStaysOnItTest extends TestCase
             '*/WABA-1?*' => Http::response(['id' => 'WABA-1', 'owner_business_info' => ['id' => 'MB-9']], 200),
             '*' => Http::response(['id' => 'WABA-1'], 200),
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function ownLink(string $status = WhatsAppConnection::ACTIVE): WhatsAppConnection

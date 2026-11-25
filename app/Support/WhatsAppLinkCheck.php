@@ -363,7 +363,7 @@ final class WhatsAppLinkCheck
     {
         return match (true) {
             $hook['state'] === self::UNKNOWN => self::SUBSCRIPTION_UNVERIFIABLE,
-            $hook['state'] !== self::SUBSCRIBED && (bool) $existing?->isUsable() => self::SUBSCRIPTION_UNPROVEN,
+            $hook['state'] !== self::SUBSCRIBED && (bool) $existing?->isConnected() => self::SUBSCRIPTION_UNPROVEN,
             default => null,
         };
     }

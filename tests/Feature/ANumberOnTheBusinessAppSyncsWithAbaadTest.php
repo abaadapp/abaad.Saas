@@ -81,6 +81,8 @@ class ANumberOnTheBusinessAppSyncsWithAbaadTest extends TestCase
         Http::fake(fn (HttpRequest $r) => $this->meta($r));
 
         [$this->shop, $this->owner, $this->line] = $this->merchant('محل الورد', 'rose@coex.om', self::WABA, self::PHONE, true);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function meta(HttpRequest $r)

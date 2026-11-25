@@ -107,7 +107,7 @@ class WhatsAppAutomation
         // ما يُقيَّد ممتنعًا: له سببٌ يُقرأ، ولا يستهلك حصّة
         $skip = match (true) {
             $phone === null => WhatsAppStatus::SKIP_NO_RECIPIENT,
-            $connection === null => WhatsAppStatus::SKIP_NO_CONNECTION,
+            $connection === null => WhatsAppConnections::whyNone($business),
             $template === null => WhatsAppStatus::SKIP_NO_TEMPLATE,
             default => null,
         };
@@ -355,7 +355,7 @@ class WhatsAppAutomation
     {
         $skip = match (true) {
             $phone === null => WhatsAppStatus::SKIP_NO_RECIPIENT,
-            $connection === null => WhatsAppStatus::SKIP_NO_CONNECTION,
+            $connection === null => ($business = Business::find($base['business_id'])) !== null ? WhatsAppConnections::whyNone($business) : WhatsAppStatus::SKIP_NO_CONNECTION,
             $template === null => WhatsAppStatus::SKIP_NO_TEMPLATE,
             default => null,
         };

@@ -218,6 +218,21 @@ class WhatsAppFeature
          */
         $link = $own ? WhatsAppConnections::forBusiness($business->id) : null;
 
+        // ‏‏ووصلةٌ عبر تطبيق أبعاد لا تُرسل قبل أن تثبت جهةُ رسومها — خطوةٌ تُقال لا «انقطع الربط»
+        if (WhatsAppBillingLock::applies($link) && $link->status !== WhatsAppConnection::INACTIVE) {
+            $stop = WhatsAppBillingLock::stop($link);
+
+            $steps[] = Integration::step(
+                'billing',
+                'رسوم ميتا على حسابك أنت',
+                $stop === null,
+                detail: WhatsAppBillingLock::proven($link) && filled(WhatsAppBillingLock::row($link)?->owner_name)
+                    ? __('راجع فريق أبعاد دليلها — تُحتسب على: :owner', ['owner' => WhatsAppBillingLock::row($link)->owner_name]) : null,
+                fix: $stop !== null ? WhatsAppBillingLock::says($stop)['text'] : null,
+                theirs: $stop !== null && WhatsAppBillingLock::says($stop)['who'] === 'abaad',
+            );
+        }
+
         if (WhatsAppOwnApp::is($link) && $link->status !== WhatsAppConnection::INACTIVE) {
             // وفوترةٌ رُوجعت ولا يُعرف بأمان حسابُ رسائلها لا تُعدّ تامّة — الرسالةُ لا تخرج
             $account = WhatsAppOwnApp::sendAccount($link)['problem'];

@@ -56,6 +56,8 @@ class IntegrationsAreSoldWithThePlanTest extends TestCase
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@integrations-plan.om',
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function onPlan(array $capabilities): void

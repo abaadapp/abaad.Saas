@@ -2,6 +2,7 @@
 
 namespace App\Support\RibbonPortal;
 
+use App\Models\Order;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\InvoiceBranding;
@@ -19,7 +20,7 @@ use App\Support\Website\Domains;
  * وبياناتُها وفواتيرُها، وأزرارُ الموظّفين في العملاء والصندوق والإعدادات —
  * يسأل `on()` هنا. فمتجرٌ آخر لا يُعرض له شيءٌ ويُردّ بـ404 إن طرق البابَ بيده.
  *
- * ═══ ومن يشارك الرابط ═══
+ * ═══ ومن يعمل عليها ═══
  *
  * صاحبُ النشاط، ومن اختارهم بأسمائهم في «بوابة العملاء» (`STAFF`). وليست فعلًا
  * في قائمة الصلاحيات العامّة: تلك يراها كلُّ تاجر. ولا تفتح قسمًا ولا فاتورة ولا
@@ -27,7 +28,7 @@ use App\Support\Website\Domains;
  */
 final class Portal
 {
-    /** إعدادُ المتجر: من يشارك ومن يدير — معرّفاتُ موظّفين */
+    /** إعدادُ المتجر: من يعمل على البوابة ومن يديرها — معرّفاتُ موظّفين */
     public const STAFF = 'ribbon_portal_staff';
 
     public const PATH = 'my';
@@ -90,13 +91,13 @@ final class Portal
         );
     }
 
-    /** يشارك رابطَ عميل: صاحبُ النشاط، أو من اختاره — ومن يدير يشارك */
+    /** يرى الرابطَ وقسمَ البوابة ويعتمد أجهزةَ العملاء: صاحبُ النشاط، أو من اختاره — ومن يدير كذلك */
     public static function mayShare(?User $user): bool
     {
         return self::granted($user, ['share', 'manage']);
     }
 
-    /** يرى «بوابة العملاء» في الإعدادات ويلغي الروابط */
+    /** يرى «بوابة العملاء» في الإعدادات ويلغي الدخول */
     public static function mayManage(?User $user): bool
     {
         return self::granted($user, ['manage']);
@@ -117,9 +118,23 @@ final class Portal
     }
 
     /**
+     * ما يعرضه الصندوقُ بعد بيعةٍ لها عميلٌ مسجَّل: الرابطُ الواحد واعتمادُ جهازه — أو لا شيء.
+     *
+     * @return array{portal?: array{url: string, device: string, phone: string}}
+     */
+    public static function sale(?User $user, Order $order): array
+    {
+        if ($order->customer_id === null || ! self::mayShare($user) || ($customer = $order->customer) === null) {
+            return [];
+        }
+
+        return ['portal' => ['url' => self::url(), 'device' => route('pos.orders.portal', $order->number, false), 'phone' => Access::shown($customer)]];
+    }
+
+    /**
      * ما تعرضه شاشةُ العملاء — أو `null` فلا زرَّ ولا مفتاحَ في الصفحة.
      *
-     * @return array{url: string, qr: string, poster: string, name: string}|null
+     * @return array{url: string, qr: string, poster: string, name: string, waiting: int, waitingUrl: string}|null
      */
     public static function panel(?User $user): ?array
     {
@@ -128,6 +143,8 @@ final class Portal
             'qr' => Qr::dataUri(self::url()),
             'poster' => route('admin.customers.portal.poster'),
             'name' => InvoiceBranding::name((int) $user->business_id),
+            'waiting' => count(Devices::waiting((int) $user->business_id)),
+            'waitingUrl' => route('admin.customers.portal.waiting', [], false),
         ] : null;
     }
 }

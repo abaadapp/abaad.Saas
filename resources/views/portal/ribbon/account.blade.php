@@ -20,6 +20,7 @@
     .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; } .trio > div { background: var(--soft); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; } .trio strong { font-size: 20px; color: var(--olive-d); }
     .rules { margin: 16px 0; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 14px; } .rules ul { margin: 6px 0 0; padding-inline-start: 18px; } h3 { font-size: 15px; margin: 0 0 4px; color: var(--olive-d); }
     .pt { display: flex; justify-content: space-between; gap: 12px; padding: 12px 2px; border-top: 1px solid var(--line); } .pt:first-child { border-top: 0; } .pt > div { display: flex; flex-direction: column; align-items: flex-start; } .pt .amt { align-items: flex-end; } .pt strong { font-weight: 500; } .plus { color: #3f5a2c; } .minus { color: #8a2f2a; }
+    dialog { max-width: 400px; width: calc(100% - 40px); color: var(--ink); } dialog::backdrop { background: rgb(43 42 32 / .45); } dialog form { display: flex; flex-wrap: wrap; gap: 8px; } dialog .btn { flex: 1 1 130px; }
     .flash { animation: flash 1.6s ease-out; } @keyframes flash { from { background: #f1ead9; } to { background: transparent; } }
     @media (prefers-reduced-motion: reduce) { .flash { animation: none; } }
     @media (max-width: 820px) { .stats { grid-template-columns: 1fr 1fr; } .filter { grid-template-columns: 1fr 1fr; } .filter label:first-child { grid-column: 1 / -1; } }
@@ -27,7 +28,7 @@
 @endsection
 
 @section('start')
-    <form method="post" action="{{ route('my.logout', [], false) }}">@csrf<button class="btn sm text" type="submit" data-testid="portal-logout">{{ $t('logout') }}</button></form>
+    <button class="btn sm text" type="button" id="leave-ask" data-testid="portal-logout">{{ $t('logout') }}</button>
 @endsection
 
 @section('main')
@@ -61,27 +62,25 @@
     </section>
 
     <section class="card" id="p-pts" role="tabpanel" aria-labelledby="t-pts" hidden data-testid="portal-points-panel">@include('portal.ribbon._points')</section>
+
+    {{-- الخروجُ ينسى الجهاز: يُقال قبل أن يقع --}}
+    <dialog id="leave" class="card" data-testid="portal-leave" aria-labelledby="leave-text">
+        <p id="leave-text" style="margin:0 0 16px">{{ $t('logoutAsk', ['shop' => $shop]) }}</p>
+        <form method="post" action="{{ route('my.logout', [], false) }}" data-leave>@csrf
+            <button class="btn main" type="submit" data-testid="portal-leave-yes">{{ $t('logout') }}</button>
+            <button class="btn" type="button" id="leave-no">{{ $t('logoutNo') }}</button>
+        </form>
+    </dialog>
 @endsection
 
 @section('script')
     <script nonce="{{ $nonce }}">
         (function () {
-            var url = {{ \Illuminate\Support\Js::from(['data' => route('my.data', [], false), 'points' => route('my.points', [], false), 'same' => route('my.same', [], false), 'home' => route('my.index', [], false)]) }};
+            var url = {{ \Illuminate\Support\Js::from(['data' => route('my.data', [], false), 'points' => route('my.points', [], false)]) }};
             var texts = {{ \Illuminate\Support\Js::from(['empty' => $t('empty'), 'emptyFiltered' => $t('emptyFiltered')]) }};
             var PAGE = {{ \App\Support\RibbonPortal\Account::PAGE }}, MAX = {{ \App\Support\RibbonPortal\Account::MAX }};
             var $ = function (id) { return document.getElementById(id); };
             var rows = $('rows'), filter = $('filter'), query = {}, busy = false;
-
-            // رابطٌ فُتح وفي الجهاز جلسة: إن كان لصاحبها نُزع من العنوان، وإلّا سُئل الداخلُ عن رقمه
-            var opened = function () {
-                var key = (location.hash || '').replace(/^#/, '');
-                if (!/^[A-Za-z0-9_-]{43}$/.test(key)) return;
-                fetch(url.same, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }, body: JSON.stringify({ key: key }) })
-                    .then(function (r) { return r.ok ? r.json() : { same: false }; })
-                    .then(function (d) { if (d.same) history.replaceState(null, '', url.home); else location.replace(url.home + '?switch=1' + location.hash); })
-                    .catch(function () {});
-            };
-            window.addEventListener('hashchange', opened); opened();
 
             var node = function (html) { var b = document.createElement('template'); b.innerHTML = html.trim(); return b.content.firstElementChild; };
             var find = function (list, k) { return list.querySelector('[data-key="' + k + '"]'); };
@@ -122,6 +121,8 @@
                 }).catch(function (e) { if (e !== 0) $('offline').hidden = false; }).then(function () { busy = false; $('refresh').disabled = false; });
             };
 
+            $('leave-ask').addEventListener('click', function () { $('leave').showModal(); });
+            $('leave-no').addEventListener('click', function () { $('leave').close(); });
             $('refresh').addEventListener('click', function () { load('reset'); });
             $('more').addEventListener('click', function () { load('more'); });
             filter.addEventListener('submit', function (e) {

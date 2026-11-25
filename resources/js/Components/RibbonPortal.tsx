@@ -1,40 +1,43 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { Check, ChevronLeft, Copy, ExternalLink, Link2, Printer, QrCode, RefreshCw, UserRoundCheck } from 'lucide-react';
+import { ChevronLeft, ExternalLink, Printer, QrCode, ShieldCheck, ShieldOff, Smartphone, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import CopyButton from '@/Components/CopyButton';
 import { useConfirm } from '@/Components/ConfirmDialog';
+import { DeviceApproval } from '@/Components/RibbonPortalDevice';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import { useCopy } from '@/lib/copy';
+import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { askPortal, linkOf, type PortalLinkState, type SharedLink } from '@/lib/ribbon-portal';
+import { askPortal, type ApprovedDevice, type PortalCustomerState, type WaitingCustomer, type WaitingDevice } from '@/lib/ribbon-portal';
 import { cn } from '@/lib/utils';
 
 /**
  * بوابةُ عملاء RIBBON عند الموظّف — تخصيصٌ لمتجر سعود وحده.
  *
  * لا شيءَ هنا يُرسم بلا ما يرسله الخادم (`RibbonPortal\Portal`): متجرٌ آخر لا
- * يصله مفتاحُها، وموظّفٌ لا يشارك لا يصله كذلك. والرابطُ الشخصيُّ لا يأتي مع
- * الصفحة: يُطلب حين يُضغط الزرّ. ولا رسالةَ من هنا ولا قناةَ مراسلة: يُنسخ
- * الرابطُ أو يُمسح رمزُه من الشاشة.
+ * يصله مفتاحُها، وموظّفٌ لم يُختر لا يصله كذلك. والرابطُ واحدٌ لجميع العملاء: يكتب
+ * العميلُ رقمَه، ويُعتمد جهازُه هنا مرّة. ولا رسالةَ من هنا ولا قناةَ مراسلة.
  */
 export interface PortalPanel {
     url: string;
     qr: string;
     poster: string;
     name: string;
+    /** كم عميلًا ينتظر اعتمادَ جهازه ساعةَ رُسمت الصفحة */
+    waiting: number;
+    waitingUrl: string;
 }
 
-/** الرابطُ العامّ ورمزُه — لا يكشف شيئًا وحده */
+/** الرابطُ الواحد ورمزُه — لا يكشف شيئًا وحده */
 export function PortalLinkBox({ portal, stacked = false }: { portal: PortalPanel; stacked?: boolean }) {
     const t = useTranslate();
 
     return (
         <div className="space-y-4" data-testid="portal-public-box">
-            <p className="text-sm text-[#6b7280]">{t('الرابط العام لا يكشف شيئًا وحده: يدخل العميل برابطه الشخصي ورقم هاتفه.')}</p>
+            <p className="text-sm text-[#6b7280]">{t('رابط واحد ورمز QR واحد لجميع العملاء. يكتب العميل رقم هاتفه المسجّل، ويعتمد الموظف جهازه مرة واحدة.')}</p>
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-5">
                 <img src={portal.qr} alt={t('رمز QR لبوابة العملاء')} className="size-44 rounded-xl bg-white p-3" />
                 <span dir="ltr" className="break-all text-center text-sm font-semibold text-[#111]">{portal.url}</span>
@@ -52,127 +55,187 @@ export function PortalLinkBox({ portal, stacked = false }: { portal: PortalPanel
     );
 }
 
-/** أعلى قائمة العملاء بجانب «إضافة عميل» */
+/** كلُّ جهازٍ معتمد: من اعتمده وكيف ومتى */
+export function ApprovedDevices({ devices }: { devices: ApprovedDevice[] }) {
+    const t = useTranslate();
+
+    return (
+        <ul className="space-y-1.5" data-testid="portal-approved">
+            {devices.map((d, i) => (
+                <li key={i} className="text-[12px] text-[#6b7280]">
+                    <span className="font-medium text-[#111]" dir="ltr">{d.device || t('جهاز')}</span>{' '}
+                    {d.by ? `${t('اعتمده')} ${d.by} ${t(d.how === 'call' ? 'باتصال على رقمه' : 'في المحل')}` : t('دخل قبل اعتماد الأجهزة')}{' '}
+                    <span dir="ltr">{d.at}</span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+/** كلُّ جهازٍ ينتظر: نوعُه وحتّى متى يصلح رقمُه */
+function DeviceLine({ devices }: { devices: WaitingDevice[] }) {
+    const t = useTranslate();
+
+    return (
+        <ul className="space-y-0.5">
+            {devices.map((d, i) => (
+                <li key={i} className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
+                    <Smartphone className="size-3.5 shrink-0" />
+                    <span dir="ltr">{d.device || t('جهاز')}</span>
+                    <span>{t('ينتهي')} <span dir="ltr">{d.until}</span></span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+/** من ينتظر اعتمادَ جهازه — يتحدّث والنافذةُ مفتوحة */
+export function WaitingList({ url, onCount, className }: { url: string; onCount?: (n: number) => void; className?: string }) {
+    const t = useTranslate();
+    const [rows, setRows] = useState<WaitingCustomer[] | null>(null);
+    const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
+
+    const load = useCallback(async () => {
+        const { data } = await askPortal<{ waiting: WaitingCustomer[] }>(url, 'GET', '');
+        // انقطاعٌ لا يمحو ما عُرض
+        if (!data) return;
+        setRows(data.waiting);
+        onCount?.(data.waiting.length);
+    }, [url, onCount]);
+    useEffect(() => {
+        void load();
+        const timer = setInterval(() => !document.hidden && void load(), 8000);
+
+        return () => clearInterval(timer);
+    }, [load]);
+
+    const dismiss = async (row: WaitingCustomer) => {
+        const { error } = await askPortal(row.url, 'DELETE', failed);
+        if (error) toast.error(error);
+        void load();
+    };
+
+    return (
+        <section className={cn('space-y-3 border-[var(--ui-border,#e8e8e8)]', className)} data-testid="portal-waiting">
+            <h4 className="text-sm font-bold text-[#111]">{t('أجهزة تنتظر الاعتماد')}</h4>
+            {rows === null && <p className="text-[13px] text-[#9ca3af]">{t('جارٍ التحميل…')}</p>}
+            {rows?.length === 0 && <p className="text-[13px] text-[#9ca3af]">{t('لا جهاز ينتظر الآن. يظهر هنا من كتب رقمه في البوابة وهو عميل مسجّل.')}</p>}
+            {rows?.map((row) => (
+                <div key={row.id} className="space-y-3 rounded-2xl border border-[var(--ui-border,#e8e8e8)] p-4" data-testid="portal-waiting-row">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-[#111]">{row.name}</p>
+                            <p className="text-[12px] text-[#6b7280]"><span dir="ltr">{row.phone}</span></p>
+                            <DeviceLine devices={row.devices} />
+                        </div>
+                        <Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void dismiss(row)}>{t('رفض')}</Button>
+                    </div>
+                    {row.twin && <p className="text-[12px] text-[#92400e]">{t('هذا الرقم مسجّل لأكثر من عميل. اعتمده لصاحبه.')}</p>}
+                    <DeviceApproval url={row.url} phone={row.phone} onDone={() => void load()} />
+                </div>
+            ))}
+        </section>
+    );
+}
+
+/** أعلى قائمة العملاء بجانب «إضافة عميل» — ومعه كم جهازًا ينتظر */
 export function PortalButton({ portal }: { portal: PortalPanel }) {
     const t = useTranslate();
     const [open, setOpen] = useState(false);
+    const [waiting, setWaiting] = useState(portal.waiting);
 
     return (
         <>
             <Button variant="outline" onClick={() => setOpen(true)} data-testid="portal-button">
                 <QrCode />
                 {t('بوابة العملاء')}
+                {waiting > 0 && <Badge variant="warning" data-testid="portal-waiting-count">{number(waiting)}</Badge>}
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>{t('بوابة العملاء')}</DialogTitle></DialogHeader>
-                    <div className="p-5 pt-2"><PortalLinkBox portal={portal} /></div>
+                    {/* ومن ينتظر أمامه يسبق الرابطَ ورمزَه: العميلُ واقف */}
+                    <div className="flex flex-col gap-5 p-5 pt-2">
+                        <PortalLinkBox portal={portal} />
+                        <WaitingList url={portal.waitingUrl} onCount={setWaiting} className={waiting > 0 ? 'order-first border-b pb-5' : 'border-t pt-4'} />
+                    </div>
                 </DialogContent>
             </Dialog>
         </>
     );
 }
 
-/** ملفُّ العميل — قسمُ «رابط بوابة العميل» */
-export function CustomerPortalCard({ state }: { state: PortalLinkState }) {
+/** ملفُّ العميل — قسمُ «بوابة العميل» */
+export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
     const t = useTranslate();
     const [ask, confirmDialog] = useConfirm();
-    const { copyLater, copied } = useCopy();
-    const [busy, setBusy] = useState<'make' | 'copy' | 'qr' | 'reissue' | 'revoke' | null>(null);
+    const [busy, setBusy] = useState(false);
     const [now, setNow] = useState(state);
-    const [link, setLink] = useState<SharedLink | null>(null);
-    const [showing, setShowing] = useState(false);
+    const [approving, setApproving] = useState(state.waiting.length > 0);
     const failed = t('تعذّر ذلك الآن. تحقّق من الاتصال وحاول من جديد.');
 
-    /** الرابطُ من الخادم في كلّ مرّة: قد أعاد غيرُك إصدارَه */
-    const fetchLink = async (what: 'make' | 'copy' | 'qr' | 'reissue', url: string): Promise<SharedLink | null> => {
-        setBusy(what);
-        const asked = askPortal<SharedLink>(url, 'POST', failed);
-        if (what === 'copy') await copyLater(linkOf(asked));
-        const { data, error } = await asked;
-        setBusy(null);
-        if (error || !data) {
-            toast.error(error ?? failed);
-
-            return null;
-        }
-        setLink(data);
-        setNow(data.state);
-
-        return data;
-    };
-    const showQr = async () => {
-        if (await fetchLink('qr', now.urls.share)) setShowing(true);
-    };
-    const reissue = async () => {
-        if (! now.urls.reissue || ! await ask({ message: 'إعادة إصدار رابط هذا العميل؟ يتوقف رابطه الحالي ويخرج من أجهزته.', action: 'إعادة إصدار الرابط' })) return;
-        if (await fetchLink('reissue', now.urls.reissue)) toast.success(t('صدر رابط جديد، والقديم لم يعد يعمل'));
-    };
     const revoke = async () => {
-        if (! now.urls.revoke || ! await ask({ message: 'إلغاء رابط هذا العميل؟ يخرج من أجهزته ولا يعمل الرابط بعدها.', danger: true, action: 'إلغاء الرابط' })) return;
-        setBusy('revoke');
-        const { data, error } = await askPortal<{ state: PortalLinkState }>(now.urls.revoke, 'DELETE', failed);
-        setBusy(null);
+        if (! now.urls.revoke || ! await ask({ message: 'إلغاء دخول هذا العميل؟ يخرج من أجهزته كلها، ولا يدخل حتى يُعتمد جهازه من جديد.', danger: true, action: 'إلغاء الدخول' })) return;
+        setBusy(true);
+        const { data, error } = await askPortal<{ state: PortalCustomerState }>(now.urls.revoke, 'DELETE', failed);
+        setBusy(false);
         if (error || !data) return void toast.error(error ?? failed);
-        setLink(null);
         setNow(data.state);
-        toast.success(t('أُلغي الرابط وخرج صاحبه من أجهزته'));
+        toast.success(t('أُلغي الدخول وخرج العميل من أجهزته'));
     };
 
     return (
         <Card className="p-6" data-testid="portal-customer">
             {confirmDialog}
             <div className="mb-1 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-bold text-[#111]">{t('رابط بوابة العميل')}</h3>
-                <Badge variant={now.issued ? 'success' : 'neutral'} data-testid="portal-customer-state">{now.issued ? t('فعّال') : t('لم يصدر بعد')}</Badge>
+                <h3 className="text-sm font-bold text-[#111]">{t('بوابة العميل')}</h3>
+                <Badge variant={now.since ? 'success' : 'neutral'} data-testid="portal-customer-state">{now.since ? t('دخل بوابته') : t('لم يدخل بعد')}</Badge>
             </div>
-            <p className="mb-4 text-[12px] text-[#9ca3af]">{t('يدخل العميل بوابته برابطه الشخصي ورقم هاتفه المسجّل.')}</p>
+            <p className="mb-4 text-[12px] text-[#9ca3af]">{t('يكتب رقم هاتفه في الرابط الواحد، ويُعتمد جهازه مرة واحدة.')}</p>
 
-            {!now.hasPhone ? (
+            {now.phone === null ? (
                 <p className="rounded-xl bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">{t('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')}</p>
-            ) : !now.issued ? (
-                <Button className="w-full" loading={busy === 'make'} onClick={() => void fetchLink('make', now.urls.share)} data-testid="portal-make">
-                    <Link2 />
-                    {t('إنشاء الرابط الشخصي')}
-                </Button>
             ) : (
                 <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                        <Button variant="outline" loading={busy === 'copy'} disabled={busy !== null} onClick={() => void fetchLink('copy', now.urls.share)} data-testid="portal-copy">
-                            {copied ? <Check className="text-[#047857]" /> : <Copy />}
-                            {copied ? t('نُسخ') : t('نسخ الرابط')}
-                        </Button>
-                        <Button variant="outline" loading={busy === 'qr'} disabled={busy !== null} onClick={() => void showQr()} data-testid="portal-qr">
-                            <QrCode />
-                            {t('عرض رمز QR')}
+                    {now.since && (
+                        <dl className="space-y-1.5 text-[12px]">
+                            <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('أول اعتماد')}</dt><dd dir="ltr" className="text-[#111]">{now.since}</dd></div>
+                            <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('آخر زيارة')}</dt><dd dir="ltr" className="text-[#111]">{now.used ?? '—'}</dd></div>
+                        </dl>
+                    )}
+                    {now.devices.length > 0 && (
+                        <div>
+                            <p className="mb-1 text-[12px] font-semibold text-[#111]">{t('أجهزة معتمدة')} ({number(now.devices.length)})</p>
+                            <ApprovedDevices devices={now.devices} />
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                        <CopyButton text={now.url} label="نسخ رابط البوابة" size="md" className="w-full" />
+                        <Button variant="outline" aria-expanded={approving} onClick={() => setApproving(! approving)} data-testid="portal-approve-button">
+                            <ShieldCheck />
+                            {t('اعتماد جهاز العميل')}
                         </Button>
                     </div>
-                    {link && (
-                        <p dir="ltr" className="select-all break-all rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-start text-[12px] leading-relaxed text-[#374151]" data-testid="portal-link">{link.url}</p>
+                    {approving && (
+                        <div className="space-y-3 rounded-2xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-4">
+                            {now.waiting.length > 0 && <DeviceLine devices={now.waiting} />}
+                            <DeviceApproval<{ state: PortalCustomerState }>
+                                url={now.urls.device}
+                                phone={now.phone}
+                                onDone={(d) => {
+                                    setNow(d.state);
+                                    setApproving(false);
+                                }}
+                            />
+                        </div>
                     )}
-                    <dl className="space-y-1.5 text-[12px]">
-                        <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('صدر في')}</dt><dd dir="ltr" className="text-[#111]">{now.issued}</dd></div>
-                        <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('آخر دخول به')}</dt><dd dir="ltr" className="text-[#111]">{now.used ?? '—'}</dd></div>
-                    </dl>
-                    {now.urls.reissue && now.urls.revoke && (
-                        <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
-                            <Button variant="outline" size="sm" loading={busy === 'reissue'} disabled={busy !== null} onClick={() => void reissue()} data-testid="portal-reissue"><RefreshCw />{t('إعادة إصدار الرابط')}</Button>
-                            <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy === 'revoke'} disabled={busy !== null} onClick={() => void revoke()} data-testid="portal-revoke">{t('إلغاء الرابط')}</Button>
+                    {now.urls.revoke && (now.devices.length > 0 || now.waiting.length > 0) && (
+                        <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+                            <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy} onClick={() => void revoke()} data-testid="portal-revoke"><ShieldOff />{t('إلغاء الدخول')}</Button>
                         </div>
                     )}
                 </div>
             )}
-
-            <Dialog open={showing && link !== null} onOpenChange={setShowing}>
-                <DialogContent className="sm:max-w-sm">
-                    <DialogHeader><DialogTitle>{t('رمز بوابة العميل')}</DialogTitle></DialogHeader>
-                    <div className="flex flex-col items-center gap-3 p-5 pt-2 text-center" data-testid="portal-customer-qr">
-                        {link && <img src={link.qr} alt={t('رمز QR لرابط العميل')} className="size-64 rounded-xl border border-[var(--ui-border,#e8e8e8)] bg-white p-6" />}
-                        <p className="text-sm text-[#374151]">{t('يمسحه العميل بهاتفه، ثم يكتب رقم هاتفه المسجّل.')}</p>
-                        <p className="text-[12px] text-[#9ca3af]">{t('رمز خاص بهذا العميل وحده، فلا يُعرض لغيره.')}</p>
-                    </div>
-                </DialogContent>
-            </Dialog>
         </Card>
     );
 }
@@ -192,7 +255,7 @@ export function PortalSettingsCard({ href }: { href: string }) {
             </span>
             <span className="min-w-0 flex-1">
                 <span className="block text-[15px] font-semibold text-[#111]">{t('بوابة العملاء')}</span>
-                <span className="mt-1 block text-[13px] leading-snug text-[#9ca3af]">{t('رابط البوابة ومن يشاركه وروابط العملاء')}</span>
+                <span className="mt-1 block text-[13px] leading-snug text-[#9ca3af]">{t('رابط البوابة ومن يعمل عليها ومن دخل من العملاء')}</span>
             </span>
             <ChevronLeft className="size-4 shrink-0 text-[#d1d5db] transition-colors group-hover:text-[#6b7280] ltr:rotate-180" />
         </Link>

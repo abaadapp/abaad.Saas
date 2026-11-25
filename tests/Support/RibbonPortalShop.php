@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\OrderStatus;
 use App\Support\RibbonPortal\Access;
+use App\Support\RibbonPortal\Devices;
 use App\Support\SalesChannel;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\URL;
@@ -80,7 +81,7 @@ trait RibbonPortalShop
     {
         $order = Order::create($over + [
             'business_id' => $customer->business_id, 'branch_id' => null, 'branch' => 'الخوير', 'customer_id' => $customer->id, 'customer_name' => $customer->name,
-            'number' => $number, 'employee_name' => 'الكاشير سالم', 'status' => OrderStatus::COMPLETED, 'is_held' => false, 'channel' => SalesChannel::POS,
+            'number' => $number, 'user_id' => $this->owner->id, 'employee_name' => 'الكاشير سالم', 'status' => OrderStatus::COMPLETED, 'is_held' => false, 'channel' => SalesChannel::POS,
             'payment_method' => 'نقدي', 'payment_status' => 'مدفوع', 'subtotal' => 20, 'total' => 20, 'ordered_at' => now(), 'internal_notes' => 'سرٌّ داخليّ',
         ]);
         $order->items()->create(['name' => 'باقة '.$number, 'quantity' => 2, 'price' => 10, 'total' => 20, 'cost' => 3.777]);
@@ -110,21 +111,32 @@ trait RibbonPortalShop
         return $this->withCredentials();
     }
 
-    protected function key(Customer $customer): string
+    /** يكتب رقمَه في جهازٍ — جديدٍ أو معه كعكتُه */
+    protected function ask(string $phone, ?string $cookie = null): TestResponse
     {
-        return explode('#', Access::share($customer->fresh(), null)['url'])[1];
+        return $this->visitor($cookie)->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => $phone]);
     }
 
-    protected function attempt(string $key, string $phone): TestResponse
+    /** كعكةُ جهازٍ كُتب فيه هذا الرقم وهو ينتظر */
+    protected function device(string $phone): string
     {
-        return $this->visitor(null)->postJson('http://ribbon.abaadapp.om/my/session', ['key' => $key, 'phone' => $phone]);
+        return (string) $this->ask($phone)->assertOk()->getCookie(Access::COOKIE)->getValue();
     }
 
-    /** يدخل برابطه ورقمه — ويردّ كعكةَ جلسته */
+    /** الرقمُ الظاهر على شاشة الجهاز — كما يقرؤه الموظّف */
+    protected function shown(string $cookie): string
+    {
+        preg_match('/data-testid="portal-number">([\d ]+)</', (string) $this->my('', $cookie)->assertOk()->getContent(), $m);
+
+        return str_replace(' ', '', $m[1] ?? '');
+    }
+
+    /** يكتب رقمَه، ويعتمد الموظّفُ جهازَه — ويردّ كعكتَه */
     protected function enter(Customer $customer, ?string $phone = null): string
     {
-        $response = $this->attempt($this->key($customer), $phone ?? (string) $customer->phone)->assertOk();
+        $cookie = $this->device($phone ?? (string) $customer->phone);
+        $this->assertNotNull(Devices::approve($customer->fresh(), $this->shown($cookie), $this->owner, 'shop'));
 
-        return (string) $response->getCookie(Access::COOKIE)->getValue();
+        return $cookie;
     }
 }

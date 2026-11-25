@@ -723,18 +723,21 @@ final class BoutiqueSales
     }
 
     /**
-     * فواتيرُ العملاء بلا طلب للبوتيكات: ما اكتمل تحصيلُه في الشهر (بما بقي منه، أو بما
-     * حملته ورقتُه)، وما ينتظر تحصيلًا الآن أيًّا كان شهرُ صدوره، وما حملته ورقةٌ ثمّ
-     * أُلغي تحصيلُه. وما ينتظر لا يُجمع في المستحقّ: لا تحمله ورقةٌ بعد.
+     * فواتيرُ العملاء بلا طلب للبوتيكات: ما اكتمل تحصيلُه في الشهر بما بقي منه، وما ينتظر
+     * تحصيلًا الآن أيًّا كان شهرُ صدوره، وما حملته ورقةٌ ثمّ أُلغي تحصيلُه. وما ينتظر لا
+     * يُجمع في المستحقّ: لا تحمله ورقةٌ بعد.
+     *
+     * والمردودُ خارجٌ ولو رُدّ بعد ورقته: كبنود الطلبات هنا وكتقرير المبيعات
+     * (`BoutiqueInvoiceDues::sold`). والورقةُ كما صدرت في «التسوية»، وإشعارُه في «المرتجعات».
      *
      * @param  list<int>  $ids
      * @return array<string, mixed>
      */
     private static function invoices(int $businessId, array $ids, Carbon $from, Carbon $to): array
     {
-        $part = fn (string $k) => "COALESCE(SUM(CASE WHEN boutique_settlement_id IS NULL THEN {$k} - returned_{$k} ELSE settled_{$k} END), 0) as {$k}";
+        $part = fn (string $k) => "COALESCE(SUM({$k} - returned_{$k}), 0) as {$k}";
         $row = BoutiqueInvoiceLine::where('business_id', $businessId)->whereIn('boutique_id', $ids ?: [0])
-            ->whereNull('voided_at')->whereBetween('collected_at', [$from, $to])->toBase()
+            ->whereNull('voided_at')->whereColumn('quantity', '>', 'returned_quantity')->whereBetween('collected_at', [$from, $to])->toBase()
             ->selectRaw('COUNT(*) as line_count, COUNT(DISTINCT customer_invoice_id) as invoice_count')
             ->selectRaw(implode(', ', array_map($part, ['quantity', 'gross', 'commission', 'net'])))->first();
 

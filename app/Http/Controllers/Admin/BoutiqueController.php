@@ -820,7 +820,7 @@ class BoutiqueController extends Controller
     }
 
     /**
-     * وما اكتمل تحصيلُه في الشهر من فواتير العملاء — بما بقي منه، أو بما حملته ورقتُه.
+     * وما اكتمل تحصيلُه في الشهر من فواتير العملاء — بما بقي منه، وما رُدّ بعد ورقته خارجٌ كبنود الطلبات.
      *
      * @param  array<int, float>  $sold
      * @return array<int, float>
@@ -841,7 +841,7 @@ class BoutiqueController extends Controller
             $from = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
             $add(BoutiqueInvoiceLine::where('business_id', $businessId)->whereNotNull('boutique_settlement_id')
                 ->whereBetween('collected_at', [$from, (clone $from)->endOfMonth()])
-                ->groupBy('boutique_id')->selectRaw('boutique_id, SUM(settled_gross) as gross')->pluck('gross', 'boutique_id'));
+                ->groupBy('boutique_id')->selectRaw('boutique_id, SUM(gross - returned_gross) as gross')->pluck('gross', 'boutique_id'));
         }
 
         return $sold;

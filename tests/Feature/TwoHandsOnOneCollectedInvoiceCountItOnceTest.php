@@ -6,6 +6,7 @@ use App\Models\Boutique;
 use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueInvoiceReturn;
 use App\Models\BoutiqueSettlement;
+use App\Models\BoutiqueSheetHold;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
@@ -229,6 +230,85 @@ class TwoHandsOnOneCollectedInvoiceCountItOnceTest extends TestCase
         $notes = round((float) DB::table('boutique_returns')->sum('amount'), 3);
         $this->assertEquals(4.8, round((float) $sheet->net - $notes, 3), 'للبوتيك غيرُ ما بقي');
         $this->assertEquals(4.8, round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
+        $this->balanced();
+    }
+
+    /* ═══════════ تحصيلٌ أُلغي بعد الورقة — `BoutiqueHolds` ═══════════ */
+
+    private function paySheetBody(BoutiqueSettlement $s): string
+    {
+        return sprintf('app(App\Http\Controllers\Admin\ExpenseController::class)->markPaid(Illuminate\Http\Request::create("/", "POST", ["method" => "نقدي"]), %d);', $s->expense_id);
+    }
+
+    /** سدادُ الورقة وإلغاءُ التحصيل معًا: إمّا سُدّدت قبله فتُراجَع، أو عُلّقت فلا يخرج شيء — ولا حالٌ بينهما */
+    public function test_paying_a_sheet_and_cancelling_its_collection_at_once_is_one_or_the_other(): void
+    {
+        $seen = [];
+        for ($n = 0; $n < 4; $n++) {
+            $invoice = $n === 0 ? $this->invoice : CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->company, [], [['product_id' => Product::firstOrFail()->id, 'description' => 'قطعة', 'quantity' => 2, 'unit_price' => 6]]));
+            $payment = CustomerPayments::record($this->shop->id, $this->company, 12, ['method' => 'نقدي'], [$invoice->id => 12]);
+            $sheet = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+            $cash = Ledger::balance($this->shop->id, 'cash');
+            $owed = Ledger::balance($this->shop->id, 'boutique_payable');
+
+            $out = $this->hands([$this->paySheetBody($sheet), sprintf('App\Support\CustomerPayments::cancel(App\Models\CustomerPayment::find(%d), "ارتدّ");', $payment->id)]);
+            $this->assertSame('ok', $out[1], 'إلغاءُ التحصيل سقط: '.$out[1]);
+            $this->assertSame('ok', $out[0], 'سدادُ الورقة سقط: '.$out[0]);
+
+            $hold = BoutiqueSheetHold::where('boutique_settlement_id', $sheet->id)->sole();
+            $paid = Expense::find($sheet->expense_id)->isPaid();
+            // إلغاءُ السند يردّ 12 من الصندوق، والورقةُ 9.600 إن سُدّدت
+            $left = round($cash - Ledger::balance($this->shop->id, 'cash'), 3);
+            $this->assertSame($paid, $hold->paid_before, 'سُدّدت والتعليقُ يقول لا، أو العكس');
+            $this->assertEquals($paid ? 21.6 : 12.0, $left);
+            $this->assertEquals(round($owed - ($paid ? 9.6 : 0.0), 3), round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
+            $this->assertNull($hold->withheld_at);
+            $seen[] = $paid;
+            $this->balanced();
+        }
+        $this->assertCount(4, $seen);
+    }
+
+    public function test_three_hands_paying_what_was_withheld_pay_it_once(): void
+    {
+        $other = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->company, [], [['product_id' => Product::firstOrFail()->id, 'description' => 'قطعة', 'quantity' => 1, 'unit_price' => 6]]));
+        $payment = CustomerPayments::record($this->shop->id, $this->company, 12, ['method' => 'نقدي'], [$this->invoice->id => 12]);
+        CustomerPayments::record($this->shop->id, $this->company, 6, ['method' => 'نقدي'], [$other->id => 6]);
+        $sheet = Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+        CustomerPayments::cancel($payment->fresh(), 'ارتدّ');
+        $this->assertSame(['ok'], $this->hands([$this->paySheetBody($sheet)]));
+        $this->assertEquals(9.6, round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
+        CustomerPayments::record($this->shop->id, $this->company, 12, ['method' => 'نقدي'], [$this->invoice->id => 12]);
+
+        $hold = BoutiqueSheetHold::sole();
+        $out = $this->hands(array_fill(0, 3, sprintf('App\Support\BoutiqueHolds::pay(App\Models\BoutiqueSheetHold::find(%d), "نقدي");', $hold->id)));
+        sort($out);
+        $this->assertSame(['ok', 'refused', 'refused'], $out);
+        $this->assertEquals(0.0, round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
+        $this->assertSame(1, DB::table('journal_entries')->where('source', \App\Support\BoutiqueHolds::SOURCE)->count());
+        $this->balanced();
+    }
+
+    /** إلغاءان وإفراجٌ وتحصيلٌ معًا: تعليقٌ واحدٌ مفتوحٌ على الأكثر، ولا عطب */
+    public function test_cancelling_releasing_and_collecting_at_once_leave_one_row_decided_once(): void
+    {
+        $payment = CustomerPayments::record($this->shop->id, $this->company, 12, ['method' => 'نقدي'], [$this->invoice->id => 12]);
+        Boutiques::settle($this->shop, $this->lama, self::PERIOD);
+        $cancel = sprintf('App\Support\CustomerPayments::cancel(App\Models\CustomerPayment::find(%d), "ارتدّ");', $payment->id);
+        $this->assertSame(['ok', 'ok'], $this->hands([$cancel, $cancel]));
+        $this->assertSame(1, BoutiqueSheetHold::count());
+
+        $hold = BoutiqueSheetHold::sole();
+        $out = $this->hands([
+            sprintf('App\Support\BoutiqueHolds::release(App\Models\BoutiqueSheetHold::find(%d), "قرار");', $hold->id),
+            sprintf('App\Support\BoutiqueHolds::release(App\Models\BoutiqueSheetHold::find(%d), "قرار");', $hold->id),
+            $this->payBody(12),
+        ]);
+        $this->assertSame('ok', $out[2]);
+        $this->assertLessThanOrEqual(1, count(array_filter(array_slice($out, 0, 2), fn ($o) => $o === 'ok')), 'حُسم مرّتين');
+        $this->assertSame([], array_values(array_diff(array_slice($out, 0, 2), ['ok', 'refused'])));
+        $this->assertSame(1, BoutiqueSheetHold::count());
+        $this->assertNotNull(BoutiqueSheetHold::sole()->closed_at);
         $this->balanced();
     }
 }

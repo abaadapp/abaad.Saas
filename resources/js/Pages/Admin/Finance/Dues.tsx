@@ -48,7 +48,18 @@ interface PayrollDue {
     employees: number;
 }
 
+/** جزءٌ من ورقة بوتيكٍ سُدّدت دونه لأنّ تحصيلَه أُلغي — دَينٌ بصفّه. انظر `BoutiqueHolds::dues` */
+interface HeldDue {
+    id: number;
+    sheet: string | null;
+    boutique: string | null;
+    name: string | null;
+    amount: number;
+    held: boolean;
+}
+
 interface Props {
+    holds?: HeldDue[];
     expenses: ExpenseDue[];
     invoices: InvoiceDue[];
     payroll: PayrollDue[];
@@ -67,11 +78,11 @@ interface Props {
  * دفعٍ في قائمةٍ جامعة يُضغط على السطر الخطأ.
  */
 export default function Dues() {
-    const { expenses, invoices, payroll, totals, context } = usePage<PageProps<Props>>().props;
+    const { expenses, invoices, payroll, totals, context, holds = [] } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
-    const empty = expenses.length === 0 && invoices.length === 0 && payroll.length === 0;
+    const empty = expenses.length === 0 && invoices.length === 0 && payroll.length === 0 && holds.length === 0;
 
     const dueCell = (row: Due) =>
         row.due ? (
@@ -159,6 +170,30 @@ export default function Dues() {
                                     </TableBody>
                                 </Table>
                             </div>
+                        </Card>
+                    )}
+
+                    {holds.length > 0 && (
+                        <Card className="overflow-hidden" data-testid="dues-holds">
+                            <h2 className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4 text-[15px] font-bold text-[#111]">
+                                {t('معلّق من أوراق بوتيكات سُدّدت دونه')}
+                            </h2>
+                            <ul className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                {holds.map((h) => (
+                                    <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-[13px]">
+                                        <span>
+                                            <span className="text-[#111]">{h.name ?? '—'}</span>
+                                            <span className="block text-[12px] text-[#6b7280]">
+                                                {t('الورقة :sheet · بوتيك: :name', { sheet: h.sheet ?? '—', name: h.boutique ?? '—' })}
+                                            </span>
+                                        </span>
+                                        <span className="flex items-center gap-2">
+                                            <Badge variant={h.held ? 'warning' : 'neutral'}>{h.held ? t('معلّق للمراجعة') : t('ينتظر السداد')}</Badge>
+                                            <span className="font-semibold tabular-nums">{m(h.amount)}</span>
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
                         </Card>
                     )}
 

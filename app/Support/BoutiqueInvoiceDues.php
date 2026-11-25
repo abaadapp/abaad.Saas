@@ -176,18 +176,18 @@ final class BoutiqueInvoiceDues
      *
      * التحصيلُ وإلغاؤه، وصرفُ الشيك وارتدادُه، وإشعارُ الدائن، والإصدارُ نفسُه (ورقةٌ
      * غطّتها النقاطُ صدرت مسدَّدة). ولا يُمسّ ما حملته ورقة: الورقةُ مجمَّدة، وفاتورةٌ
-     * أُلغي تحصيلُها بعدها تُقرأ استثناءً يُراجَع (`reopened`).
+     * أُلغي تحصيلُها بعدها يُعلَّق سدادُ حصّتها حتّى تُراجَع (`BoutiqueHolds`).
      */
-    public static function sync(int $invoiceId): void
+    public static function sync(int $invoiceId, ?CustomerPayment $payment = null): void
     {
         $open = fn () => BoutiqueInvoiceLine::where('customer_invoice_id', $invoiceId)
             ->whereNull('boutique_settlement_id')->whereNull('voided_at');
 
-        if (! $open()->exists()) {
+        if (! BoutiqueInvoiceLine::where('customer_invoice_id', $invoiceId)->whereNull('voided_at')->exists()) {
             return;
         }
 
-        DB::transaction(function () use ($invoiceId, $open) {
+        DB::transaction(function () use ($invoiceId, $open, $payment) {
             // المتجرُ أوّلًا — ترتيبُ الأقفال الواحد، وهو ما تمسكه الورقةُ قبل أن تقرأ (`Boutiques::write`)
             Business::whereKey(CustomerInvoice::whereKey($invoiceId)->value('business_id'))->lockForUpdate()->first();
 
@@ -199,6 +199,9 @@ final class BoutiqueInvoiceDues
                 }
                 $line->update(['collected_at' => $done ? now() : null]);
             });
+
+            // وما حملته ورقةٌ: الورقةُ مجمَّدة، ويُعلَّق سدادُ ما أُلغي تحصيلُه أو يُفكّ (`BoutiqueHolds`)
+            BoutiqueHolds::sync($invoiceId, $done, $payment);
         });
     }
 
@@ -206,7 +209,7 @@ final class BoutiqueInvoiceDues
     public static function syncPayment(CustomerPayment $payment): void
     {
         $payment->allocations()->pluck('customer_invoice_id')->unique()->sort()
-            ->each(fn ($id) => self::sync((int) $id));
+            ->each(fn ($id) => self::sync((int) $id, $payment));
     }
 
     /** أُلغيت الفاتورة: ما لم تحمله ورقةٌ يسقط، وما حملته يُكتب مرتجعُه إشعارًا (`BoutiqueReturns`) */

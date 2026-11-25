@@ -62,6 +62,8 @@ class ThePlatformChoosesHowNewMerchantsLinkWhatsAppTest extends TestCase
             'business_id' => null, 'name' => 'مدير المنصّة', 'email' => 'p@abaad.om',
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد نجاح التجربة — والقفلُ قبلها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->launchWhatsAppForAll();
     }
 
     private function row(string $key): ?Setting

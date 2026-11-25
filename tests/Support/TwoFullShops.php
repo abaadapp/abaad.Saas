@@ -114,7 +114,15 @@ trait TwoFullShops
             'review' => $first('reviews'),
             'category' => $this->row('categories', ['business_id' => $bid, 'name' => "فئة {$tag}", 'card_image' => "/storage/website/{$bid}/card.jpg"]),
             'boutique' => $boutique = $this->row('boutiques', ['business_id' => $bid, 'name' => "بوتيك {$tag}"]),
-            'boutique_settlement' => $this->row('boutique_settlements', ['business_id' => $bid, 'boutique_id' => $boutique, 'number' => "BQ-{$tag}-1", 'period' => now()->format('Y-m'), 'components_due' => 5]),
+            'boutique_settlement' => $sheet = $this->row('boutique_settlements', ['business_id' => $bid, 'boutique_id' => $boutique, 'number' => "BQ-{$tag}-1", 'period' => now()->format('Y-m'), 'components_due' => 5]),
+            // حصّةٌ معلَّقة من ورقته: أُلغي تحصيلُ فاتورتها — تُطرق أبوابُ الإفراج والمراجعة والسداد
+            'boutique_hold' => $this->row('boutique_sheet_holds', [
+                'business_id' => $bid, 'boutique_id' => $boutique, 'boutique_settlement_id' => $sheet, 'customer_invoice_id' => $invoice, 'amount' => 5, 'why' => "تعليق {$tag}", 'live_key' => "hold-{$tag}",
+                'boutique_invoice_line_id' => $this->row('boutique_invoice_lines', [
+                    'business_id' => $bid, 'boutique_id' => $boutique, 'boutique_name' => "بوتيك {$tag}", 'customer_invoice_id' => $invoice, 'name' => "صنف {$tag}", 'rule' => 'as_recorded', 'boutique_settlement_id' => $sheet,
+                    'customer_invoice_item_id' => $this->row('customer_invoice_items', ['customer_invoice_id' => $invoice, 'description' => "بند {$tag}", 'quantity' => 1, 'unit_price' => 5]),
+                ]),
+            ]),
             // نوعُ الجزء في مسار «منتجات البوتيك» — كلمةٌ في الرابط لا صفّ
             'part_kind' => 'included',
             'season' => $season,

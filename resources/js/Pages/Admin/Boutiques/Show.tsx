@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
+import HoldsPanel, { type SheetHold } from './HoldsPanel';
 import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
 import SalesPanel from './SalesPanel';
 import InvoiceReviewPanel from './InvoiceReviewPanel';
@@ -45,6 +46,8 @@ interface Props {
     canIssue?: boolean;
     canPay?: boolean;
     /** مرتجعاتٌ بعد أوراقها — انظر `BoutiqueReturns` */
+    /** تحصيلٌ أُلغي بعد صدور الورقة — `null` لمن لا يقرأ المال */
+    holds?: SheetHold[] | null;
     returns?: BoutiqueReturnsPart | null;
     statement: {
         /** أتُصدَر على شهرٍ ما زال يبيع؟ — خبرٌ من الخادم لا حسبةٌ في المتصفّح */
@@ -96,7 +99,7 @@ interface Props {
  */
 export default function BoutiqueShow() {
     // غيابُ المفتاح يعني «كما كان»: الحارسُ الخادمُ وهو لا يُرسل الكشفَ أصلًا لمن لا يقرؤه
-    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, returns, context, boutiqueOptions, canSeeSales } =
+    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, holds, returns, context, boutiqueOptions, canSeeSales } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -264,6 +267,8 @@ export default function BoutiqueShow() {
                 />
             )}
 
+            {holds && holds.length > 0 && <HoldsPanel boutiqueId={boutique.id} holds={holds} currency={currency} canPay={canPay} />}
+
             {returns && (
                 <ReturnsPanel
                     boutiqueId={boutique.id}
@@ -386,7 +391,7 @@ export default function BoutiqueShow() {
                     )}
                     {(statement.reopened?.lines ?? 0) > 0 && (
                         <p className="text-[#b91c1c]">
-                            {t('للمراجعة: :net حملته ورقة تسوية ثم أُلغي تحصيل فاتورته (:n فاتورة). الورقة كما صدرت.', {
+                            {t('للمراجعة: :net حملته ورقة تسوية ثم أُلغي تحصيل فاتورته (:n فاتورة). الورقة كما صدرت، وتفصيله في «تحصيل أُلغي بعد صدور ورقة التسوية».', {
                                 net: money(statement.reopened!.net, currency), n: number(statement.reopened!.invoices),
                             })}
                         </p>

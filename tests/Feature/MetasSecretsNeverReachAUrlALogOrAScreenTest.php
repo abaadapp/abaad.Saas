@@ -79,6 +79,8 @@ class MetasSecretsNeverReachAUrlALogOrAScreenTest extends TestCase
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'owner@secrets.om',
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function meta(HttpRequest $r)

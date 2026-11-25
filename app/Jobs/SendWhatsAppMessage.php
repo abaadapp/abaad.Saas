@@ -99,7 +99,7 @@ class SendWhatsAppMessage implements ShouldQueue
         $current = WhatsAppConnections::resolve($business);
 
         if (! $current || $message->source_mode !== WhatsAppFeature::effectiveMode($business)) {
-            $this->stop($message, WhatsAppStatus::SKIPPED, WhatsAppStatus::SKIP_NO_CONNECTION);
+            $this->stop($message, WhatsAppStatus::SKIPPED, $current ? WhatsAppStatus::SKIP_NO_CONNECTION : WhatsAppConnections::whyNone($business));
 
             return;
         }

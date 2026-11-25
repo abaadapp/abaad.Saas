@@ -872,7 +872,7 @@ class Demo
             // «عبر الدعم» تُلحق بالاسم: السطر الواحد لا يتّسع لشارة
             'text' => $a->user_name
                 .($a->impersonator_name ? ' ('.__('عبر الدعم').')' : '')
-                .' — '.$a->description,
+                .' — '.BoutiqueAccess::activity($a->subject_type, $a->description, $u),
             'time' => optional($a->created_at)?->diffForHumans() ?? '—',
             'icon' => $a->icon,
             'color' => $a->color,
@@ -3514,7 +3514,7 @@ class Demo
     {
         return ActivityLog::where('user_id', $userId)->latest('id')->limit($limit)->get()
             ->map(fn ($a) => [
-                'text' => $a->description,
+                'text' => BoutiqueAccess::activity($a->subject_type, $a->description, auth()->user()),
                 'time' => optional($a->created_at)?->diffForHumans() ?? '—',
                 'icon' => $a->icon,
                 'color' => $a->color,

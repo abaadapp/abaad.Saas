@@ -1208,7 +1208,7 @@ class ReportData
                 'id' => $a->id,
                 'user' => $a->user_name,
                 'action' => $a->action,
-                'description' => $a->description,
+                'description' => BoutiqueAccess::activity($a->subject_type, $a->description, auth()->user()),
                 'at' => optional($a->created_at)->format('Y-m-d H:i'),
             ]);
 

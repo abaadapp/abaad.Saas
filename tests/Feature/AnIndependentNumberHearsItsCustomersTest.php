@@ -137,6 +137,13 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
             'business_id' => null, 'name' => 'مدير المنصة', 'email' => 'root@hears.om',
             'password' => bcrypt('x'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        foreach ([$this->shopA, $this->shopC] as $b) {
+            $this->proveWhatsAppBilling((int) $b->id, 'WABA-A');
+            $this->proveWhatsAppBilling((int) $b->id, 'WABA-N');
+        }
     }
 
     /* ============================== ميتا المزيّفة ============================== */
@@ -175,6 +182,11 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
             return $this->routing === null
                 ? $error(100, 'Conversation routing is not enabled for this phone number.')
                 : Http::response(['roles' => $this->routing, 'is_standby' => false], 200);
+        }
+
+        // ‏‏وMeta لا تُطلع تطبيقَنا على وسيلة الدفع
+        if (str_contains($url, 'primary_funding_id')) {
+            return $error(10, '(#10)');
         }
 
         if (str_contains($url, 'fields=is_on_biz_app')) {

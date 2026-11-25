@@ -317,21 +317,27 @@ final class BoutiqueReturns
         if ($expense === null || $amount <= 0) {
             $note->update($decided + ['status' => BoutiqueReturn::REDUCED, 'booked_at' => now()->toDateString()]);
 
+            BoutiqueHolds::decided($note->boutique_invoice_line_id);
+
             return;
         }
 
         $accrued = Boutiques::accrual($expense) !== null;
 
-        if (! $expense->isPaid() && (! $accrued || $amount <= self::payable($expense) + 0.0005)) {
+        // وما سُدّدت ورقتُه دونه (`BoutiqueHolds::withhold`) ما زال دَينًا في 2160: يُنقص منه، ولا مطالبةَ بما لم يُدفع
+        if ((! $expense->isPaid() && (! $accrued || $amount <= self::payable($expense) + 0.0005))
+            || ($expense->isPaid() && $accrued && BoutiqueHolds::covers($note->boutique_invoice_line_id, $amount))) {
             // ورقةٌ قديمةٌ لم تُسدَّد لا دَينَ لها في 2160: يُسدَّد صافيها ويدخل الأثرُ يومَ السداد
             $at = $accrued ? self::post($note, $expense, 'boutique_payable') : null;
             $note->update($decided + ['status' => BoutiqueReturn::REDUCED, 'booked_at' => $at?->toDateString()]);
+            BoutiqueHolds::decided($note->boutique_invoice_line_id);
 
             return;
         }
 
         $at = self::post($note, $expense, 'boutique_receivable');
         $note->update($decided + ['status' => BoutiqueReturn::CLAIM, 'booked_at' => $at->toDateString()]);
+        BoutiqueHolds::decided($note->boutique_invoice_line_id);
     }
 
     /**
@@ -350,6 +356,7 @@ final class BoutiqueReturns
             'decided_by' => auth()->id(),
             'decided_at' => now(),
         ]);
+        BoutiqueHolds::decided($note->boutique_invoice_line_id);
 
         if ($note->condition === BoutiqueReturn::SELLABLE && ($order = Order::find($note->order_id))) {
             self::offShelf($order, (int) $note->product_id, (int) $note->quantity, __('مرتجعٌ تحمّله المتجر — خرج من رفّ البوتيك'));
@@ -493,7 +500,8 @@ final class BoutiqueReturns
             $claims = BoutiqueReturn::where('business_id', $business->id)->where('boutique_id', $boutique->id)
                 ->where('status', BoutiqueReturn::CLAIM)->orderBy('id')->lockForUpdate()->get();
 
-            $room = self::payable($expense);
+            // ولا يُخصم من معلَّقٍ لم يُراجَع
+            $room = BoutiqueHolds::payNow($expense);
             $total = 0.0;
 
             foreach ($claims as $claim) {

@@ -299,7 +299,7 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
     /** ‏‏كلُّ وصلةٍ تعمل يومَ النشر تبقى تعمل — ولو جدّد صاحبُها ربطَه بعد الاعتماد الآليّ فصار له فيه صفّ */
     public function test_the_migration_stops_no_link_that_works_today(): void
     {
-        $shops = collect(['قديم', 'اعتُمد آليًّا', 'ينتظر الاعتماد', 'يحتاج تفويضًا', 'عطب', 'انتهى رمزه', 'فصله صاحبه', 'بلا رقم'])
+        $shops = collect(['قديم', 'اعتُمد آليًّا', 'ينتظر الاعتماد', 'يحتاج تفويضًا', 'عطب', 'انتهى رمزه', 'فصله صاحبه', 'بلا رقم', 'بلا رمز', 'قديم تعطّل'])
             ->map(fn (string $name, int $i) => $this->makeShop($name, "s{$i}@abaadapp.om", "9222220{$i}")[0])->values();
         $link = fn (int $i, array $over = [], ?string $adoption = 'adopted') => tap($this->legacy([
             'business_id' => $shops[$i]->id, 'waba_id' => "200{$i}", 'phone_number_id' => "PN-2{$i}", 'access_token' => "T-{$i}", ...$over,
@@ -316,6 +316,9 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $expired = $link(5, ['token_expires_at' => now()->subDay()]);
         $off = $link(6, ['status' => 'inactive'], 'closed');
         $numberless = $link(7, ['phone_number_id' => null], 'closed');
+        $tokenless = $link(8, ['access_token' => null]);
+        // ‏‏وقديمٌ تعطّل يومَ النشر: لم يمرّ بالاعتماد الآليّ، فإن عاد إلى حسابه ورقمه عاد كما كان
+        $oldBroken = $link(9, ['status' => 'error'], null);
         $ownApp = $this->legacy(['link_type' => WhatsAppOwnApp::TYPE, 'phone_number_id' => 'PN-OWN']);
 
         // ‏‏وصلاتٌ كما تركها الإصدارُ السابق: لا عمودَ بعدُ ولا جداول
@@ -331,10 +334,12 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
             $this->assertNull(WhatsAppBillingLock::stop($c->fresh()), $who);
             $this->assertTrue($c->fresh()->isUsable(), $who);
         }
-        foreach (['عطب' => $broken, 'انتهى رمزه' => $expired, 'فصله صاحبه' => $off, 'بلا رقم' => $numberless] as $who => $c) {
+        foreach (['عطب' => $broken, 'انتهى رمزه' => $expired, 'فصله صاحبه' => $off, 'بلا رقم' => $numberless, 'بلا رمز' => $tokenless] as $who => $c) {
             $this->assertFalse($c->fresh()->isConnected(), "{$who}: لا يُرسل أصلًا");
             $this->assertFalse($exempt($c), $who);
         }
+
+        $this->assertTrue($exempt($oldBroken), 'قديم تعطّل');
 
         // ‏‏ولا وصلةٌ كانت تُرسل قبل الهجرة ولا تُرسل بعدها — ولا عمودٌ آخر تغيّر
         $this->assertSame([], WhatsAppConnection::where('owner_type', 'business')->get()

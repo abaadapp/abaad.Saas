@@ -355,6 +355,30 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
         $this->assertTies('كلّ الأنواع');
     }
 
+    public function test_a_piece_points_to_the_entry_that_stands_and_not_to_one_that_was_reversed(): void
+    {
+        $order = $this->sell([[$this->bundle, 2]]);
+        $item = OrderItem::where('order_id', $order->id)->first();
+        OrderCorrection::setQuantity($order->fresh(), $item, 1, 'نقص', 'refunded', 'نقدي');
+
+        $live = JournalEntry::where('source', 'تكلفة مبيعات')->where('sourceable_id', $order->id)->whereNull('reversed_at')->whereNull('reverses_id')->sole();
+        $this->assertSame([$live->number], collect($this->rows($this->lama))->pluck('entry')->unique()->values()->all());
+        $this->assertTies('تصحيح باقة');
+    }
+
+    public function test_a_return_the_shop_bears_is_said_and_changes_nothing(): void
+    {
+        $order = $this->sell([[$this->reems, 1]]);
+        Boutiques::settle($this->shop, $this->reem, '2027-02');
+        $line = BoutiqueReturns::settledLines($order)->first();
+        DB::transaction(fn () => OrderCorrection::cancel($order, 'أُلغي', null, [$line->id => ['sellable' => 1, 'damaged' => 0]]));
+        BoutiqueReturns::review(BoutiqueReturn::sole(), 'shop', 'تلف عندنا');
+
+        $row = collect($this->rows($this->reem))->firstWhere('kind', 'decided');
+        $this->assertSame(['shop', 0.0, 'تلف عندنا'], [$row['state'], (float) $row['effect'], $row['why']]);
+        $this->assertTies('على المتجر');
+    }
+
     public function test_the_groups_filter_without_changing_the_running_balance(): void
     {
         $this->sell([[$this->hers, 1]]);
@@ -477,7 +501,14 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
         // يقرأ رقمَ الفاتورة ولا يُعطى بابَها: لا يملك المبيعات ولا الماليّة
         $this->assertNotNull($row['order']);
         $this->assertNull($row['order_url']);
-        $this->assertNull($row['entry_url']);
+        // وكذلك قيدُ الورقة وحركتُها: الرقمُ بلا باب
+        $this->actingAs($this->owner);
+        $this->paySheet(Boutiques::settle($this->shop, $this->lama, '2027-02'));
+        $paid = collect($this->rows($this->lama))->firstWhere('kind', 'paid');
+        $this->assertNotNull($paid['entry_url']);
+        $this->assertNotNull($paid['transaction_url']);
+        $seen = collect($this->actingAs($reader)->getJson($url)->json('rows'))->firstWhere('kind', 'paid');
+        $this->assertSame([$paid['entry'], $paid['transaction'], null, null], [$seen['entry'], $seen['transaction'], $seen['entry_url'], $seen['transaction_url']]);
 
         $other = Business::create(['name' => 'جار', 'type' => 'عام', 'status' => 'نشط', 'boutiques_enabled' => true]);
         $neighbour = User::create(['business_id' => $other->id, 'name' => 'جار', 'email' => 'n@test.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);

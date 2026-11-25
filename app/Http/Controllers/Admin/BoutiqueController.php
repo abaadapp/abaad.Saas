@@ -15,6 +15,7 @@ use App\Models\Product;
 use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueDues;
 use App\Support\BoutiqueReturns;
+use App\Support\BoutiqueSales;
 use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Search;
@@ -162,6 +163,14 @@ class BoutiqueController extends Controller
             'canIssue' => BoutiqueAccess::issue($user),
             'canPay' => BoutiqueAccess::pay($user),
             'statement' => $statement,
+            /*
+             * «مبيعات البوتيك وفواتيره» لصاحب المتجر ومن أذن له بالمال وحده
+             * (`BoutiqueSales::mayRead`). ومن لا يملكه لا تصله قائمةُ البوتيكات
+             * ولا يُرسم له القسم — والأبوابُ الثلاثة تردّه هي أيضًا (٤٠٣).
+             */
+            'canSeeSales' => $seesSales = BoutiqueSales::mayRead(auth()->user()),
+            'boutiqueOptions' => $seesSales ? Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
+                ->get(['id', 'name'])->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => (string) $b->name])->all() : [],
             // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
             'returns' => $seesMoney ? $this->returnsOf((int) $business->id, $boutique) : null,
             'period' => $period,
@@ -216,6 +225,63 @@ class BoutiqueController extends Controller
                     'net' => (float) $s->net, 'paid' => $s->paid(),
                     ...self::componentsOf($s),
                 ])->all(),
+        ]);
+    }
+
+    /* ═══════════ مبيعاتُ البوتيك وفواتيرُه ═══════════ */
+
+    /*
+     * ثلاثةُ أبوابٍ للقراءة وحدها. حارسُها ثلاثُ طبقات: المتجرُ يؤوي بوتيكات
+     * (`shop`)، وصلاحيّةُ المنتجات على المسار (لتُفتح شاشةُ البوتيك أصلًا)،
+     * ثمّ إذنُ المال (`BoutiqueSales::mayRead`) — فمن مُنح المنتجاتِ ليُدخل
+     * أصناف بوتيك، أو صاحبُ بوتيكٍ أُعطي حسابًا ليرتّب قطعه، لا يقرأ عمولاتٍ
+     * ولا مستحقّاتٍ ولا فواتير. وكلُّ استعلامٍ مقيَّدٌ بمتجر الجالس — والبوتيكُ
+     * والفاتورةُ من متجرٍ آخر يُقرآن «لا شيء» (`filters` و`invoice`).
+     */
+
+    private function salesShop(): Business
+    {
+        $business = $this->shop();
+        abort_unless(BoutiqueSales::mayRead(auth()->user()), 403);
+
+        return $business;
+    }
+
+    /** صفوفُ الفواتير — صفحةً صفحة من القاعدة */
+    public function sales(Request $request)
+    {
+        $business = $this->salesShop();
+        $page = BoutiqueSales::rows((int) $business->id, BoutiqueSales::filters($request, (int) $business->id));
+
+        return response()->json([
+            'rows' => $page->items(),
+            'page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
+            'total' => $page->total(),
+            'per_page' => $page->perPage(),
+        ]);
+    }
+
+    /** ملخّصُ الشهر — للبوتيك المختار أو للكلّ */
+    public function salesSummary(Request $request)
+    {
+        $business = $this->salesShop();
+
+        return response()->json(BoutiqueSales::summary((int) $business->id, BoutiqueSales::filters($request, (int) $business->id)));
+    }
+
+    /** فاتورةٌ بما لبوتيكاتها فيها — والكاملةُ من قسم المبيعات لمن يملكه */
+    public function salesOrder(int $order)
+    {
+        $business = $this->salesShop();
+        // الفاتورةُ كاملةً لمن يفتح المبيعات — ومن لا يملكها يرى ما للبوتيكات فيها وحده
+        $canOpen = (bool) auth()->user()?->allows('orders');
+        $data = BoutiqueSales::invoice((int) $business->id, $order, $canOpen);
+        abort_if($data === null, 404);
+
+        return response()->json($data + [
+            'can_open' => $canOpen,
+            'url' => $canOpen ? route('admin.orders.show', $data['order']['number']) : null,
         ]);
     }
 

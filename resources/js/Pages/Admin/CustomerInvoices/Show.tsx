@@ -799,7 +799,11 @@ function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces:
                     <div className="flex flex-wrap gap-4">
                         {([['return', 'رُدّت بضاعة'], ['price', 'خصم أو تسوية سعر بلا مرتجع']] as const).map(([value, label]) => (
                             <label key={value} className="flex min-h-[44px] items-center gap-2 sm:min-h-0">
-                                <input type="radio" name="basis" value={value} checked={form.data.basis === value} onChange={() => form.setData('basis', value)} />
+                                <input type="radio" name="basis" value={value} checked={form.data.basis === value} onChange={() => {
+                                    form.setData('basis', value);
+                                    // أُجيب السؤال: لا تبقى رسالتُه فوق الجواب
+                                    form.clearErrors('basis' as never);
+                                }} />
                                 {t(label)}
                             </label>
                         ))}

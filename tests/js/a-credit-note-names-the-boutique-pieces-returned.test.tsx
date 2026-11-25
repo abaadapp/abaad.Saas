@@ -16,6 +16,7 @@ import { pageProps } from './setup';
  */
 
 const sent: { url: string; data: Record<string, unknown> }[] = [];
+const cleared: string[] = [];
 
 vi.mock('@inertiajs/react', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('@inertiajs/react');
@@ -31,7 +32,7 @@ vi.mock('@inertiajs/react', async () => {
                 setData((d) => (typeof key === 'function' ? (key as (x: typeof d) => typeof d)(d) : { ...d, [key as string]: value })),
             post: (url: string) => sent.push({ url, data }),
             reset: () => setData(initial),
-            clearErrors: () => {},
+            clearErrors: (field: string) => cleared.push(field),
             transform: () => {},
         };
     };
@@ -101,6 +102,8 @@ describe('إشعارُ الدائن وقطعُ البوتيك', () => {
         const box = screen.getByTestId('credit-boutique');
         expect(screen.queryAllByTestId('credit-piece')).toHaveLength(0);
         fireEvent.click(within(box).getByLabelText('خصم أو تسوية سعر بلا مرتجع'));
+        // والجوابُ يمحو رسالةَ السؤال — لا تبقى فوق ما اختير
+        expect(cleared).toContain('basis');
         expect(screen.queryAllByTestId('credit-piece')).toHaveLength(0);
         expect(box.textContent).toContain('الخصم على المتجر');
         save();

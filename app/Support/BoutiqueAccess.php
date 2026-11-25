@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Boutique;
 use App\Models\Business;
 use App\Models\User;
 
@@ -57,6 +58,43 @@ final class BoutiqueAccess
     public static function hidesSales(?User $user, ?Business $business): bool
     {
         return self::productsOnly($user) && Boutiques::holds($business);
+    }
+
+    /**
+     * أرقامُ نطاق بوتيكٍ في تقرير المبيعات كما تُرسَل: العمولةُ والصافي لمن يقرأ المال وحده.
+     *
+     * والمبيعُ والكميّةُ والطلباتُ تقريرٌ عاديّ يقرؤه من يملك «التقارير». والمفتاحان
+     * يُحذفان من الحمولة ولا يُصفَّران: صفرٌ يُقرأ رقمًا. ومنها تُبنى الشاشةُ والتغذيةُ
+     * وCSV وXLSX وPDF كلُّها (`Reports::salesReport`)، فلا بابَ يبقى خارجها.
+     *
+     * و«منتجات المتجر» ليس فيها مالُ بوتيكٍ فلا يُحذف منها شيء.
+     *
+     * @param  array<string, mixed>  $totals
+     * @return array<string, mixed>
+     */
+    public static function totals(string|Boutique $scope, array $totals, ?User $user): array
+    {
+        return $scope === Boutiques::OWN || self::read($user) ? $totals : array_diff_key($totals, ['commission' => 1, 'net' => 1]);
+    }
+
+    /** سجلُّ النشاط: ما يكتب مبلغَ ورقةٍ أو شرطَ اتّفاقية — بنوع موضوعه */
+    public const ACTIVITY_SUBJECTS = ['boutique_settlement', 'boutique'];
+
+    /**
+     * سطرُ النشاط كما يُقرأ: بلا مبلغ الورقة ولا شرط الاتّفاقية لمن لا يقرأ المال.
+     *
+     * السطرُ باقٍ — من فعل وماذا ومتى — والمكتوبُ في القاعدة لا يُمسّ. وسجلُّ النشاط
+     * يُفتح بـ«الإعدادات» و«لوحة التحكم» و«الموظفين»، وليس شيءٌ منها قراءةَ مال.
+     */
+    public static function activity(?string $subjectType, ?string $text, ?User $user): string
+    {
+        $text = (string) $text;
+
+        if (! in_array($subjectType, self::ACTIVITY_SUBJECTS, true) || self::read($user)) {
+            return $text;
+        }
+
+        return (string) preg_replace(['/ بمبلغ .*$/us', '/^(شرط مرتجع البوتيك [^:]*):.*$/us'], ['', '$1'], $text);
     }
 
     /**

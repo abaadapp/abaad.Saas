@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\BoutiqueAccess;
 use App\Support\Demo;
 use App\Support\Pagination;
 use App\Support\Search;
@@ -16,14 +17,20 @@ class ActivityController extends Controller
     {
         if ($s = Search::term($request)) {
             $like = Search::like();
-            $q->where(fn ($w) => $w->where('description', $like, "%{$s}%")->orWhere('user_name', $like, "%{$s}%"));
+            // ونصٌّ حُجب بعضُه لا يُبحث فيه: البحثُ بمبلغه كان يُظهر سطرَه فيُعرف المبلغ
+            $hidden = BoutiqueAccess::read(auth()->user()) ? [] : BoutiqueAccess::ACTIVITY_SUBJECTS;
+            $q->where(fn ($w) => $w
+                ->where(fn ($d) => $d->where('description', $like, "%{$s}%")
+                    ->when($hidden !== [], fn ($x) => $x->where(fn ($y) => $y->whereNull('subject_type')->orWhereNotIn('subject_type', $hidden))))
+                ->orWhere('user_name', $like, "%{$s}%"));
         }
         if ($a = $request->query('action')) {
             $q->where('action', $a);
         }
 
         return $q->latest('id')->paginate(15)->withQueryString()->through(fn ($l) => [
-            'user' => $l->user_name, 'action' => $l->action, 'description' => $l->description,
+            'user' => $l->user_name, 'action' => $l->action,
+            'description' => BoutiqueAccess::activity($l->subject_type, $l->description, auth()->user()),
             /*
              * من فعلها حقًّا — يظهر شارةً في السطر.
              *

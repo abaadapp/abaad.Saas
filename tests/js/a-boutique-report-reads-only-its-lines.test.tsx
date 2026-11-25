@@ -158,6 +158,17 @@ describe('ملخّصُ المبيعات بنطاق بوتيك', () => {
         expect(screen.getByTestId('boutique-note')).toHaveTextContent('لا تُنسب لبند');
     });
 
+    /** الخادمُ يحذف العمولةَ والصافي من حمولة من لا يقرأ المال — فلا بطاقةَ لهما، ولا صفرٌ يُقرأ رقمًا */
+    it('من لا يقرأ مالَ البوتيكات: المبيعُ والكميّةُ وحدهما', () => {
+        sales({ ...LAMA, boutiqueTotals: { gross: 24.51, quantity: 3, orders: 1, lines: 1 } });
+
+        expect(screen.getByText('إجمالي مبيعات البوتيك')).toBeInTheDocument();
+        expect(screen.getByText('الكمية المباعة')).toBeInTheDocument();
+        expect(screen.queryByText('عمولة المتجر')).toBeNull();
+        expect(screen.queryByText('المستحق للبوتيك')).toBeNull();
+        expect(document.body.textContent).not.toContain('NaN');
+    });
+
     it('و«كل المبيعات» كما كانت', () => {
         sales({ channel: null });
 

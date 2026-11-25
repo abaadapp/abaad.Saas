@@ -231,7 +231,7 @@ class PdfController extends Controller
              * يفتح نسختَه الحيّة — رابطٌ دائم لا يُخمَّن (انظر PublicDocument).
              */
             'paperUrl' => PublicDocument::url($order) ?? '',
-            // ورمزُ دخول العميل إلى بوابته — لمتجر RIBBON وحده، وعلى ورقة المشتري لا السند
+            // ورمزُ دخول العميل إلى بوابته حيث وُجدت، وعلى ورقة المشتري لا السند — و`null` لسواه
             'portalCode' => PortalCode::printed($order),
             // رقم المشتري الضريبي: تحتاجه منشأةٌ مسجَّلة لتخصم ضريبة شرائها
             'customerTax' => $order->customer_id

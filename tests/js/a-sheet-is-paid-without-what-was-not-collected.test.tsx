@@ -19,6 +19,9 @@ const hold = (over: Partial<Hold> = {}): Hold => ({
 const posts = () => (router.post as unknown as { mock: { calls: [string, Record<string, unknown>][] } }).mock.calls.map(([url, data]) => ({ url, data }));
 
 beforeEach(() => {
+    // قائمةُ Radix تسأل ما لا يعرفه jsdom
+    Element.prototype.hasPointerCapture = () => false;
+    Element.prototype.scrollIntoView = () => {};
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, { translations: {}, context: { currency }, auth: { abilities: ['expenses', 'finance'], mayActions: [] } });
     (router.post as unknown as { mockClear: () => void }).mockClear();

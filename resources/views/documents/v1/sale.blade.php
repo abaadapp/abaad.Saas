@@ -105,7 +105,6 @@
         ],
         'eInvoice' => $show('show_qr') ? ($qr ?? '') : '',
         'paperUrl' => $paperUrl ?? '',
-        'portalCode' => $portalCode ?? null,
         'googleReview' => $googleReview ?? '',
     ])
 @endsection

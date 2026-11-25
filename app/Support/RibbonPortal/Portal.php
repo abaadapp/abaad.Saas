@@ -90,7 +90,7 @@ final class Portal
         );
     }
 
-    /** يرى الرابطَ وقسمَ البوابة ويقرأ رمزَ الدخول: صاحبُ النشاط، أو من اختاره — ومن يدير كذلك */
+    /** يرى الرابطَ وقسمَ البوابة ويعتمد أجهزةَ العملاء: صاحبُ النشاط، أو من اختاره — ومن يدير كذلك */
     public static function mayShare(?User $user): bool
     {
         return self::granted($user, ['share', 'manage']);
@@ -119,7 +119,7 @@ final class Portal
     /**
      * ما تعرضه شاشةُ العملاء — أو `null` فلا زرَّ ولا مفتاحَ في الصفحة.
      *
-     * @return array{url: string, qr: string, poster: string, name: string}|null
+     * @return array{url: string, qr: string, poster: string, name: string, waiting: int, waitingUrl: string}|null
      */
     public static function panel(?User $user): ?array
     {
@@ -128,6 +128,8 @@ final class Portal
             'qr' => Qr::dataUri(self::url()),
             'poster' => route('admin.customers.portal.poster'),
             'name' => InvoiceBranding::name((int) $user->business_id),
+            'waiting' => count(Devices::waiting((int) $user->business_id)),
+            'waitingUrl' => route('admin.customers.portal.waiting', [], false),
         ] : null;
     }
 }

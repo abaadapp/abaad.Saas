@@ -45,12 +45,6 @@
     @endpush
 @endif
 
-@if (filled($portalCode ?? null))
-    @push('closezone')
-        @include('documents.v1.partials.portal-code', ['align' => \App\Support\Paper::rtl() ? 'right' : 'left'])
-    @endpush
-@endif
-
 @if (count($panels) > 0)
     <table class="stack" style="margin-top:{{ round(12, 2) }}pt">
         @foreach ($panels as $panel)

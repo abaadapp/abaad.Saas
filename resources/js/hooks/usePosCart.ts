@@ -7,6 +7,7 @@ import { tillTax } from '@/lib/vat-lines';
 import { useTranslate } from '@/lib/i18n';
 import { freshCustomer, loadCache, syncCustomers, toPosCustomer } from '@/lib/till-customers';
 import { classify, dependsOn, due, entryDelay, fresh, keysOf, MAX_AUTO_ATTEMPTS, pauseDelay, withQueueLock, type OutboxEntry } from '@/lib/outbox';
+import type { SalePortal } from '@/lib/ribbon-portal';
 import { add as keepSale, drop as dropSale, get as storedSale, isQueueKey, keep as keepStorage, readAll as readOutbox, replace as replaceSale, room as roomLeft, type Room } from '@/lib/outbox-store';
 import type { Currency } from '@/types';
 
@@ -259,8 +260,8 @@ export interface CheckoutResult {
      * للزبون إنّ نقاطه نفدت.
      */
     balance?: number | null;
-    /** بيعةُ عميلٍ مسجَّل في متجر RIBBON: رابطُ البوابة الواحد، فيُعرض زرُّ «نسخ رابط بوابة العملاء» */
-    portal?: string | null;
+    /** بيعةُ عميلٍ مسجَّل في متجر RIBBON: رابطُ البوابة الواحد واعتمادُ جهازه */
+    portal?: SalePortal | null;
     /**
      * المبلغُ كما كتبه الخادم — أو `null` حين لا ردَّ يحمله.
      *
@@ -308,7 +309,7 @@ interface SendResult {
     /** إجماليُّ البيعة كما كتبه الخادم */
     total?: number;
     /** بيعةُ عميلٍ مسجَّل في متجر RIBBON (`RibbonPortal\Portal::mayShare`) */
-    portal?: string | null;
+    portal?: SalePortal | null;
     error?: string;
     /** أسماءُ الحقول التي ردّها الخادم — منها يُعرف السبب */
     fields?: string[];
@@ -1427,7 +1428,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                          */
                         balance: typeof d.points_balance === 'number' ? d.points_balance : null,
                         total: typeof d.total === 'number' ? d.total : undefined,
-                        portal: typeof d.portal === 'string' ? d.portal : null,
+                        portal: typeof d.portal?.url === 'string' && typeof d.portal.device === 'string' ? d.portal : null,
                     };
                 }
                 /*

@@ -23,8 +23,8 @@
     <div class="sheet">
         <img src="{{ $logo }}" alt="{{ $shop }}">
         <h1>مشترياتك وفواتيرك ونقاطك</h1>
-        <p>امسح الرمز، واكتب رقم هاتفك ورمز الدخول من فاتورتك.</p>
-        <p class="en">Scan, then enter your phone number and the code on your invoice.</p>
+        <p>امسح الرمز واكتب رقم هاتفك. أول مرة، أرِ الموظف رقم جهازك.</p>
+        <p class="en">Scan and enter your phone number. The first time, show us your device number.</p>
         <div class="qr">{!! $qr !!}</div>
         <p class="url">{{ \Illuminate\Support\Str::after($url, 'https://') }}</p>
         <small>Powered by ABAAD</small>

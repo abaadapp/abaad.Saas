@@ -57,13 +57,15 @@
             <div>@yield('start')</div>
             <img class="logo" src="{{ route('my.logo', [], false) }}" alt="{{ $shop }}" data-testid="portal-logo">
             <div class="end">
-                <a class="btn sm text" href="{{ route('my.index', ['lang' => $lang === 'en' ? 'ar' : 'en'], false) }}" data-testid="portal-lang" data-keep-hash>{{ $t('langBtn') }}</a>
+                <a class="btn sm text" href="{{ route('my.index', ['lang' => $lang === 'en' ? 'ar' : 'en'], false) }}" data-testid="portal-lang">{{ $t('langBtn') }}</a>
                 @yield('end')
             </div>
         </div>
     </header>
     <main><div class="wrap">@yield('main')</div></main>
     <footer>{{ $t('poweredBy') }}</footer>
+    {{-- رابطٌ شخصيٌّ من زمنٍ سبق: لا يبقى في العنوان --}}
+    <script nonce="{{ $nonce }}">if (location.hash) history.replaceState(null, '', location.pathname);</script>
     @yield('script')
 </body>
 </html>

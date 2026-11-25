@@ -59,18 +59,18 @@ export default function CustomerPortal() {
             { preserveScroll: true, onStart: () => setSaving(true), onFinish: () => setSaving(false) },
         );
     const revoke = async (l: LinkRow) => {
-        if (! await ask({ message: 'إلغاء دخول هذا العميل؟ يخرج من أجهزته، وتقف رموز فواتيره المطبوعة قبل الآن. ويعمل رمز أي فاتورة تُطبع بعده.', danger: true, action: 'إلغاء الدخول' })) return;
+        if (! await ask({ message: 'إلغاء دخول هذا العميل؟ يخرج من أجهزته كلها، ولا يدخل حتى يُعتمد جهازه من جديد.', danger: true, action: 'إلغاء الدخول' })) return;
         router.delete(l.revokeUrl, { preserveScroll: true });
     };
     const revokeAll = async () => {
-        if (! await ask({ message: 'إلغاء دخول كل العملاء؟ يخرجون جميعًا من أجهزتهم، وتقف رموز فواتيرهم المطبوعة قبل الآن.', danger: true, action: 'إلغاء الكل' })) return;
+        if (! await ask({ message: 'إلغاء دخول كل العملاء؟ يخرجون جميعًا من أجهزتهم، ولا يدخل أحد حتى يُعتمد جهازه من جديد.', danger: true, action: 'إلغاء الكل' })) return;
         router.delete(urls.revokeAll, { preserveScroll: true });
     };
 
     return (
         <AdminLayout title="بوابة العملاء">
             {confirmDialog}
-            <PageHeader title="بوابة العملاء" subtitle={t('يطّلع عميلك على مشترياته وفواتيره ونقاطه من رابط واحد، برقم هاتفه ورمز فاتورته')} />
+            <PageHeader title="بوابة العملاء" subtitle={t('يطّلع عميلك على مشترياته وفواتيره ونقاطه من رابط واحد، برقم هاتفه وجهاز يُعتمد مرة واحدة')} />
             <BackToSettings />
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -94,13 +94,13 @@ export default function CustomerPortal() {
                     </CardHeader>
                     <CardContent>
                         <p className="mb-3 text-[13px] text-[#6b7280]">
-                            {t('صاحب النشاط يملكها كلها. «يعرض البوابة»: يرى الرابط والرمز وقسم البوابة في ملف العميل، ويعرض رمز دخول لمن لا فاتورة معه. و«يدير البوابة»: ومعها إلغاء الدخول وهذه الصفحة. ولا تفتح الفواتير ولا تعديل النقاط، وتلزم معها صلاحية الشاشة التي فيها الزر.')}
+                            {t('صاحب النشاط يملكها كلها. «يعتمد الأجهزة»: يرى الرابط والرمز ويعتمد جهاز العميل، فيفتح به العميل مشترياته، ويُكتب في السجل من اعتمده. و«يدير البوابة»: ومعها إلغاء الدخول وهذه الصفحة. ولا تفتح الفواتير ولا تعديل النقاط، وتلزم معها صلاحية الشاشة التي فيها الزر.')}
                         </p>
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>{t('الموظف')}</TableHead>
-                                    <TableHead className="text-center">{t('يعرض البوابة')}</TableHead>
+                                    <TableHead className="text-center">{t('يعتمد الأجهزة')}</TableHead>
                                     <TableHead className="text-center">{t('يدير البوابة')}</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -116,7 +116,7 @@ export default function CustomerPortal() {
                                                     className="size-5 accent-[#111]"
                                                     checked={r[key]}
                                                     disabled={!mayGrant}
-                                                    aria-label={`${t(key === 'share' ? 'يعرض البوابة' : 'يدير البوابة')} — ${r.name}`}
+                                                    aria-label={`${t(key === 'share' ? 'يعتمد الأجهزة' : 'يدير البوابة')} — ${r.name}`}
                                                     onChange={(e) => set(r.id, key, e.target.checked)}
                                                 />
                                             </TableCell>
@@ -138,9 +138,9 @@ export default function CustomerPortal() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>{t('العميل')}</TableHead>
-                                    <TableHead>{t('أول دخول')}</TableHead>
-                                    <TableHead>{t('آخر دخول')}</TableHead>
-                                    <TableHead>{t('أجهزة داخلة الآن')}</TableHead>
+                                    <TableHead>{t('أول اعتماد')}</TableHead>
+                                    <TableHead>{t('آخر زيارة')}</TableHead>
+                                    <TableHead>{t('أجهزة معتمدة')}</TableHead>
                                     <TableHead />
                                 </TableRow>
                             </TableHeader>

@@ -17,7 +17,6 @@ use App\Support\OrderCorrection;
 use App\Support\OrderStatus;
 use App\Support\Pdf;
 use App\Support\RibbonPortal\Account;
-use App\Support\RibbonPortal\Code;
 use App\Support\RibbonPortal\Texts;
 use App\Support\SalesChannel;
 use App\Support\TenantExportGuard;
@@ -25,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 use Tests\Support\RibbonPortalShop;
@@ -81,7 +81,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
 
     /* ═════════════ الدخول ═════════════ */
 
-    public function test_a_registered_customer_enters_with_their_phone_and_invoice_code_and_is_greeted_by_name(): void
+    public function test_a_registered_customer_enters_with_their_phone_on_an_approved_device_and_is_greeted_by_name(): void
     {
         $cookie = $this->enter($this->maryam);
 
@@ -92,14 +92,11 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         $this->assertStringContainsString('لا توجد مشتريات مسجّلة باسمك بعد.', $page->getContent());
         $this->assertSame([], $this->numbers($cookie));
 
-        // وبأيّ صيغةٍ كُتب الرقمُ نفسُه
-        foreach (['91234567', '+968 9123 4567', '00968-91234567', '968 91234567', '٩١٢٣٤٥٦٧', ' 9123-4567 '] as $written) {
-            $this->attempt($written, $this->code($this->maryam))->assertOk()->assertJson(['ok' => true]);
-        }
-        // وكذلك الرمز: بمسافاته كما طُبع، وبأرقامٍ عربيّة
-        $code = $this->code($this->maryam);
-        foreach ([Code::spaced($code), implode('-', str_split($code, 3)), strtr($code, array_combine(range('0', '9'), mb_str_split('٠١٢٣٤٥٦٧٨٩')))] as $written) {
-            $this->attempt('91234567', (string) $written)->assertOk();
+        // وبأيّ صيغةٍ كُتب الرقمُ نفسُه يُعتمد له
+        foreach (['91234567', '+968 9123 4567', '00968-91234567', '968 91234567', '٩١٢٣٤٥٦٧', '۹۱۲۳۴۵۶۷', ' 9123-4567 '] as $written) {
+            RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
+            Carbon::setTestNow(now()->addMinutes(16));
+            $this->my('', $this->enter($this->maryam, $written))->assertSee('أهلًا مريم البلوشي');
         }
 
         // ولا سجلَّ عميلٍ جديدًا ولا حسابَ نظامٍ
@@ -312,8 +309,8 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         }
 
         $this->assertSame($before, $print());
-        // ولا بابَ كتابةٍ فيها سوى الدخول والخروج
-        foreach (['/data', '/points', "/paper/order/{$order->id}"] as $path) {
+        // ولا بابَ كتابةٍ فيها سوى رقم الهاتف والخروج
+        foreach (['/data', '/points', '/wait', "/paper/order/{$order->id}"] as $path) {
             $this->visitor($cookie)->post('http://ribbon.abaadapp.om/my'.$path)->assertStatus(405);
         }
     }
@@ -331,7 +328,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
             'items' => [['id' => $this->bouquet->id, 'name' => 'باقة', 'qty' => 3]], 'payment_method' => 'نقدي',
             'customer_id' => $this->maryam->id, 'client_uuid' => uniqid('p', true),
         ])->assertOk()->json();
-        $this->assertSame('https://ribbon.abaadapp.om/my', $sold['portal'] ?? null, 'الرابطُ الواحد');
+        $this->assertSame('https://ribbon.abaadapp.om/my', $sold['portal']['url'] ?? null, 'الرابطُ الواحد');
         $this->assertGreaterThan(0, $sold['points_earned']);
 
         $this->assertSame([$sold['invoice']], $this->numbers($cookie));

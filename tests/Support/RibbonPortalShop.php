@@ -12,7 +12,7 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\OrderStatus;
 use App\Support\RibbonPortal\Access;
-use App\Support\RibbonPortal\Code;
+use App\Support\RibbonPortal\Devices;
 use App\Support\SalesChannel;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\URL;
@@ -111,22 +111,32 @@ trait RibbonPortalShop
         return $this->withCredentials();
     }
 
-    /** رمزُ دخولٍ يعمل لهذا العميل اليوم — ورموزُ الورق تُحرس باسمها (`Code::of`) */
-    protected function code(Customer $customer): string
+    /** يكتب رقمَه في جهازٍ — جديدٍ أو معه كعكتُه */
+    protected function ask(string $phone, ?string $cookie = null): TestResponse
     {
-        return Code::daily($customer->fresh());
+        return $this->visitor($cookie)->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => $phone]);
     }
 
-    protected function attempt(string $phone, string $code, string $key = ''): TestResponse
+    /** كعكةُ جهازٍ كُتب فيه هذا الرقم وهو ينتظر */
+    protected function device(string $phone): string
     {
-        return $this->visitor(null)->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => $phone, 'code' => $code, 'key' => $key]);
+        return (string) $this->ask($phone)->assertOk()->getCookie(Access::COOKIE)->getValue();
     }
 
-    /** يدخل برقمه ورمزه — ويردّ كعكةَ جلسته */
+    /** الرقمُ الظاهر على شاشة الجهاز — كما يقرؤه الموظّف */
+    protected function shown(string $cookie): string
+    {
+        preg_match('/data-testid="portal-number">(\d+)</', (string) $this->my('', $cookie)->assertOk()->getContent(), $m);
+
+        return $m[1] ?? '';
+    }
+
+    /** يكتب رقمَه، ويعتمد الموظّفُ جهازَه — ويردّ كعكتَه */
     protected function enter(Customer $customer, ?string $phone = null): string
     {
-        $response = $this->attempt($phone ?? (string) $customer->phone, $this->code($customer))->assertOk();
+        $cookie = $this->device($phone ?? (string) $customer->phone);
+        $this->assertNotNull(Devices::approve($customer->fresh(), $this->shown($cookie), $this->owner));
 
-        return (string) $response->getCookie(Access::COOKIE)->getValue();
+        return $cookie;
     }
 }

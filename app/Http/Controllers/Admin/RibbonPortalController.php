@@ -5,14 +5,16 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerPortalLink;
+use App\Models\Order;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Digits;
 use App\Support\InvoiceBranding;
 use App\Support\Pagination;
 use App\Support\Permissions;
 use App\Support\RibbonPortal\Access;
-use App\Support\RibbonPortal\Code;
+use App\Support\RibbonPortal\Devices;
 use App\Support\RibbonPortal\Portal;
 use App\Support\RibbonPortal\Qr;
 use Illuminate\Http\JsonResponse;
@@ -26,27 +28,75 @@ use Inertia\Response;
  * بوابةُ عملاء RIBBON عند الموظّف — رابطٌ واحدٌ لجميع العملاء، ويديرها صاحبُ النشاط.
  *
  * لمتجر سعود وحده: كلُّ بابٍ هنا يردّ 404 لسواه ولو كُتب عنوانُه بيد (`open`).
- * ولا رابطَ لعميلٍ بعينه: العميلُ يدخل برقمه ورمزٍ من فاتورته (`RibbonPortal\Code`).
- * ومن لا فاتورةَ معه يقرأ له الموظّفُ رمزًا يقف بنهاية الغد. وإلغاءُ الدخول لمن يدير.
+ * ولا رابطَ لعميلٍ بعينه ولا رمزَ يُعطى له: يكتب رقمَه، ويعتمد الموظّفُ جهازَه مرّةً
+ * (`RibbonPortal\Devices`) من العملاء أو من الصندوق بعد البيع. وإلغاءُ الدخول لمن يدير.
  *
  * ولا رسالةَ من هنا ولا قناةَ مراسلة.
  */
 class RibbonPortalController extends Controller
 {
-    /* ─────────── ملفُّ العميل ─────────── */
+    /* ─────────── اعتمادُ الأجهزة ─────────── */
 
-    /** رمزٌ يُقرأ لعميلٍ لا فاتورةَ معه — ويُكتب في السجلّ من قرأه ولمن، بلا الرمز */
-    public function code(int $id): JsonResponse
+    /** من ينتظر اعتمادَ جهازه — العملاءُ المسجَّلون وحدهم */
+    public function waiting(): JsonResponse
+    {
+        $this->open(Portal::mayShare(auth()->user()));
+
+        return $this->json(['waiting' => array_map(fn (array $w) => $w + [
+            'url' => route('admin.customers.portal.device', $w['id'], false),
+        ], Devices::waiting((int) Demo::bid()))]);
+    }
+
+    public function approve(Request $request, int $id): JsonResponse
     {
         $customer = $this->customer($id);
+
+        return $this->settle($request, $customer) ?? $this->json(['state' => self::state($customer, auth()->user())]);
+    }
+
+    /** ومن الصندوق بعد البيع — لعميل هذه البيعة وحده */
+    public function approveSale(Request $request, string $number): JsonResponse
+    {
+        $this->open(Portal::mayShare(auth()->user()));
+
+        $order = Order::where('business_id', Demo::bid())->where('is_held', false)->where('number', $number)->firstOrFail();
+        abort_if($order->customer_id === null, 404);
+
+        return $this->settle($request, $this->customer((int) $order->customer_id)) ?? $this->json(['ok' => true]);
+    }
+
+    /** لم يكن هو: يُغلق ما ينتظر لهذا العميل */
+    public function dismiss(int $id): JsonResponse
+    {
+        $customer = $this->customer($id);
+
+        if (Devices::drop($customer) > 0) {
+            Access::log('رفض جهازًا طلب بوابة العميل', $customer);
+        }
+
+        return $this->json(['state' => self::state($customer, auth()->user())]);
+    }
+
+    /** يعتمد أو يردّ سببَ الردّ */
+    private function settle(Request $request, Customer $customer): ?JsonResponse
+    {
+        $data = $request->validate(['device' => ['required', 'string', 'max:20']], [], ['device' => __('رقم الجهاز')]);
 
         if (Access::phone($customer) === null) {
             return $this->json(['message' => __('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')], 422);
         }
-        Access::log('عرض رمز دخول بوابة العميل', $customer);
 
-        return $this->json(['code' => Code::spaced(Code::daily($customer))]);
+        $digits = (string) preg_replace('/\D+/', '', Digits::western($data['device']));
+        $device = Devices::approve($customer, $digits, auth()->user());
+        if ($device === null) {
+            return $this->json(['message' => __('لا جهاز ينتظر لهذا العميل بهذا الرقم. تأكد من رقم الهاتف الذي كتبه ومن الرقم الظاهر على شاشته. وبعد ثلاثة أخطاء يكتب رقمه من جديد.')], 422);
+        }
+        Access::log('اعتمد جهازًا لبوابة العميل'.($device === '' ? '' : ' ('.$device.')'), $customer);
+
+        return null;
     }
+
+    /* ─────────── ملفُّ العميل ─────────── */
 
     public function revoke(int $id): JsonResponse
     {
@@ -82,7 +132,7 @@ class RibbonPortalController extends Controller
         $bid = (int) Demo::bid();
         $staff = Portal::staff($bid);
 
-        $links = CustomerPortalLink::where('business_id', $bid)->whereNull('revoked_at')
+        $links = CustomerPortalLink::where('business_id', $bid)->whereNull('revoked_at')->whereNotNull('last_used_at')
             ->with('customer:id,name')->latest('last_used_at')->latest('id')->paginate(20)
             ->through(fn (CustomerPortalLink $l) => [
                 'id' => (int) $l->id,
@@ -174,6 +224,7 @@ class RibbonPortalController extends Controller
     private static function state(Customer $customer, ?User $user): array
     {
         $link = Access::live($customer);
+        $in = $link?->last_used_at !== null;
 
         return [
             /*
@@ -181,13 +232,14 @@ class RibbonPortalController extends Controller
              * لا تُذكر فيه (`config/ziggy.php`). ومن يشارك ولا يدير لا يصله عنوانُ الإلغاء.
              */
             'urls' => [
-                'code' => route('admin.customers.portal.code', $customer->id, false),
+                'device' => route('admin.customers.portal.device', $customer->id, false),
                 'revoke' => Portal::mayManage($user) ? route('admin.customers.portal.revoke', $customer->id, false) : null,
             ],
             'url' => Portal::url(),
             'hasPhone' => Access::phone($customer) !== null,
-            'since' => $link?->created_at?->format('Y-m-d H:i'),
-            'used' => $link?->last_used_at?->format('Y-m-d H:i'),
+            'waiting' => Devices::of($customer),
+            'since' => $in ? $link->created_at?->format('Y-m-d H:i') : null,
+            'used' => $in ? $link->last_used_at->format('Y-m-d H:i') : null,
             'devices' => $link ? Access::devices($link) : 0,
         ];
     }

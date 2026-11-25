@@ -4,23 +4,16 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\PdfController;
 use App\Models\Customer;
-use App\Models\CustomerInvoice;
 use App\Models\CustomerPortalLink;
+use App\Models\CustomerPortalRequest;
 use App\Models\CustomerPortalSession;
-use App\Models\Order;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoices;
-use App\Support\Document\PaperSize;
-use App\Support\DocumentPaper;
-use App\Support\DocumentRenderer;
-use App\Support\DocumentTemplates;
 use App\Support\MarketingSettings;
-use App\Support\PublicDocument;
 use App\Support\RibbonPortal\Access;
-use App\Support\RibbonPortal\Code;
+use App\Support\RibbonPortal\Devices;
 use App\Support\RibbonPortal\Portal;
-use App\Support\SalesChannel;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -31,17 +24,19 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use Tests\Support\RibbonPortalShop;
 use Tests\TestCase;
 
 /**
  * بوابةُ RIBBON لا تُفتح إلّا لصاحبها — ولا تُعرف إلّا في متجرها.
  *
- *   - رابطٌ واحدٌ للجميع: رقمُ الهاتف ورمزٌ من فاتورته معًا، ولا يكفي أحدُهما، ولا يقول الردُّ أيُّهما أصاب.
- *   - والرمزُ على ورقة المشتري وحدها: لا على سند التسليم، ولا في صفحة رمز QR، ولا لطلبٍ كتبه زائرُ الموقع.
- *   - ويكفّ عن الطبع متى دخل صاحبُه، ويقف بالإلغاء، وتُغلق الجلساتُ بتغيّر الرقم وحذف العميل ساعتَها.
+ *   - رابطٌ واحدٌ للجميع وخانةٌ واحدة: رقمُ الهاتف. ولا يُفتح به شيءٌ حتّى يعتمد موظّفٌ الجهازَ مرّة.
+ *   - والردُّ واحدٌ لرقمٍ مسجَّلٍ وغيره، ولا حسابَ يُنشأ.
+ *   - والموظّفُ يكتب الرقمَ الظاهر على جهاز العميل ولا يراه عنده: فلا يُعتمد جهازٌ لم يره.
+ *   - ولا رمزَ على فاتورةٍ ولا إيصال، ولا رابطَ لعميلٍ بعينه، ولا كلمةَ مرور.
+ *   - وتُغلق الجلساتُ بالإلغاء وتغيّر الرقم وحذف العميل ساعتَها.
  *   - ولا يبلغ أحدٌ فاتورةَ غيره برقمها ولا بمعرّفها.
  *   - ومتجرٌ آخر لا بابَ له ولا زرَّ ولا مفتاحَ في صفحاته — ولو كتب العنوانَ بيده.
  *   - والعملُ عليها لمن اختاره صاحبُ النشاط، ولا يفتح له شيئًا آخر، وإلغاءُ الدخول لمن يدير.
@@ -80,70 +75,216 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         Portal::saveStaff((int) $this->ribbon->id, $share, $manage);
     }
 
-    /** ورقةٌ كما تُطبع — أو نصُّها بلا مسافات ليُبحث فيه */
-    private function paper(string $html): string
+    private function approve(User $by, Customer $customer, string $digits): TestResponse
     {
-        return (string) preg_replace('/\s+/u', '', strip_tags((string) preg_replace('#<style.*?</style>#su', '', $html)));
+        return $this->staff($by)->postJson(route('admin.customers.portal.device', $customer->id), ['device' => $digits]);
     }
 
-    private function invoiceOf(Customer $customer, ?int $by = null, bool $issue = true): CustomerInvoice
+    /** رقمُ جهازٍ لا ينتظر به أحد */
+    private function other(string ...$shown): string
     {
-        $draft = CustomerInvoices::create((int) $customer->business_id, $customer, [], [['description' => 'تنسيق', 'quantity' => 1, 'unit_price' => 9]], $by);
-
-        return $issue ? CustomerInvoices::issue($draft, $by)->fresh() : $draft->fresh();
+        return (string) collect(range(100, 999))->first(fn (int $n) => ! in_array((string) $n, $shown, true));
     }
 
-    /* ═════════════ الرقمُ وحدَه والرمزُ وحدَه ═════════════ */
+    /* ═════════════ الرقمُ وحدَه لا يفتح شيئًا ═════════════ */
 
-    public function test_one_public_link_asks_for_the_phone_at_once_and_shows_nothing(): void
+    public function test_one_public_link_asks_for_the_phone_alone_and_shows_nothing(): void
     {
         $this->order($this->maryam, 'INV-1');
         $page = $this->my()->assertOk()->getContent();
 
-        // خانةُ الهاتف ظاهرةٌ ساعةَ الفتح، والرمزُ بعدها — ولا طلبَ لرابطٍ من موظّف
+        // خانةٌ واحدةٌ ظاهرةٌ ساعةَ الفتح: رقمُ الهاتف — لا رمزَ ولا كلمةَ مرورٍ ولا حسابَ جديدًا
         $this->assertMatchesRegularExpression('/<form[^>]*data-testid="portal-login"(?![^>]*hidden)/', $page);
-        $this->assertMatchesRegularExpression('/data-testid="portal-step-phone"(?![^>]*hidden)[^>]*>/', $page);
-        $this->assertMatchesRegularExpression('/data-testid="portal-step-code" hidden/', $page);
-        foreach (['يرجى طلب رابطك', 'رابطك الشخصي', 'personal link', 'مريم', 'INV-1', '91234567'] as $not) {
-            $this->assertStringNotContainsString($not, $page, $not);
+        $this->assertSame(1, preg_match_all('/<input\b/', $page));
+        $this->assertStringContainsString('name="phone" type="tel"', $page);
+        foreach (['يرجى طلب رابطك', 'رابطك الشخصي', 'رمز', 'فاتورتك من', 'personal link', 'code', 'مريم', 'INV-1', '91234567'] as $not) {
+            $this->assertStringNotContainsString($not, (string) preg_replace('#<(style|script).*?</\1>#su', '', $page), $not);
         }
         $en = $this->visitor(null)->withCookie('rb_my_lang', 'en')->get('http://ribbon.abaadapp.om/my')->getContent();
         $this->assertStringContainsString('Your phone number registered with us', $en);
-        $this->assertStringNotContainsString('personal link', $en);
-        // ولا بابَ لإنشاء حسابٍ ولا كلمةَ مرور
-        $this->assertDoesNotMatchRegularExpression('/type="password"|register|signup|إنشاء حساب/iu', $page);
+        $this->assertDoesNotMatchRegularExpression('/type="password"|register"|signup|sign up|إنشاء حساب|حساب جديد/iu', $page.$en);
 
         $this->myJson('/data')->assertStatus(401);
         $this->myJson('/points')->assertStatus(401);
         $this->my('/paper/order/1')->assertRedirect();
         $this->my('/paper/order/1/sheet')->assertForbidden();
         $this->my('/paper/order/1/pdf')->assertForbidden();
+        $this->myJson('/wait')->assertOk()->assertExactJson(['state' => 'over']);
     }
 
-    public function test_a_phone_alone_or_a_code_alone_opens_nothing_and_every_refusal_reads_the_same(): void
+    public function test_a_phone_number_opens_nothing_until_the_device_is_approved(): void
+    {
+        $order = $this->order($this->maryam, 'INV-1');
+        $cookie = $this->device('91234567');
+
+        // الجهازُ ينتظر: رقمُه على الشاشة، ولا حرفَ من الحساب — ولا أنّ الرقم مسجَّل
+        $page = $this->my('', $cookie)->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/data-testid="portal-number">[1-9]\d\d</', $page);
+        foreach (['مريم', 'INV-1', '91234567', 'باقة', 'portal-rows'] as $not) {
+            $this->assertStringNotContainsString($not, $page, $not);
+        }
+        $this->myJson('/data', $cookie)->assertStatus(401);
+        $this->myJson('/points', $cookie)->assertStatus(401);
+        $this->my("/paper/order/{$order->id}", $cookie)->assertRedirect();
+        $this->my("/paper/order/{$order->id}/sheet", $cookie)->assertForbidden();
+        $this->my("/paper/order/{$order->id}/pdf", $cookie)->assertForbidden();
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'wait']);
+        $this->assertSame([0, 0], [CustomerPortalSession::count(), CustomerPortalLink::count()]);
+
+        // ويُعتمد مرّةً فتُفتح وحدها، وتُحفظ على الجهاز بلا كتابة شيء
+        $this->approve($this->owner, $this->maryam, $this->shown($cookie))->assertOk();
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'in']);
+        $home = $this->my('', $cookie)->assertSee('مريم البلوشي');
+        $this->assertStringContainsString('INV-1', $home->getContent());
+        // والكعكةُ نفسُها تُجدَّد بكلّ زيارة — وإلّا انقضت في المتصفّح وجلستُها حيّة
+        $again = $home->getCookie(Access::COOKIE);
+        $this->assertSame($cookie, $again->getValue());
+        $this->assertSame(now()->addDays(Access::DAYS)->timestamp, $again->getExpiresTime());
+        foreach ([1, 2, 3] as $visit) {
+            Carbon::setTestNow(now()->addDays(Access::DAYS - 1));
+            $this->myJson('/data', $cookie)->assertOk();
+        }
+        $this->ask('91234567', $cookie)->assertOk();
+        $this->my('', $cookie)->assertSee('مريم البلوشي');
+    }
+
+    public function test_every_number_is_answered_alike_and_no_account_is_made(): void
     {
         $this->order($this->maryam, 'INV-1');
-        $fatima = $this->buyer('فاطمة', '92222222');
         $this->buyer('جارة', '99999999', $this->neighbour);
-        $right = $this->code($this->maryam);
 
         $answers = [];
-        foreach ([
-            ['91234567', ''], ['91234567', '000000000'], ['91234567', 'abc'], ['91234567', '12345'],     // رقمٌ مسجَّل بلا رمزه
-            ['90000001', $right], ['90000001', '000000000'], ['99999999', $right],                        // غيرُ مسجَّل، ورقمُ عميلِ متجرٍ آخر
-            ['92222222', $right], ['91234567', $this->code($fatima)],                                      // رمزُ أحدهما برقم الآخر
-            ['', $right], ['مريم', $right], ["91234567' OR '1'='1", $right],
-        ] as [$phone, $code]) {
-            RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
-            Carbon::setTestNow(now()->addMinutes(20));
-            $r = $this->attempt($phone, (string) $code)->assertStatus(422);
-            $this->assertNull($r->getCookie(Access::COOKIE));
-            $answers[] = $r->getContent();
+        $pages = [];
+        // مسجَّل، وغيرُ مسجَّل، ورقمُ عميلِ متجرٍ آخر
+        foreach (['91234567', '90000001', '99999999'] as $phone) {
+            $r = $this->ask($phone)->assertOk();
+            $answers[] = [$r->getContent(), array_keys($r->headers->all()), strlen((string) $r->getCookie(Access::COOKIE)->getValue())];
+            $page = $this->my('', (string) $r->getCookie(Access::COOKIE)->getValue())->getContent();
+            $pages[] = preg_replace(['/nonce="[^"]+"/', '/(csrf-token" content|_token" value)="[^"]+"/', '/portal-number">\d+/'], '', (string) $page);
         }
-        $this->assertCount(1, array_unique($answers), 'لا يُعرف من الردّ أيُّهما أصاب، ولا أرقمٌ مسجَّلٌ أم لا');
-        $this->assertSame(0, CustomerPortalSession::count());
-        $this->assertSame(0, CustomerPortalLink::count(), 'ومحاولةٌ لا تكتب صفًّا');
-        $this->assertSame(2, Customer::where('business_id', $this->ribbon->id)->count(), 'ولا حسابَ يُنشأ');
+        $this->assertCount(1, array_unique($answers, SORT_REGULAR), 'لا يُعرف من الردّ أرقمٌ مسجَّلٌ أم لا');
+        $this->assertCount(1, array_unique($pages), 'ولا من الصفحة');
+        $this->assertSame(3, CustomerPortalRequest::count(), 'ولكلّ رقمٍ صفٌّ يُكتب — فلا يُعرف من زمن الردّ');
+
+        // وما ليس رقمًا يُقال له، ولا صفَّ يُكتب
+        foreach (['', 'مريم', '123', '<b>', str_repeat('9', 60)] as $odd) {
+            $this->assertNull($this->ask($odd)->assertStatus(422)->getCookie(Access::COOKIE), $odd);
+        }
+        $this->assertSame(3, CustomerPortalRequest::count());
+        // وما يشبه رقمًا وليس لأحدٍ ينتظر كسواه ولا يُفتح به شيء
+        $this->assertSame([], Devices::of(Customer::make(['business_id' => $this->ribbon->id, 'phone' => "91234567' OR '1'='1"])));
+        $this->assertSame(1, Customer::where('business_id', $this->ribbon->id)->count(), 'ولا حسابَ يُنشأ');
+        $this->assertSame([0, 0], [CustomerPortalSession::count(), CustomerPortalLink::count()]);
+
+        // ولا يُحفظ رقمٌ ولا رمزُ جهازٍ ولا رقمُ شاشته
+        $row = (string) json_encode(DB::table('customer_portal_requests')->get());
+        foreach (['91234567', '90000001', $this->device('92220000')] as $not) {
+            $this->assertStringNotContainsString($not, $row);
+        }
+
+        // ورقمٌ لم يكن مسجَّلًا ثمّ أضافه الموظّفُ عميلًا: يُعتمد جهازُه الذي ينتظر
+        $cookie = $this->device('95551111');
+        $this->assertSame([], array_filter(Devices::waiting((int) $this->ribbon->id), fn ($w) => $w['phone'] === '95551111'));
+        $new = $this->buyer('عميلة جديدة', '95551111');
+        $this->approve($this->owner, $new, $this->shown($cookie))->assertOk();
+        $this->my('', $cookie)->assertSee('عميلة جديدة');
+    }
+
+    public function test_the_staff_member_must_read_the_number_off_the_customers_own_screen(): void
+    {
+        $this->order($this->maryam, 'INV-1');
+        // غريبٌ كتب رقمَها من بعيد، وهي في المحلّ تكتبه في جهازها
+        $stranger = $this->device('91234567');
+        $hers = $this->device('91234567');
+        $this->assertNotSame($this->shown($stranger), $this->shown($hers), 'لا جهازان لرقمٍ واحدٍ برقمٍ واحد');
+
+        // ولا رقمَ جهازٍ عند الموظّف في أيّ شاشة: يُقرأ من شاشتها
+        $index = $this->staff($this->owner)->get(route('admin.customers.index'))->viewData('page')['props'];
+        $show = $this->staff($this->owner)->get(route('admin.customers.show', $this->maryam->id))->viewData('page')['props'];
+        $list = $this->staff($this->owner)->getJson(route('admin.customers.portal.waiting'))->assertOk();
+        $this->assertSame(1, $index['portal']['waiting']);
+        $this->assertCount(2, $show['portalCustomer']['waiting']);
+        $this->assertSame(['مريم البلوشي', '91234567', false, 2], [$list->json('waiting.0.name'), $list->json('waiting.0.phone'), $list->json('waiting.0.twin'), count($list->json('waiting.0.devices'))]);
+        foreach ([$this->shown($stranger), $this->shown($hers)] as $number) {
+            foreach ([json_encode($index['portal']), json_encode($show['portalCustomer']), json_encode($list->json())] as $seen) {
+                $this->assertDoesNotMatchRegularExpression('/"'.$number.'"/', (string) $seen);
+            }
+        }
+        $this->assertStringContainsString('no-store', (string) $list->headers->get('Cache-Control'));
+
+        // تُعتمد هي وحدها
+        $this->approve($this->owner, $this->maryam, $this->shown($hers))->assertOk()->assertJsonPath('state.devices', 1);
+        $this->my('', $hers)->assertSee('مريم البلوشي');
+        $this->my('', $stranger)->assertDontSee('مريم');
+        $this->myJson('/data', $stranger)->assertStatus(401);
+        $this->assertSame(1, CustomerPortalSession::count());
+
+        // ورقمُ جهازٍ اعتُمد لا يُعتمد به ثانية، ورقمُ جهازٍ لرقمٍ آخر لا يعتمده لها
+        $this->approve($this->owner, $this->maryam, $this->shown($this->device('92220000')))->assertStatus(422);
+        $this->assertSame(1, CustomerPortalSession::count());
+    }
+
+    public function test_three_wrong_numbers_close_what_waits(): void
+    {
+        $cookie = $this->device('91234567');
+        $right = $this->shown($cookie);
+        $wrong = $this->other($right);
+
+        foreach ([1, 2] as $try) {
+            $this->approve($this->owner, $this->maryam, $wrong)->assertStatus(422)->assertJsonPath('message', fn ($m) => str_contains((string) $m, 'ثلاثة أخطاء'));
+        }
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'wait']);
+        $this->approve($this->owner, $this->maryam, $wrong)->assertStatus(422);
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'over']);
+        $this->approve($this->owner, $this->maryam, $right)->assertStatus(422);
+        $this->my('', $cookie)->assertSee('انتهى الطلب قبل اعتماد الجهاز')->assertCookieExpired(Access::COOKIE);
+        $this->assertSame([0, 0], [CustomerPortalSession::count(), CustomerPortalLink::count()]);
+
+        // وخطآن ثمّ الصواب يُعتمد، وبأرقامٍ عربيّة
+        $cookie = $this->device('91234567');
+        $this->approve($this->owner, $this->maryam, $this->other($this->shown($cookie)))->assertStatus(422);
+        $this->approve($this->owner, $this->maryam, strtr($this->shown($cookie), array_combine(range('0', '9'), mb_str_split('٠١٢٣٤٥٦٧٨٩'))))->assertOk();
+        $this->approve($this->owner, $this->maryam, '')->assertStatus(422)->assertJsonPath('errors.device.0', fn ($m) => str_contains((string) $m, 'رقم الجهاز'));
+    }
+
+    public function test_a_waiting_device_is_forgotten_after_a_day_or_by_either_side(): void
+    {
+        $cookie = $this->device('91234567');
+        $right = $this->shown($cookie);
+        // الجهازُ نفسُه والرقمُ نفسُه: رقمُه كما هو، ولا طلبَ ثانيًا
+        $this->assertNull($this->ask('+968 9123 4567', $cookie)->assertOk()->getCookie(Access::COOKIE));
+        $this->assertSame([$right, 1], [$this->shown($cookie), CustomerPortalRequest::count()]);
+
+        Carbon::setTestNow(now()->addHours(Devices::HOURS)->subMinute());
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'wait']);
+        Carbon::setTestNow(now()->addMinutes(2));
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'over']);
+        $this->approve($this->owner, $this->maryam, $right)->assertStatus(422);
+        $this->assertSame([], Devices::waiting((int) $this->ribbon->id));
+
+        // «تغيير الرقم» يُنسيه، ورقمٌ آخر في الجهاز نفسه يُسقط الأوّل
+        $cookie = $this->device('91234567');
+        $right = $this->shown($cookie);
+        $next = (string) $this->ask('92220000', $cookie)->assertOk()->getCookie(Access::COOKIE)->getValue();
+        $this->assertNotSame($cookie, $next);
+        $this->approve($this->owner, $this->maryam, $right)->assertStatus(422);
+        $this->visitor($next)->post('http://ribbon.abaadapp.om/my/logout')->assertRedirect()->assertCookieExpired(Access::COOKIE);
+        $this->myJson('/wait', $next)->assertExactJson(['state' => 'over']);
+
+        // و«رفض» من الموظّف
+        Carbon::setTestNow(now()->addMinutes(16));
+        $cookie = $this->device('91234567');
+        $this->staff($this->owner)->deleteJson(route('admin.customers.portal.dismiss', $this->maryam->id))->assertOk()->assertJsonPath('state.waiting', []);
+        $this->myJson('/wait', $cookie)->assertExactJson(['state' => 'over']);
+
+        // ولا ينتظر لرقمٍ واحدٍ أكثرُ من ثلاثة: الأقدمُ يسقط
+        $many = array_map(fn () => $this->device('91234567'), range(1, 4));
+        $this->assertSame(['over', 'wait', 'wait', 'wait'], array_map(fn ($c) => $this->myJson('/wait', $c)->json('state'), $many));
+
+        // واعتُمد ولم يعد إليه صاحبُه في يومه: لا جلسةَ تبقى له
+        $this->approve($this->owner, $this->maryam, $this->shown($many[3]))->assertOk();
+        Carbon::setTestNow(now()->addHours(Devices::HOURS + 1));
+        $this->myJson('/data', $many[3])->assertStatus(401);
     }
 
     public function test_another_shops_customer_and_a_twin_number_are_kept_apart(): void
@@ -151,241 +292,118 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $twin = $this->buyer('مريم الجار', '91234567', $this->neighbour);
         $this->order($twin, 'NEIGHBOUR-9');
         $mine = $this->order($this->maryam, 'INV-MINE');
-        // ورمزٌ لورقةِ متجرٍ آخر لا يوجد أصلًا
-        $this->assertNull(Code::of($this->order($twin, 'NEIGHBOUR-10')));
-        $this->attempt('91234567', $this->code($twin))->assertStatus(422);
 
         $cookie = $this->enter($this->maryam);
         $seen = $this->myJson('/data', $cookie)->getContent();
         $this->assertStringContainsString('INV-MINE', $seen);
         $this->assertStringNotContainsString('NEIGHBOUR-9', $seen);
+        // وجهازٌ ينتظر هنا لا يُعتمد لعميلِ متجرٍ آخر بالرقم نفسه
+        $waiting = $this->device('91234567');
+        $this->assertNull(Devices::approve($twin, $this->shown($waiting), $this->owner));
+        $this->assertSame([], Devices::waiting((int) $this->neighbour->id));
 
-        // وسجلّان برقمٍ واحد في المتجر نفسه لا يُدمجان: لكلٍّ رمزُ ورقته
+        // وسجلّان برقمٍ واحد في المتجر نفسه لا يُدمجان: يُقال للموظّف، ويُفتح لمن اعتُمد له
         $same = $this->buyer('مريم الثانية', null, null, ['contact_phone' => '91234567']);
-        $second = $this->order($same, 'INV-SECOND');
-        $other = $this->attempt('91234567', (string) Code::of($second))->assertOk()->getCookie(Access::COOKIE)->getValue();
-        $this->assertStringContainsString('INV-SECOND', $this->myJson('/data', $other)->getContent());
-        $this->assertStringNotContainsString('INV-MINE', $this->myJson('/data', $other)->getContent());
-        $this->my("/paper/order/{$mine->id}", $other)->assertNotFound();
+        $this->order($same, 'INV-SECOND');
+        $list = collect(Devices::waiting((int) $this->ribbon->id));
+        $this->assertSame([true, true], $list->pluck('twin')->all());
+        $this->approve($this->owner, $same, $this->shown($waiting))->assertOk();
+        $this->assertStringContainsString('INV-SECOND', $this->myJson('/data', $waiting)->getContent());
+        $this->assertStringNotContainsString('INV-MINE', $this->myJson('/data', $waiting)->getContent());
+        $this->my("/paper/order/{$mine->id}", $waiting)->assertNotFound();
         $this->assertSame(2, Customer::where('business_id', $this->ribbon->id)->count());
     }
 
-    public function test_guessing_is_stopped_per_number_and_per_address(): void
+    public function test_requests_are_limited_per_number_and_per_address(): void
     {
-        $right = $this->code($this->maryam);
-        for ($i = 1; $i <= 5; $i++) {
-            $this->attempt('91234567', '10000000'.$i)->assertStatus(422);
+        // خمسةٌ للرقم من عنوانٍ واحد في ربع ساعة، بأيّ صيغةٍ كُتب — مسجَّلًا أو غيره
+        foreach (['91234567', '90000001'] as $phone) {
+            for ($i = 1; $i <= 5; $i++) {
+                $this->ask($phone)->assertOk();
+            }
+            $this->assertGreaterThan(0, $this->ask($phone)->assertStatus(429)->json('wait'));
+            $this->ask('+968 '.$phone)->assertStatus(429);
         }
-        // والسادسةُ تُردّ ولو صحّت، وبأيّ صيغةٍ كُتب الرقم — حتّى تنقضي المدّة
-        $this->assertGreaterThan(0, $this->attempt('91234567', $right)->assertStatus(429)->json('wait'));
-        $this->attempt('+968 9123 4567', $right)->assertStatus(429);
-        $this->assertSame(0, CustomerPortalSession::count());
+        // ومن عنوانٍ آخر يُقبل: غريبٌ لا يُغلق البابَ على صاحب الرقم
+        $this->withServerVariables(['REMOTE_ADDR' => '10.9.8.7']);
+        $this->ask('91234567')->assertOk();
+        $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1']);
         // ولا يُكتب الرقمُ في العدّاد
-        $keys = (new \ReflectionMethod(Access::class, 'keys'))->invoke(null, '91234567', '', Request::create('/my'));
+        $keys = (new \ReflectionMethod(Access::class, 'keys'))->invoke(null, '91234567', Request::create('/my'));
         $this->assertStringNotContainsString('91234567', implode(' ', $keys));
-
         Carbon::setTestNow(now()->addMinutes(16));
-        $this->attempt('91234567', $right)->assertOk();
+        $this->ask('91234567')->assertOk();
 
-        // وعشرٌ خاطئةٌ في اليوم تُغلق يومَه، ولو تباعدت
-        for ($i = 0; $i < 10; $i++) {
-            RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
-            Carbon::setTestNow(now()->addMinutes(16));
-            $this->attempt('95550000', '20000000'.$i)->assertStatus(422);
+        // وعشرون للرقم في اليوم ولو تباعدت وتعدّدت عناوينُها
+        for ($i = 0; $i < 20; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => '10.1.1.'.$i]);
+            $this->ask('95550000')->assertOk();
         }
-        RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
-        Carbon::setTestNow(now()->addMinutes(16));
-        $this->attempt('95550000', '123456789')->assertStatus(429);
+        $this->withServerVariables(['REMOTE_ADDR' => '10.1.2.1']);
+        $this->ask('95550000')->assertStatus(429);
 
-        // وعنوانٌ يجرّب أرقامًا كثيرة يُردّ كذلك — فلا تُعدّ الأرقامُ منه
-        RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
-        for ($i = 1; $i <= 20; $i++) {
-            $this->attempt('9600'.str_pad((string) $i, 4, '0', STR_PAD_LEFT), '123456789')->assertStatus(422);
+        // وعنوانٌ يكتب أرقامًا كثيرة يُردّ
+        $this->withServerVariables(['REMOTE_ADDR' => '10.2.2.2']);
+        for ($i = 1; $i <= 40; $i++) {
+            $this->ask('9600'.str_pad((string) $i, 4, '0', STR_PAD_LEFT))->assertOk();
         }
-        $this->attempt('91234567', $right)->assertStatus(429);
+        $this->ask('97770000')->assertStatus(429);
+        $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1']);
 
-        foreach (['my.login', 'my.data', 'my.points', 'my.paper', 'my.paper.sheet', 'my.paper.pdf', 'my.index'] as $name) {
+        foreach (['my.login', 'my.wait', 'my.data', 'my.points', 'my.paper', 'my.paper.sheet', 'my.paper.pdf', 'my.index', 'admin.customers.portal.device', 'pos.orders.portal'] as $name) {
             $this->assertNotEmpty(array_filter(Route::getRoutes()->getByName($name)->gatherMiddleware(), fn ($m) => is_string($m) && str_starts_with($m, 'throttle:')), $name);
         }
     }
 
-    /* ═════════════ رمزُ الفاتورة ═════════════ */
+    /* ═════════════ الإلغاء ═════════════ */
 
-    public function test_the_code_is_on_the_buyers_own_papers_and_opens_the_account_once_for_the_device(): void
+    public function test_revoking_signs_out_every_device_and_closes_what_waits(): void
     {
-        $order = $this->order($this->maryam, 'INV-A');
-        $invoice = $this->invoiceOf($this->maryam, $this->owner->id);
-        // فاتورةُ A4 وإيصالُ الصندوق وفاتورةُ العميل: ثلاثُ أوراقٍ بثلاثة قوالب
-        DocumentTemplates::save((int) $this->ribbon->id, 'sale', ['paper' => PaperSize::A4]);
-        $this->assertSame(PaperSize::A4, PdfController::saleHtml((int) $this->ribbon->id, $order)['paper']);
-
-        foreach ([[$order, PdfController::saleHtml((int) $this->ribbon->id, $order)['html']], [$order, PdfController::saleHtml((int) $this->ribbon->id, $order, thermal: true)['html']], [$invoice, PdfController::customerInvoiceHtml((int) $this->ribbon->id, $invoice)]] as $i => [$document, $html]) {
-            $code = (string) Code::of($document);
-            $this->assertMatchesRegularExpression('/^\d{9}$/', $code);
-            $this->assertStringContainsString('رمزالدخول'.$code, $this->paper($html), "الورقة {$i}");
-            $this->assertStringContainsString('ribbon.abaadapp.om/my', $this->paper($html), "الورقة {$i}");
-            $this->assertStringContainsString(Code::spaced($code), $html);
-        }
-        $this->assertNotSame(Code::of($order), Code::of($invoice), 'لكلّ ورقةٍ رمزُها');
-        $this->assertSame(Code::of($order), Code::of($order->fresh()), 'وتُعاد طباعتُها به');
-
-        // ويُدخل بأيٍّ منهما، وتُحفظ الجلسةُ على الجهاز
-        $cookie = (string) $this->attempt('91234567', (string) Code::of($invoice))->assertOk()->getCookie(Access::COOKIE)->getValue();
-        $this->my('', $cookie)->assertSee('مريم البلوشي');
-        Carbon::setTestNow(now()->addDays(Access::DAYS - 1));
-        $this->myJson('/data', $cookie)->assertOk();
-        Carbon::setTestNow(now()->addDays(Access::DAYS - 1));
-        $this->myJson('/data', $cookie)->assertOk();
-
-        // ولا رمزَ محفوظٌ في القاعدة ولا في السجلّ
-        $stored = (string) json_encode([DB::table('customer_portal_links')->get(), DB::table('customer_portal_sessions')->get(), DB::table('activity_logs')->get(), DB::table('cache')->get()]);
-        $this->assertStringNotContainsString((string) Code::of($order), $stored);
-        $this->assertStringNotContainsString('91234567', (string) json_encode([DB::table('customer_portal_links')->get(), DB::table('customer_portal_sessions')->get()]));
-        // ولا يُشتقّ ممّا فيها: يلزم مفتاحُ الخادم
-        $was = Code::daily($this->maryam);
-        config(['app.key' => 'base64:'.base64_encode(random_bytes(32))]);
-        $this->assertNotSame($was, Code::daily($this->maryam));
-    }
-
-    public function test_the_delivery_note_and_the_public_qr_page_never_carry_it(): void
-    {
-        $order = $this->order($this->maryam, 'INV-GIFT', ['recipient_name' => 'نورة', 'recipient_phone' => '95556666', 'fulfillment_type' => 'delivery']);
-        $code = (string) Code::of($order);
-        $bid = (int) $this->ribbon->id;
-
-        $papers = [
-            'سند A4' => DocumentRenderer::generic($bid, 'delivery', DocumentPaper::forDelivery($order), null, $order),
-            'سند حراريّ' => DocumentRenderer::deliveryStrip($bid, $order, 80),
-            'صفحة رمز QR' => $this->visitor(null)->get('http://localhost/i/'.PublicDocument::token($order))->assertOk()->getContent(),
-        ];
-        foreach ($papers as $name => $html) {
-            $this->assertStringNotContainsString($code, $this->paper($html), $name);
-            $this->assertStringNotContainsString('data-portal-code', $html, $name);
-        }
-        // ورمزُ QR نفسُه — على الفاتورة والسند معًا — لا يفتح شيئًا
-        $this->assertStringContainsString((string) PublicDocument::token($order), $papers['سند A4']);
-        $this->attempt('91234567', (string) PublicDocument::token($order))->assertStatus(422);
-        $this->attempt('91234567', '', (string) PublicDocument::token($order))->assertStatus(422);
-    }
-
-    public function test_an_order_placed_by_a_visitor_under_someones_number_carries_no_code(): void
-    {
-        // طلبُ الموقع يُنسب إلى صاحب الرقم المكتوب بلا تحقّق — فلا يخرج منه رمزٌ ولا يُقبل
-        $web = $this->order($this->maryam, 'WEB-ATTACK', ['channel' => SalesChannel::WEBSITE, 'user_id' => null, 'employee_name' => 'الموقع الإلكتروني']);
-        $bot = $this->invoiceOf($this->maryam, null);
-        foreach ([$web, $bot] as $document) {
-            $this->assertNull(Code::of($document));
-        }
-        $this->assertStringNotContainsString('data-portal-code', PdfController::saleHtml((int) $this->ribbon->id, $web, thermal: true)['html']);
-        $this->assertStringNotContainsString('data-portal-code', PdfController::customerInvoiceHtml((int) $this->ribbon->id, $bot));
-
-        // ولو اشتُقّ بالقاعدة نفسِها رُدّ
-        $make = new \ReflectionMethod(Code::class, 'make');
-        foreach (["order|{$web->id}", "invoice|{$bot->id}"] as $what) {
-            $this->attempt('91234567', $make->invoke(null, $this->maryam, $what, 0))->assertStatus(422);
-        }
-
-        // وكذلك سلّةٌ معلّقة ومسودّةٌ وبيعةٌ بلا عميل، وعميلٌ بلا رقم
-        $held = $this->order($this->maryam, 'HELD', ['is_held' => true]);
-        $draft = $this->invoiceOf($this->maryam, $this->owner->id, false);
-        $walkIn = $this->order($this->maryam, 'WALK', ['customer_id' => null]);
-        foreach ([$held, $draft, $walkIn, $this->order($this->buyer('بلا رقم', null), 'NOPHONE')] as $document) {
-            $this->assertNull(Code::of($document), (string) $document->number);
-        }
-        foreach (["order|{$held->id}", "invoice|{$draft->id}"] as $what) {
-            RateLimiter::clear('ribbon-portal:ip:127.0.0.1');
-            $this->attempt('91234567', $make->invoke(null, $this->maryam, $what, 0))->assertStatus(422);
-        }
-        // وطلبٌ قديمٌ بلا قناةٍ كتبه موظّف: له رمزُه
-        $this->assertNotNull(Code::of($this->order($this->maryam, 'OLD', ['channel' => null])));
-        $this->assertNull(Code::of($this->order($this->maryam, 'OLD-2', ['channel' => null, 'user_id' => null])));
-    }
-
-    public function test_once_the_owner_is_in_a_purchase_under_their_number_opens_nothing(): void
-    {
-        $first = $this->order($this->maryam, 'INV-FIRST');
-        $cookie = (string) $this->attempt('91234567', (string) Code::of($first))->assertOk()->getCookie(Access::COOKIE)->getValue();
-
-        // غريبٌ اشترى في المحلّ برقمها بعد أن دخلت: إيصالُه بلا رمز
-        Carbon::setTestNow(now()->addDay());
-        $stranger = $this->order($this->maryam, 'INV-STRANGER');
-        $this->assertNull(Code::of($stranger));
-        $this->assertStringNotContainsString('data-portal-code', PdfController::saleHtml((int) $this->ribbon->id, $stranger, thermal: true)['html']);
-        $make = new \ReflectionMethod(Code::class, 'make');
-        $this->attempt('91234567', $make->invoke(null, $this->maryam, "order|{$stranger->id}", 0))->assertStatus(422);
-
-        // وهي تدخل بجهازها الثاني بفاتورتها الأولى، وترى البيعةَ التي كُتبت برقمها
-        $this->attempt('91234567', (string) Code::of($first))->assertOk();
-        $this->assertStringContainsString('INV-STRANGER', $this->myJson('/data', $cookie)->getContent());
-
-        // ومتى خرجت من أجهزتها كلِّها عاد الرمزُ إلى فواتيرها
-        foreach (CustomerPortalSession::all() as $session) {
-            Access::logout($session);
-        }
-        $this->assertNotNull(Code::of($stranger->fresh()));
-    }
-
-    public function test_revoking_signs_out_and_stops_every_code_printed_before_it(): void
-    {
-        $order = $this->order($this->maryam, 'INV-LEAK');
-        $leaked = (string) Code::of($order);
-        $cookie = (string) $this->attempt('91234567', $leaked)->assertOk()->getCookie(Access::COOKIE)->getValue();
+        $first = $this->enter($this->maryam);
+        $second = $this->enter($this->maryam);
+        $waiting = $this->device('91234567');
+        $right = $this->shown($waiting);
+        $this->assertSame(1, CustomerPortalLink::where('customer_id', $this->maryam->id)->whereNull('revoked_at')->count(), 'إذنٌ واحدٌ لأجهزتها');
 
         Access::revoke($this->maryam, $this->owner);
-        $this->myJson('/data', $cookie)->assertStatus(401);
-        $this->my('', $cookie)->assertDontSee('مريم')->assertCookieExpired(Access::COOKIE);
-        $this->attempt('91234567', $leaked)->assertStatus(422);
+        foreach ([$first, $second] as $cookie) {
+            $this->myJson('/data', $cookie)->assertStatus(401);
+            $this->my('', $cookie)->assertDontSee('مريم')->assertDontSee('انتهى الطلب')->assertCookieExpired(Access::COOKIE);
+        }
+        $this->myJson('/wait', $waiting)->assertExactJson(['state' => 'over']);
+        $this->approve($this->owner, $this->maryam, $right)->assertStatus(422);
 
-        // والورقةُ نفسُها تُعاد طباعتُها برمزٍ جديدٍ يعمل
-        $again = (string) Code::of($order->fresh());
-        $this->assertNotSame($leaked, $again);
-        // وفاتورتُها التالية تحمل رمزًا: جلساتُها أُغلقت كلُّها فلا تُحسب
-        Carbon::setTestNow(now()->addHour());
-        $this->assertSame(0, CustomerPortalSession::whereNull('revoked_at')->count());
-        $this->assertNotNull(Code::of($this->order($this->maryam, 'INV-NEXT')));
-        $this->attempt('91234567', $again)->assertOk();
+        // ويُعتمد جهازُها من جديد فتدخل، والقديمُ لا يعود
+        $this->my('', $this->enter($this->maryam))->assertSee('مريم');
+        $this->myJson('/data', $first)->assertStatus(401);
 
-        // ومن لم يدخل بعدُ تُوقَف رموزُه كذلك — فاتورةٌ وقعت في يدِ غيره
-        $sara = $this->buyer('سارة', '92223333');
-        $paper = (string) Code::of($this->order($sara, 'INV-SARA'));
-        $daily = $this->code($sara);
-        Access::revoke($sara, $this->owner);
-        $this->attempt('92223333', $paper)->assertStatus(422);
-        $this->attempt('92223333', $daily)->assertStatus(422);
-        $this->attempt('92223333', $this->code($sara))->assertOk();
-
-        // وإذنٌ حيٌّ واحدٌ لكلّ عميل — تحرسه القاعدة، وجهازان لا يكتبان إذنين
-        $this->enter($sara);
-        $this->assertSame(1, CustomerPortalLink::where('customer_id', $sara->id)->whereNull('revoked_at')->count());
+        // وإذنٌ حيٌّ واحدٌ لكلّ عميل — تحرسه القاعدة
         $this->expectException(UniqueConstraintViolationException::class);
-        DB::table('customer_portal_links')->insert(['business_id' => $this->ribbon->id, 'customer_id' => $sara->id, 'token_hash' => str_repeat('a', 64), 'nonce' => str_repeat('b', 64), 'phone_hash' => str_repeat('c', 64)]);
-    }
-
-    public function test_a_code_read_by_staff_stops_at_the_end_of_tomorrow(): void
-    {
-        $code = $this->code($this->maryam);
-        Carbon::setTestNow('2026-11-30 23:59:00');
-        $this->attempt('91234567', $code)->assertOk();
-        Carbon::setTestNow('2026-12-01 00:01:00');
-        $this->attempt('91234567', $code)->assertStatus(422);
+        DB::table('customer_portal_links')->insert(['business_id' => $this->ribbon->id, 'customer_id' => $this->maryam->id, 'token_hash' => str_repeat('a', 64), 'nonce' => str_repeat('b', 64), 'phone_hash' => str_repeat('c', 64)]);
     }
 
     public function test_a_changed_number_or_a_deleted_customer_closes_everything_at_once(): void
     {
-        $order = $this->order($this->maryam, 'INV-P');
-        $cookie = (string) $this->attempt('91234567', (string) Code::of($order))->getCookie(Access::COOKIE)->getValue();
+        $this->order($this->maryam, 'INV-P');
+        $cookie = $this->enter($this->maryam);
+        $old = $this->device('91234567');
 
         $this->maryam->update(['phone' => '95550000']);
         $this->myJson('/data', $cookie)->assertStatus(401);
         $this->assertSame(Access::REVOKED_PHONE, CustomerPortalLink::latest('id')->value('revoked_why'));
-        // ورقمُها القديم لا يفتح شيئًا ولو معه ورقتُها
-        $this->attempt('91234567', (string) Code::of($order))->assertStatus(422);
-        $cookie = (string) $this->attempt('95550000', (string) Code::of($order->fresh()))->assertOk()->getCookie(Access::COOKIE)->getValue();
+        // وجهازٌ ينتظر برقمها القديم لا يُعتمد لها
+        $this->approve($this->owner, $this->maryam, $this->shown($old))->assertStatus(422);
+        $cookie = $this->enter($this->maryam, '95550000');
+        $this->my('', $cookie)->assertSee('مريم');
 
+        $waiting = $this->device('95550000');
+        $shown = $this->shown($waiting);
         $this->maryam->delete();
         $this->myJson('/data', $cookie)->assertStatus(401);
         $this->my('', $cookie)->assertDontSee('مريم');
-        $this->attempt('95550000', $this->codeOf($order))->assertStatus(422);
+        $this->assertSame([], Devices::waiting((int) $this->ribbon->id));
+        $this->approve($this->owner, $this->maryam, $shown)->assertNotFound();
+        $this->myJson('/data', $waiting)->assertStatus(401);
 
         // ورقمٌ كُتب بصيغةٍ أخرى ليس رقمًا تغيّر
         $sara = $this->buyer('سارة', '92223333');
@@ -394,35 +412,44 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->myJson('/data', $cookie)->assertOk();
     }
 
-    private function codeOf(Order $order): string
+    /* ═════════════ لا رمزَ ولا رابطَ لعميل ═════════════ */
+
+    public function test_there_is_no_invoice_code_no_personal_link_and_no_password(): void
     {
-        return (new \ReflectionMethod(Code::class, 'make'))->invoke(null, Customer::withTrashed()->find($order->customer_id), "order|{$order->id}", 0);
-    }
-
-    public function test_a_personal_link_issued_before_the_one_link_still_works_until_it_is_revoked(): void
-    {
-        // كما كُتب قبل التعديل: رابطٌ أصدره موظّفٌ باسمه
-        $link = new CustomerPortalLink(['business_id' => $this->ribbon->id, 'customer_id' => $this->maryam->id, 'nonce' => bin2hex(random_bytes(32)), 'created_by' => $this->owner->id,
-            'phone_hash' => (new \ReflectionMethod(Access::class, 'phoneHash'))->invoke(null, '96891234567')]);
-        $key = (new \ReflectionMethod(Access::class, 'token'))->invoke(null, $link);
-        $link->token_hash = hash('sha256', $key);
-        $link->save();
-
-        $this->attempt('90000001', '', $key)->assertStatus(422);
-        $cookie = (string) $this->attempt('91234567', '', $key)->assertOk()->getCookie(Access::COOKIE)->getValue();
-        $this->my('', $cookie)->assertSee('مريم');
-        Access::revoke($this->maryam, $this->owner);
-        $this->attempt('91234567', '', $key)->assertStatus(422);
-        $this->myJson('/data', $cookie)->assertStatus(401);
-
-        // وإذنٌ كتبه الدخولُ نفسُه لا رابطَ له ولو عُرف سرُّه
-        $this->enter($this->maryam);
-        $own = CustomerPortalLink::whereNull('revoked_at')->firstOrFail();
-        $this->attempt('91234567', '', (new \ReflectionMethod(Access::class, 'token'))->invoke(null, $own))->assertStatus(422);
-        // ولا بابَ يُصدر رابطًا شخصيًّا بعد اليوم
-        foreach (['admin.customers.portal.share', 'admin.customers.portal.reissue', 'pos.orders.portal', 'my.same'] as $gone) {
+        foreach (['admin.customers.portal.share', 'admin.customers.portal.reissue', 'admin.customers.portal.code', 'my.same'] as $gone) {
             $this->assertNull(Route::getRoutes()->getByName($gone), $gone);
         }
+
+        // ولا أثرَ لها على ورقة: الفاتورةُ والإيصالُ وفاتورةُ العميل كما كانت
+        $order = $this->order($this->maryam, 'INV-PAPER');
+        $invoice = CustomerInvoices::issue(CustomerInvoices::create((int) $this->ribbon->id, $this->maryam, [], [['description' => 'تنسيق', 'quantity' => 1, 'unit_price' => 9]], $this->owner->id), $this->owner->id)->fresh();
+        foreach ([
+            PdfController::saleHtml((int) $this->ribbon->id, $order)['html'], PdfController::saleHtml((int) $this->ribbon->id, $order, thermal: true)['html'],
+            PdfController::customerInvoiceHtml((int) $this->ribbon->id, $invoice),
+        ] as $html) {
+            $this->assertDoesNotMatchRegularExpression('#رمز الدخول|data-portal|ribbon\.abaadapp\.om/my#u', $html);
+        }
+        foreach (File::allFiles(resource_path('views/documents')) as $file) {
+            $this->assertStringNotContainsStringIgnoringCase('portal', $file->getContents(), $file->getRelativePathname());
+        }
+
+        // ورابطٌ شخصيٌّ صدر من قبل لا يفتح شيئًا: يُطلب رقمُ الهاتف كسواه
+        $link = new CustomerPortalLink(['business_id' => $this->ribbon->id, 'customer_id' => $this->maryam->id, 'nonce' => bin2hex(random_bytes(32)), 'created_by' => $this->owner->id,
+            'phone_hash' => Access::phoneHash('96891234567')]);
+        $key = (new \ReflectionMethod(Access::class, 'token'))->invoke(null, $link);
+        $link->token_hash = Access::hash($key);
+        $link->save();
+        $r = $this->visitor(null)->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => '91234567', 'key' => $key, 'code' => '123456789'])->assertOk();
+        $this->myJson('/data', (string) $r->getCookie(Access::COOKIE)->getValue())->assertStatus(401);
+        // ومن صدر له رابطٌ ولم يدخل به لا يُقرأ «دخل»
+        $this->assertNull($this->staff($this->owner)->get(route('admin.customers.show', $this->maryam->id))->viewData('page')['props']['portalCustomer']['since']);
+        $this->assertSame([], $this->staff($this->owner)->get(route('admin.settings.portal.index'))->viewData('page')['props']['links']);
+
+        // وجهازٌ دخل بالرابط من قبلُ يبقى داخلًا حتّى يُلغى
+        CustomerPortalSession::create(['business_id' => $this->ribbon->id, 'customer_id' => $this->maryam->id, 'link_id' => $link->id, 'token_hash' => Access::hash(str_repeat('a', 64)), 'last_seen_at' => now(), 'expires_at' => now()->addDays(90)]);
+        $this->my('', str_repeat('a', 64))->assertSee('مريم');
+        Access::revoke($this->maryam, $this->owner);
+        $this->myJson('/data', str_repeat('a', 64))->assertStatus(401);
     }
 
     /* ═════════════ فاتورةُ غيره ═════════════ */
@@ -458,16 +485,15 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
 
     public function test_the_session_is_its_own_and_nothing_is_stored_or_indexed(): void
     {
-        $response = $this->attempt('91234567', $this->code($this->maryam));
-        $cookie = $response->getCookie(Access::COOKIE);
+        $cookie = $this->ask('91234567')->getCookie(Access::COOKIE);
         $this->assertTrue($cookie->isHttpOnly());
         $this->assertSame('/my', $cookie->getPath());
         $this->assertSame('lax', $cookie->getSameSite());
         $this->assertNull($cookie->getDomain(), 'لمضيف البوابة وحده');
-        $this->assertTrue(Access::cookie(Request::create('https://ribbon.abaadapp.om/my'), str_repeat('a', 64))->isSecure());
-        $this->assertStringNotContainsString($cookie->getValue(), json_encode(DB::table('customer_portal_sessions')->get()));
 
         $raw = (string) $cookie->getValue();
+        $this->approve($this->owner, $this->maryam, $this->shown($raw))->assertOk();
+        $this->assertStringNotContainsString($raw, (string) json_encode([DB::table('customer_portal_sessions')->get(), DB::table('customer_portal_requests')->get(), DB::table('activity_logs')->get()]));
         foreach (['', '/data', '/points'] as $path) {
             $r = $this->my($path, $raw);
             $this->assertStringContainsString('no-store', (string) $r->headers->get('Cache-Control'), $path);
@@ -498,9 +524,35 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->visitor($raw)->post('http://ribbon.abaadapp.om/my/logout')->assertRedirect()->assertCookieExpired(Access::COOKIE);
         $this->myJson('/data', $raw)->assertStatus(401);
         $again = $this->enter($this->maryam);
+        $this->myJson('/data', $again)->assertOk();
         Carbon::setTestNow(now()->addDays(Access::DAYS + 1));
         $this->myJson('/data', $again)->assertStatus(401);
         $this->myJson('/data', str_repeat('f', 64))->assertStatus(401);
+    }
+
+    public function test_a_sibling_domain_cannot_plant_a_device_in_the_customers_browser(): void
+    {
+        // على https: `__Host-` بمسار الجذر وبلا نطاق — لا يكتبها المتصفّحُ لصفحةٍ على نطاقٍ شقيق
+        $secure = Request::create('https://ribbon.abaadapp.om/my');
+        $cookie = Access::cookie($secure, str_repeat('a', 64));
+        $this->assertSame(['__Host-rb_my', '/', null, true, true, 'lax'], [$cookie->getName(), $cookie->getPath(), $cookie->getDomain(), $cookie->isSecure(), $cookie->isHttpOnly(), $cookie->getSameSite()]);
+
+        // وكعكةٌ بالاسم المجرَّد لا تُظهر جهازَ غيره في متصفّحه
+        $raw = $this->device('91234567');
+        $planted = Request::create('https://ribbon.abaadapp.om/my', cookies: ['rb_my' => $raw]);
+        $this->assertNull(Devices::mine((int) $this->ribbon->id, $planted));
+        $this->assertNotNull(Devices::mine((int) $this->ribbon->id, Request::create('https://ribbon.abaadapp.om/my', cookies: ['__Host-rb_my' => $raw])));
+
+        // ومن دخل قبل أن يتغيّر الاسمُ يبقى داخلًا، وتُكتب له بالاسم الجديد
+        Devices::approve($this->maryam, $this->shown($raw), $this->owner);
+        $session = Access::session((int) $this->ribbon->id, $planted);
+        $this->assertNotNull($session);
+        $this->assertSame($raw, Access::held($planted, $session));
+        $both = Request::create('https://ribbon.abaadapp.om/my', cookies: ['__Host-rb_my' => str_repeat('b', 64), 'rb_my' => $raw]);
+        $this->assertSame($raw, Access::held($both, Access::session((int) $this->ribbon->id, $both)));
+        // ولا يُقرأ متجرٌ آخر بها
+        $this->assertNull(Access::session((int) $this->neighbour->id, $planted));
+        $this->assertNull(Devices::mine((int) $this->neighbour->id, Request::create('https://ribbon.abaadapp.om/my', cookies: ['__Host-rb_my' => $this->device('92220000')])));
     }
 
     /* ═════════════ متجرٌ واحد ═════════════ */
@@ -516,7 +568,10 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         config(['storefront.ribbon_customer_portal.enabled' => false]);
         $this->my('', $cookie)->assertNotFound();
         $this->myJson('/data', $cookie)->assertNotFound();
-        $this->staff($this->owner)->postJson(route('admin.customers.portal.code', $this->maryam->id))->assertNotFound();
+        $this->ask('91234567')->assertNotFound();
+        $this->myJson('/wait', $cookie)->assertNotFound();
+        $this->staff($this->owner)->postJson(route('admin.customers.portal.device', $this->maryam->id), ['device' => '123'])->assertNotFound();
+        $this->staff($this->owner)->getJson(route('admin.customers.portal.waiting'))->assertNotFound();
         $this->staff($this->owner)->get(route('admin.settings.portal.index'))->assertNotFound();
         config(['storefront.ribbon_customer_portal.enabled' => true]);
         $this->my('', $cookie)->assertOk();
@@ -559,13 +614,13 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
             $this->assertArrayNotHasKey($key, $this->staff($them)->get($screen)->assertOk()->viewData('page')['props'], $screen);
         }
         foreach ([
-            ['post', route('admin.customers.portal.code', $theirs->id)], ['delete', route('admin.customers.portal.revoke', $theirs->id)],
-            ['post', route('admin.customers.portal.code', $this->maryam->id)], ['get', route('admin.customers.portal.poster')], ['get', route('admin.settings.portal.index')],
+            ['post', route('admin.customers.portal.device', $theirs->id)], ['delete', route('admin.customers.portal.dismiss', $theirs->id)], ['delete', route('admin.customers.portal.revoke', $theirs->id)],
+            ['post', route('admin.customers.portal.device', $this->maryam->id)], ['get', route('admin.customers.portal.waiting')], ['post', route('pos.orders.portal', $this->order($theirs, 'NB-SALE')->number)], ['get', route('admin.customers.portal.poster')], ['get', route('admin.settings.portal.index')],
             ['post', route('admin.settings.portal.staff')], ['delete', route('admin.settings.portal.revokeAll')], ['delete', route('admin.settings.portal.revoke', 1)],
         ] as [$verb, $url]) {
             $this->staff($them)->json(strtoupper($verb), $url)->assertNotFound();
         }
-        $this->assertSame(0, CustomerPortalLink::count());
+        $this->assertSame([0, 0], [CustomerPortalLink::count(), CustomerPortalSession::count()]);
 
         // ولا اسمَ ولا عنوانَ لها في صفحاته — ولا في جدول المسارات الذي يحمله متصفّحُه
         foreach ([route('admin.customers.index'), route('admin.settings.index'), route('admin.customers.show', $theirs->id), route('pos.index')] as $screen) {
@@ -595,7 +650,12 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
             $show = $this->staff($user)->get(route('admin.customers.show', $this->maryam->id))->assertOk()->viewData('page')['props'];
             $this->assertSame($may, isset($index['portal']), $user->name);
             $this->assertSame($may, isset($show['portalCustomer']), $user->name);
-            $this->staff($user)->postJson(route('admin.customers.portal.code', $this->maryam->id))->assertStatus($may ? 200 : 403);
+            $cookie = $this->device('91234567');
+            $right = $this->shown($cookie);
+            $this->staff($user)->getJson(route('admin.customers.portal.waiting'))->assertStatus($may ? 200 : 403);
+            $this->staff($user)->deleteJson(route('admin.customers.portal.dismiss', $this->buyer('أخرى', null)->id))->assertStatus($may ? 200 : 403);
+            $this->approve($user, $this->maryam, $right)->assertStatus($may ? 200 : 403);
+            $this->myJson('/data', $cookie)->assertStatus($may ? 200 : 401);
             if ($may) {
                 $this->assertSame('https://ribbon.abaadapp.om/my', $index['portal']['url']);
                 $this->assertSame('https://ribbon.abaadapp.om/my', $show['portalCustomer']['url'], 'رابطٌ واحدٌ لكلّ عميل');
@@ -607,22 +667,27 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->staff($clerk)->get(route('admin.customerInvoices.index'))->assertForbidden();
         $this->staff($clerk)->postJson(route('admin.customers.points.adjust', $this->maryam->id), ['direction' => 'add', 'points' => 5, 'reason' => 'x'])->assertForbidden();
         $this->staff($clerk)->get(route('admin.settings.portal.index'))->assertForbidden();
-        $this->staff($till)->postJson(route('admin.customers.portal.code', $this->maryam->id))->assertForbidden();
+        $this->approve($till, $this->maryam, '123')->assertForbidden();
         $this->assertSame(['customers', 'pos'], $clerk->fresh()->permissions, 'صلاحيّاتُه كما كانت');
 
-        // ورمزُ الدخول يُعرض لمن طُلب له، ويُكتب من عرضه — بلا الرمز
-        $answer = $this->staff($clerk)->postJson(route('admin.customers.portal.code', $this->maryam->id))->assertOk();
-        $this->assertSame(['code' => Code::spaced(Code::daily($this->maryam))], $answer->json());
-        $this->assertStringContainsString('no-store', (string) $answer->headers->get('Cache-Control'));
-        $log = DB::table('activity_logs')->where('subject_id', $this->maryam->id)->where('description', 'like', '%رمز دخول%')->get();
-        $this->assertNotEmpty($log);
-        $this->assertStringNotContainsString(Code::daily($this->maryam), (string) json_encode($log));
-        // ولا رمزَ في الصفحة قبل أن يُطلب
-        $this->assertStringNotContainsString(Code::daily($this->maryam), (string) preg_replace('/\s/', '', $this->staff($clerk)->get(route('admin.customers.show', $this->maryam->id))->getContent()));
+        // ويُكتب في السجلّ من اعتمد ولمن وأيَّ جهاز — بلا رقمه
+        $cookie = (string) $this->visitor(null)->withHeader('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1')
+            ->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => '91234567'])->getCookie(Access::COOKIE)->getValue();
+        $right = $this->shown($cookie);
+        $this->assertSame('iPhone · Safari', $this->staff($clerk)->getJson(route('admin.customers.portal.waiting'))->json('waiting.0.devices.0.device'));
+        DB::table('activity_logs')->delete();
+        $this->assertStringContainsString('no-store', (string) $this->approve($clerk, $this->maryam, $right)->assertOk()->headers->get('Cache-Control'));
+        $log = DB::table('activity_logs')->where('subject_id', $this->maryam->id)->get();
+        $this->assertCount(1, $log);
+        $this->assertStringContainsString('اعتمد جهازًا لبوابة العميل (iPhone · Safari) — مريم البلوشي', (string) $log[0]->description);
+        $this->assertSame((int) $clerk->id, (int) $log[0]->user_id);
+        $this->assertStringNotContainsString($right, (string) $log[0]->description);
+        $this->assertSame([(int) $clerk->id, (int) $this->maryam->id], array_map('intval', (array) array_values((array) DB::table('customer_portal_requests')->latest('id')->first(['approved_by', 'customer_id']))));
 
         // وعميلٌ بلا رقم: يُقال. وعميلُ متجرٍ آخر ليس هنا
-        $this->staff($clerk)->postJson(route('admin.customers.portal.code', $this->buyer('بلا رقم', null)->id))->assertStatus(422);
-        $this->staff($this->owner)->postJson(route('admin.customers.portal.code', $this->buyer('جار', '97777777', $this->neighbour)->id))->assertNotFound();
+        $this->approve($clerk, $this->buyer('بلا رقم', null), '123')->assertStatus(422)->assertJsonPath('message', fn ($m) => str_contains((string) $m, 'أضف رقم هاتف العميل'));
+        $this->approve($this->owner, $this->buyer('جار', '97777777', $this->neighbour), '123')->assertNotFound();
+        $this->staff($this->owner)->deleteJson(route('admin.customers.portal.dismiss', Customer::where('name', 'جار')->value('id')))->assertNotFound();
     }
 
     public function test_only_a_manager_revokes_a_customers_entry(): void
@@ -634,6 +699,9 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
 
         $this->assertNull($state($clerk)['since']);
         $cookie = $this->enter($this->maryam);
+        $this->assertNull($state($clerk)['since'], 'اعتُمد ولم يفتحها بعد');
+        $this->my('', $cookie)->assertOk();
+        $this->assertNotNull($state($clerk)['since']);
         $this->assertSame([1, null], [$state($clerk)['devices'], $state($clerk)['urls']['revoke']]);
         $this->staff($clerk)->deleteJson(route('admin.customers.portal.revoke', $this->maryam->id))->assertForbidden();
         $this->myJson('/data', $cookie)->assertOk();
@@ -659,7 +727,9 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $before = $count();
 
         $answers = [
-            $this->staff($this->owner)->postJson(route('admin.customers.portal.code', $this->maryam->id))->assertOk(),
+            $this->ask('91234567')->assertOk(),
+            $this->my('', $this->device('91234567'))->assertOk(),
+            $this->staff($this->owner)->getJson(route('admin.customers.portal.waiting'))->assertOk(),
             $this->staff($this->owner)->get(route('admin.customers.portal.poster'))->assertOk(),
             $this->my()->assertOk(),
             $this->my('', $this->enter($this->maryam))->assertOk(),
@@ -676,7 +746,7 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         Notification::assertNothingSent();
         Http::assertNothingSent();
 
-        // ولا ذكرَ لواتساب في كودها — سوى قاعدةِ النظام في قراءة رقم الهاتف، وهي حسابُ نصٍّ لا ربط، ووصفِ ما لا يُقبل رمزُه
+        // ولا ذكرَ لواتساب في كودها — سوى قاعدةِ النظام في قراءة رقم الهاتف، وهي حسابُ نصٍّ لا ربط
         $files = [
             ...glob(app_path('Support/RibbonPortal/*.php')), ...glob(resource_path('views/portal/ribbon/*.php')), ...glob(app_path('Models/CustomerPortal*.php')),
             app_path('Http/Controllers/Admin/RibbonPortalController.php'), app_path('Http/Controllers/Store/RibbonPortalController.php'), app_path('Http/Middleware/RibbonPortalGate.php'),
@@ -684,45 +754,42 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         ];
         $this->assertGreaterThan(19, count($files));
         foreach ($files as $file) {
-            $code = str_replace(['use App\\Support\\WhatsAppPhone;', '(`WhatsAppPhone`)', 'WhatsAppPhone::normalize(', 'طلبُ واتساب الآليّ'], '', (string) file_get_contents($file));
+            $code = str_replace(['use App\\Support\\WhatsAppPhone;', '(`WhatsAppPhone`)', 'WhatsAppPhone::normalize('], '', (string) file_get_contents($file));
             $this->assertDoesNotMatchRegularExpression('/whatsapp|wa\\.me|واتساب|mailto:|sms:/iu', $code, basename($file));
         }
     }
 
-    public function test_the_till_offers_the_one_link_after_a_sale_to_a_registered_customer_only(): void
+    public function test_the_till_approves_the_device_of_this_sales_customer_alone(): void
     {
         $till = $this->staffer('كاشير', 'cashier');
         $sell = fn (User $by, array $over = []) => $this->staff($by)->withSession(['current_branch' => $this->branch->id])->postJson(route('pos.checkout'), $over + [
             'items' => [['id' => $this->bouquet->id, 'name' => 'باقة', 'qty' => 1]], 'payment_method' => 'نقدي', 'client_uuid' => uniqid('p', true),
         ])->assertOk()->json();
+        $approve = fn (User $by, string $number, string $digits) => $this->staff($by)->withSession(['current_branch' => $this->branch->id])->postJson(route('pos.orders.portal', $number), ['device' => $digits]);
 
-        $this->assertArrayNotHasKey('portal', $sell($till, ['customer_id' => $this->maryam->id]), 'كاشيرٌ لم يُختر');
+        $plain = $sell($till, ['customer_id' => $this->maryam->id]);
+        $this->assertArrayNotHasKey('portal', $plain, 'كاشيرٌ لم يُختر');
+        $cookie = $this->device('91234567');
+        $approve($till, $plain['invoice'], $this->shown($cookie))->assertForbidden();
+
         $this->grant([$till->id]);
-        $this->assertArrayNotHasKey('portal', $sell($till), 'بيعةٌ بلا عميل');
+        $walkIn = $sell($till);
+        $this->assertArrayNotHasKey('portal', $walkIn, 'بيعةٌ بلا عميل');
         $sold = $sell($till, ['customer_id' => $this->maryam->id]);
-        $this->assertSame('https://ribbon.abaadapp.om/my', $sold['portal'], 'الرابطُ الواحد لا رابطُ عميل');
+        $this->assertSame(['url' => 'https://ribbon.abaadapp.om/my', 'device' => route('pos.orders.portal', $sold['invoice'], false)], $sold['portal'], 'الرابطُ الواحد لا رابطُ عميل');
 
-        // وإيصالُها يحمل رمزَها، وتدخل به — وبيعةٌ بلا عميلٍ لا رمزَ لها
-        $order = Order::where('number', $sold['invoice'])->firstOrFail();
-        $this->attempt('91234567', (string) Code::of($order))->assertOk();
-        $this->assertNull(Code::of(Order::where('number', $sell($till)['invoice'])->firstOrFail()));
-    }
+        // عميلُ هذه البيعة وحده: جهازُ فاطمة لا يُعتمد ببيعة مريم، ولا ببيعةٍ بلا عميل، ولا ببيعةِ متجرٍ آخر
+        $this->buyer('فاطمة', '92222222');
+        $hers = $this->device('92222222');
+        $approve($till, $sold['invoice'], $this->shown($hers))->assertStatus(422);
+        $this->my('', $hers)->assertDontSee('فاطمة');
+        $approve($till, $walkIn['invoice'], $this->shown($cookie))->assertNotFound();
+        $approve($till, $this->order($this->buyer('جارة', '93333333', $this->neighbour), 'NB-1')->number, $this->shown($cookie))->assertNotFound();
+        $approve($till, $this->order($this->maryam, 'HELD', ['is_held' => true])->number, $this->shown($cookie))->assertNotFound();
 
-    public function test_another_shops_papers_are_drawn_without_it(): void
-    {
-        $theirs = $this->buyer('عميل الجار', '94444444', $this->neighbour);
-        $order = $this->order($theirs, 'NB-PAPER');
-        DB::flushQueryLog();
-        DB::enableQueryLog();
-        $this->assertNull(Code::printed($order));
-        $this->assertSame([], DB::getQueryLog(), 'ولا استعلامَ لها عند سواه');
-        DB::disableQueryLog();
-        $this->assertStringNotContainsString('data-portal-code', PdfController::saleHtml((int) $this->neighbour->id, $order, thermal: true)['html']);
-        $this->assertStringNotContainsString('ribbon.abaadapp.om', PdfController::saleHtml((int) $this->neighbour->id, $order)['html']);
-
-        // والقفلُ يُطفئه عند صاحبه كذلك
-        config(['storefront.ribbon_customer_portal.enabled' => false]);
-        $this->assertNull(Code::of($this->order($this->maryam, 'OFF')));
+        $approve($till, $sold['invoice'], $this->shown($cookie))->assertOk()->assertExactJson(['ok' => true]);
+        $this->my('', $cookie)->assertSee('مريم البلوشي');
+        $this->assertStringContainsString($sold['invoice'], $this->myJson('/data', $cookie)->getContent());
     }
 
     public function test_the_owner_runs_it_from_settings_and_a_manager_revokes_but_does_not_grant(): void
@@ -737,6 +804,7 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->staff($manager)->post(route('admin.settings.portal.staff'), ['share' => [], 'manage' => []])->assertForbidden();
 
         $cookie = $this->enter($this->maryam);
+        $this->my('', $cookie)->assertOk();
         $props = $this->staff($manager)->get(route('admin.settings.portal.index'))->assertOk()->viewData('page')['props'];
         $this->assertSame('مريم البلوشي', $props['links'][0]['customer']);
         $this->assertFalse($props['mayGrant']);
@@ -750,9 +818,11 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         foreach (['91110001', '91110002'] as $i => $phone) {
             $this->enter($this->buyer('عميل '.$i, $phone));
         }
+        $waiting = $this->device('91110003');
         $other = CustomerPortalLink::create(['business_id' => $this->neighbour->id, 'customer_id' => $this->buyer('جار', '96666666', $this->neighbour)->id, 'token_hash' => str_repeat('d', 64), 'nonce' => str_repeat('e', 64), 'phone_hash' => str_repeat('f', 64)]);
         $this->staff($manager)->delete(route('admin.settings.portal.revokeAll'));
         $this->assertSame(0, CustomerPortalLink::where('business_id', $this->ribbon->id)->whereNull('revoked_at')->count());
+        $this->myJson('/wait', $waiting)->assertExactJson(['state' => 'over']);
         $this->assertNull($other->fresh()->revoked_at, 'ولا يُمسّ متجرٌ آخر');
         $this->staff($manager)->delete(route('admin.settings.portal.revoke', $other->id))->assertNotFound();
 
@@ -760,8 +830,8 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $poster = $this->staff($this->owner)->get(route('admin.customers.portal.poster'))->assertOk()->getContent();
         $this->assertStringContainsString('<svg viewBox="0 0 320 320"', $poster, 'بلا viewBox يُقصّ الرمزُ حين يُصغَّر فلا يُمسح');
         $this->assertStringContainsString('ribbon.abaadapp.om/my', $poster);
-        $this->assertStringContainsString('اكتب رقم هاتفك ورمز الدخول من فاتورتك', $poster);
-        $this->assertStringNotContainsString('رابطك الشخصي', $poster);
+        $this->assertStringContainsString('امسح الرمز واكتب رقم هاتفك', $poster);
+        $this->assertDoesNotMatchRegularExpression('/رابطك الشخصي|فاتورتك\./u', $poster);
         $this->assertStringNotContainsString('#', explode('ribbon.abaadapp.om/my', $poster)[1][0] ?? '');
     }
 }

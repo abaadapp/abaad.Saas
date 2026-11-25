@@ -406,7 +406,7 @@ final class BoutiqueSales
      */
     public static function mayRead(?User $user): bool
     {
-        return $user !== null && $user->allows('expenses');
+        return BoutiqueAccess::read($user);
     }
 
     /**

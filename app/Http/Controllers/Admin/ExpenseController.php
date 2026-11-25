@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BoutiqueSettlement;
 use App\Models\Branch;
 use App\Models\Expense;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
 use App\Support\BooksPeriod;
+use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueReturns;
 use App\Support\Boutiques;
 use App\Support\Demo;
@@ -90,6 +92,11 @@ class ExpenseController extends Controller
             ->pluck('d', 'sourceable_id');
         $books = BooksPeriod::context($bid, auth()->user());
 
+        // وأوراقُ البوتيك في هذه الصفحة لمن لا يسدّدها — لا يُرسم له زرٌّ يردّه الخادم (`markPaid`)
+        $sheets = BoutiqueAccess::pay(auth()->user()) ? [] : BoutiqueSettlement::where('business_id', $bid)
+            ->whereIn('expense_id', collect($expenses->items())->pluck('id'))
+            ->pluck('expense_id')->map(fn ($id) => (int) $id)->all();
+
         return Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
                 'id' => $e->id,
@@ -98,6 +105,7 @@ class ExpenseController extends Controller
                 'type' => $e->type,
                 'amount' => (float) $e->amount,
                 'status' => $e->status,
+                'payable' => ! in_array((int) $e->id, $sheets, true),
                 // وطريقتُه — يفتح بها سؤالُ «تسجيل السداد» على ما كُتب
                 'method' => $e->method,
                 /*
@@ -415,6 +423,16 @@ class ExpenseController extends Controller
     public function markPaid(Request $request, $id)
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+
+        /*
+         * وورقةُ البوتيك تُسدَّد بإذن السداد، لا بقراءة المصروفات.
+         *
+         * هذا هو البابُ الذي تُسدَّد منه الورقةُ فعلًا: مصروفُها هنا، وشاشةُ البوتيك
+         * لا تسدّد إلّا جزءَ المكوّنات. فلو كفت «المصروفات» لَسدّد كلُّ من أُعطي القراءة
+         * — والقراءةُ ليست سدادًا (`BoutiqueAccess`). ومصروفٌ ليس ورقةً لا يتغيّر عليه شيء.
+         */
+        abort_if($expense->sheetItSettles() !== null && ! BoutiqueAccess::pay(auth()->user()), 403,
+            __('ليس لديك صلاحية على مال البوتيكات.'));
 
         /*
          * ومن أين خرج المال — يُسأل ساعةَ السداد.

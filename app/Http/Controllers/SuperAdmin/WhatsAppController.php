@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessagePack;
 use App\Support\Activity;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppInbox;
@@ -521,8 +522,33 @@ class WhatsAppController extends Controller
         $business = Business::findOrFail($id);
         $own = WhatsAppConnections::forBusiness($business->id);
 
-        if (! \App\Support\WhatsAppOwnApp::mayConfirm($own)) {
+        // ‏‏ووصلةٌ عبر تطبيق أبعاد لها قفلُها وسجلُّها (`WhatsAppBillingLock`)
+        $locked = WhatsAppBillingLock::applies($own);
+
+        if ($locked ? ! WhatsAppBillingLock::reviewable($own) : ! \App\Support\WhatsAppOwnApp::mayConfirm($own)) {
             return back()->withErrors(['whatsapp' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')]);
+        }
+
+        if ($locked) {
+            $data = $request->validate([
+                'evidence_kind' => ['required', Rule::in(array_keys(WhatsAppBillingLock::EVIDENCE))],
+                'evidence_reference' => ['required', 'string', 'min:3', 'max:120'],
+                'evidence_waba_id' => ['required', 'string', 'max:40'],
+                'evidence_checked' => ['accepted'],
+                // ‏‏ومالكُ الحساب عند Meta نشاطُ التاجر — لا أبعاد ولا شريك
+                'evidence_owner' => ['accepted'],
+                'evidence_card' => ['accepted'],
+            ], [
+                'evidence_checked.accepted' => __('أقرّ أنك رأيت معرّف هذا الحساب في الدليل.'),
+                'evidence_owner.accepted' => __('أقرّ أن مالك الحساب نشاط التاجر.'),
+                'evidence_card.accepted' => __('أقرّ أن وسيلة الدفع للتاجر لا لأبعاد ولا لشريك.'),
+            ], ['evidence_kind' => __('نوع الدليل'), 'evidence_reference' => __('مرجع الدليل'), 'evidence_waba_id' => __('معرّف الحساب')]);
+
+            $r = WhatsAppBillingLock::confirm($own, $request->user(), [
+                'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'], 'waba_id' => $data['evidence_waba_id'],
+            ]);
+
+            return $r['ok'] ? back()->with('toast', ['msg' => $r['message'], 'type' => 'success']) : back()->withErrors([$r['field'] => $r['message']]);
         }
 
         $data = $request->validate([
@@ -608,9 +634,12 @@ class WhatsAppController extends Controller
                 'link' => WhatsAppLinkHealth::view($own),
                 'can_check' => filled($own->phone_number_id) && filled($own->access_token),
                 // وربطُ التاجر بتطبيقه: على من تُحتسب رسائلُه، وأينتظر إثباتَها
-                'own_app' => \App\Support\WhatsAppOwnApp::is($own) || \App\Support\WhatsAppOwnApp::mayConfirm($own)
+                'own_app' => \App\Support\WhatsAppOwnApp::is($own) || (! WhatsAppBillingLock::applies($own) && \App\Support\WhatsAppOwnApp::mayConfirm($own))
                     ? \App\Support\WhatsAppOwnApp::reviewView($own) : null,
             ] : null,
+            // ‏‏وعلى من رسومُه عند Meta: إحدى خمسِ حالات، ومراجعتُها وسجلُّها (`WhatsAppBillingLock`)
+            'billing' => WhatsAppBillingLock::brief($own),
+            'billing_review' => WhatsAppBillingLock::platformView($own),
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),
             // وشراءٌ واحدٌ يكفي: باقةٌ تشمل واتساب لا تُطلب فوقها الإضافة

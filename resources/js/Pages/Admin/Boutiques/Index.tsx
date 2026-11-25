@@ -20,21 +20,24 @@ export interface BoutiqueRow {
     name_en: string | null;
     phone: string | null;
     contact_person: string | null;
-    rate: number;
     active: boolean;
-    notes: string | null;
-    returns_terms: string | null;
-    returns_terms_ref: string | null;
     products_count: number;
+    /** وما بعده مالٌ: لا يُرسَل لمن لا يقرؤه — `canSeeMoney` */
+    rate?: number;
+    notes?: string | null;
+    returns_terms?: string | null;
+    returns_terms_ref?: string | null;
     /** ما بِيع له في الشهر المختار — من الخادم لا من عدٍّ في الشاشة */
-    gross: number;
-    settled: boolean;
+    gross?: number;
+    settled?: boolean;
     /** ما ينتظر ورقةً من مبيعات الشهر — غيرُ ما بِيع فيه */
-    pending: number;
+    pending?: number;
 }
 
 interface Props {
     boutiques: BoutiqueRow[];
+    /** من يقرأ مالَ البوتيكات — والخادمُ لا يُرسل لغيره رقمًا */
+    canSeeMoney?: boolean;
     period: string;
     periods: { value: string; label: string }[];
 }
@@ -46,7 +49,8 @@ interface Props {
  * لأجله الشهرُ كلَّه، فلا يُخبَّأ خلف فتح كلّ صفّ.
  */
 export default function BoutiquesIndex() {
-    const { boutiques, period, periods, context } = usePage<PageProps<Props>>().props;
+    // غيابُ المفتاح يعني «كما كان»: الحارسُ الخادمُ وهو لا يُرسل الرقمَ أصلًا لمن لا يقرؤه
+    const { boutiques, canSeeMoney = true, period, periods, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // العملةُ من سياق المتجر — لا يُرسلها كلُّ متحكّم من جديد
     const currency = context!.currency;
@@ -56,8 +60,8 @@ export default function BoutiquesIndex() {
 
     const fields = (b: BoutiqueRow): BoutiqueFields => ({
         name: b.name, name_en: b.name_en, phone: b.phone, contact_person: b.contact_person,
-        commission_rate: b.rate, active: b.active, notes: b.notes,
-        returns_terms: b.returns_terms, returns_terms_ref: b.returns_terms_ref,
+        commission_rate: b.rate ?? 0, active: b.active, notes: b.notes ?? null,
+        returns_terms: b.returns_terms ?? null, returns_terms_ref: b.returns_terms_ref ?? null,
     });
 
     const edit = (b: BoutiqueRow) => {
@@ -65,7 +69,7 @@ export default function BoutiquesIndex() {
         setOpen(true);
     };
 
-    const columns: Column<BoutiqueRow>[] = [
+    const all: Column<BoutiqueRow>[] = [
         {
             key: 'name',
             header: 'البوتيك',
@@ -89,7 +93,7 @@ export default function BoutiquesIndex() {
             key: 'rate',
             header: 'نسبة المتجر',
             align: 'end',
-            cell: (b) => <span className="tabular-nums font-medium">{number(b.rate)}%</span>,
+            cell: (b) => <span className="tabular-nums font-medium">{number(b.rate ?? 0)}%</span>,
         },
         {
             key: 'products_count',
@@ -102,8 +106,8 @@ export default function BoutiquesIndex() {
             header: 'مبيعات الشهر',
             align: 'end',
             cell: (b) =>
-                b.gross > 0 ? (
-                    <span className="tabular-nums font-medium">{money(b.gross, currency)}</span>
+                (b.gross ?? 0) > 0 ? (
+                    <span className="tabular-nums font-medium">{money(b.gross ?? 0, currency)}</span>
                 ) : (
                     <span className="text-[#9ca3af]">—</span>
                 ),
@@ -114,7 +118,7 @@ export default function BoutiquesIndex() {
             cell: (b) =>
                 !b.active ? (
                     <Badge variant="neutral">{t('غير نشط')}</Badge>
-                ) : b.pending > 0 ? (
+                ) : (b.pending ?? 0) > 0 ? (
                     /*
                         والانتظارُ يتقدّم الإصدار.
 
@@ -143,7 +147,11 @@ export default function BoutiquesIndex() {
         },
     ];
 
-    const filters: Filter<BoutiqueRow>[] = [
+    // وما فيه مالٌ لا عمودَ له لمن لا يقرؤه، ولا تعديلَ له: النسبةُ فيه
+    const MONEY = ['rate', 'gross', 'status', 'actions'];
+    const columns = canSeeMoney ? all : all.filter((c) => !MONEY.includes(String(c.key)));
+
+    const filters: Filter<BoutiqueRow>[] = !canSeeMoney ? [] : [
         {
             label: 'الشهر',
             param: 'period',
@@ -157,7 +165,7 @@ export default function BoutiquesIndex() {
             <PageHeader
                 title="البوتيكات"
                 subtitle={t('من يبيع تحت سقف محلّك — ونسبتك ممّا يبيع')}
-                actions={
+                actions={canSeeMoney && (
                     <Button
                         onClick={() => {
                             setEditing(null);
@@ -167,7 +175,7 @@ export default function BoutiquesIndex() {
                         <Plus />
                         {t('بوتيك جديد')}
                     </Button>
-                }
+                )}
             />
 
             <SectionTabs tabs={PRODUCT_TABS} current="admin.boutiques.index" className="mb-5" />
@@ -181,17 +189,17 @@ export default function BoutiquesIndex() {
                     searchable={(b) => `${b.name} ${b.name_en ?? ''} ${b.contact_person ?? ''}`}
                     searchPlaceholder="ابحث باسم البوتيك أو مسؤوله…"
                     empty="لا بوتيكات بعد — أضف أوّل واحد"
-                    toolbar={
+                    toolbar={canSeeMoney && (
                         <span className="ms-auto text-[13px] text-[#6b7280]">
                             {t('مبيعات الشهر')}:{' '}
                             <span className="font-semibold text-[#111]">
                                 {money(
-                                    boutiques.reduce((a, b) => a + b.gross, 0),
+                                    boutiques.reduce((a, b) => a + (b.gross ?? 0), 0),
                                     currency,
                                 )}
                             </span>
                         </span>
-                    }
+                    )}
                 />
             </Card>
 

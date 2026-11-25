@@ -622,6 +622,25 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
         ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
     // ومراجعةُ دليلٍ من ميتا على أنّ فوترتها على التاجر — ولا يُرسل ربطُ تطبيقه قبلها (`WhatsAppOwnApp::confirmBilling`)
     Route::post('/businesses/{id}/whatsapp/billing', [WhatsAppController::class, 'confirmBilling'])->name('businesses.whatsapp.billing');
+    /*
+     * ‏‏وقفلُ الفوترة: مراجعةُ متجرٍ بعينه، وتجربةُ متجرٍ واحد، وإعادةُ القفل (`WhatsAppBillingLock`).
+     * وما يُنادي Meta بحدٍّ باسمه.
+     */
+    Route::post('/businesses/{id}/whatsapp/billing/read', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'read'])
+        ->middleware('throttle:20,1,whatsapp-billing-read')->name('businesses.whatsapp.billing.read');
+    Route::post('/businesses/{id}/whatsapp/billing/reopen', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'reopen'])->name('businesses.whatsapp.billing.reopen');
+    Route::post('/businesses/{id}/whatsapp/billing/retry', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'retry'])
+        ->middleware('throttle:10,10,whatsapp-billing-retry')->name('businesses.whatsapp.billing.retry');
+    Route::post('/businesses/{id}/whatsapp/billing/estimate', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'estimate'])
+        ->middleware('throttle:10,1,whatsapp-billing-estimate')->name('businesses.whatsapp.billing.estimate');
+    Route::post('/whatsapp/billing-trial', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'open'])
+        ->middleware('throttle:10,10,whatsapp-billing-trial')->name('whatsapp.billing-trial.open');
+    Route::delete('/whatsapp/billing-trial/{trial}', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'close'])->whereNumber('trial')->name('whatsapp.billing-trial.close');
+    Route::post('/whatsapp/billing-trial/{trial}/pass', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'pass'])
+        ->whereNumber('trial')->middleware('throttle:10,10,whatsapp-billing-trial')->name('whatsapp.billing-trial.pass');
+    Route::post('/whatsapp/billing-lock/relock', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'relock'])->name('whatsapp.billing-lock.relock');
+    Route::post('/whatsapp/shared-cost', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'sharedCost'])
+        ->middleware('throttle:10,1,whatsapp-shared-cost')->name('whatsapp.shared-cost');
     // وإعدادُ الإشعارات في تطبيق أبعاد نفسه — واحدٌ لكلّ المتاجر، وقراءةٌ لا غير
     Route::post('/whatsapp/app-webhook/check', [WhatsAppController::class, 'checkAppWebhook'])
         ->middleware('throttle:10,1,whatsapp-app-webhook-check')->name('whatsapp.app-webhook.check');
@@ -1580,6 +1599,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         /* واختبارُ الاتصال نداءٌ إلى ميتا — فلا يُترك بلا حدّ */
         Route::post('/whatsapp/test', [WhatsAppOnboardingController::class, 'test'])
             ->middleware('throttle:20,1')->name('whatsapp.test');
+
+        // ‏‏وجهةُ رسومه: يطلب التحقّق بعد أن يضيف وسيلة دفعه، ويعيد المحاولة بعد أن يصلحها (`WhatsAppBillingLock`)
+        Route::post('/whatsapp/billing/request', [WhatsAppOnboardingController::class, 'billingRequest'])
+            ->middleware('throttle:5,10,whatsapp-billing-request')->name('whatsapp.billing.request');
+        Route::post('/whatsapp/billing/retry', [WhatsAppOnboardingController::class, 'billingRetry'])
+            ->middleware('throttle:5,10,whatsapp-billing-retry')->name('whatsapp.billing.retry');
 
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
         Route::post('/whatsapp/guided-orders', [WhatsAppOnboardingController::class, 'guidedOrders'])->name('whatsapp.guidedOrders');

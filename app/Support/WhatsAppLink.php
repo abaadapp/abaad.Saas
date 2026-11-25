@@ -86,6 +86,11 @@ class WhatsAppLink
             return self::ERROR;
         }
 
+        // ‏‏ورُبط عبر تطبيق أبعاد ولم تثبت جهةُ رسومه — مربوطٌ ولا يُرسل (`WhatsAppBillingLock`)
+        if (filled($c->phone_number_id) && WhatsAppBillingLock::stop($c) !== null) {
+            return self::BILLING_UNPROVEN;
+        }
+
         if ($c->status === WhatsAppConnection::REAUTH || self::daysLeft($c) !== null && self::daysLeft($c) <= self::ALERT_DAYS[0]) {
             return self::REAUTH;
         }

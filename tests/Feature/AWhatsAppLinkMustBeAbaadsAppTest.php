@@ -75,6 +75,10 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'owner@link.om',
             'password' => bcrypt('password12345'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->shop->id, 'WABA-1', 'WABA-N');
     }
 
     private function shop(string $name): Business

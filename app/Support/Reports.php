@@ -535,8 +535,9 @@ class Reports
             'salesSeries' => Demo::salesTrend($period, $channel, $branch, $scope),
             'paymentDistribution' => $scoped ? null : Demo::paymentDistribution($period, $channel, $branch),
             'topSellingProducts' => Demo::topSellingProducts(5, $period, $branch, $channel, $scope),
+            // والعمولةُ والصافي لمن يقرأ مالَ البوتيكات وحده — تُحذفان من الحمولة نفسِها (`BoutiqueAccess::totals`)
             'boutiqueTotals' => $scoped
-                ? Boutiques::soldTotals((int) Demo::bid(), $scope, $period->start, $branch, $channel, $period->end?->copy()->subSecond())
+                ? BoutiqueAccess::totals($scope, Boutiques::soldTotals((int) Demo::bid(), $scope, $period->start, $branch, $channel, $period->end?->copy()->subSecond()), auth()->user())
                 : null,
             'boutique' => match (true) {
                 $scope === null => null,
@@ -622,11 +623,12 @@ class Reports
                 ['طلبات فيها منتجات البوتيك', 'orders', false],
             ];
 
-        return collect($rows)->map(fn ($r) => [
+        // وما حُجب من الحمولة لا صفَّ له في الملفّ — لا صفرٌ يُقرأ رقمًا
+        return collect($rows)->filter(fn ($r) => array_key_exists($r[1], $totals))->map(fn ($r) => [
             'label' => __($r[0]),
-            'value' => $r[2] ? round((float) ($totals[$r[1]] ?? 0), 3) : (int) ($totals[$r[1]] ?? 0),
+            'value' => $r[2] ? round((float) $totals[$r[1]], 3) : (int) $totals[$r[1]],
             'money' => $r[2],
-        ])->all();
+        ])->values()->all();
     }
 
     /** أسماء التصنيفات مترجمةً — الواجهة لا تخمّنها من المفتاح */

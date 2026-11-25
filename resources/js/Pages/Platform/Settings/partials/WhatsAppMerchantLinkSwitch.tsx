@@ -7,6 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import WhatsAppBillingLock, { type BillingLockState } from '@/Pages/Platform/Settings/partials/WhatsAppBillingLock';
 
 export type MerchantLinkMode = 'own_app' | 'abaad_app';
 
@@ -32,6 +33,10 @@ export interface WhatsAppLinkState {
     /** ‏متاجرُ تجربةٍ تربط عبر تطبيق أبعاد قبل غيرها */
     pilot?: { id: number; name: string }[];
     pilot_max?: number;
+    /** ‏قفلُ الفوترة: أمفتوحٌ النقل، والتجربةُ وما خرج فيها */
+    billing?: BillingLockState | null;
+    /** ‏اختير تطبيقُ أبعاد من قبل ولا يسري حتى يُفتح القفل */
+    held?: boolean;
     /** ‏أيُعتمد رقمُ التاجر رقمًا للإرسال آليًّا؟ */
     auto_sender?: boolean;
     /** ‏حقولُ إشعارات Meta التي يحتاجها ذلك الخيار */
@@ -67,6 +72,8 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
         new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ar-OM', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Muscat' }).format(new Date(iso));
 
     const toAbaad = state.mode === 'own_app';
+    // ‏‏والقفلُ على الخادم — والزرُّ مطفأٌ معه. وحالٌ لم يُقرأ قفل
+    const locked = toAbaad && state.billing?.launched !== true;
     const next: MerchantLinkMode = toAbaad ? 'abaad_app' : 'own_app';
 
     const flip = async () => {
@@ -215,7 +222,7 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
                     data-testid="wa-link-flip"
                     variant={toAbaad ? 'primary' : 'outline'}
                     loading={busy}
-                    disabled={toAbaad && !state.ready}
+                    disabled={toAbaad && (!state.ready || locked)}
                     onClick={() => void flip()}
                 >
                     {toAbaad ? t('انقلهم إلى تطبيق أبعاد') : t('أعِدهم إلى تطبيق التاجر')}
@@ -226,9 +233,17 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
                     {t('يُفتح النقل حين تكتمل البنود الثلاثة أعلاه.')}
                 </p>
             )}
+            {locked && (
+                <p className="mt-2 text-[12px] text-[#b91c1c]" data-testid="wa-link-locked">
+                    {t('مقفل حتى تنجح تجربة حقيقية يظهر فيها رسم الرسالة على حساب التاجر لا على أبعاد.')}
+                    {state.held && <> {t('اختيار «تطبيق أبعاد» محفوظ ولا يسري حتى يُفتح القفل.')}</>}
+                </p>
+            )}
             {errors.mode && (
                 <p className="mt-2 text-[12px] text-[#b91c1c]" data-testid="wa-link-error">{errors.mode}</p>
             )}
+
+            {state.billing && <WhatsAppBillingLock key={pilot.map((p) => p.id).join()} state={state.billing} pilot={pilot} />}
 
             {/* ‏‏ومتاجرُ تجربةٍ قبل نقل الجميع — لا معنى لها والجميعُ على تطبيق أبعاد */}
             {toAbaad && (
@@ -241,7 +256,7 @@ export default function WhatsAppMerchantLinkSwitch({ state, locale }: { state: W
                     }}
                 >
                     <label className="flex flex-col gap-1 text-[12px] text-[#6b7280]">
-                        {t('متاجر التجربة — أرقامها مفصولة بفاصلة')}
+                        {locked ? t('متجر التجربة — رقم متجر واحد') : t('متاجر التجربة — أرقامها مفصولة بفاصلة')}
                         <Input
                             dir="ltr"
                             value={pilotText}

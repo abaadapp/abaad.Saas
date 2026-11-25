@@ -27,8 +27,11 @@
             ألفُ ميغا لا خمسمئة: الحزمةُ كلُّها في عمليّةٍ واحدة (`php artisan test` في CI)،
             وكانت تبلغ ~٤٥٠ ميغا قبل أن تصل اختباراتِ ملفّات Excel وPDF — فيُسقطها أيُّ
             اختبارٍ يُضاف بخطأ ذاكرةٍ لا علاقةَ له بما يقيسه.
+
+            ثمّ ألفٌ وخمسمئة: جاوزت الحزمةُ عشرةَ آلافٍ وخمسمئة اختبارٍ وبلغت الألفَ عند
+            آخر ملفّ Excel فيها. والحدُّ سقفٌ لا قياس: لا يُحذف به اختبارٌ ولا يُرخى.
         -->
-        <ini name="memory_limit" value="1G"/>
+        <ini name="memory_limit" value="1536M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

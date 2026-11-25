@@ -22,7 +22,7 @@ export function PortalSale({ portal, className }: { portal: SalePortal; classNam
                     {t(done ? 'اعتُمد الجهاز' : 'اعتماد جهاز العميل')}
                 </Button>
             </div>
-            {open && !done && <DeviceApproval url={portal.device} onDone={() => setDone(true)} className="rounded-2xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-start" />}
+            {open && !done && <DeviceApproval url={portal.device} phone={portal.phone} onDone={() => setDone(true)} className="rounded-2xl border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3 text-start" />}
         </div>
     );
 }

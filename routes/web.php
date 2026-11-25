@@ -2380,6 +2380,7 @@ if (($portalHost = App\Support\RibbonPortal\Portal::host()) !== null) {
         ->controller(RibbonPortalController::class)->group(function () {
             Route::get('/', 'index')->middleware('throttle:120,1,ribbon-portal-page')->name('index');
             Route::post('/session', 'login')->middleware('throttle:10,1,ribbon-portal-login')->name('login');
+            Route::post('/again', 'again')->middleware('throttle:10,1,ribbon-portal-again')->name('again');
             Route::get('/wait', 'wait')->middleware('throttle:240,1,ribbon-portal-wait')->name('wait');
             Route::post('/logout', 'logout')->middleware('throttle:20,1,ribbon-portal-logout')->name('logout');
             Route::get('/data', 'data')->middleware('throttle:240,1,ribbon-portal-data')->name('data');

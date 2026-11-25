@@ -11,7 +11,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { askPortal, type PortalCustomerState, type WaitingCustomer, type WaitingDevice } from '@/lib/ribbon-portal';
+import { askPortal, type ApprovedDevice, type PortalCustomerState, type WaitingCustomer, type WaitingDevice } from '@/lib/ribbon-portal';
 import { cn } from '@/lib/utils';
 
 /**
@@ -55,7 +55,24 @@ export function PortalLinkBox({ portal, stacked = false }: { portal: PortalPanel
     );
 }
 
-/** كلُّ جهازٍ ينتظر: نوعُه ومتى كُتب فيه الرقم */
+/** كلُّ جهازٍ معتمد: من اعتمده وكيف ومتى */
+export function ApprovedDevices({ devices }: { devices: ApprovedDevice[] }) {
+    const t = useTranslate();
+
+    return (
+        <ul className="space-y-1.5" data-testid="portal-approved">
+            {devices.map((d, i) => (
+                <li key={i} className="text-[12px] text-[#6b7280]">
+                    <span className="font-medium text-[#111]" dir="ltr">{d.device || t('جهاز')}</span>{' '}
+                    {d.by ? `${t('اعتمده')} ${d.by} ${t(d.how === 'call' ? 'باتصال على رقمه' : 'في المحل')}` : t('دخل قبل اعتماد الأجهزة')}{' '}
+                    <span dir="ltr">{d.at}</span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+/** كلُّ جهازٍ ينتظر: نوعُه وحتّى متى يصلح رقمُه */
 function DeviceLine({ devices }: { devices: WaitingDevice[] }) {
     const t = useTranslate();
 
@@ -65,7 +82,7 @@ function DeviceLine({ devices }: { devices: WaitingDevice[] }) {
                 <li key={i} className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
                     <Smartphone className="size-3.5 shrink-0" />
                     <span dir="ltr">{d.device || t('جهاز')}</span>
-                    <span dir="ltr">{d.at}</span>
+                    <span>{t('ينتهي')} <span dir="ltr">{d.until}</span></span>
                 </li>
             ))}
         </ul>
@@ -114,7 +131,7 @@ export function WaitingList({ url, onCount, className }: { url: string; onCount?
                         <Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void dismiss(row)}>{t('رفض')}</Button>
                     </div>
                     {row.twin && <p className="text-[12px] text-[#92400e]">{t('هذا الرقم مسجّل لأكثر من عميل. اعتمده لصاحبه.')}</p>}
-                    <DeviceApproval url={row.url} onDone={() => void load()} />
+                    <DeviceApproval url={row.url} phone={row.phone} onDone={() => void load()} />
                 </div>
             ))}
         </section>
@@ -176,7 +193,7 @@ export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
             </div>
             <p className="mb-4 text-[12px] text-[#9ca3af]">{t('يكتب رقم هاتفه في الرابط الواحد، ويُعتمد جهازه مرة واحدة.')}</p>
 
-            {!now.hasPhone ? (
+            {now.phone === null ? (
                 <p className="rounded-xl bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">{t('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')}</p>
             ) : (
                 <div className="space-y-3">
@@ -184,8 +201,13 @@ export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
                         <dl className="space-y-1.5 text-[12px]">
                             <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('أول اعتماد')}</dt><dd dir="ltr" className="text-[#111]">{now.since}</dd></div>
                             <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('آخر زيارة')}</dt><dd dir="ltr" className="text-[#111]">{now.used ?? '—'}</dd></div>
-                            <div className="flex justify-between gap-3"><dt className="text-[#9ca3af]">{t('أجهزة معتمدة')}</dt><dd className="text-[#111]">{number(now.devices)}</dd></div>
                         </dl>
+                    )}
+                    {now.devices.length > 0 && (
+                        <div>
+                            <p className="mb-1 text-[12px] font-semibold text-[#111]">{t('أجهزة معتمدة')} ({number(now.devices.length)})</p>
+                            <ApprovedDevices devices={now.devices} />
+                        </div>
                     )}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         <CopyButton text={now.url} label="نسخ رابط البوابة" size="md" className="w-full" />
@@ -199,6 +221,7 @@ export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
                             {now.waiting.length > 0 && <DeviceLine devices={now.waiting} />}
                             <DeviceApproval<{ state: PortalCustomerState }>
                                 url={now.urls.device}
+                                phone={now.phone}
                                 onDone={(d) => {
                                     setNow(d.state);
                                     setApproving(false);
@@ -206,7 +229,7 @@ export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
                             />
                         </div>
                     )}
-                    {now.urls.revoke && (now.devices > 0 || now.waiting.length > 0) && (
+                    {now.urls.revoke && (now.devices.length > 0 || now.waiting.length > 0) && (
                         <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-3">
                             <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy} onClick={() => void revoke()} data-testid="portal-revoke"><ShieldOff />{t('إلغاء الدخول')}</Button>
                         </div>

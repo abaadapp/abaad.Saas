@@ -2,6 +2,7 @@
 
 namespace App\Support\RibbonPortal;
 
+use App\Models\Order;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\InvoiceBranding;
@@ -114,6 +115,20 @@ final class Portal
         $staff = self::staff((int) $user->business_id);
 
         return array_filter($keys, fn ($k) => in_array((int) $user->id, $staff[$k], true)) !== [];
+    }
+
+    /**
+     * ما يعرضه الصندوقُ بعد بيعةٍ لها عميلٌ مسجَّل: الرابطُ الواحد واعتمادُ جهازه — أو لا شيء.
+     *
+     * @return array{portal?: array{url: string, device: string, phone: string}}
+     */
+    public static function sale(?User $user, Order $order): array
+    {
+        if ($order->customer_id === null || ! self::mayShare($user) || ($customer = $order->customer) === null) {
+            return [];
+        }
+
+        return ['portal' => ['url' => self::url(), 'device' => route('pos.orders.portal', $order->number, false), 'phone' => Access::shown($customer)]];
     }
 
     /**

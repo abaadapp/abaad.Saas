@@ -21,9 +21,13 @@ const { router } = await import('@inertiajs/react');
 const URL_ = 'https://ribbon.abaadapp.om/my';
 const panel = { url: URL_, qr: 'data:image/svg+xml;base64,AA==', poster: '/admin/customers/portal/poster', name: 'RIBBON', waiting: 0, waitingUrl: '/admin/customers/portal/waiting' };
 const urls = { device: '/admin/customers/7/portal/device', revoke: '/admin/customers/7/portal' as string | null };
-const state = { urls, url: URL_, hasPhone: true, waiting: [] as { device: string; at: string }[], since: null as string | null, used: null as string | null, devices: 0 };
-const inside = { ...state, since: '2026-11-01 09:00', used: '2026-11-20 18:30', devices: 2 };
-const maryam = { id: 7, name: 'مريم البلوشي', phone: '91234567', twin: false, devices: [{ device: 'iPhone · Safari', at: '10:02' }], url: urls.device };
+type Approved = { device: string; by: string | null; how: 'shop' | 'call' | null; at: string };
+const state = { urls, url: URL_, phone: '91234567' as string | null, waiting: [] as { device: string; until: string }[], since: null as string | null, used: null as string | null, devices: [] as Approved[] };
+const inside = {
+    ...state, since: '2026-11-01 09:00', used: '2026-11-20 18:30',
+    devices: [{ device: 'iPhone · Safari', by: 'منى', how: 'shop', at: '2026-11-01 09:00' }, { device: 'Windows · Chrome', by: 'هدى', how: 'call', at: '2026-11-03 12:00' }, { device: '', by: null, how: null, at: '2026-10-30 08:00' }] as Approved[],
+};
+const maryam = { id: 7, name: 'مريم البلوشي', phone: '91234567', twin: false, devices: [{ device: 'iPhone · Safari', until: '10:12' }], url: urls.device };
 
 const answer = (status: number, body: unknown) => {
     const spy = vi.fn(async () => ({ ok: status < 400, status, json: async () => body }));
@@ -75,7 +79,7 @@ describe('قسمُ العملاء', () => {
 
         const row = await screen.findByTestId('portal-waiting-row');
         expect(screen.getByTestId('portal-waiting')).toHaveClass('order-first');
-        for (const shown of ['مريم البلوشي', '91234567', 'iPhone · Safari', '10:02']) expect(row).toHaveTextContent(shown);
+        for (const shown of ['مريم البلوشي', '91234567', 'iPhone · Safari', 'ينتهي 10:12']) expect(row).toHaveTextContent(shown);
         expect(row).not.toHaveTextContent('أكثر من عميل');
         expect(spy.mock.calls[0]).toMatchObject([panel.waitingUrl, { method: 'GET', cache: 'no-store' }]);
 
@@ -143,45 +147,84 @@ describe('ملفُّ العميل: «بوابة العميل»', () => {
 
         render(<CustomerPortalCard state={inside} />);
         expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('دخل بوابته');
-        for (const shown of ['2026-11-01 09:00', '2026-11-20 18:30', '2']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
+        for (const shown of ['2026-11-01 09:00', '2026-11-20 18:30', 'أجهزة معتمدة (3)']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
+        // وكلُّ جهازٍ باسمِ من اعتمده وكيف ومتى
+        const list = screen.getByTestId('portal-approved');
+        for (const shown of ['iPhone · Safari اعتمده منى في المحل 2026-11-01 09:00', 'Windows · Chrome اعتمده هدى باتصال على رقمه 2026-11-03 12:00', 'جهاز دخل قبل اعتماد الأجهزة 2026-10-30 08:00']) expect(list).toHaveTextContent(shown);
     });
 
-    it('يعتمد الجهازَ بالرقم الذي على شاشة العميل — يكتبه الموظّف', async () => {
+    const box = () => screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل');
+    const type = (digits: string) => fireEvent.change(box(), { target: { value: digits } });
+
+    it('يعتمد الجهازَ بالرقم الذي على شاشة العميل — يكتبه الموظّف، ويقول كيف تحقّق', async () => {
         const fetch = answer(200, { state: inside });
         render(<CustomerPortalCard state={state} />);
         expect(screen.queryByTestId('portal-approve')).toBeNull();
         fireEvent.click(screen.getByTestId('portal-approve-button'));
-        const box = screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل');
-        expect(screen.getByTestId('portal-approve')).toHaveTextContent('اعتمد جهاز من يقف أمامك');
-        expect(box).toHaveValue('');
+        expect(box()).toHaveValue('');
+        // لا اختيارَ مسبقًا: يقوله الموظّف
+        for (const r of screen.getAllByRole('radio')) expect(r).toHaveAttribute('aria-checked', 'false');
 
-        // ناقصٌ لا يُرسَل، وأرقامٌ عربيّةٌ تُقرأ، وما زاد يُقصّ
-        fireEvent.change(box, { target: { value: '٤١' } });
+        // ستُّ خاناتٍ بلا قولٍ كيف تحقّق لا تُرسَل، وناقصةٌ لا تُرسَل
+        type('٤١٧٩٠٢٥ ');
+        expect(box()).toHaveValue('417902');
+        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
+        fireEvent.submit(screen.getByTestId('portal-approve'));
+        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
+        expect(screen.getByTestId('portal-approve')).toHaveTextContent('تعرف أنه صاحب الرقم');
+        type('41790');
         expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
         fireEvent.submit(screen.getByTestId('portal-approve'));
         expect(fetch).not.toHaveBeenCalled();
-        fireEvent.change(box, { target: { value: ' ٤١٧٩ ' } });
-        expect(box).toHaveValue('417');
-        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
 
+        type('417902');
+        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
         await waitFor(() => expect(screen.getByTestId('portal-customer-state')).toHaveTextContent('دخل بوابته'));
         expect(fetch.mock.calls).toHaveLength(1);
-        expect(fetch.mock.calls[0]).toMatchObject([urls.device, { method: 'POST', cache: 'no-store', body: JSON.stringify({ device: '417' }) }]);
+        expect(fetch.mock.calls[0]).toMatchObject([urls.device, { method: 'POST', cache: 'no-store', body: JSON.stringify({ device: '417902', how: 'shop', called: false }) }]);
         expect(toast.success).toHaveBeenCalledWith('اعتُمد الجهاز، وتفتح صفحة العميل وحدها');
         expect(screen.queryByTestId('portal-approve')).toBeNull();
     });
 
+    it('ومن بعيدٍ: الرقمُ المسجَّل أمامه، ولا اعتمادَ قبل أن يقرّ باتّصاله', async () => {
+        const fetch = answer(200, { state: inside });
+        render(<CustomerPortalCard state={{ ...state, phone: '9123 4567' }} />);
+        fireEvent.click(screen.getByTestId('portal-approve-button'));
+        type('417902');
+        fireEvent.click(screen.getByRole('radio', { name: 'عن بُعد باتصال' }));
+        expect(screen.getByTestId('portal-approve')).toHaveTextContent('اتصل أنت بالرقم المسجّل 9123 4567، واسأله عن اسمه ورقم جهازه. لا تعتمد من اتصل بك أو راسلك.');
+        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
+        fireEvent.submit(screen.getByTestId('portal-approve'));
+        expect(fetch).not.toHaveBeenCalled();
+
+        const called = () => screen.getByRole('checkbox', { name: 'اتصلت بالرقم المسجّل، وتأكدت من العميل ورقم جهازه' });
+        fireEvent.click(called());
+        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeEnabled();
+        // ومن بدّل اختيارَه ثمّ عاد أقرّ من جديد
+        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'عن بُعد باتصال' }));
+        expect(called()).not.toBeChecked();
+        expect(screen.getByRole('button', { name: 'اعتماد' })).toBeDisabled();
+        fireEvent.click(called());
+        fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
+        await waitFor(() => expect(fetch.mock.calls).toHaveLength(1));
+        expect(fetch.mock.calls[0]).toMatchObject([urls.device, { body: JSON.stringify({ device: '417902', how: 'call', called: true }) }]);
+        // ولا اتّصالَ ولا رسالةَ من النظام
+        expect(screen.queryByRole('link')).toBeNull();
+    });
+
     it('وجهازٌ ينتظر يُعرض نوعُه ووقتُه، والخانةُ مفتوحة', () => {
-        render(<CustomerPortalCard state={{ ...state, waiting: [{ device: 'iPhone · Safari', at: '10:02' }] }} />);
+        render(<CustomerPortalCard state={{ ...state, waiting: [{ device: 'iPhone · Safari', until: '10:12' }] }} />);
         expect(screen.getByTestId('portal-approve')).toBeInTheDocument();
-        for (const shown of ['iPhone · Safari', '10:02']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
+        for (const shown of ['iPhone · Safari', 'ينتهي 10:12']) expect(screen.getByTestId('portal-customer')).toHaveTextContent(shown);
     });
 
     it('وخطأُ الخادم يُقال بنصّه في مكانه، ويُمحى ما كُتب', async () => {
         answer(422, { message: 'لا جهاز ينتظر لهذا العميل بهذا الرقم.' });
         render(<CustomerPortalCard state={state} />);
         fireEvent.click(screen.getByTestId('portal-approve-button'));
-        fireEvent.change(screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل'), { target: { value: '417' } });
+        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
+        type('417902');
         fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
         expect(await screen.findByRole('alert')).toHaveTextContent('لا جهاز ينتظر لهذا العميل بهذا الرقم.');
         expect(screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل')).toHaveValue('');
@@ -218,21 +261,21 @@ describe('ملفُّ العميل: «بوابة العميل»', () => {
 
     it('ومن لا رقمَ له يُقال له، ولا يُطلب له شيء', () => {
         const fetch = answer(200, {});
-        render(<CustomerPortalCard state={{ ...state, hasPhone: false }} />);
+        render(<CustomerPortalCard state={{ ...state, phone: null }} />);
         expect(screen.getByText('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')).toBeInTheDocument();
         expect(screen.queryByTestId('portal-approve-button')).toBeNull();
         expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('ورقمُ الجهاز ثلاثُ خاناتٍ بأيّ أرقامٍ كُتب', () => {
-        expect(['417', '٤١٧', '۴۱۷', ' 4-1 7', '41789', 'abc', ''].map(deviceDigits)).toEqual(['417', '417', '417', '417', '417', '', '']);
+    it('ورقمُ الجهاز ستُّ خاناتٍ بأيّ أرقامٍ كُتب', () => {
+        expect(['417902', '٤١٧٩٠٢', '۴۱۷۹۰۲', ' 417-902 ', '41790299', 'abc', ''].map(deviceDigits)).toEqual(['417902', '417902', '417902', '417902', '417902', '', '']);
         // كما هو في الخادم
-        expect(readFileSync('app/Support/RibbonPortal/Devices.php', 'utf8')).toMatch(/const DIGITS = 3;/);
+        expect(readFileSync('app/Support/RibbonPortal/Devices.php', 'utf8')).toMatch(/const DIGITS = 6;/);
     });
 });
 
 describe('الصندوق', () => {
-    const sale = { url: URL_, device: '/pos/orders/INV-1/portal' };
+    const sale = { url: URL_, device: '/pos/orders/INV-1/portal', phone: '91234567' };
 
     it('ينسخ الرابطَ الواحد بلا سؤال الخادم', async () => {
         const fetch = answer(200, {});
@@ -249,12 +292,15 @@ describe('الصندوق', () => {
         const around = vi.fn((e: React.FormEvent) => e.preventDefault());
         render(<div onSubmit={around}><PortalSale portal={sale} /></div>);
         fireEvent.click(screen.getByTestId('portal-sale-device'));
-        fireEvent.change(screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل'), { target: { value: '417' } });
+        fireEvent.click(screen.getByRole('radio', { name: 'عن بُعد باتصال' }));
+        expect(screen.getByTestId('portal-approve')).toHaveTextContent('91234567');
+        fireEvent.click(screen.getByRole('radio', { name: 'العميل أمامي' }));
+        fireEvent.change(screen.getByLabelText('رقم الجهاز الظاهر على شاشة العميل'), { target: { value: '417902' } });
         fireEvent.click(screen.getByRole('button', { name: 'اعتماد' }));
 
         await waitFor(() => expect(screen.getByTestId('portal-sale-device')).toHaveTextContent('اعتُمد الجهاز'));
         expect(screen.getByTestId('portal-sale-device')).toBeDisabled();
-        expect(fetch.mock.calls[0]).toMatchObject([sale.device, { method: 'POST', body: JSON.stringify({ device: '417' }) }]);
+        expect(fetch.mock.calls[0]).toMatchObject([sale.device, { method: 'POST', body: JSON.stringify({ device: '417902', how: 'shop', called: false }) }]);
         expect(around).not.toHaveBeenCalled();
     });
 
@@ -267,7 +313,7 @@ describe('الإعدادات', () => {
     const page = (over = {}) => {
         Object.assign(pageProps, {
             translations: {}, portal: panel, urls: { self: '/s', staff: '/s/staff', revokeAll: '/s/links' }, mayGrant: true,
-            links: [{ id: 3, customer: 'مريم', since: '2026-11-29 10:00', used: null, devices: 1, revokeUrl: '/s/links/3' }],
+            links: [{ id: 3, customer: 'مريم', since: '2026-11-29 10:00', used: null, devices: inside.devices, revokeUrl: '/s/links/3' }],
             pagination: { current_page: 1, last_page: 1, total: 1 },
             employees: [{ id: 1, name: 'منى', role: 'مبيعات', share: false, manage: false }, { id: 2, name: 'خالد', role: 'مبيعات', share: true, manage: true }],
         }, over);
@@ -294,6 +340,8 @@ describe('الإعدادات', () => {
         page({ mayGrant: false });
         for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled();
         expect(screen.getAllByTestId('portal-link-row')).toHaveLength(1);
+        expect(screen.getByTestId('portal-link-row')).toHaveTextContent('Windows · Chrome اعتمده هدى باتصال على رقمه 2026-11-03 12:00');
+        expect(screen.getByRole('button', { name: 'إلغاء الدخول' })).toBeEnabled();
         expect(screen.getByTestId('portal-revoke-all')).toBeInTheDocument();
     });
 

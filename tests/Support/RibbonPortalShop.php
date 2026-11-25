@@ -126,16 +126,16 @@ trait RibbonPortalShop
     /** الرقمُ الظاهر على شاشة الجهاز — كما يقرؤه الموظّف */
     protected function shown(string $cookie): string
     {
-        preg_match('/data-testid="portal-number">(\d+)</', (string) $this->my('', $cookie)->assertOk()->getContent(), $m);
+        preg_match('/data-testid="portal-number">([\d ]+)</', (string) $this->my('', $cookie)->assertOk()->getContent(), $m);
 
-        return $m[1] ?? '';
+        return str_replace(' ', '', $m[1] ?? '');
     }
 
     /** يكتب رقمَه، ويعتمد الموظّفُ جهازَه — ويردّ كعكتَه */
     protected function enter(Customer $customer, ?string $phone = null): string
     {
         $cookie = $this->device($phone ?? (string) $customer->phone);
-        $this->assertNotNull(Devices::approve($customer->fresh(), $this->shown($cookie), $this->owner));
+        $this->assertNotNull(Devices::approve($customer->fresh(), $this->shown($cookie), $this->owner, 'shop'));
 
         return $cookie;
     }

@@ -24,9 +24,10 @@ return new class extends Migration
             $table->string('device', 40)->nullable();
             $table->unsignedTinyInteger('tries')->default(0);
             $table->timestamp('expires_at');
-            // من اعتمده ولمن — أو لا شيء وهو ينتظر
+            // من اعتمده ولمن وكيف تحقّق (في المحلّ أو باتصالٍ على رقمه المسجَّل) — أو لا شيء وهو ينتظر
             $table->foreignId('customer_id')->nullable()->index()->constrained()->cascadeOnDelete();
             $table->foreignId('approved_by')->nullable()->index()->constrained('users')->nullOnDelete();
+            $table->string('approved_how', 10)->nullable();
             $table->timestamp('approved_at')->nullable();
             $table->timestamp('closed_at')->nullable();
             $table->timestamps();

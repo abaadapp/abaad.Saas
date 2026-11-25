@@ -3,7 +3,7 @@ import { router, usePage } from '@inertiajs/react';
 import { ExternalLink, ShieldOff } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import { PortalLinkBox, type PortalPanel } from '@/Components/RibbonPortal';
+import { ApprovedDevices, PortalLinkBox, type PortalPanel } from '@/Components/RibbonPortal';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import type { ApprovedDevice } from '@/lib/ribbon-portal';
 import type { PageProps } from '@/types';
 import BackToSettings from './partials/BackToSettings';
 
@@ -27,7 +28,7 @@ interface LinkRow {
     customer: string;
     since: string | null;
     used: string | null;
-    devices: number;
+    devices: ApprovedDevice[];
     revokeUrl: string;
 }
 
@@ -94,7 +95,7 @@ export default function CustomerPortal() {
                     </CardHeader>
                     <CardContent>
                         <p className="mb-3 text-[13px] text-[#6b7280]">
-                            {t('صاحب النشاط يملكها كلها. «يعتمد الأجهزة»: يرى الرابط والرمز ويعتمد جهاز العميل، فيفتح به العميل مشترياته، ويُكتب في السجل من اعتمده. و«يدير البوابة»: ومعها إلغاء الدخول وهذه الصفحة. ولا تفتح الفواتير ولا تعديل النقاط، وتلزم معها صلاحية الشاشة التي فيها الزر.')}
+                            {t('صاحب النشاط يملكها كلها. «يعتمد الأجهزة»: يرى الرابط والرمز ويعتمد جهاز عميل أمامه، أو عميل اتصل هو برقمه المسجّل. فيفتح به العميل مشترياته، ويُكتب اسم من اعتمده. و«يدير البوابة»: ومعها إلغاء الدخول وهذه الصفحة. ولا تفتح الفواتير ولا تعديل النقاط، وتلزم معها صلاحية الشاشة التي فيها الزر.')}
                         </p>
                         <Table>
                             <TableHeader>
@@ -140,7 +141,7 @@ export default function CustomerPortal() {
                                     <TableHead>{t('العميل')}</TableHead>
                                     <TableHead>{t('أول اعتماد')}</TableHead>
                                     <TableHead>{t('آخر زيارة')}</TableHead>
-                                    <TableHead>{t('أجهزة معتمدة')}</TableHead>
+                                    <TableHead>{t('الأجهزة المعتمدة ومن اعتمدها')}</TableHead>
                                     <TableHead />
                                 </TableRow>
                             </TableHeader>
@@ -151,7 +152,7 @@ export default function CustomerPortal() {
                                         <TableCell className="font-medium">{l.customer}</TableCell>
                                         <TableCell><span dir="ltr">{l.since}</span></TableCell>
                                         <TableCell>{l.used ? <span dir="ltr">{l.used}</span> : '—'}</TableCell>
-                                        <TableCell>{number(l.devices)}</TableCell>
+                                        <TableCell>{l.devices.length > 0 ? <ApprovedDevices devices={l.devices} /> : '—'}</TableCell>
                                         <TableCell className="text-end"><Button variant="ghost" size="sm" className="text-[#b91c1c]" onClick={() => void revoke(l)}>{t('إلغاء الدخول')}</Button></TableCell>
                                     </TableRow>
                                 ))}

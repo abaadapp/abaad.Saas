@@ -37,7 +37,10 @@ final class Access
     public const COOKIE = 'rb_my';
 
     /** عمرُ الجلسة على الجهاز المعتمد — يتجدّد بالزيارة */
-    public const DAYS = 180;
+    public const DAYS = 90;
+
+    /** جهازٌ اعتُمد ولم يعد إليه صاحبُه: كم ساعةً تنتظره جلستُه */
+    public const UNSEEN_HOURS = 24;
 
     public const REVOKED_BY_STAFF = 'staff';
 
@@ -53,7 +56,13 @@ final class Access
     /** الرقمُ المسجَّل الذي يُدخله العميل — هاتفُه، وإلّا رقمُ تواصله */
     public static function phone(Customer $customer): ?string
     {
-        return self::normalize((string) (filled($customer->phone) ? $customer->phone : $customer->contact_phone));
+        return self::normalize(self::shown($customer));
+    }
+
+    /** كما كُتب في سجلّه — يقرؤه الموظّفُ ليتّصل به هو */
+    public static function shown(Customer $customer): string
+    {
+        return (string) (filled($customer->phone) ? $customer->phone : $customer->contact_phone);
     }
 
     /** بأيّ صيغةٍ كُتب — بقاعدة النظام (`WhatsAppPhone`): أرقامٌ عربيّة، ومفتاحٌ أو بلا مفتاح، ومسافات */
@@ -102,7 +111,7 @@ final class Access
             'customer_id' => $link->customer_id,
             'link_id' => $link->id,
             'token_hash' => $tokenHash,
-            'expires_at' => now()->addHours(Devices::HOURS),
+            'expires_at' => now()->addHours(self::UNSEEN_HOURS),
         ]);
     }
 
@@ -115,12 +124,6 @@ final class Access
                 ->whereNull('revoked_at')->lockForUpdate()->get()
                 ->each(fn (Link $l) => self::close($l, $by, self::REVOKED_BY_STAFF));
         });
-    }
-
-    /** كم جهازًا داخلٌ الآن */
-    public static function devices(Link $link): int
-    {
-        return $link->sessions()->whereNull('revoked_at')->where('expires_at', '>', now())->count();
     }
 
     /** كلُّ من دخل — للطوارئ */
@@ -166,11 +169,11 @@ final class Access
 
     /* ─────────────────────────── حدُّ المحاولات ─────────────────────────── */
 
-    /** كم ثانيةً حتى يُقبل طلبٌ جديد — أو صفر */
-    public static function blockedFor(string $phone, Request $request): int
+    /** كم ثانيةً حتى يُقبل طلبٌ جديد — أو صفر. `$key` بصمةُ الرقم (`Devices::key`) لا الرقمُ نفسُه: لا يُكتب رقمٌ في العدّاد */
+    public static function blockedFor(string $key, Request $request): int
     {
         $wait = 0;
-        foreach (self::keys($phone, $request) as $name => $limiter) {
+        foreach (self::keys($key, $request) as $name => $limiter) {
             if (RateLimiter::tooManyAttempts($limiter, self::LIMITS[$name][0])) {
                 $wait = max($wait, RateLimiter::availableIn($limiter));
             }
@@ -180,20 +183,17 @@ final class Access
     }
 
     /** ويُحسب كلُّ طلبٍ جديد، لرقمٍ مسجَّلٍ أو غيره */
-    public static function count(string $phone, Request $request): void
+    public static function count(string $key, Request $request): void
     {
-        foreach (self::keys($phone, $request) as $name => $limiter) {
+        foreach (self::keys($key, $request) as $name => $limiter) {
             RateLimiter::hit($limiter, self::LIMITS[$name][1]);
         }
     }
 
     /** @return array{who: string, day: string, ip: string} */
-    private static function keys(string $phone, Request $request): array
+    private static function keys(string $key, Request $request): array
     {
-        // بصمةٌ لا الرقمُ نفسُه: لا يُكتب رقمٌ في العدّاد
-        $who = self::phoneHash((string) self::normalize($phone));
-
-        return ['who' => 'ribbon-portal:w:'.$who.':'.$request->ip(), 'day' => 'ribbon-portal:d:'.$who, 'ip' => 'ribbon-portal:ip:'.$request->ip()];
+        return ['who' => 'ribbon-portal:w:'.$key.':'.$request->ip(), 'day' => 'ribbon-portal:d:'.$key, 'ip' => 'ribbon-portal:ip:'.$request->ip()];
     }
 
     /* ─────────────────────────── الجلسة ─────────────────────────── */

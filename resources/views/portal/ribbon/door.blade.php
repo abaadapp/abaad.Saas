@@ -22,7 +22,7 @@
             <label for="phone">{{ $t('phoneLabel') }}</label>
             <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" maxlength="30" autofocus>
             <p class="muted sm" style="margin:6px 0 0">{{ $t('phoneHint') }}</p>
-            <p class="err" id="error" role="alert" data-testid="portal-error" @if (! $over) hidden @endif>{{ $over ? $t('waitOver') : '' }}</p>
+            <p class="err" id="error" role="alert" hidden></p>
             <button class="btn main" id="enter" type="submit">{{ $t('enter') }}</button>
         </form>
     </div>

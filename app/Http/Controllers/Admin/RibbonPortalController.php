@@ -20,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -76,21 +77,32 @@ class RibbonPortalController extends Controller
         return $this->json(['state' => self::state($customer, auth()->user())]);
     }
 
-    /** يعتمد أو يردّ سببَ الردّ */
+    /**
+     * يعتمد أو يردّ سببَ الردّ.
+     *
+     * ولا اعتمادَ بلا قولٍ كيف تحقّق الموظّف: العميلُ أمامه، أو اتّصل هو برقمه المسجَّل — ويقرّ
+     * باتّصاله. وقولُه يُكتب مع اسمه.
+     */
     private function settle(Request $request, Customer $customer): ?JsonResponse
     {
-        $data = $request->validate(['device' => ['required', 'string', 'max:20']], [], ['device' => __('رقم الجهاز')]);
+        $data = $request->validate([
+            'device' => ['required', 'string', 'max:20'],
+            'how' => ['required', Rule::in(Devices::HOW)],
+            'called' => ['accepted_if:how,call'],
+        ], [
+            'called.accepted_if' => __('اتصل أنت بالرقم المسجّل وتأكد من العميل ورقم جهازه أولًا.'),
+        ], ['device' => __('رقم الجهاز'), 'how' => __('كيف تحققت من العميل'), 'called' => __('تأكيد الاتصال')]);
 
         if (Access::phone($customer) === null) {
             return $this->json(['message' => __('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')], 422);
         }
 
         // والأرقامُ العربيّةُ قرأها `NormalizeNumbers` أرقامًا قبل أن تصل
-        $device = Devices::approve($customer, (string) preg_replace('/\D+/', '', $data['device']), auth()->user());
+        $device = Devices::approve($customer, (string) preg_replace('/\D+/', '', $data['device']), auth()->user(), $data['how']);
         if ($device === null) {
-            return $this->json(['message' => __('لا جهاز ينتظر لهذا العميل بهذا الرقم. تأكد من رقم الهاتف الذي كتبه ومن الرقم الظاهر على شاشته. وبعد ثلاثة أخطاء يكتب رقمه من جديد.')], 422);
+            return $this->json(['message' => __('لا جهاز ينتظر لهذا العميل بهذا الرقم. تأكد من رقم الهاتف الذي كتبه ومن الرقم الظاهر على شاشته، وهو يصلح عشر دقائق. وبعد ثلاثة أخطاء يطلب رقمًا جديدًا.')], 422);
         }
-        Access::log('اعتمد جهازًا لبوابة العميل'.($device === '' ? '' : ' ('.$device.')'), $customer);
+        Access::log('اعتمد جهازًا لبوابة العميل'.($device === '' ? '' : ' ('.$device.')').($data['how'] === 'call' ? ' باتصال على رقمه المسجل' : ' وهو في المحل'), $customer);
 
         return null;
     }
@@ -132,13 +144,14 @@ class RibbonPortalController extends Controller
         $staff = Portal::staff($bid);
 
         $links = CustomerPortalLink::where('business_id', $bid)->whereNull('revoked_at')->whereNotNull('last_used_at')
-            ->with('customer:id,name')->latest('last_used_at')->latest('id')->paginate(20)
-            ->through(fn (CustomerPortalLink $l) => [
+            ->with('customer:id,name')->latest('last_used_at')->latest('id')->paginate(20);
+        $approvals = Devices::approvals($links->pluck('id')->all());
+        $links = $links->through(fn (CustomerPortalLink $l) => [
                 'id' => (int) $l->id,
                 'customer' => $l->customer?->name ?? '—',
                 'since' => $l->created_at?->format('Y-m-d H:i'),
                 'used' => $l->last_used_at?->format('Y-m-d H:i'),
-                'devices' => Access::devices($l),
+                'devices' => $approvals[$l->id] ?? [],
                 'revokeUrl' => route('admin.settings.portal.revoke', $l->id, false),
             ]);
 
@@ -235,11 +248,11 @@ class RibbonPortalController extends Controller
                 'revoke' => Portal::mayManage($user) ? route('admin.customers.portal.revoke', $customer->id, false) : null,
             ],
             'url' => Portal::url(),
-            'hasPhone' => Access::phone($customer) !== null,
+            'phone' => Access::phone($customer) === null ? null : Access::shown($customer),
             'waiting' => Devices::of($customer),
             'since' => $in ? $link->created_at?->format('Y-m-d H:i') : null,
             'used' => $in ? $link->last_used_at->format('Y-m-d H:i') : null,
-            'devices' => $link ? Access::devices($link) : 0,
+            'devices' => $link ? Devices::approvals([$link->id])[$link->id] ?? [] : [],
         ];
     }
 

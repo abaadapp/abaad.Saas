@@ -3,6 +3,15 @@ import { csrfHeaders } from '@/lib/csrf';
 /** جهازٌ كُتب فيه رقمُ العميل وينتظر الاعتماد — ورقمُه يُقرأ من شاشته لا من هنا */
 export interface WaitingDevice {
     device: string;
+    /** حتّى متى يصلح رقمُه */
+    until: string;
+}
+
+/** جهازٌ اعتُمد: من اعتمده وكيف ومتى — وما دخل قبل الاعتماد بلا اسم */
+export interface ApprovedDevice {
+    device: string;
+    by: string | null;
+    how: 'shop' | 'call' | null;
     at: string;
 }
 
@@ -22,11 +31,12 @@ export interface PortalCustomerState {
     urls: { device: string; revoke: string | null };
     /** الرابطُ الواحد لجميع العملاء */
     url: string;
-    hasPhone: boolean;
+    /** رقمُه المسجَّل كما كُتب — وبلا رقمٍ لا بوابةَ له */
+    phone: string | null;
     waiting: WaitingDevice[];
     since: string | null;
     used: string | null;
-    devices: number;
+    devices: ApprovedDevice[];
 }
 
 /** ما يردّه الصندوقُ بعد بيعةِ عميلٍ مسجَّل */
@@ -35,10 +45,12 @@ export interface SalePortal {
     url: string;
     /** بابُ اعتماد جهاز عميل هذه البيعة */
     device: string;
+    /** رقمُه المسجَّل */
+    phone: string;
 }
 
 /** كم خانةً في رقم الجهاز (`RibbonPortal\Devices::DIGITS`) */
-export const DEVICE_DIGITS = 3;
+export const DEVICE_DIGITS = 6;
 
 /** ما كُتب بأرقامٍ عربيّةٍ أو فارسيّة يُقرأ أرقامًا، ولا شيءَ سواها */
 export function deviceDigits(raw: string): string {

@@ -232,6 +232,35 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $this->assertFalse($this->c()->isUsable());
     }
 
+    /** ‏‏والرقمُ نفسُه في حسابٍ آخر ليس «عاد إلى حسابه»: جهةُ الرسوم جهةُ الحساب لا الرقم */
+    public function test_the_same_number_in_another_account_is_a_new_link(): void
+    {
+        $c = $this->legacy();
+        $this->meta['numbers']['1002'] = 'PN-1';
+        $this->link(null, '1002', 'PN-1')->assertSessionHasErrors('phone_number_id');
+        $this->assertSame(['1001', true], [$c->fresh()->waba_id, $c->fresh()->isUsable()]);
+
+        $c->update(['status' => WhatsAppConnection::EXPIRED]);
+        $this->link(null, '1002', 'PN-1')->assertSessionHasNoErrors();
+        $this->assertFalse($this->c()->billing_exempt);
+        $this->assertFalse($this->c()->isUsable());
+    }
+
+    /** ‏‏وإثباتُ حسابٍ لا يُمرّر حسابًا آخر فوق رقمٍ يُرسل */
+    public function test_a_proof_of_one_account_does_not_let_another_replace_a_sending_number(): void
+    {
+        $this->link()->assertSessionHasNoErrors();
+        $this->review()->assertSessionHasNoErrors();
+        $this->assertTrue($this->c()->isUsable());
+
+        $this->link(null, '1002', 'PN-2')->assertSessionHasErrors('phone_number_id');
+        $this->assertSame(['1001', 'PN-1', true], [$this->c()->waba_id, $this->c()->phone_number_id, $this->c()->isUsable()]);
+
+        // ‏‏وحسابُه نفسُه يُعاد ربطُه
+        $this->link()->assertSessionHasNoErrors();
+        $this->assertTrue($this->c()->isUsable());
+    }
+
     /** ‏‏RIBBON وكلُّ تطبيقٍ خاصّ: لا صفَّ ولا نداءَ ولا حقلَ يُضاف ولا إيقاف */
     public function test_a_shop_on_its_own_meta_app_is_untouched_by_the_lock(): void
     {

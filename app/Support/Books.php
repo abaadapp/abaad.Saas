@@ -723,6 +723,11 @@ class Books
         Transaction::ORDER_BALANCE => 'تحصيل متبقّي فاتورة',
         // وما نقص منها فرُدّ للعميل بيد الموظّف — لا استردادَ آليًّا
         Transaction::ORDER_REFUND => 'ردّ فرق فاتورة',
+        // ومالُ البوتيكات — من مستنداتها (`BoutiqueMovements::cash`)
+        Transaction::BOUTIQUE_SHEET => 'سداد ورقة بوتيك',
+        Transaction::BOUTIQUE_PIECES => 'سداد قطع بوتيك',
+        Transaction::BOUTIQUE_REFUND => 'استرداد رصيد من بوتيك',
+        Transaction::BOUTIQUE_CLAIM => 'تحصيل مطالبة من بوتيك',
     ];
 
     /**

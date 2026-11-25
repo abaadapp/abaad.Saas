@@ -12,6 +12,7 @@ use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -391,6 +392,13 @@ final class BoutiqueReturns
                 throw new SettlementRefused(__('المطالَب به من :name :open — والاستلامُ لا يزيد عليه.', ['name' => $boutique->name, 'open' => number_format($open, 3)]));
             }
 
+            /*
+             * استلامٌ واحد: صفٌّ في «الحركات» وقيدٌ يقابله، ولو أطفأ مطالباتٍ عدّة.
+             *
+             * كان لكلّ مطالبةٍ قيدٌ ولا صفَّ لأيٍّ منها: مالٌ دخل الصندوقَ في الدفتر ولا تقرؤه
+             * «الحركات»، وإيداعٌ واحدٌ في كشف البنك لا يقابله صفّ.
+             */
+            $taken = [];
             $left = $amount;
             foreach ($claims as $claim) {
                 if ($left <= 0.0005) {
@@ -401,24 +409,33 @@ final class BoutiqueReturns
                     continue;
                 }
 
-                $row = BoutiqueReturnRecovery::create([
+                $taken[] = [$claim, $take];
+                $left = round($left - $take, 3);
+            }
+
+            $at = BooksPeriod::openOr((int) $business->id, now());
+            $row = BoutiqueMovements::cash((int) $business->id, Transaction::BOUTIQUE_CLAIM, $amount, $method,
+                __('تحصيل مطالبة من بوتيك :name — :reference', ['name' => $boutique->name, 'reference' => $reference]), $at);
+
+            $entry = Ledger::post(
+                (int) $business->id,
+                BooksPeriod::fit(__('استرداد مرتجع من البوتيك: ').$boutique->name, $reference),
+                [
+                    ['account' => Books::payingAccount($method), 'debit' => $amount],
+                    ...array_map(fn (array $t) => ['account' => 'boutique_receivable', 'credit' => $t[1], 'memo' => $t[0]->name], $taken),
+                ],
+                $at, self::SOURCE, null, auth()->id(), $row,
+            );
+            $row->update(['journal_entry_id' => $entry->id]);
+
+            foreach ($taken as [$claim, $take]) {
+                BoutiqueReturnRecovery::create([
                     'business_id' => $business->id, 'boutique_id' => $boutique->id, 'boutique_return_id' => $claim->id,
                     'kind' => BoutiqueReturnRecovery::RECEIPT, 'amount' => $take, 'method' => $method,
-                    'reference' => $reference, 'user_id' => auth()->id(),
+                    'reference' => $reference, 'user_id' => auth()->id(), 'transaction_id' => $row->id,
                 ]);
 
-                Ledger::post(
-                    (int) $business->id,
-                    BooksPeriod::fit(__('استرداد مرتجع من البوتيك: ').$boutique->name, $reference),
-                    [
-                        ['account' => Books::payingAccount($method), 'debit' => $take],
-                        ['account' => 'boutique_receivable', 'credit' => $take, 'memo' => $claim->name],
-                    ],
-                    BooksPeriod::openOr((int) $business->id, now()), self::SOURCE, null, auth()->id(), $row,
-                );
-
                 self::closeIfRecovered($claim);
-                $left = round($left - $take, 3);
             }
 
             return $amount;

@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\Schema;
  * ═══ وما رُبط قبل هذا لا يقف ═══
  *
  * `billing_exempt` عمودٌ افتراضُه «لا»: كلُّ وصلةٍ تُكتب بعد اليوم مقفلةٌ حتى تثبت، من أيّ بابٍ جاءت. وما كان
- * قائمًا يُختم هنا مرّةً واحدة — إلّا ما رُبط عبر الاعتماد الآليّ (له صفٌّ في `whatsapp_sender_adoptions`): ذاك
- * من «التجّار الجدد» الذين وُضع القفلُ لأجلهم. ووصلةُ تطبيق التاجر (RIBBON) لا يقرؤها القفلُ أصلًا.
+ * قائمًا يُختم هنا مرّةً واحدة: **كلُّ وصلةٍ تعمل اليوم تبقى كما هي**، ومنها ما رُبط أو أُعيد ربطُه عبر الاعتماد
+ * الآليّ (`whatsapp_sender_adoptions`) — متجرٌ قديم جدّد تفويضَه أمس له فيه صفّ، ولا يُوقَف إلّا بقرارٍ مستقلّ.
+ * ويُقفل ممّا رُبط به ما لا يعمل أصلًا: لا شيءَ عنده يتوقّف. وكلُّها تظهر لمدير المنصّة «لم يتم التحقق».
+ * ووصلةُ تطبيق التاجر (RIBBON) لا يقرؤها القفلُ أصلًا.
  *
  * ولا رقمَ بطاقةٍ ولا وسيلةَ دفع في أيّ عمودٍ هنا، ولا مبلغَ لم تقله Meta.
  */
@@ -26,8 +28,13 @@ return new class extends Migration
             $table->boolean('billing_exempt')->default(false);
         });
 
+        $adopting = DB::table('whatsapp_sender_adoptions')->whereNotNull('whatsapp_connection_id')->select('whatsapp_connection_id');
+
         DB::table('whatsapp_connections')->where('owner_type', 'business')
-            ->whereNotIn('id', DB::table('whatsapp_sender_adoptions')->whereNotNull('whatsapp_connection_id')->select('whatsapp_connection_id'))
+            ->where(fn ($q) => $q->whereNotIn('id', $adopting)->orWhere(fn ($works) => $works
+                ->whereIn('status', ['active', 'reauthorization_required'])
+                ->where('phone_number_id', '<>', '')->where('access_token', '<>', '')
+                ->where(fn ($live) => $live->whereNull('token_expires_at')->orWhere('token_expires_at', '>', now()))))
             ->update(['billing_exempt' => true]);
 
         // ‏‏حالُ فوترة حسابِ رسائلٍ بعينه (WABA) لمتجرٍ بعينه — يبقى وإن أُعيد الربط أو استُعيدت نسخة

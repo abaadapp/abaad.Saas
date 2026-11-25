@@ -154,8 +154,48 @@ describe('مراجعةُ مدير المنصّة', () => {
         const health = { key: 'ready', label: 'جاهز', hint: '', tone: 'info', checked_at: null } as OwnNumberRow['health'];
         const states: BillingState[] = ['unverified', 'pending', 'proven', 'problem', 'recheck'];
         render(<OwnNumbersHealth rows={states.map((state, i) => ({ business_id: i + 1, business: 'م', phone: null, inbox: true, health, billing: { state, label: `حال ${state}`, locked: state !== 'unverified', own_app: false, text: null } }))} />);
-        expect(screen.getAllByTestId('own-number-billing').map((e) => e.getAttribute('data-state'))).toEqual(states);
+        // ومن ثبت آخرًا
+        expect(screen.getAllByTestId('own-number-billing').map((e) => e.getAttribute('data-state'))).toEqual(['unverified', 'pending', 'problem', 'recheck', 'proven']);
         expect(screen.getAllByTestId('own-number-billing')[0]).toHaveTextContent('ربط من قبل القفل');
+    });
+
+    describe('وعددُ من لم تثبت جهةُ رسومه', () => {
+        const health = { key: 'ready', label: 'جاهز', hint: '', tone: 'info', checked_at: null } as OwnNumberRow['health'];
+        const row = (id: number, billing: Partial<NonNullable<OwnNumberRow['billing']>> | null): OwnNumberRow => ({
+            business_id: id, business: `متجر ${id}`, phone: null, inbox: true, health,
+            billing: billing && { state: 'unverified', label: `حال ${billing.state ?? 'unverified'}`, locked: true, own_app: false, sends: false, text: null, ...billing },
+        });
+
+        it('يُعدّ من الصفوف نفسِها، بحالٍ لكلّ واحدة، ومن لم يثبت أوّلًا', () => {
+            render(<OwnNumbersHealth rows={[row(1, { state: 'proven', sends: true }), row(2, {}), row(3, { state: 'problem' }), row(4, {}), row(5, { state: 'pending' }), row(6, { state: 'recheck' })]} />);
+            const tally = screen.getByTestId('billing-tally');
+            expect([tally.getAttribute('data-unproven'), tally.getAttribute('data-total')]).toEqual(['5', '6']);
+            expect(tally).toHaveTextContent('لم تثبت جهة رسوم واتساب عند 5 من 6 من المتاجر');
+            expect(screen.getAllByTestId('billing-tally-state').map((e) => [e.getAttribute('data-state'), e.getAttribute('data-count')]))
+                .toEqual([['problem', '1'], ['recheck', '1'], ['unverified', '2'], ['pending', '1'], ['proven', '1']]);
+            expect(screen.getAllByTestId('own-number-row')).toHaveLength(6);
+            expect(screen.getAllByTestId('own-number-row')[5]).toHaveTextContent('متجر 1');
+            expect(screen.queryByTestId('billing-tally-sending')).toBeNull();
+        });
+
+        it('ويُقال كم منها يُرسل لأنه رُبط قبل القفل — لا متجرَ التجربة ولا من بتطبيقه', () => {
+            render(<OwnNumbersHealth rows={[
+                row(1, { locked: false, sends: true }), row(2, { locked: false, sends: true }), row(3, { locked: false, sends: false }),
+                row(4, { locked: true, sends: true }), row(5, { locked: false, own_app: true, sends: true, state: 'pending' }), row(6, { locked: false, sends: true, state: 'proven' }),
+            ]} />);
+            expect(screen.getByTestId('billing-tally-sending').getAttribute('data-count')).toBe('2');
+            expect(screen.getByTestId('billing-tally-sending')).toHaveTextContent('لا تتوقف إلا بقرارك');
+            expect(screen.getAllByText('بتطبيقه الخاص')).toHaveLength(1);
+        });
+
+        it('وثبوتُها عند الكلّ يُقال، وبلا متجرٍ مربوط لا عدد', () => {
+            const { rerender } = render(<OwnNumbersHealth rows={[row(1, { state: 'proven' }), row(2, { state: 'proven', own_app: true })]} />);
+            expect(screen.getByTestId('billing-tally')).toHaveTextContent('ثبتت جهة رسوم واتساب عند كل المتاجر (2)');
+            rerender(<OwnNumbersHealth rows={[]} />);
+            expect(screen.queryByTestId('billing-tally')).toBeNull();
+            rerender(<OwnNumbersHealth rows={[row(9, null)]} />);
+            expect(screen.queryByTestId('billing-tally')).toBeNull();
+        });
     });
 });
 

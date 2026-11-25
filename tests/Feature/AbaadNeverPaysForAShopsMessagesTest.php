@@ -23,6 +23,7 @@ use App\Support\WhatsAppCampaignTemplates;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppLink;
+use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOwnApp;
 use App\Support\WhatsAppQuota;
@@ -295,21 +296,102 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $this->assertNull(WhatsAppBillingLock::platformView($c->fresh()));
     }
 
-    public function test_the_migration_exempts_what_sent_before_it_and_not_what_the_new_switch_adopted(): void
+    /** ‏‏كلُّ وصلةٍ تعمل يومَ النشر تبقى تعمل — ولو جدّد صاحبُها ربطَه بعد الاعتماد الآليّ فصار له فيه صفّ */
+    public function test_the_migration_stops_no_link_that_works_today(): void
     {
-        $old = $this->legacy();
-        [$two] = $this->makeShop('متجر ثانٍ', 's@abaadapp.om', '92222222');
-        $new = $this->legacy(['business_id' => $two->id, 'waba_id' => '1002', 'phone_number_id' => 'PN-2']);
-        WhatsAppSenderAdoption::create(['business_id' => $two->id, 'whatsapp_connection_id' => $new->id, 'phone_number_id' => 'PN-2', 'via' => 'embedded', 'state' => 'adopted', 'adopted_at' => now()]);
+        $shops = collect(['قديم', 'اعتُمد آليًّا', 'ينتظر الاعتماد', 'يحتاج تفويضًا', 'عطب', 'انتهى رمزه', 'فصله صاحبه', 'بلا رقم'])
+            ->map(fn (string $name, int $i) => $this->makeShop($name, "s{$i}@abaadapp.om", "9222220{$i}")[0])->values();
+        $link = fn (int $i, array $over = [], ?string $adoption = 'adopted') => tap($this->legacy([
+            'business_id' => $shops[$i]->id, 'waba_id' => "200{$i}", 'phone_number_id' => "PN-2{$i}", 'access_token' => "T-{$i}", ...$over,
+        ]), fn ($c) => $adoption && WhatsAppSenderAdoption::create([
+            'business_id' => $c->business_id, 'whatsapp_connection_id' => $c->id, 'phone_number_id' => (string) $c->phone_number_id, 'via' => 'embedded', 'state' => $adoption,
+            'adopted_at' => $adoption === 'adopted' ? now() : null,
+        ]));
 
+        $old = $link(0, [], null);
+        $adopted = $link(1);
+        $checking = $link(2, [], 'checking');
+        $reauth = $link(3, ['status' => 'reauthorization_required', 'token_expires_at' => now()->addDay()]);
+        $broken = $link(4, ['status' => 'error']);
+        $expired = $link(5, ['token_expires_at' => now()->subDay()]);
+        $off = $link(6, ['status' => 'inactive'], 'closed');
+        $numberless = $link(7, ['phone_number_id' => null], 'closed');
+        $ownApp = $this->legacy(['link_type' => WhatsAppOwnApp::TYPE, 'phone_number_id' => 'PN-OWN']);
+
+        // ‏‏وصلاتٌ كما تركها الإصدارُ السابق: لا عمودَ بعدُ ولا جداول
         $migration = require database_path('migrations/2026_11_30_090000_abaad_never_pays_for_a_shops_messages.php');
         $migration->down();
         $this->assertFalse(Schema::hasColumn('whatsapp_connections', 'billing_exempt'));
+        $before = DB::table('whatsapp_connections')->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
         $migration->up();
 
-        $this->assertTrue((bool) DB::table('whatsapp_connections')->where('id', $old->id)->value('billing_exempt'));
-        $this->assertFalse((bool) DB::table('whatsapp_connections')->where('id', $new->id)->value('billing_exempt'), 'ومن اعتُمد آليًّا مقفلٌ حتى يثبت');
+        $exempt = fn ($c) => (bool) DB::table('whatsapp_connections')->where('id', $c->id)->value('billing_exempt');
+        foreach (['قديم' => $old, 'اعتُمد آليًّا' => $adopted, 'ينتظر الاعتماد' => $checking, 'يحتاج تفويضًا' => $reauth] as $who => $c) {
+            $this->assertTrue($exempt($c), $who);
+            $this->assertNull(WhatsAppBillingLock::stop($c->fresh()), $who);
+            $this->assertTrue($c->fresh()->isUsable(), $who);
+        }
+        foreach (['عطب' => $broken, 'انتهى رمزه' => $expired, 'فصله صاحبه' => $off, 'بلا رقم' => $numberless] as $who => $c) {
+            $this->assertFalse($c->fresh()->isConnected(), "{$who}: لا يُرسل أصلًا");
+            $this->assertFalse($exempt($c), $who);
+        }
+
+        // ‏‏ولا وصلةٌ كانت تُرسل قبل الهجرة ولا تُرسل بعدها — ولا عمودٌ آخر تغيّر
+        $this->assertSame([], WhatsAppConnection::where('owner_type', 'business')->get()
+            ->filter(fn ($c) => $c->isConnected() && ! WhatsAppOwnApp::is($c) && ! $c->isUsable())->pluck('id')->all());
+        $this->assertSame($before, DB::table('whatsapp_connections')->orderBy('id')->get()->map(fn ($r) => collect((array) $r)->except('billing_exempt')->all())->all());
+        $this->assertSame(0, WhatsAppBilling::count(), 'ولا صفَّ فوترةٍ اخترعته الهجرة');
         $this->assertFalse((bool) DB::table('whatsapp_connections')->where('owner_type', 'platform')->value('billing_exempt'));
+        $this->assertFalse(WhatsAppBillingLock::applies($ownApp->fresh()));
+
+        // ‏‏ورقمٌ ينتظر الاعتماد يبقى ينتظر: لا يُعتمد بلا إثبات
+        $this->assertFalse(WhatsAppBillingLock::mayAdopt($checking->fresh()));
+        // ‏‏وما يُكتب بعدها مقفل
+        $this->assertFalse((bool) DB::table('whatsapp_connections')->where('id', DB::table('whatsapp_connections')->insertGetId([
+            'owner_type' => 'business', 'business_id' => $this->shop->id, 'provider' => 'meta_cloud', 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]))->value('billing_exempt'));
+    }
+
+    /** ‏‏متجرٌ اعتُمد رقمُه قبل القفل: رسالتُه تخرج بعد الهجرة كما كانت، وتراه اللوحةُ «لم يتم التحقق» */
+    public function test_a_shop_adopted_before_the_lock_still_sends_and_is_counted_as_unproven(): void
+    {
+        $c = $this->legacy(['billing_exempt' => false]);
+        WhatsAppSenderAdoption::create(['business_id' => $this->shop->id, 'whatsapp_connection_id' => $c->id, 'phone_number_id' => 'PN-1', 'via' => 'embedded', 'state' => 'adopted', 'adopted_at' => now()]);
+        $this->shop->update(['whatsapp_mode' => WhatsAppMode::BUSINESS_OWN]);
+        $this->approveTemplates($this->shop);
+
+        $migration = require database_path('migrations/2026_11_30_090000_abaad_never_pays_for_a_shops_messages.php');
+        $migration->down();
+        $migration->up();
+
+        $this->order()->update(['status' => OrderStatus::READY]);
+        $this->assertSame(['PN-1'], $this->outgoing());
+
+        $row = collect(WhatsAppLinkHealth::fleet())->firstWhere('business_id', $this->shop->id);
+        $this->assertSame(['unverified', false, false, true], [$row['billing']['state'], $row['billing']['locked'], $row['billing']['own_app'], $row['billing']['sends']]);
+    }
+
+    /** ‏‏ولوحةُ المدير تحمل كلَّ متجرٍ مربوط برقمه بحاله — فالعددُ فوقها يُعدّ منها */
+    public function test_the_panel_lists_every_shop_whose_payer_is_not_proven(): void
+    {
+        $this->link()->assertSessionHasNoErrors();
+        [$legacy] = $this->makeShop('قبل القفل', 'legacy-tally@abaadapp.om', '93333331');
+        $this->legacy(['business_id' => $legacy->id, 'waba_id' => '3001', 'phone_number_id' => 'PN-31', 'access_token' => 'T-31']);
+        [$own] = $this->makeShop('بتطبيقه', 'own-tally@abaadapp.om', '93333332');
+        $this->legacy(['business_id' => $own->id, 'link_type' => WhatsAppOwnApp::TYPE, 'waba_id' => '3002', 'phone_number_id' => 'PN-32', 'access_token' => 'T-32',
+            'billing_state' => WhatsAppOwnApp::BILLING_CONFIRMED, 'billing_evidence' => ['waba_id' => '3002', 'reviewed_at' => now()->toIso8601String()], 'billing_exempt' => false]);
+        [$gone] = $this->makeShop('فصل رقمه', 'gone-tally@abaadapp.om', '93333333');
+        $this->legacy(['business_id' => $gone->id, 'waba_id' => '3003', 'phone_number_id' => 'PN-33', 'status' => 'inactive']);
+
+        $rows = collect(WhatsAppLinkHealth::fleet())->keyBy('business_id');
+        $this->assertEqualsCanonicalizing([$this->shop->id, $legacy->id, $own->id], $rows->keys()->all());
+        $this->assertSame(['unverified', true, false], [$rows[$this->shop->id]['billing']['state'], $rows[$this->shop->id]['billing']['locked'], $rows[$this->shop->id]['billing']['sends']]);
+        $this->assertSame(['unverified', false, true], [$rows[$legacy->id]['billing']['state'], $rows[$legacy->id]['billing']['locked'], $rows[$legacy->id]['billing']['sends']]);
+        $this->assertSame(['proven', true], [$rows[$own->id]['billing']['state'], $rows[$own->id]['billing']['own_app']]);
+        foreach ($rows as $row) {
+            $this->assertNotEmpty($row['billing']['label']);
+            $this->assertStringNotContainsString('T-3', json_encode($row), 'ولا رمز');
+        }
     }
 
     public function test_rolling_back_never_drops_the_record_of_who_proved_what(): void

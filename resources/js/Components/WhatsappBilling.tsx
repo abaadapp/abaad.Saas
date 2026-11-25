@@ -7,6 +7,9 @@ import { useTranslate } from '@/lib/i18n';
 /** إحدى خمس حالاتٍ لجهة رسوم واتساب — انظر `App\Support\WhatsAppBillingLock` */
 export type BillingState = 'unverified' | 'pending' | 'proven' | 'problem' | 'recheck';
 
+/** بترتيب ما يحتاج النظر أوّلًا */
+export const BILLING_STATES: BillingState[] = ['problem', 'recheck', 'unverified', 'pending', 'proven'];
+
 export const BILLING_PILL: Record<BillingState, SetupState> = {
     unverified: 'action',
     pending: 'progress',

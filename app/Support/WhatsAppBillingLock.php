@@ -752,7 +752,7 @@ final class WhatsAppBillingLock
         return __(self::LABELS[$state] ?? $state);
     }
 
-    /** @return array{state: string, label: string, locked: bool, own_app: bool, text: ?string}|null سطرٌ واحد لجدول الأرقام وبطاقة المتجر */
+    /** @return array{state: string, label: string, locked: bool, own_app: bool, sends: bool, text: ?string}|null سطرٌ واحد لجدول الأرقام وبطاقة المتجر */
     public static function brief(?WhatsAppConnection $c): ?array
     {
         $state = self::stateOf($c);
@@ -768,6 +768,8 @@ final class WhatsAppBillingLock
             'label' => self::label($state),
             'locked' => self::applies($c),
             'own_app' => WhatsAppOwnApp::is($c),
+            // ‏‏أتخرج منه رسالةٌ الآن؟ — فمن لم يثبت ويُرسل غيرُ من لم يثبت ووقف
+            'sends' => $c->isUsable(),
             'text' => $stop !== null ? self::says($stop)['text'] : null,
         ];
     }

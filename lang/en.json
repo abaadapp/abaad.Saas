@@ -11631,5 +11631,9 @@
     "رسمٌ ظهر في «الفوترة والمدفوعات» على حساب التاجر": "A charge that appeared in “Billing & payments” on the merchant's account",
     "رقم متجرك لا يُرسل حتى تثبت جهة رسومه عند Meta — راجِع «التطبيقات التكاملية ‹ واتساب».": "Your shop's number does not send until who pays at Meta is verified — see “Integrations ‹ WhatsApp”.",
     "سحبت Meta تفويض واتساب أو نقصت صلاحياته — الإرسال متوقف، أعد الربط.": "Meta withdrew WhatsApp's authorization or its permissions were reduced — sending is stopped, link again.",
-    "رقم المتجر مربوط وينتظر إثبات جهة رسومه — لا يبدّله رابط. إن أراد رقمًا آخر فليفصله من حسابه أوّلًا.": "The shop's number is linked and waiting for who pays to be verified — a link does not replace it. If they want another number, they unlink it from their account first."
+    "رقم المتجر مربوط وينتظر إثبات جهة رسومه — لا يبدّله رابط. إن أراد رقمًا آخر فليفصله من حسابه أوّلًا.": "The shop's number is linked and waiting for who pays to be verified — a link does not replace it. If they want another number, they unlink it from their account first.",
+    "ثبتت جهة رسوم واتساب عند كل المتاجر (:total)": "Who pays WhatsApp charges is proven for every shop (:total)",
+    "لم تثبت جهة رسوم واتساب عند :count من :total من المتاجر": "Who pays WhatsApp charges is not proven for :count of :total shops",
+    "منها :count تُرسل الآن لأنها رُبطت قبل القفل، ولا تتوقف إلا بقرارك. راجع جهة رسومها من صفحة المتجر.": ":count of them send now because they were linked before the lock, and stop only by your decision. Review who pays from the shop's page.",
+    "بتطبيقه الخاص": "On its own app"
 }

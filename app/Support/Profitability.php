@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Expense;
 use App\Models\Order;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * صافي الربح — للنشاط كلِّه أو لفرعٍ بعينه، من موضعٍ واحد.
@@ -132,7 +133,35 @@ final class Profitability
         $direct = (float) self::expenses($bid, $start, $end)->where('expenses.branch_id', $branchId)->sum('amount');
         $returned = (float) self::returned($bid, $start, $end, $branchId)->sum('amount');
 
-        return round($direct + (float) self::shares($bid, $start, $end, $branchId)->sum('a.amount') - $returned, 3);
+        return round($direct + (float) self::shares($bid, $start, $end, $branchId)->sum('a.amount') - $returned
+            + (float) self::atSale($bid, $start, $end, $branchId)->sum(DB::raw('journal_lines.credit - journal_lines.debit'))
+            - (float) self::atSaleOnSheets($bid, $start, $end, $branchId)->sum('l.settled_net'), 3);
+    }
+
+    /**
+     * نصيبُ البوتيكات المقيَّدُ مع فواتير العملاء — بيوم قيده وفرعِ فاتورته، بعد ما رُدّ منه.
+     *
+     * الدفترُ يعدّه مصروفًا من يومها (`BoutiqueInvoiceDues::accrue`)، والفرعُ يقرأ جدولَ
+     * المصروفات: ولا صفَّ له فيه حتّى تحمله ورقة. فيُقرأ من قيده هنا، ويُطرح من مصروف
+     * الورقة التي تحمله (`atSaleOnSheets`) — فلا يُعدّ مرّتين ولا في شهر الورقة.
+     */
+    public static function atSale(int $bid, ?Carbon $start, ?Carbon $end, ?int $branchId)
+    {
+        return BoutiqueInvoiceDues::recognised($bid, $start, $end)
+            ->when($branchId !== null, fn ($q) => $q->where('journal_entries.branch_id', $branchId), fn ($q) => $q->whereNull('journal_entries.branch_id'));
+    }
+
+    /** وما في مصروفات الأوراق منه — بفرع بنده حيث حُمّلت الورقةُ على فروعها، وعامًّا في ورقةٍ عامّة */
+    public static function atSaleOnSheets(int $bid, ?Carbon $start, ?Carbon $end, ?int $branchId)
+    {
+        $scoped = fn ($q) => $q->whereNotNull('expenses.branch_id')
+            ->orWhereExists(fn ($a) => $a->selectRaw('1')->from('expense_branch_allocations as eba')->whereColumn('eba.expense_id', 'expenses.id'));
+
+        return self::expenses($bid, $start, $end)->toBase()
+            ->join('boutique_settlements as bs', 'bs.expense_id', '=', 'expenses.id')
+            ->join('boutique_invoice_lines as l', 'l.boutique_settlement_id', '=', 'bs.id')
+            ->whereNotNull('l.accrued_on')
+            ->when($branchId !== null, fn ($q) => $q->where('l.branch_id', $branchId)->where($scoped), fn ($q) => $q->whereNot($scoped));
     }
 
     /**
@@ -172,7 +201,11 @@ final class Profitability
         $q = self::expenses($bid, $start, $end)->whereNull('expenses.branch_id')->whereDoesntHave('allocations');
         $returned = (float) self::returned($bid, $start, $end, null)->sum('amount');
 
-        return ['amount' => round((float) (clone $q)->sum('amount') - $returned, 3), 'count' => (clone $q)->count()];
+        // وما قُيّد مع فاتورةٍ بلا فرع، ناقصًا ما حُمّل منه على ورقةٍ عامّة
+        $atSale = (float) self::atSale($bid, $start, $end, null)->sum(DB::raw('journal_lines.credit - journal_lines.debit'))
+            - (float) self::atSaleOnSheets($bid, $start, $end, null)->sum('l.settled_net');
+
+        return ['amount' => round((float) (clone $q)->sum('amount') - $returned + $atSale, 3), 'count' => (clone $q)->count()];
     }
 
     /**
@@ -219,6 +252,16 @@ final class Profitability
             // ومرتجعُ البوتيك في عمود يوم دخوله الدفترَ — كجملته في `attributed`
             $returnBucket = $unit === 'hour' ? "'00'" : Demo::bucketSql('booked_at', $unit);
             foreach (self::bucketSums(self::returned($bid, $start, $end, $branchId)->selectRaw("{$returnBucket} as bucket, SUM(amount) as v")) as $key => $v) {
+                $expenses[$key] = ($expenses[$key] ?? 0.0) - $v;
+            }
+
+            // وما قُيّد للبوتيكات مع فواتيرها في عمود يوم قيده، ويُطرح من عمود ورقته
+            $entryBucket = $unit === 'hour' ? "'00'" : Demo::bucketSql('journal_entries.entry_date', $unit);
+            foreach (self::bucketSums(self::atSale($bid, $start, $end, $branchId)->selectRaw("{$entryBucket} as bucket, SUM(journal_lines.credit - journal_lines.debit) as v")) as $key => $v) {
+                $expenses[$key] = ($expenses[$key] ?? 0.0) + $v;
+            }
+            $sheetBucket = $unit === 'hour' ? "'00'" : Demo::bucketSql('expenses.spent_at', $unit);
+            foreach (self::bucketSums(self::atSaleOnSheets($bid, $start, $end, $branchId)->selectRaw("{$sheetBucket} as bucket, SUM(l.settled_net) as v")) as $key => $v) {
                 $expenses[$key] = ($expenses[$key] ?? 0.0) - $v;
             }
         }

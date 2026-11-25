@@ -12,6 +12,7 @@ use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use App\Support\Bank;
 use App\Support\BoutiqueHolds;
+use App\Support\BoutiqueInvoiceDues;
 use App\Support\BoutiqueReturns;
 use App\Support\Demo;
 use App\Support\Ledger;
@@ -249,6 +250,14 @@ class OverviewController extends Controller
             ])->filter(fn ($r) => $r['amount'] > 0)->values()->all(),
             // وما سُدّدت أوراقُه دونه لأنّ تحصيلَه أُلغي: دَينٌ في 2160 لا مصروفَ له — يُقال بصفّه (`BoutiqueHolds`)
             'holds' => BoutiqueHolds::dues($bid),
+            /*
+             * وما قُيّد للبوتيكات مع فواتير العملاء ولم تحمله ورقةٌ بعد: دَينٌ في 2160 لا يُسدَّد من هنا
+             * ولا يُجمع في «عليك الآن» — يُقال ليُقابَل رصيدُ الحساب بما في هذه الشاشة.
+             */
+            'boutiqueAccrued' => [
+                'awaiting' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::accruedOpen($bid)->whereNull('boutique_invoice_lines.collected_at'))['net'],
+                'ready' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::accruedOpen($bid)->whereNotNull('boutique_invoice_lines.collected_at'))['net'],
+            ],
             'totals' => $this->dueTotals($bid),
         ]);
     }

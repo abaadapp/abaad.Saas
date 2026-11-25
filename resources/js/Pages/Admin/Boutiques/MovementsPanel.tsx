@@ -20,7 +20,8 @@ import type { Currency } from '@/types';
 
 export type MovementKind =
     | 'recorded' | 'changed' | 'cancelled' | 'piece' | 'piece_back' | 'kept' | 'credit' | 'sheet'
-    | 'paid' | 'pieces_paid' | 'note' | 'decided' | 'offset' | 'claim_offset' | 'receipt' | 'refund';
+    | 'paid' | 'pieces_paid' | 'note' | 'decided' | 'offset' | 'claim_offset' | 'receipt' | 'refund'
+    | 'invoiced' | 'collected' | 'voided' | 'invoice_return' | 'held' | 'hold_closed' | 'hold_paid';
 
 export interface Movement {
     key: string;
@@ -33,6 +34,8 @@ export interface Movement {
     effect: number;
     balance: number;
     order: string | null;
+    /** فاتورةُ عميلٍ بلا طلب */
+    invoice?: string | null;
     sheet: string | null;
     expense: string | null;
     entry: string | null;
@@ -53,7 +56,7 @@ export interface MovementsPage {
     opening: number;
     closing: number;
     balance: {
-        unsettled: number; pieces_unsettled: number; sheets_unpaid: number; pieces_unpaid: number;
+        unsettled: number; invoiced?: number; withheld?: number; pieces_unsettled: number; sheets_unpaid: number; pieces_unpaid: number;
         credit: number; claims: number; net: number;
     };
     groups: Record<string, { count: number; effect: number }>;
@@ -76,12 +79,20 @@ export const KIND: Record<MovementKind, string> = {
     claim_offset: 'خصم مطالبة من ورقة',
     receipt: 'تحصيل مطالبة من البوتيك',
     refund: 'استرداد رصيد من البوتيك',
+    invoiced: 'مستحق من فاتورة عميل',
+    collected: 'اكتمل تحصيل الفاتورة',
+    voided: 'إلغاء فاتورة قبل الورقة',
+    invoice_return: 'مرتجع بإشعار قبل الورقة',
+    held: 'تعليق: أُلغي التحصيل بعد الورقة',
+    hold_closed: 'فك التعليق',
+    hold_paid: 'سداد ما كان معلقًا',
 };
 
 /** من يتحمّل المرتجعَ، وحالُ القطعة */
 const STATE: Record<string, string> = {
     awaiting: 'ينتظر القطعة', review: 'ينتظر قرار المحاسب', shop: 'على المتجر', reduced: 'على البوتيك',
     claim: 'مطالبة على البوتيك', recovered: 'استُردّت', lost: 'لم تعد', unverified: 'لم يُتحقق منها',
+    recollected: 'أُعيد التحصيل', returned: 'حُسم مرتجعها', released: 'أُفرج عنها بقرار', reviewed: 'رُوجعت',
 };
 
 const GROUPS: { value: string; label: string }[] = [
@@ -90,6 +101,7 @@ const GROUPS: { value: string; label: string }[] = [
     { value: 'sheets', label: 'أوراق التسوية' },
     { value: 'payments', label: 'السداد' },
     { value: 'returns', label: 'المرتجعات' },
+    { value: 'holds', label: 'تعليق السداد' },
     { value: 'credits', label: 'الأرصدة والمطالبات' },
 ];
 
@@ -204,6 +216,9 @@ export default function MovementsPanel({ boutiqueId, period, currency }: Props) 
                                                 {r.order && (r.order_url
                                                     ? <a href={r.order_url} className="block text-[#1d4ed8] underline" dir="ltr">{r.order}</a>
                                                     : <span className="block text-[#6b7280]" dir="ltr">{r.order}</span>)}
+                                                {r.invoice && (r.order_url
+                                                    ? <a href={r.order_url} className="block text-[#1d4ed8] underline" dir="ltr">{r.invoice}</a>
+                                                    : <span className="block text-[#6b7280]" dir="ltr">{r.invoice}</span>)}
                                                 {r.sheet && <span className="block text-[#6b7280]" dir="ltr">{r.sheet}</span>}
                                             </td>
                                             <td className="whitespace-nowrap px-4 py-2.5 text-end tabular-nums text-[#6b7280]">{money(Math.abs(r.amount), currency)}</td>

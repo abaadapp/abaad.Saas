@@ -417,7 +417,7 @@ class Books
          * وإلّا خُصمت حصّةُ البوتيك من الربح مرّتين. ويُكتب بيوم خروج المال:
          * `spent_at` يبقى يومَ الورقة، والبنكُ لا ينقص في الماضي.
          */
-        $accrued = Boutiques::accrual($expense) !== null;
+        $accrued = Boutiques::accrued($expense);
 
         Ledger::post(
             $expense->business_id,
@@ -728,6 +728,7 @@ class Books
         Transaction::BOUTIQUE_PIECES => 'سداد قطع بوتيك',
         Transaction::BOUTIQUE_REFUND => 'استرداد رصيد من بوتيك',
         Transaction::BOUTIQUE_CLAIM => 'تحصيل مطالبة من بوتيك',
+        Transaction::BOUTIQUE_HELD => 'سداد معلّق لبوتيك',
     ];
 
     /**

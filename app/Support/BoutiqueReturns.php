@@ -322,7 +322,7 @@ final class BoutiqueReturns
             return;
         }
 
-        $accrued = Boutiques::accrual($expense) !== null;
+        $accrued = Boutiques::accrued($expense);
 
         // وما سُدّدت ورقتُه دونه (`BoutiqueHolds::withhold`) ما زال دَينًا في 2160: يُنقص منه، ولا مطالبةَ بما لم يُدفع
         if ((! $expense->isPaid() && (! $accrued || $amount <= self::payable($expense) + 0.0005))
@@ -374,7 +374,7 @@ final class BoutiqueReturns
             BooksPeriod::fit(__('مرتجع بوتيك — ورقة ').$number, $note->name.' × '.(round((float) $note->quantity, 3) + 0)),
             [
                 ['account' => $side, 'debit' => round((float) $note->amount, 3)],
-                ['account' => self::shareAccount($expense), 'credit' => round((float) $note->amount, 3), 'memo' => $note->name],
+                ['account' => self::shareAccount($expense, $note), 'credit' => round((float) $note->amount, 3), 'memo' => $note->name],
             ],
             $at,
             self::SOURCE,
@@ -391,8 +391,14 @@ final class BoutiqueReturns
      *
      * نوعٌ غُيّر حسابُه بعد الورقة يجعل الإشعارَ يُنقص حسابًا لم يُدَن بها.
      */
-    private static function shareAccount(Expense $expense): Account|string
+    private static function shareAccount(Expense $expense, BoutiqueReturn $note): Account|string
     {
+        // وبندٌ قُيّد مع فاتورته يُردّ من الحساب الذي حُمّله هو
+        $line = $note->boutique_invoice_line_id ? BoutiqueInvoiceLine::find($note->boutique_invoice_line_id) : null;
+        if ($line?->accrued_on !== null) {
+            return BoutiqueInvoiceDues::account($line);
+        }
+
         $entry = Boutiques::accrual($expense) ?? Books::liveEntriesFor($expense)->first();
         $line = $entry?->lines()->where('debit', '>', 0)->with('account')->first();
 
@@ -509,7 +515,7 @@ final class BoutiqueReturns
             $expense = $target->expense_id ? Expense::whereKey($target->expense_id)->lockForUpdate()->first() : null;
 
             if ((int) $target->business_id !== (int) $business->id || (int) $target->boutique_id !== (int) $boutique->id
-                || $expense === null || $expense->isPaid() || Boutiques::accrual($expense) === null) {
+                || $expense === null || $expense->isPaid() || ! Boutiques::accrued($expense)) {
                 throw new SettlementRefused(__('لا يُخصم إلّا من ورقةٍ لهذا البوتيك لم تُسدَّد وقُيّدت يومَ صدورها.'));
             }
 

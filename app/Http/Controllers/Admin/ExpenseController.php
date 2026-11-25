@@ -291,7 +291,7 @@ class ExpenseController extends Controller
          */
         $sheet = BoutiqueReturns::sheetOf($expense) !== null;
         $amount = $sheet ? BoutiqueHolds::payNow($expense) : (float) $expense->amount;
-        $accrued = $sheet && Boutiques::accrual($expense) !== null;
+        $accrued = $sheet && Boutiques::accrued($expense);
 
         // ورقةٌ استُنفد صافيها لا حركةَ لها — وسائرُ المصروفات كما كانت
         if (! $sheet || $amount > 0) {
@@ -380,7 +380,7 @@ class ExpenseController extends Controller
          * (`Boutiques::branchScope`)، وقيدُها كُتب بفرعها. فتغييرُه هنا يُفرّق
          * تقريرَ الفروع عن الدفتر — ولا يُعاد قيدُ الاستحقاق من هذا الباب.
          */
-        if (Boutiques::accrual($expense) !== null) {
+        if (Boutiques::accrued($expense)) {
             return back()->withErrors(['scope' => __('نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.')]);
         }
 
@@ -503,7 +503,7 @@ class ExpenseController extends Controller
                  * ويومُ المصروف يومُ سداده — إلّا ورقةَ بوتيكٍ قُيّدت يومَ صدورها:
                  * مصروفُها في شهر بيعها، فيبقى يومُها ولا تنتقل إلى شهر الدفع.
                  */
-                $accrued = Boutiques::accrual($locked) !== null;
+                $accrued = Boutiques::accrued($locked);
                 $locked->update(['status' => Expense::PAID] + ($accrued ? [] : ['spent_at' => now()]) + ($method ? ['method' => $method] : []));
                 $this->postToLedger($locked->fresh());
                 // ومرتجعاتٌ خُفّض بها صافي ورقةٍ قديمة تدخل الدفترَ يومَ سدادها

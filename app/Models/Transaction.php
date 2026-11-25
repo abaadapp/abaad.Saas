@@ -62,7 +62,10 @@ class Transaction extends Model
 
     public const BOUTIQUE_CLAIM = 'boutique_claim';
 
-    public const BOUTIQUE_KINDS = [self::BOUTIQUE_SHEET, self::BOUTIQUE_PIECES, self::BOUTIQUE_REFUND, self::BOUTIQUE_CLAIM];
+    /** ما سُدّدت ورقتُه دونه لأنّ تحصيلَه أُلغي، ثمّ فُكّ وسُدّد (`BoutiqueHolds::pay`) */
+    public const BOUTIQUE_HELD = 'boutique_held';
+
+    public const BOUTIQUE_KINDS = [self::BOUTIQUE_SHEET, self::BOUTIQUE_PIECES, self::BOUTIQUE_REFUND, self::BOUTIQUE_CLAIM, self::BOUTIQUE_HELD];
 
     /** ما سُوّي على فاتورةٍ بعد بيعتها — لا يُكتب فوقه صفُّ البيعة */
     public const SETTLEMENT_KINDS = [self::ORDER_BALANCE, self::ORDER_REFUND];

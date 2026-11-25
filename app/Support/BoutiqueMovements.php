@@ -3,9 +3,13 @@
 namespace App\Support;
 
 use App\Models\BoutiqueComponentDue;
+use App\Models\BoutiqueInvoiceLine;
+use App\Models\BoutiqueInvoiceReturn;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueReturnRecovery;
 use App\Models\BoutiqueSettlement;
+use App\Models\BoutiqueSheetHold;
+use App\Models\CustomerInvoice;
 use App\Models\Expense;
 use App\Models\JournalEntry;
 use App\Models\Order;
@@ -70,12 +74,29 @@ final class BoutiqueMovements
 
     public const REFUND = 'refund';
 
+    /** بندُ فاتورة عميلٍ بلا طلب (`BoutiqueInvoiceDues`): سُجّل، واكتمل تحصيلُه، وأُلغيت فاتورتُه، ورُدّ منه قبل ورقته */
+    public const INVOICED = 'invoiced';
+
+    public const COLLECTED = 'collected';
+
+    public const VOIDED = 'voided';
+
+    public const INVOICE_RETURN = 'invoice_return';
+
+    /** تحصيلٌ أُلغي بعد الورقة (`BoutiqueHolds`): عُلّق، وفُكّ بسببه، وسُدّد بعد فكّه */
+    public const HELD = 'held';
+
+    public const HOLD_CLOSED = 'hold_closed';
+
+    public const HOLD_PAID = 'hold_paid';
+
     /** ما يُرشَّح به — مجموعةٌ بأنواعها */
     public const GROUPS = [
-        'dues' => [self::RECORDED, self::CHANGED, self::PIECE],
+        'dues' => [self::RECORDED, self::CHANGED, self::PIECE, self::INVOICED, self::COLLECTED],
         'sheets' => [self::SHEET],
-        'payments' => [self::PAID, self::PIECES_PAID],
-        'returns' => [self::CANCELLED, self::PIECE_BACK, self::KEPT, self::NOTE, self::DECIDED],
+        'payments' => [self::PAID, self::PIECES_PAID, self::HOLD_PAID],
+        'returns' => [self::CANCELLED, self::PIECE_BACK, self::KEPT, self::NOTE, self::DECIDED, self::VOIDED, self::INVOICE_RETURN],
+        'holds' => [self::HELD, self::HOLD_CLOSED],
         'credits' => [self::CREDIT, self::OFFSET, self::REFUND, self::CLAIM_OFFSET, self::RECEIPT],
     ];
 
@@ -182,7 +203,10 @@ final class BoutiqueMovements
     /**
      * ما على المتجر للبوتيك ناقصًا ما له عليه — من الأحوال لا من الحركات.
      *
-     * @return array{unsettled: float, pieces_unsettled: float, sheets_unpaid: float, pieces_unpaid: float, credit: float, claims: float, net: float}
+     * وبندُ الفاتورة ممّا على المتجر من يوم صدورها — ولا يُسدَّد قبل تحصيله. و`withheld` ما سُدّدت
+     * أوراقٌ دونه لأنّ تحصيلَه أُلغي.
+     *
+     * @return array{unsettled: float, invoiced: float, pieces_unsettled: float, sheets_unpaid: float, withheld: float, pieces_unpaid: float, credit: float, claims: float, net: float}
      */
     public static function balance(int $businessId, int $boutiqueId): array
     {
@@ -190,6 +214,10 @@ final class BoutiqueMovements
         $unsettled = (int) DB::table('order_items')->where('boutique_id', $boutiqueId)->whereNull('boutique_settlement_id')
             ->whereIn('order_id', Order::where('business_id', $businessId)->sold()->select('id'))
             ->selectRaw("COALESCE(SUM({$net}), 0) as b")->value('b');
+        $invoiced = self::baisa(DB::table('boutique_invoice_lines')->where('business_id', $businessId)->where('boutique_id', $boutiqueId)
+            ->whereNull('boutique_settlement_id')->whereNull('voided_at')->selectRaw('COALESCE(SUM(net - returned_net), 0) as v')->value('v'));
+        $withheld = self::baisa(BoutiqueSheetHold::where('business_id', $businessId)->where('boutique_id', $boutiqueId)
+            ->whereNotNull('withheld_at')->whereNull('paid_at')->get()->sum(fn (BoutiqueSheetHold $h) => BoutiqueHolds::owed($h)));
         $pieces = self::baisa(BoutiqueComponentDue::where('business_id', $businessId)->where('boutique_id', $boutiqueId)
             ->whereNull('boutique_settlement_id')->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL])->sum('amount'));
 
@@ -205,12 +233,14 @@ final class BoutiqueMovements
 
         return [
             'unsettled' => self::money($unsettled),
+            'invoiced' => self::money($invoiced),
+            'withheld' => self::money($withheld),
             'pieces_unsettled' => self::money($pieces),
             'sheets_unpaid' => self::money((int) $sheetsUnpaid),
             'pieces_unpaid' => self::money((int) $piecesUnpaid),
             'credit' => self::money($credit),
             'claims' => self::money($claims),
-            'net' => self::money($unsettled + $pieces + (int) $sheetsUnpaid + (int) $piecesUnpaid - $credit - $claims),
+            'net' => self::money($unsettled + $invoiced + $withheld + $pieces + (int) $sheetsUnpaid + (int) $piecesUnpaid - $credit - $claims),
         ];
     }
 
@@ -234,6 +264,11 @@ final class BoutiqueMovements
             self::decisions($businessId, $boutiqueId),
             self::offsets($businessId, $boutiqueId),
             self::recoveries($businessId, $boutiqueId),
+            self::invoiced($businessId, $boutiqueId),
+            self::collected($businessId, $boutiqueId),
+            self::voided($businessId, $boutiqueId),
+            self::invoiceReturns($businessId, $boutiqueId),
+            ...self::holds($businessId, $boutiqueId),
         ];
 
         $union = array_shift($branches);
@@ -245,11 +280,11 @@ final class BoutiqueMovements
     }
 
     /** أعمدةُ السطر — بترتيبٍ واحد في كلّ فرع */
-    private static function columns($query, string $kind, int $ord, string $at, string $ref, string $sheet, string $order, string $name, string $qty, string $shown, string $effect)
+    private static function columns($query, string $kind, int $ord, string $at, string $ref, string $sheet, string $order, string $name, string $qty, string $shown, string $effect, string $invoice = 'NULL')
     {
         return $query->selectRaw("CAST(? AS VARCHAR(20)) as kind, CAST({$ord} AS BIGINT) as ord, {$at} as at, {$ref} as ref_id", [$kind])
             ->selectRaw("CAST({$sheet} AS BIGINT) as sheet_id, CAST({$order} AS BIGINT) as order_id, CAST({$name} AS VARCHAR(255)) as name")
-            ->selectRaw("CAST({$qty} AS DECIMAL(14,3)) as qty, CAST({$shown} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b");
+            ->selectRaw("CAST({$qty} AS DECIMAL(14,3)) as qty, CAST({$shown} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b, CAST({$invoice} AS BIGINT) as invoice_id");
     }
 
     private static function b(string $sql): string
@@ -334,7 +369,7 @@ final class BoutiqueMovements
 
         return $q->selectRaw("CAST({$kind} AS VARCHAR(20)) as kind, CAST(1 AS BIGINT) as ord, d.occurred_at as at, d.id as ref_id")
             ->selectRaw('CAST(d.boutique_settlement_id AS BIGINT) as sheet_id, CAST(d.order_id AS BIGINT) as order_id, CAST(d.product_name AS VARCHAR(255)) as name')
-            ->selectRaw('CAST(d.quantity AS DECIMAL(14,3)) as qty, '.self::b('d.amount').' as shown_b, '.self::b('d.amount').' as effect_b');
+            ->selectRaw('CAST(d.quantity AS DECIMAL(14,3)) as qty, '.self::b('d.amount').' as shown_b, '.self::b('d.amount').' as effect_b, CAST(NULL AS BIGINT) as invoice_id');
     }
 
     /** قطعةٌ أُلغي طلبُها ولم تعد: مستحقُّها باقٍ — لا أثرَ على ما للبوتيك، وثمنُها خسارةٌ على المتجر */
@@ -354,12 +389,14 @@ final class BoutiqueMovements
         $gone = '(SELECT COALESCE(SUM('.self::b('r.amount')."), 0) FROM boutique_returns r WHERE r.boutique_settlement_id = bs.id AND r.source = '".BoutiqueReturn::QUANTITY."'"
             .' AND NOT EXISTS (SELECT 1 FROM order_items g WHERE g.id = r.order_item_id))';
 
+        $invoiced = '(SELECT COALESCE(SUM('.self::b('il.settled_net').'), 0) FROM boutique_invoice_lines il WHERE il.boutique_settlement_id = bs.id)';
+
         return self::columns(
             DB::table('boutique_settlements as bs')->where('bs.business_id', $businessId)->where('bs.boutique_id', $boutiqueId)
                 ->where('bs.kind', BoutiqueSettlement::SETTLEMENT),
             self::SHEET, 5, 'bs.issued_at', 'bs.id', 'bs.id', 'NULL', 'bs.number', 'NULL',
             self::b('bs.net').' + '.self::b('bs.components_net'),
-            self::b('bs.net')." - {$carried} - {$gone}",
+            self::b('bs.net')." - {$carried} - {$gone} - {$invoiced}",
         );
     }
 
@@ -388,7 +425,7 @@ final class BoutiqueMovements
             ->whereNotNull('bs.components_paid_at')
             ->selectRaw("CAST(CASE WHEN {$refund} THEN '".self::REFUND."' ELSE '".self::PIECES_PAID."' END AS VARCHAR(20)) as kind, CAST(6 AS BIGINT) as ord, bs.components_paid_at as at, bs.id as ref_id")
             ->selectRaw('CAST(bs.id AS BIGINT) as sheet_id, CAST(NULL AS BIGINT) as order_id, CAST(bs.number AS VARCHAR(255)) as name')
-            ->selectRaw("CAST(NULL AS DECIMAL(14,3)) as qty, CAST({$effect} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b");
+            ->selectRaw("CAST(NULL AS DECIMAL(14,3)) as qty, CAST({$effect} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b, CAST(NULL AS BIGINT) as invoice_id");
     }
 
     /** إشعارُ مرتجعٍ بعد ورقته كُتب — ولا أثرَ له حتّى يُحسم */
@@ -432,7 +469,66 @@ final class BoutiqueMovements
             ->where('v.business_id', $businessId)->where('v.boutique_id', $boutiqueId)
             ->selectRaw("CAST(CASE WHEN {$receipt} THEN '".self::RECEIPT."' ELSE '".self::CLAIM_OFFSET."' END AS VARCHAR(20)) as kind, CAST(9 AS BIGINT) as ord, v.created_at as at, v.id as ref_id")
             ->selectRaw('CAST(v.boutique_settlement_id AS BIGINT) as sheet_id, CAST(r.order_id AS BIGINT) as order_id, CAST(r.name AS VARCHAR(255)) as name')
-            ->selectRaw('CAST(NULL AS DECIMAL(14,3)) as qty, '.self::b('v.amount')." as shown_b, CASE WHEN {$receipt} THEN ".self::b('v.amount').' ELSE 0 END as effect_b');
+            ->selectRaw('CAST(NULL AS DECIMAL(14,3)) as qty, '.self::b('v.amount')." as shown_b, CASE WHEN {$receipt} THEN ".self::b('v.amount').' ELSE 0 END as effect_b, CAST(NULL AS BIGINT) as invoice_id');
+    }
+
+    /** بندُ فاتورة عميلٍ بلا طلب: نصيبُ البوتيك بلقطته — ممّا على المتجر من يوم صدورها، ولا يُسدَّد قبل تحصيله */
+    private static function invoiced(int $businessId, int $boutiqueId)
+    {
+        return self::columns(
+            DB::table('boutique_invoice_lines as l')->where('l.business_id', $businessId)->where('l.boutique_id', $boutiqueId),
+            self::INVOICED, 1, 'l.issued_at', 'l.id', 'l.boutique_settlement_id', 'NULL', 'l.name', 'l.quantity', self::b('l.net'), self::b('l.net'), 'l.customer_invoice_id',
+        );
+    }
+
+    /** واكتمل تحصيلُ فاتورته: صار قابلًا للتسوية — ولا يغيّر ما له */
+    private static function collected(int $businessId, int $boutiqueId)
+    {
+        return self::columns(
+            DB::table('boutique_invoice_lines as l')->where('l.business_id', $businessId)->where('l.boutique_id', $boutiqueId)->whereNotNull('l.collected_at'),
+            self::COLLECTED, 4, 'l.collected_at', 'l.id', 'l.boutique_settlement_id', 'NULL', 'l.name', 'l.quantity', self::b('l.net - l.returned_net'), '0', 'l.customer_invoice_id',
+        );
+    }
+
+    /** وفاتورةٌ أُلغيت قبل ورقته — بما بقي منه ساعتَها */
+    private static function voided(int $businessId, int $boutiqueId)
+    {
+        $left = '(0 - '.self::b('l.net - l.returned_net').')';
+
+        return self::columns(
+            DB::table('boutique_invoice_lines as l')->where('l.business_id', $businessId)->where('l.boutique_id', $boutiqueId)->whereNotNull('l.voided_at'),
+            self::VOIDED, 3, 'l.voided_at', 'l.id', 'NULL', 'NULL', 'l.name', 'l.quantity', $left, $left, 'l.customer_invoice_id',
+        );
+    }
+
+    /** وما ردّه إشعارٌ دائن قبل ورقته — وما بعدها إشعارُه في `notes` */
+    private static function invoiceReturns(int $businessId, int $boutiqueId)
+    {
+        $net = '(0 - '.self::b('r.net').')';
+
+        return self::columns(
+            DB::table('boutique_invoice_returns as r')->join('boutique_invoice_lines as l', 'l.id', '=', 'r.boutique_invoice_line_id')
+                ->where('l.business_id', $businessId)->where('l.boutique_id', $boutiqueId)->where('r.after_sheet', false),
+            self::INVOICE_RETURN, 2, 'r.created_at', 'r.id', 'NULL', 'NULL', 'l.name', 'r.quantity', $net, $net, 'l.customer_invoice_id',
+        );
+    }
+
+    /**
+     * تعليقُ ما أُلغي تحصيلُه بعد ورقته، وفكُّه، وسدادُه بعد فكّه.
+     *
+     * التعليقُ وفكُّه لا يغيّران ما للبوتيك: هو دَينٌ في الحالين. والسدادُ يُنقصه بما خرج.
+     */
+    private static function holds(int $businessId, int $boutiqueId): array
+    {
+        $of = fn () => DB::table('boutique_sheet_holds as h')->join('boutique_invoice_lines as l', 'l.id', '=', 'h.boutique_invoice_line_id')
+            ->where('h.business_id', $businessId)->where('h.boutique_id', $boutiqueId);
+        $paid = '(0 - '.self::b('h.paid_amount').')';
+
+        return [
+            self::columns($of(), self::HELD, 7, 'h.opened_at', 'h.id', 'h.boutique_settlement_id', 'NULL', 'l.name', 'NULL', self::b('h.amount'), '0', 'h.customer_invoice_id'),
+            self::columns($of()->whereNotNull('h.closed_at'), self::HOLD_CLOSED, 8, 'h.closed_at', 'h.id', 'h.boutique_settlement_id', 'NULL', 'l.name', 'NULL', self::b('h.amount'), '0', 'h.customer_invoice_id'),
+            self::columns($of()->whereNotNull('h.paid_at'), self::HOLD_PAID, 9, 'h.paid_at', 'h.id', 'h.boutique_settlement_id', 'NULL', 'l.name', 'NULL', $paid, $paid, 'h.customer_invoice_id'),
+        ];
     }
 
     /* ═══════════ العرض ═══════════ */
@@ -454,12 +550,14 @@ final class BoutiqueMovements
         $sheets = BoutiqueSettlement::where('business_id', $businessId)->whereIn('id', $rows->pluck('sheet_id')->filter()->unique())->get()->keyBy('id');
         $expenses = Expense::withTrashed()->whereIn('id', $sheets->pluck('expense_id')->filter())->get(['id', 'reference', 'transaction_id'])->keyBy('id');
         $recoveries = BoutiqueReturnRecovery::whereIn('id', $ids(self::RECEIPT, self::CLAIM_OFFSET))->get()->keyBy('id');
+        $holds = BoutiqueSheetHold::whereIn('id', $ids(self::HELD, self::HOLD_CLOSED, self::HOLD_PAID))->get()->keyBy('id');
         $transactions = Transaction::withTrashed()->where('business_id', $businessId)->whereIn('id', collect()
-            ->merge($expenses->pluck('transaction_id'))->merge($sheets->pluck('transaction_id'))->merge($recoveries->pluck('transaction_id'))->filter()->unique())
+            ->merge($expenses->pluck('transaction_id'))->merge($sheets->pluck('transaction_id'))->merge($recoveries->pluck('transaction_id'))->merge($holds->pluck('transaction_id'))->filter()->unique())
             ->get(['id', 'reference', 'journal_entry_id'])->keyBy('id');
         $notes = BoutiqueReturn::whereIn('id', $ids(self::NOTE, self::DECIDED))->get()->keyBy('id');
         $dues = BoutiqueComponentDue::whereIn('id', $ids(self::PIECE, self::PIECE_BACK, self::CREDIT, self::KEPT))->get(['id', 'reason', 'kept_state', 'kept_reason', 'user_id'])->keyBy('id');
         $edits = OrderEdit::whereIn('id', $ids(self::CHANGED))->get(['id', 'reason', 'employee_name'])->keyBy('id');
+        $invoices = CustomerInvoice::where('business_id', $businessId)->whereIn('id', $rows->pluck('invoice_id')->filter()->unique())->pluck('number', 'id');
 
         $entries = self::entries($businessId, [
             Order::class => $rows->whereIn('kind', [self::PIECE, self::PIECE_BACK])->pluck('order_id')->filter()->all(),
@@ -468,13 +566,18 @@ final class BoutiqueMovements
             BoutiqueReturn::class => $notes->keys()->all(),
             BoutiqueReturnRecovery::class => $recoveries->keys()->all(),
             BoutiqueComponentDue::class => $dues->keys()->all(),
+            BoutiqueInvoiceLine::class => $ids(self::INVOICED, self::VOIDED),
+            BoutiqueInvoiceReturn::class => $ids(self::INVOICE_RETURN),
+            BoutiqueSheetHold::class => $holds->keys()->all(),
         ], $transactions->pluck('journal_entry_id')->filter()->all());
         $of = fn (string $class, ?int $id, ?string $source = null) => $id === null ? null
             : collect($entries['by'][$class.'|'.$id] ?? [])->first(fn ($e) => $source === null || $e->source === $source);
 
         $opens = ['orders' => (bool) $user?->allows('orders'), 'finance' => (bool) $user?->allows('finance')];
 
-        return $rows->map(function (object $r) use ($orders, $sheets, $expenses, $recoveries, $transactions, $notes, $dues, $edits, $of, $entries, $opening, $opens) {
+        return $rows->map(function (object $r) use ($orders, $sheets, $expenses, $recoveries, $transactions, $notes, $dues, $edits, $invoices, $holds, $of, $entries, $opening, $opens) {
+            $hold = in_array($r->kind, [self::HELD, self::HOLD_CLOSED, self::HOLD_PAID], true) ? $holds->get((int) $r->ref_id) : null;
+            $invoice = $r->invoice_id === null ? null : $invoices->get((int) $r->invoice_id);
             $sheet = $r->sheet_id === null ? null : $sheets->get((int) $r->sheet_id);
             $recovery = $recoveries->get((int) $r->ref_id);
             $note = in_array($r->kind, [self::NOTE, self::DECIDED], true) ? $notes->get((int) $r->ref_id) : null;
@@ -486,6 +589,7 @@ final class BoutiqueMovements
                 self::PAID => $expense?->transaction_id,
                 self::PIECES_PAID, self::REFUND => $sheet?->transaction_id,
                 self::RECEIPT => $recovery?->transaction_id,
+                self::HOLD_PAID => $hold?->transaction_id,
                 default => null,
             });
 
@@ -499,6 +603,11 @@ final class BoutiqueMovements
                 self::CREDIT, self::KEPT => $of(BoutiqueComponentDue::class, (int) $r->ref_id),
                 self::RECEIPT => $entries['ids'][(int) $transaction?->journal_entry_id] ?? $of(BoutiqueReturnRecovery::class, (int) $r->ref_id),
                 self::CLAIM_OFFSET => $of(BoutiqueReturnRecovery::class, (int) $r->ref_id),
+                // الاعترافُ أوّلُ قيود البند، وردُّه عند إلغاء فاتورته آخرُها
+                self::INVOICED => $of(BoutiqueInvoiceLine::class, (int) $r->ref_id),
+                self::VOIDED => collect($entries['by'][BoutiqueInvoiceLine::class.'|'.$r->ref_id] ?? [])->slice(1)->last(),
+                self::INVOICE_RETURN => $of(BoutiqueInvoiceReturn::class, (int) $r->ref_id),
+                self::HOLD_PAID => $of(BoutiqueSheetHold::class, (int) $r->ref_id),
                 default => null,
             };
 
@@ -507,7 +616,7 @@ final class BoutiqueMovements
             return [
                 'key' => $r->kind.':'.$r->ref_id,
                 'kind' => $r->kind,
-                'state' => $note?->status ?? $due?->kept_state,
+                'state' => $note?->status ?? $due?->kept_state ?? ($r->kind === self::HOLD_CLOSED ? $hold?->closed_as : null),
                 'at' => Carbon::parse($r->at)->format('Y-m-d H:i'),
                 'name' => $r->name,
                 'quantity' => $r->qty === null ? null : round((float) $r->qty, 3) + 0.0,
@@ -515,13 +624,20 @@ final class BoutiqueMovements
                 'effect' => self::money((int) $r->effect_b),
                 'balance' => self::money($opening + (int) $r->running_b),
                 'order' => $number,
+                'invoice' => $invoice,
                 'sheet' => $sheet?->number,
                 'expense' => $expense?->reference,
                 'entry' => $entry?->number,
                 'transaction' => $transaction?->reference,
-                'why' => $note?->decision_note ?? $note?->reason ?? $due?->reason ?? $due?->kept_reason ?? $edit?->reason ?? $recovery?->reference,
+                'why' => $note?->decision_note ?? $note?->reason ?? $due?->reason ?? $due?->kept_reason ?? $edit?->reason ?? $recovery?->reference
+                    ?? ($r->kind === self::HELD ? $hold?->why : ($r->kind === self::HOLD_CLOSED ? $hold?->note : null)),
                 'who' => $edit?->employee_name,
-                'order_url' => $number !== null && $opens['orders'] ? route('admin.orders.show', $number) : null,
+                'order_url' => match (true) {
+                    ! $opens['orders'] => null,
+                    $number !== null => route('admin.orders.show', $number),
+                    $invoice !== null => route('admin.customer-invoices.show', (int) $r->invoice_id),
+                    default => null,
+                },
                 'entry_url' => $entry !== null && $opens['finance'] ? route('admin.finance.journal', ['q' => $entry->number]) : null,
                 'transaction_url' => $transaction !== null && $opens['finance'] ? route('admin.finance.transactions', ['q' => $transaction->reference]) : null,
             ];

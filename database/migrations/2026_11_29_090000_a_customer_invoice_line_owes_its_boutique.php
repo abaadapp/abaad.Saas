@@ -66,6 +66,8 @@ return new class extends Migration
             $table->decimal('commission', 14, 3);
             $table->decimal('net', 14, 3);
             $table->timestamp('issued_at');
+            // يومُ الاعتراف في الدفتر إن قُيّد مع الفاتورة — وفراغٌ لما يُقيَّد مع ورقته
+            $table->date('accrued_on')->nullable();
 
             // ── ما رُدّ منه بإشعار، ومجموعُه بالفرق لا بالضرب
             $table->decimal('returned_quantity', 12, 3)->default(0);
@@ -91,6 +93,11 @@ return new class extends Migration
             $table->index('customer_invoice_id');
             $table->index(['business_id', 'boutique_id', 'collected_at']);
             $table->index('boutique_settlement_id');
+        });
+
+        Schema::table('boutique_settlements', function (Blueprint $table) {
+            // ما قُيّد من صافيها قبل صدورها، مع فواتيره — فلا تقيّده الورقةُ ثانيةً
+            $table->decimal('accrued_at_sale', 14, 3)->default(0);
         });
 
         Schema::create('boutique_invoice_returns', function (Blueprint $table) {
@@ -158,6 +165,7 @@ return new class extends Migration
 
         Schema::dropIfExists('boutique_invoice_returns');
         Schema::dropIfExists('boutique_invoice_lines');
+        Schema::table('boutique_settlements', fn (Blueprint $table) => $table->dropColumn('accrued_at_sale'));
 
         Schema::table('boutique_returns', function (Blueprint $table) {
             $table->dropIndex(['boutique_invoice_line_id']);

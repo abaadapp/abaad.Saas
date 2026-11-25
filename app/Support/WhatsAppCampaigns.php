@@ -108,7 +108,8 @@ class WhatsAppCampaigns
         $reason = WhatsAppAutoReply::blocked($connection);
 
         if ($reason !== null) {
-            return WhatsAppStatus::reason($reason) ?? __('رقم متجرك لا يرسل الآن — راجع صفحة الربط.');
+            return WhatsAppBillingLock::owns($reason) && ! WhatsAppOwnApp::is($connection) ? WhatsAppBillingLock::says($reason)['text']
+                : (WhatsAppStatus::reason($reason) ?? __('رقم متجرك لا يرسل الآن — راجع صفحة الربط.'));
         }
 
         return blank($connection->waba_id) ? __('لا معرّف حساب أعمال على هذه الوصلة.') : null;
@@ -360,7 +361,8 @@ class WhatsAppCampaigns
         // ‏‏ورقمٌ غيرُ الذي أقرّها عليه التاجر لا يرسلها — ولا رقمٌ انقطع ربطُه
         if ($connection === null || (int) $connection->id !== (int) $campaign->whatsapp_connection_id
             || ($reason = WhatsAppAutoReply::blocked($connection)) !== null) {
-            self::pause($campaign, $reason ?? WhatsAppStatus::SKIP_NO_CONNECTION);
+            // ‏‏ورقمٌ وقفت جهةُ رسومه تُقال علّتُه هو — لا «انقطع الربط»
+            self::pause($campaign, $reason ?? WhatsAppBillingLock::stop(WhatsAppConnections::forBusiness((int) $business->id)) ?? WhatsAppStatus::SKIP_NO_CONNECTION);
 
             return 0;
         }
@@ -481,7 +483,7 @@ class WhatsAppCampaigns
     }
 
     /** ‏‏ما يردّه بابُ الإرسال عندنا قبل Meta — يصيب كلَّ ما بعده */
-    private const CONNECTION_PROBLEMS = [WhatsAppOwnApp::AWAITS_BILLING, WhatsAppOwnApp::AMBIGUOUS_ACCOUNT];
+    private const CONNECTION_PROBLEMS = WhatsAppBillingLock::STOPS;
 
     private static function putBack(WhatsAppCampaignRecipient $to): void
     {
@@ -613,6 +615,7 @@ class WhatsAppCampaigns
             in_array($reason, ['368', '131031', '131048', '131064'], true) => __('قيّد واتساب رقمك أو حسابك — راجع جودة الرقم عند Meta.'),
             in_array($reason, ['132000', '132001', '132005', '132007', '132012', '132015', '132016'], true) => __('القالب لم يعد صالحًا عند واتساب — حدّث حال القوالب.'),
             $reason === '131063' => __('رسائل العروض موقوفة لحسابك عند Meta.'),
+            WhatsAppBillingLock::owns($reason) => WhatsAppBillingLock::says($reason)['text'],
             default => WhatsAppStatus::reason($reason) ?? __('توقّف الإرسال من واتساب (:code).', ['code' => $reason]),
         };
     }

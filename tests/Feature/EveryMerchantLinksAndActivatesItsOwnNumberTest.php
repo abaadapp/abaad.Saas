@@ -68,6 +68,11 @@ class EveryMerchantLinksAndActivatesItsOwnNumberTest extends TestCase
 
         [$this->shop, $this->owner] = $this->merchant('محل الورد', 'rose@link.om');
         [$this->neighbour, $this->neighbourOwner] = $this->merchant('محل الجار', 'next@link.om');
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->shop->id, 'WABA-1', 'WABA-2');
+        $this->billedToTheShop((int) $this->neighbour->id, 'WABA-1', 'WABA-2');
     }
 
     /** @return array{Business, User} */

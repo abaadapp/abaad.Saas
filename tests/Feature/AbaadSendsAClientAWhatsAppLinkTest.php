@@ -60,6 +60,10 @@ class AbaadSendsAClientAWhatsAppLinkTest extends TestCase
         $this->shop = $this->shop('محل ورد');
         $this->owner = $this->user('o@abaadapp.om', 'admin', $this->shop->id);
         $this->super = $this->user('root@abaadapp.om', 'super_admin', null);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->shop->id, 'WABA-1');
     }
 
     private function shop(string $name): Business

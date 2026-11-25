@@ -97,6 +97,10 @@ class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
         [$this->closed, $this->owner, $this->customer] = $this->shop('Ribbon Test', 'o@abaad.om', '91234567');
         $this->closed->update(['whatsapp_shared_allowed' => false]);
         $this->closed->refresh();
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->closed->id, 'WABA-1');
     }
 
     /* ------------------------------- التهيئة ------------------------------- */

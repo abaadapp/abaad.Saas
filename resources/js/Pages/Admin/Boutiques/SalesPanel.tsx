@@ -274,6 +274,11 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
                 <p className="mt-0.5 text-[12px] leading-5 text-[#6b7280]">
                     {t('كل بيعٍ بفاتورته الأصلية: صنف البوتيك منفردًا، أو قطعته داخل منتج المتجر — دون احتساب البيع أو المستحق مرتين.')}
                 </p>
+                {/* دائمٌ لا مشروط: يُقال قبل أوّل رقم، ولو سقط الملخّصُ أو خلا الشهر */}
+                <div role="note" className="mt-2 rounded-md border border-[#fcd34d] bg-[#fffbeb] px-3 py-2 text-[12px] leading-5 text-[#92400e]" data-testid="boutique-scope-note">
+                    <p className="font-semibold">{t('للعرض والمتابعة فقط — لا تُعتمد هذه الأرقام وحدها أساسًا للتسوية المالية.')}</p>
+                    <p>{t('تشمل فواتير نقطة البيع والموقع. ولا تشمل بعد: فواتير العملاء، وطلبات واتساب الآلية، وروابط الدفع المستقلة.')}</p>
+                </div>
             </div>
 
             {/* المرشّحات — كلُّها في الخادم */}

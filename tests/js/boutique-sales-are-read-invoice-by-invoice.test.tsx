@@ -408,6 +408,33 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect((await screen.findByTestId('boutique-tax-note')).textContent).toContain('في هذا الشهر 3 فاتورة فيها ضريبة');
     });
 
+    /** قرارُ المالك: القسمُ للعرض والمتابعة — يُقال دائمًا، لا حين تصادف فاتورةُ عميل */
+    it('التنبيهُ دائم: للعرض لا للتسوية، وما يشمل وما لا يشمل — قبل التحميل وبعده ومع الخطأ', async () => {
+        const said = () => {
+            const note = screen.getByTestId('boutique-scope-note');
+            expect(note).toHaveAttribute('role', 'note');
+            expect(note).toHaveTextContent('للعرض والمتابعة فقط — لا تُعتمد هذه الأرقام وحدها أساسًا للتسوية المالية.');
+            expect(note).toHaveTextContent('تشمل فواتير نقطة البيع والموقع. ولا تشمل بعد: فواتير العملاء، وطلبات واتساب الآلية، وروابط الدفع المستقلة.');
+        };
+
+        const { unmount } = mount();
+        said();
+        await screen.findByTestId('boutique-sales-summary');
+        said();
+        unmount();
+
+        respond = (url) => (url.includes('summary') ? { ...summary, uncounted: { lines: 0, invoices: 0, amount: 0 } } : page([]));
+        const empty = mount();
+        await screen.findByText('لا فواتير تطابق هذا الاختيار');
+        said();
+        empty.unmount();
+
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }) as Response));
+        mount();
+        await screen.findByText('تعذّر تحميل مبيعات البوتيك — أعد المحاولة.');
+        said();
+    });
+
     it('خطأُ الخادم يُقال ولا يُعرض صفرًا', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }) as Response));
         mount();

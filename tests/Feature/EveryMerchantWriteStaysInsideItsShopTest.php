@@ -35,6 +35,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
     {
         parent::setUp();
         $this->buildTwoShops();
+        // وبوابةُ عملاء RIBBON للمتجر A — معرّفُه ونطاقُه (`RibbonPortal\Portal`)
+        config(['storefront.ribbon_customer_portal' => ['business' => (int) $this->a->id, 'enabled' => true], 'storefront.subdomain_businesses' => [(int) $this->a->id => 'ribbon']]);
         // ومستحقّاتُ مكوّنات البوتيك مفتوحةٌ للمتجرين: بلاها تُردّ أبوابُها بـ404 قبل أن يُسأل عن الملكيّة
         \Illuminate\Support\Facades\DB::table('businesses')->whereIn('id', [$this->a->id, $this->b->id])
             ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true]);
@@ -133,6 +135,12 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['العملاء', 'post', 'admin.customers.points.adjust', ['id' => 'customer']],
                 // وطلبُ دفعةٍ برابط — لعميلٍ من المتجر نفسِه وحده (`PaymentRequestController`)
                 ['العملاء', 'post', 'admin.customers.paymentLink', ['id' => 'customer']],
+                // وبوابةُ عملاء RIBBON — مفتوحةٌ هنا للمتجر A: مغلقةً تردّ أبوابُها ٤٠٤ قبل أن يُسأل لمن العميل
+                ['بوابة العملاء', 'post', 'admin.customers.portal.share', ['id' => 'customer']],
+                ['بوابة العملاء', 'post', 'admin.customers.portal.reissue', ['id' => 'customer']],
+                ['بوابة العملاء', 'delete', 'admin.customers.portal.revoke', ['id' => 'customer']],
+                ['بوابة العملاء', 'delete', 'admin.settings.portal.revoke', ['link' => 'portal_link']],
+                ['بوابة العملاء', 'post', 'pos.orders.portal', ['number' => 'order_number']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.save', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.default', ['id' => 'customer', 'addressId' => 'address'], ['id']],
                 ['عناوين العميل', 'delete', 'admin.customers.addresses.delete', ['id' => 'customer', 'addressId' => 'address'], ['id']],

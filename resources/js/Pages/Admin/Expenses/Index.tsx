@@ -29,6 +29,8 @@ interface ExpenseRow {
     type: string;
     amount: number;
     status: string;
+    /** ورقةُ بوتيكٍ لا يملك الجالسُ سدادَها — الخادمُ يردّه، فلا يُرسم الزرّ */
+    payable?: boolean;
     /** طريقةُ الدفع كما كُتبت — يفتح بها سؤالُ «تسجيل السداد» */
     method: string | null;
     attachment: string | null;
@@ -298,7 +300,7 @@ export default function ExpensesIndex() {
                             icon: <GitBranch className="size-4" />,
                             onSelect: () => openScope(e),
                         },
-                        ...(e.status === 'مدفوع'
+                        ...(e.status === 'مدفوع' || e.payable === false
                             ? []
                             : [
                                   {

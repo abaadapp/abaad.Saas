@@ -19,6 +19,7 @@ import { abandonAutoPrint, commitAutoPrint, prepareAutoPrint } from '@/lib/print
 import PrintStatus from '@/Components/PrintStatus';
 import { SHARE_LABEL } from '@/Components/PrintReceiptButton';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
+import { PortalSaleLink } from '@/Components/RibbonPortalSale';
 import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
 
@@ -833,6 +834,10 @@ export default function PaymentDialog({
                                     {printing.mode === 'share' ? <Share /> : <Printer />}
                                     {printing.mode === 'share' ? t(SHARE_LABEL) : t('طباعة الفاتورة')}
                                 </Button>
+                            )}
+                            {/* رابطُ العميل إلى بوابته — لمتجر RIBBON وحده، وفشلُه لا يمسّ بيعةً تمّت ولا طباعتَها */}
+                            {result?.synced && result.invoice && result.portal && (
+                                <PortalSaleLink url={result.portal} className="col-span-2" />
                             )}
                             <Button
                                 className={cn('rounded-full', 'col-span-2')}

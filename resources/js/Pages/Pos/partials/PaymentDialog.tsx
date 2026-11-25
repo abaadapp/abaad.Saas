@@ -835,7 +835,7 @@ export default function PaymentDialog({
                                     {printing.mode === 'share' ? t(SHARE_LABEL) : t('طباعة الفاتورة')}
                                 </Button>
                             )}
-                            {/* رابطُ العميل إلى بوابته — لمتجر RIBBON وحده، وفشلُه لا يمسّ بيعةً تمّت ولا طباعتَها */}
+                            {/* رابطُ بوابة العملاء الواحد — لمتجر RIBBON وحده، ولا يمسّ بيعةً تمّت ولا طباعتَها */}
                             {result?.synced && result.invoice && result.portal && (
                                 <PortalSaleLink url={result.portal} className="col-span-2" />
                             )}

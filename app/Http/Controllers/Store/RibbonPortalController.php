@@ -38,11 +38,11 @@ class RibbonPortalController extends Controller
         }
 
         $customer = $this->customer($request);
-        if ($customer === null || $request->boolean('switch')) {
+        if ($customer === null) {
             $response = response()->view('portal.ribbon.door', $this->frame($request, null));
 
-            // جلسةٌ أُلغيت أو انقضت: كعكتُها لا تبقى. ومن فتح رابطَ غيره على جهازه (`switch`) تبقى له جلستُه حتى يدخل الآخر
-            return $customer !== null || $request->cookie(Access::COOKIE) === null ? $response : $response->withCookie(Access::cookie($request, null));
+            // جلسةٌ أُلغيت أو انقضت: كعكتُها لا تبقى
+            return $request->cookie(Access::COOKIE) === null ? $response : $response->withCookie(Access::cookie($request, null));
         }
 
         $frame = $this->frame($request, $customer);
@@ -57,29 +57,21 @@ class RibbonPortalController extends Controller
         ]);
     }
 
-    /** الدخول: الرابطُ من جسم الطلب ورقمُ الهاتف — وردٌّ واحدٌ لكلّ خطأ */
+    /** الدخول: رقمُ الهاتف ورمزُ الفاتورة في طلبٍ واحد — وردٌّ واحدٌ لكلّ خطأ */
     public function login(Request $request): JsonResponse
     {
-        $token = (string) $request->input('key', '');
+        [$phone, $code, $key] = array_map(fn (string $name) => mb_substr((string) $request->string($name), 0, 60), ['phone', 'code', 'key']);
         $say = fn (string $key, array $with = []) => Texts::say($this->lang($request, null), $key, $with);
 
-        if (($wait = Access::blockedFor($token, $request)) > 0) {
+        if (($wait = Access::blockedFor($phone, $key, $request)) > 0) {
             return response()->json(['message' => $say('tooMany', ['n' => (int) ceil($wait / 60)])], 429);
         }
 
-        $raw = Access::login($this->business($request), $token, (string) $request->input('phone', ''), $request);
+        $raw = Access::login($this->business($request), $phone, $code, $key, $request);
 
         return $raw === null
             ? response()->json(['message' => $say('loginFailed')], 422)
             : response()->json(['ok' => true])->withCookie(Access::cookie($request, $raw));
-    }
-
-    /** رابطٌ فُتح وفي الجهاز جلسة: أهو لصاحبها؟ — وإلّا سُئل الداخلُ عن رقمه */
-    public function same(Request $request): JsonResponse
-    {
-        return response()->json(['same' => Access::sameCustomer(
-            $this->business($request), (string) $request->input('key', ''), $this->session($request),
-        )]);
     }
 
     public function logout(Request $request): BaseResponse

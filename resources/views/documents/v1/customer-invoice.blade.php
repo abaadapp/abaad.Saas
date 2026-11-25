@@ -213,6 +213,7 @@
             ] : [],
         ],
         'paperUrl' => $paperUrl ?? '',
+        'portalCode' => $portalCode ?? null,
         /* وهذه وحدها تفتح صفحةَ تحقّقٍ لا نسخةً كاملة — انظر `public/verify` */
         'verify' => true,
     ])

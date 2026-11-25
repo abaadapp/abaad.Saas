@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\OrderStatus;
 use App\Support\RibbonPortal\Access;
+use App\Support\RibbonPortal\Code;
 use App\Support\SalesChannel;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\URL;
@@ -80,7 +81,7 @@ trait RibbonPortalShop
     {
         $order = Order::create($over + [
             'business_id' => $customer->business_id, 'branch_id' => null, 'branch' => 'الخوير', 'customer_id' => $customer->id, 'customer_name' => $customer->name,
-            'number' => $number, 'employee_name' => 'الكاشير سالم', 'status' => OrderStatus::COMPLETED, 'is_held' => false, 'channel' => SalesChannel::POS,
+            'number' => $number, 'user_id' => $this->owner->id, 'employee_name' => 'الكاشير سالم', 'status' => OrderStatus::COMPLETED, 'is_held' => false, 'channel' => SalesChannel::POS,
             'payment_method' => 'نقدي', 'payment_status' => 'مدفوع', 'subtotal' => 20, 'total' => 20, 'ordered_at' => now(), 'internal_notes' => 'سرٌّ داخليّ',
         ]);
         $order->items()->create(['name' => 'باقة '.$number, 'quantity' => 2, 'price' => 10, 'total' => 20, 'cost' => 3.777]);
@@ -110,20 +111,21 @@ trait RibbonPortalShop
         return $this->withCredentials();
     }
 
-    protected function key(Customer $customer): string
+    /** رمزُ دخولٍ يعمل لهذا العميل اليوم — ورموزُ الورق تُحرس باسمها (`Code::of`) */
+    protected function code(Customer $customer): string
     {
-        return explode('#', Access::share($customer->fresh(), null)['url'])[1];
+        return Code::daily($customer->fresh());
     }
 
-    protected function attempt(string $key, string $phone): TestResponse
+    protected function attempt(string $phone, string $code, string $key = ''): TestResponse
     {
-        return $this->visitor(null)->postJson('http://ribbon.abaadapp.om/my/session', ['key' => $key, 'phone' => $phone]);
+        return $this->visitor(null)->postJson('http://ribbon.abaadapp.om/my/session', ['phone' => $phone, 'code' => $code, 'key' => $key]);
     }
 
-    /** يدخل برابطه ورقمه — ويردّ كعكةَ جلسته */
+    /** يدخل برقمه ورمزه — ويردّ كعكةَ جلسته */
     protected function enter(Customer $customer, ?string $phone = null): string
     {
-        $response = $this->attempt($this->key($customer), $phone ?? (string) $customer->phone)->assertOk();
+        $response = $this->attempt($phone ?? (string) $customer->phone, $this->code($customer))->assertOk();
 
         return (string) $response->getCookie(Access::COOKIE)->getValue();
     }

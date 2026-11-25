@@ -1027,11 +1027,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
     /*
      * بوابةُ عملاء RIBBON — لمتجر سعود وحده، وسواه 404 (`RibbonPortal\Portal`). قسمُها `customers`
-     * من اسمها، ويُسأل معه من يشارك. والحدُّ على ما يُصدر رابطًا أو يُلغيه.
+     * من اسمها، ويُسأل معه من يعمل على البوابة. والحدُّ على ما يعرض رمزًا أو يُلغي دخولًا.
      */
     Route::get('/customers/portal/poster', [RibbonPortalAdminController::class, 'poster'])->name('customers.portal.poster');
-    Route::post('/customers/{id}/portal', [RibbonPortalAdminController::class, 'share'])->whereNumber('id')->middleware('throttle:60,1,ribbon-portal-share')->name('customers.portal.share');
-    Route::post('/customers/{id}/portal/reissue', [RibbonPortalAdminController::class, 'reissue'])->whereNumber('id')->middleware('throttle:30,1,ribbon-portal-reissue')->name('customers.portal.reissue');
+    Route::post('/customers/{id}/portal/code', [RibbonPortalAdminController::class, 'code'])->whereNumber('id')->middleware('throttle:60,1,ribbon-portal-code')->name('customers.portal.code');
     Route::delete('/customers/{id}/portal', [RibbonPortalAdminController::class, 'revoke'])->whereNumber('id')->middleware('throttle:30,1,ribbon-portal-revoke')->name('customers.portal.revoke');
 
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
@@ -2253,8 +2252,6 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     // ‏‏كتالوجُ الصندوق للجهاز — ما تغيّر منذ ما حفظ (`TillCatalog`)
     Route::post('/catalog-feed', [App\Http\Controllers\Pos\TillCatalogController::class, 'feed'])
         ->middleware('throttle:60,1,pos-catalog-feed')->name('catalog-feed');
-    // رابطُ عميلِ البيعة بعد أن تمّت — لمتجر سعود ومن يشارك وحدهم (`RibbonPortal\Portal::mayShare`)
-    Route::post('/orders/{number}/portal', [RibbonPortalAdminController::class, 'shareSale'])->middleware('throttle:60,1,ribbon-portal-share')->name('orders.portal');
     Route::get('/orders', [App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
@@ -2350,7 +2347,6 @@ if (($portalHost = App\Support\RibbonPortal\Portal::host()) !== null) {
         ->controller(RibbonPortalController::class)->group(function () {
             Route::get('/', 'index')->middleware('throttle:120,1,ribbon-portal-page')->name('index');
             Route::post('/session', 'login')->middleware('throttle:10,1,ribbon-portal-login')->name('login');
-            Route::post('/same', 'same')->middleware('throttle:20,1,ribbon-portal-same')->name('same');
             Route::post('/logout', 'logout')->middleware('throttle:20,1,ribbon-portal-logout')->name('logout');
             Route::get('/data', 'data')->middleware('throttle:240,1,ribbon-portal-data')->name('data');
             Route::get('/points', 'points')->middleware('throttle:120,1,ribbon-portal-points')->name('points');

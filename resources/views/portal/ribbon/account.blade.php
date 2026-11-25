@@ -66,22 +66,14 @@
 @section('script')
     <script nonce="{{ $nonce }}">
         (function () {
-            var url = {{ \Illuminate\Support\Js::from(['data' => route('my.data', [], false), 'points' => route('my.points', [], false), 'same' => route('my.same', [], false), 'home' => route('my.index', [], false)]) }};
+            var url = {{ \Illuminate\Support\Js::from(['data' => route('my.data', [], false), 'points' => route('my.points', [], false)]) }};
             var texts = {{ \Illuminate\Support\Js::from(['empty' => $t('empty'), 'emptyFiltered' => $t('emptyFiltered')]) }};
             var PAGE = {{ \App\Support\RibbonPortal\Account::PAGE }}, MAX = {{ \App\Support\RibbonPortal\Account::MAX }};
             var $ = function (id) { return document.getElementById(id); };
             var rows = $('rows'), filter = $('filter'), query = {}, busy = false;
 
-            // رابطٌ فُتح وفي الجهاز جلسة: إن كان لصاحبها نُزع من العنوان، وإلّا سُئل الداخلُ عن رقمه
-            var opened = function () {
-                var key = (location.hash || '').replace(/^#/, '');
-                if (!/^[A-Za-z0-9_-]{43}$/.test(key)) return;
-                fetch(url.same, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }, body: JSON.stringify({ key: key }) })
-                    .then(function (r) { return r.ok ? r.json() : { same: false }; })
-                    .then(function (d) { if (d.same) history.replaceState(null, '', url.home); else location.replace(url.home + '?switch=1' + location.hash); })
-                    .catch(function () {});
-            };
-            window.addEventListener('hashchange', opened); opened();
+            // رابطٌ قديمٌ فُتح وصاحبُ الجهاز داخل: لا يبقى في العنوان
+            if (location.hash) history.replaceState(null, '', location.pathname);
 
             var node = function (html) { var b = document.createElement('template'); b.innerHTML = html.trim(); return b.content.firstElementChild; };
             var find = function (list, k) { return list.querySelector('[data-key="' + k + '"]'); };

@@ -923,7 +923,7 @@ class CustomerInvoiceController extends Controller
      * — تتجاهلها اليوم بلا ضرر، وتلتقطها غدًا حين يُضاف حقلٌ باسم أحدها.
      *
      * @param  array<string,mixed>|null  $override  قيمُ قالبٍ لم تُحفظ بعد — لمعاينة المحرّر
-     * @param  array<string,mixed>  $options  خيارُ الرسمة: `paperUrl` و`version`
+     * @param  array<string,mixed>  $options  خيارُ الرسمة: `paperUrl` و`portalCode` و`version`
      */
     public static function paper(
         int $bid,
@@ -1007,6 +1007,7 @@ class CustomerInvoiceController extends Controller
             /* وفاتورةُ العميل ورقةُ A4 دائمًا — لا تُطبع على شريطٍ حراريّ */
             'paper' => PaperSize::A4,
             'paperUrl' => $options['paperUrl'] ?? '',
+            'portalCode' => $options['portalCode'] ?? null,
             /*
              * والترويسةُ من `InvoiceBranding` لا من `Demo::business`.
              *

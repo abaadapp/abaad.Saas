@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPortalSession;
 use App\Models\Order;
 use App\Models\PointTransaction;
 use App\Models\Setting;
@@ -16,6 +17,7 @@ use App\Support\OrderCorrection;
 use App\Support\OrderStatus;
 use App\Support\Pdf;
 use App\Support\RibbonPortal\Account;
+use App\Support\RibbonPortal\Code;
 use App\Support\RibbonPortal\Texts;
 use App\Support\SalesChannel;
 use App\Support\TenantExportGuard;
@@ -31,7 +33,7 @@ use Tests\TestCase;
 /**
  * عميلُ RIBBON يقرأ ما اشتراه — كما هو في النظام، وكلَّه، وله وحده.
  *
- *   - يدخل برابطه الشخصيّ ورقم هاتفه المسجَّل، بلا OTP ولا حساب، واسمُه من سجلّه.
+ *   - يدخل من الرابط الواحد برقم هاتفه المسجَّل ورمزِ فاتورته، بلا OTP ولا حساب، واسمُه من سجلّه.
  *   - مشترياتُه من سجلّ البيع الواحد: الصندوقُ والموقعُ وفواتيرُ العملاء، كلُّ بيعةٍ
  *     مرّة، ومجموعُها رقمُه في قائمة العملاء.
  *   - وفاتورتُه الورقةُ نفسُها التي تطبعها اللوحة، ونقاطُه رصيدُه وحركاتُه.
@@ -79,7 +81,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
 
     /* ═════════════ الدخول ═════════════ */
 
-    public function test_a_registered_customer_enters_with_their_link_and_phone_and_is_greeted_by_name(): void
+    public function test_a_registered_customer_enters_with_their_phone_and_invoice_code_and_is_greeted_by_name(): void
     {
         $cookie = $this->enter($this->maryam);
 
@@ -92,7 +94,12 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
 
         // وبأيّ صيغةٍ كُتب الرقمُ نفسُه
         foreach (['91234567', '+968 9123 4567', '00968-91234567', '968 91234567', '٩١٢٣٤٥٦٧', ' 9123-4567 '] as $written) {
-            $this->attempt($this->key($this->maryam), $written)->assertOk()->assertJson(['ok' => true]);
+            $this->attempt($written, $this->code($this->maryam))->assertOk()->assertJson(['ok' => true]);
+        }
+        // وكذلك الرمز: بمسافاته كما طُبع، وبأرقامٍ عربيّة
+        $code = $this->code($this->maryam);
+        foreach ([Code::spaced($code), implode('-', str_split($code, 3)), strtr($code, array_combine(range('0', '9'), mb_str_split('٠١٢٣٤٥٦٧٨٩')))] as $written) {
+            $this->attempt('91234567', (string) $written)->assertOk();
         }
 
         // ولا سجلَّ عميلٍ جديدًا ولا حسابَ نظامٍ
@@ -313,10 +320,9 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
 
     /* ═════════════ يتحدّث وحده ═════════════ */
 
-    public function test_a_new_sale_its_points_its_payment_and_its_cancellation_show_without_a_new_link(): void
+    public function test_a_new_sale_its_points_its_payment_and_its_cancellation_show_without_entering_again(): void
     {
         $cookie = $this->enter($this->maryam);
-        $link = $this->key($this->maryam);
         $this->assertSame([], $this->numbers($cookie));
 
         // بيعةُ صندوقٍ حقيقيّة بعميلها: تظهر ونقاطُها معها
@@ -325,7 +331,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
             'items' => [['id' => $this->bouquet->id, 'name' => 'باقة', 'qty' => 3]], 'payment_method' => 'نقدي',
             'customer_id' => $this->maryam->id, 'client_uuid' => uniqid('p', true),
         ])->assertOk()->json();
-        $this->assertSame('/pos/orders/'.$sold['invoice'].'/portal', $sold['portal'] ?? null);
+        $this->assertSame('https://ribbon.abaadapp.om/my', $sold['portal'] ?? null, 'الرابطُ الواحد');
         $this->assertGreaterThan(0, $sold['points_earned']);
 
         $this->assertSame([$sold['invoice']], $this->numbers($cookie));
@@ -354,9 +360,8 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         $moves = array_column((new Account($this->maryam->fresh(), 'ar'))->points()['rows'], 'move');
         $this->assertSame(['move.reversed', 'move.earned'], $moves);
 
-        // والرابطُ نفسُه ما زال رابطَه
-        $this->assertSame($link, $this->key($this->maryam));
-        $this->attempt($link, '91234567')->assertOk();
+        // والجلسةُ هي هي: لا دخولَ ثانٍ
+        $this->assertSame(1, CustomerPortalSession::where('customer_id', $this->maryam->id)->count());
     }
 
     /* ═════════════ النقاط ═════════════ */

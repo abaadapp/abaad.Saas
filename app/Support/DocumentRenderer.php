@@ -329,6 +329,7 @@ class DocumentRenderer
              */
             'qr' => $extra['qr'] ?? null,
             'paperUrl' => $extra['paperUrl'] ?? '',
+            'portalCode' => $extra['portalCode'] ?? null,
             'googleReview' => $extra['googleReview'] ?? null,
             /* والوجهُ الثالث: الرقمُ الضريبيّ بلا مقبض — انظر رأس القالب */
             'taxInvoice' => (bool) ($extra['taxInvoice'] ?? false),
@@ -375,6 +376,7 @@ class DocumentRenderer
             'width' => $width,
             'qr' => $extra['qr'] ?? null,
             'paperUrl' => $extra['paperUrl'] ?? '',
+            'portalCode' => $extra['portalCode'] ?? null,
             'customerTax' => $extra['customerTax'] ?? null,
             'googleReview' => $extra['googleReview'] ?? null,
             /*

@@ -37,6 +37,7 @@ use App\Support\PosTerminal;
 use App\Support\PublicDocument;
 use App\Support\Receivables;
 use App\Support\Reports;
+use App\Support\RibbonPortal\Code as PortalCode;
 use App\Support\SalesChannel;
 use App\Support\ShopIdentity;
 use App\Support\TenantExportGuard;
@@ -230,6 +231,8 @@ class PdfController extends Controller
              * يفتح نسختَه الحيّة — رابطٌ دائم لا يُخمَّن (انظر PublicDocument).
              */
             'paperUrl' => PublicDocument::url($order) ?? '',
+            // ورمزُ دخول العميل إلى بوابته — لمتجر RIBBON وحده، وعلى ورقة المشتري لا السند
+            'portalCode' => PortalCode::printed($order),
             // رقم المشتري الضريبي: تحتاجه منشأةٌ مسجَّلة لتخصم ضريبة شرائها
             'customerTax' => $order->customer_id
                 ? optional(Customer::find($order->customer_id))->tax_number
@@ -570,6 +573,7 @@ class PdfController extends Controller
             'qr' => EInvoice::forOrder($order, $vat, $business),
             // ورمزُ الورقة أونلاين — كما في فاتورة البيع وإيصالها
             'paperUrl' => PublicDocument::url($order) ?? '',
+            'portalCode' => PortalCode::printed($order),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ]);
 
@@ -647,7 +651,7 @@ class PdfController extends Controller
              * يقود إلى ٤٠٤ في يد التاجر.
              */
             null,
-            ['paperUrl' => PublicDocument::url($invoice) ?? ''],
+            ['paperUrl' => PublicDocument::url($invoice) ?? '', 'portalCode' => PortalCode::printed($invoice)],
         )->render());
     }
 

@@ -23,8 +23,8 @@
     <div class="sheet">
         <img src="{{ $logo }}" alt="{{ $shop }}">
         <h1>مشترياتك وفواتيرك ونقاطك</h1>
-        <p>امسح الرمز لفتح بوابتك.<br>ليس لديك رابط؟ {{ \App\Support\RibbonPortal\Texts::say('ar', 'askStaff') }}</p>
-        <p class="en">Scan to open your portal. No link yet? {{ \App\Support\RibbonPortal\Texts::say('en', 'askStaff') }}</p>
+        <p>امسح الرمز، واكتب رقم هاتفك ورمز الدخول من فاتورتك.</p>
+        <p class="en">Scan, then enter your phone number and the code on your invoice.</p>
         <div class="qr">{!! $qr !!}</div>
         <p class="url">{{ \Illuminate\Support\Str::after($url, 'https://') }}</p>
         <small>Powered by ABAAD</small>

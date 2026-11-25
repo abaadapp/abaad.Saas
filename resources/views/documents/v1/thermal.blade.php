@@ -288,6 +288,7 @@
     'compact' => true,
     'size' => $width <= 60 ? 0.8 : 0.95,
 ])
+@include('documents.v1.partials.portal-code')
 
 <div class="rule"></div>
 

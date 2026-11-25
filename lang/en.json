@@ -11590,5 +11590,6 @@
     "فاتورة أو إيصال من Meta على حساب التاجر يشمل الرسالة": "A Meta invoice or receipt on the merchant's account that includes the message",
     "رسمٌ ظهر في «الفوترة والمدفوعات» على حساب التاجر": "A charge that appeared in “Billing & payments” on the merchant's account",
     "رقم متجرك لا يُرسل حتى تثبت جهة رسومه عند Meta — راجِع «التطبيقات التكاملية ‹ واتساب».": "Your shop's number does not send until who pays at Meta is verified — see “Integrations ‹ WhatsApp”.",
-    "سحبت Meta تفويض واتساب أو نقصت صلاحياته — الإرسال متوقف، أعد الربط.": "Meta withdrew WhatsApp's authorization or its permissions were reduced — sending is stopped, link again."
+    "سحبت Meta تفويض واتساب أو نقصت صلاحياته — الإرسال متوقف، أعد الربط.": "Meta withdrew WhatsApp's authorization or its permissions were reduced — sending is stopped, link again.",
+    "رقم المتجر مربوط وينتظر إثبات جهة رسومه — لا يبدّله رابط. إن أراد رقمًا آخر فليفصله من حسابه أوّلًا.": "The shop's number is linked and waiting for who pays to be verified — a link does not replace it. If they want another number, they unlink it from their account first."
 }

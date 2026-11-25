@@ -320,6 +320,33 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $migration->down();
     }
 
+    /**
+     * ‏‏ولا في الكود كلِّه نداءٌ يشارك خطَّ ائتمانٍ أو وسيلةَ دفع، ولا يربط حسابَ تاجرٍ بحلّ شريكٍ يدفع عنه.
+     *
+     * Meta تشارك خطَّ الائتمان بهذه الحوافّ وحدها، وتُلحق الحسابَ بشريكٍ بـ`solutionID` في نافذة الربط.
+     */
+    public function test_no_code_shares_a_credit_line_or_attaches_a_partner(): void
+    {
+        $found = [];
+
+        foreach ([app_path(), resource_path('js'), base_path('routes'), base_path('config')] as $dir) {
+            foreach (\Illuminate\Support\Facades\File::allFiles($dir) as $file) {
+                if (preg_match('/extendedcredits|whatsapp_credit_(sharing|attach)|credit_sharing_and_attach|allocation_config|solutionID|partner_solution|whatsapp_business_solution/i', (string) $file->getContents())) {
+                    $found[] = $file->getRelativePathname();
+                }
+            }
+        }
+
+        $this->assertSame([], $found);
+    }
+
+    public function test_a_client_link_says_what_the_linked_number_is_waiting_for(): void
+    {
+        $this->link()->assertSessionHasNoErrors();
+        $this->actingAs($this->super)->post(route('super-admin.businesses.whatsapp.clientLink.store', $this->shop->id))->assertSessionHasErrors();
+        $this->assertStringContainsString('ينتظر إثبات جهة رسومه', (string) collect(session('errors')->all())->first());
+    }
+
     public function test_none_of_it_comes_back_from_a_shops_backup(): void
     {
         foreach (['whatsapp_billings', 'whatsapp_billing_events', 'whatsapp_billing_trials', 'whatsapp_message_prices'] as $table) {

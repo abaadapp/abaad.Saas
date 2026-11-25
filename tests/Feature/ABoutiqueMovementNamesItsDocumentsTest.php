@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\SettlementRefused;
 use App\Models\Addon;
 use App\Models\Boutique;
 use App\Models\BoutiqueReturn;
@@ -31,6 +32,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 /**
@@ -480,7 +482,7 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
     {
         try {
             $do();
-        } catch (\App\Exceptions\SettlementRefused|\RuntimeException|\InvalidArgumentException|\Illuminate\Validation\ValidationException $e) {
+        } catch (SettlementRefused|\RuntimeException|\InvalidArgumentException|ValidationException $e) {
             session()->forget('errors');
         }
     }

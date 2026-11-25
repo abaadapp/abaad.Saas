@@ -270,6 +270,12 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         Carbon::setTestNow(now()->addMinutes(61));
         $this->at('10.2.2.2')->ask('91234567')->assertOk();
 
+        // ورقمٌ لا عميلَ له يُحسب مرّةً مع غيره: خمسٌ كالمسجَّل لا ثلاث
+        for ($i = 1; $i <= 5; $i++) {
+            $this->at('10.2.3.3')->ask('96009999')->assertStatus(422);
+        }
+        $this->at('10.2.3.3')->ask('96009999')->assertStatus(429);
+
         // وأرقامٌ مسجَّلة: عشرون من عنوانٍ واحد في الساعة، وستّون في اليوم — فلا تُفتح صفحاتُ قائمة
         $phones = array_map(fn (int $i) => (string) (92000000 + $i), range(1, 62));
         foreach ($phones as $i => $phone) {
@@ -332,7 +338,10 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->stop($this->owner, $sara)->assertOk()->assertJsonPath('state.stopped', true)->assertJsonPath('state.since', null);
         $this->ask('92223333')->assertStatus(422);
         $this->my('', $this->enter($this->maryam, '95550000'))->assertSee('مريم');
-        $this->assertSame(['مريم البلوشي', 'سارة'], array_column($this->settings($this->owner)['links'], 'customer'));
+        $rows = $this->settings($this->owner)['links'];
+        $this->assertSame([['مريم البلوشي', false], ['سارة', true]], array_map(fn ($r) => [$r['customer'], $r['stopped']], $rows));
+        $this->assertNotNull($rows[0]['since']);
+        $this->assertNull($rows[1]['since'], 'أُوقفت ولم تدخل');
 
         // وإذنٌ حيٌّ واحدٌ لكلّ عميل — تحرسه القاعدة
         $this->expectException(UniqueConstraintViolationException::class);
@@ -367,9 +376,19 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $this->ask('91234567')->assertStatus(422);
         $cookie = $this->enter($this->maryam, '95550000');
         $this->my('', $cookie)->assertSee('مريم');
+        // وتغيّر ولم يُطلب شيءٌ بينهما: الجديدُ يفتح من أوّل مرّة، والإذنُ القديم أُغلق
+        $this->maryam->update(['phone' => '95550001']);
+        $this->assertNull($this->card($this->owner, $this->maryam)['since']);
+        $this->maryam->update(['phone' => '95550002']);
+        $cookie = $this->enter($this->maryam, '95550002');
+        $this->my('', $cookie)->assertOk()->assertSee('مريم');
+        $this->maryam->update(['phone' => '95550000']);
+        $cookie = $this->enter($this->maryam, '95550000');
+        $this->my('', $cookie)->assertOk()->assertSee('مريم');
 
         $this->maryam->delete();
         $this->myJson('/data', $cookie)->assertStatus(401);
+        $this->assertSame(Access::REVOKED_CUSTOMER, CustomerPortalLink::latest('id')->value('revoked_why'));
         $this->my('', $cookie)->assertDontSee('مريم');
         $this->ask('95550000')->assertStatus(422);
         $this->allow($this->owner, $this->maryam)->assertNotFound();
@@ -379,6 +398,10 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
         $cookie = $this->enter($sara);
         $sara->update(['phone' => '+968 9222 3333']);
         $this->myJson('/data', $cookie)->assertOk();
+        // وسجلٌّ صار لمتجرٍ آخر لا يُقرأ من هنا
+        $sara->forceFill(['business_id' => $this->neighbour->id])->save();
+        $this->myJson('/data', $cookie)->assertStatus(401);
+        $this->assertSame(Access::REVOKED_CUSTOMER, CustomerPortalLink::latest('id')->value('revoked_why'));
     }
 
     /* ═════════════ لا رمزَ ولا رابطَ لعميل ═════════════ */
@@ -738,7 +761,8 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
     public function test_the_owner_runs_it_from_settings_and_a_manager_stops_but_does_not_grant(): void
     {
         $manager = $this->staffer('مديرة البوابة', 'sales', ['settings', 'customers']);
-        $clerk = $this->staffer('موظف', 'sales', ['customers']);
+        // ومعه قسمُ الإعدادات: فيُردّ بصلاحيّة البوابة لا بقسمه
+        $clerk = $this->staffer('موظف', 'sales', ['settings', 'customers']);
 
         $this->staff($this->owner)->post(route('admin.settings.portal.staff'), ['share' => [$clerk->id], 'manage' => [$manager->id]])->assertSessionHasNoErrors();
         $this->assertTrue(Portal::mayManage($manager->fresh()));
@@ -758,6 +782,7 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
 
         // يوقف ويسمح من صفّه، ولا يُسمح لمن ليس موقوفًا ولا يُوقَف الموقوف
         $this->staff($manager)->post($row['url'])->assertNotFound();
+        $this->staff($clerk)->get(route('admin.settings.portal.index'))->assertForbidden();
         $this->staff($clerk)->delete($row['url'])->assertForbidden();
         $this->staff($clerk)->post($row['url'])->assertForbidden();
         $this->staff($manager)->delete($row['url'])->assertSessionHasNoErrors();
@@ -770,7 +795,9 @@ class TheRibbonPortalOpensToItsOwnerAloneTest extends TestCase
 
         // «إخراج الجميع»: كلُّ أجهزة المتجر، ولا يُمسّ متجرٌ آخر — ويدخلون بأرقامهم من جديد
         $cookies = array_map(fn ($i) => $this->enter($this->buyer('عميل '.$i, '9111000'.$i)), [1, 2]);
-        $other = CustomerPortalLink::create(['business_id' => $this->neighbour->id, 'customer_id' => $this->buyer('جار', '96666666', $this->neighbour)->id, 'token_hash' => str_repeat('d', 64), 'nonce' => str_repeat('e', 64), 'phone_hash' => str_repeat('f', 64)]);
+        $other = CustomerPortalLink::create(['business_id' => $this->neighbour->id, 'customer_id' => $this->buyer('جار', '96666666', $this->neighbour)->id, 'token_hash' => str_repeat('d', 64), 'nonce' => str_repeat('e', 64), 'phone_hash' => str_repeat('f', 64), 'last_used_at' => now()]);
+        $this->assertNotContains('جار', array_column($this->settings($manager)['links'], 'customer'));
+        $this->assertCount(1, $this->settings($manager)['links']);
         $theirs = CustomerPortalSession::create(['business_id' => $this->neighbour->id, 'customer_id' => $other->customer_id, 'link_id' => $other->id, 'token_hash' => str_repeat('1', 64), 'expires_at' => now()->addDay()]);
         $this->staff($clerk)->delete(route('admin.settings.portal.signOut'))->assertForbidden();
         $this->staff($manager)->delete(route('admin.settings.portal.signOut'))->assertSessionHasNoErrors();

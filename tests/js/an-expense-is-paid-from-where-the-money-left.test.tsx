@@ -120,6 +120,17 @@ describe('تسجيلُ سدادِ مصروف', () => {
         expect(posted).toEqual([{ url: '/admin.expenses.paid/7', data: { method: 'تحويل بنكي' } }]);
     });
 
+    /** ورقةُ البوتيك تُسدَّد بإذن السداد: من لا يملكه لا يُرسم له زرٌّ يردّه الخادم */
+    it('لا زرَّ سدادٍ لورقة بوتيكٍ لا يملك الجالسُ سدادَها', async () => {
+        const user = userEvent.setup();
+        Object.assign(pageProps, { expenses: [{ ...row, payable: false }] });
+        render(<ExpensesIndex />);
+
+        await user.click(screen.getByRole('button', { name: 'إجراءات' }));
+        expect(await screen.findByRole('menuitem', { name: /نطاق المصروف/ })).toBeInTheDocument();
+        expect(screen.queryByRole('menuitem', { name: /تسجيل السداد/ })).toBeNull();
+    });
+
     it('يُفتح على النقد حين لا تُعرف الطريقة المكتوبة', () => {
         expect(page.payMethodFor('تحويل بنكي')).toBe('تحويل بنكي');
         expect(page.payMethodFor('بطاقة')).toBe('بطاقة');

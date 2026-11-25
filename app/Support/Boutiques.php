@@ -451,7 +451,8 @@ final class Boutiques
         $rows = self::unsettled($businessId, $boutiqueId, $period)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->orderBy('orders.ordered_at')
-            ->get([
+            // صفوفٌ لا نماذج: شهرُ بوتيكٍ بآلاف البنود يُجمع ولا يُعدَّل
+            ->toBase()->get([
                 'order_items.product_id', 'order_items.name', 'order_items.variant_name',
                 'order_items.quantity', 'order_items.total', 'order_items.boutique_rate',
                 'orders.ordered_at',
@@ -459,10 +460,12 @@ final class Boutiques
 
         // وبنودُ فواتير العملاء التي اكتمل تحصيلُها في الشهر — بلقطتها ساعةَ الإصدار (`BoutiqueInvoiceDues`)
         $invoiced = BoutiqueInvoiceDues::ready($businessId, $boutiqueId, $period)
-            ->orderBy('boutique_invoice_lines.collected_at')->orderBy('boutique_invoice_lines.id')->get();
+            ->orderBy('boutique_invoice_lines.collected_at')->orderBy('boutique_invoice_lines.id')->toBase()->get();
 
         // وحدّا الورقة ما شملته فعلًا — لا أوّلُ الشهر وآخرُه على الإطلاق
-        $moments = $rows->pluck('ordered_at')->map(fn ($at) => Carbon::parse($at))->concat($invoiced->pluck('collected_at'))->sort()->values();
+        // والصفوفُ مرتّبةٌ بوقتها: طرفاها يكفيان، ولا يُقرأ وقتُ كلّ بند
+        $moments = collect([$rows->first()?->ordered_at, $rows->last()?->ordered_at, $invoiced->first()?->collected_at, $invoiced->last()?->collected_at])
+            ->filter()->map(fn ($at) => Carbon::parse($at))->sort()->values();
         $from = $moments->first() ?? $month;
         $to = $moments->last() ?? $month;
 

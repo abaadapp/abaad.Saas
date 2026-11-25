@@ -292,4 +292,20 @@ return [
      */
     'website_sold_out_businesses' => [5],
 
+    /*
+     * بوابةُ عملاء RIBBON — `ribbon.abaadapp.om/my` — لمتجر سعود وحده، بمعرّفه.
+     *
+     * قرارُ المالك: تخصيصٌ لسعود (RIBBON، `businesses.id = 5`) لا منتجٌ في
+     * أبعاد. فهو معرّفٌ واحدٌ لا قائمة، ولا مفتاحَ له في لوحة المنصّة ولا في
+     * الباقات، ولا يُسأل فيه اسمُ المتجر ولا الواجهةُ `ribbon`. ويلزمه مع
+     * المعرّف نطاقُه المثبَّت في `subdomain_businesses`: بلاه لا بوابة.
+     *
+     * و`enabled` قفلُ طوارئ في بيئة الخادم: `false` يُغلق الصفحةَ وكلَّ مسارٍ
+     * وزرٍّ لها، ولا يمحو شيئًا. انظر `RibbonPortal\Portal`.
+     */
+    'ribbon_customer_portal' => [
+        'business' => 5,
+        'enabled' => (bool) env('RIBBON_CUSTOMER_PORTAL', true),
+    ],
+
 ];

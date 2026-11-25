@@ -60,6 +60,9 @@ class EveryScreenOpensTest extends TestCase
         \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
         \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
 
+        // وبوابةُ عملاء RIBBON مفتوحةٌ لهذا المتجر — بمعرّفه ونطاقه (`RibbonPortal\Portal`)
+        config(['storefront.ribbon_customer_portal' => ['business' => (int) $business->id, 'enabled' => true], 'storefront.subdomain_businesses' => [(int) $business->id => 'ribbon']]);
+
         $this->owner = $business->users()->where('role', 'admin')->firstOrFail();
 
         $platform = Business::create(['name' => 'المنصّة', 'type' => 'عام', 'status' => 'نشط']);

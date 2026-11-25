@@ -61,7 +61,10 @@ class CustomerController extends Controller
             ],
             'branches' => Demo::branches(),
             'currentBranchId' => Demo::currentBranchId(),
-        ]);
+        ] + array_filter([
+            // «بوابة عملاء RIBBON» — لمتجر سعود ومن يشارك فيه، وسواهم لا مفتاحَ في صفحتهم
+            'portal' => \App\Support\RibbonPortal\Portal::panel(auth()->user()),
+        ]));
     }
 
     public function store(Request $request)

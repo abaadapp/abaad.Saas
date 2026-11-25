@@ -594,7 +594,10 @@ class PageController extends Controller
                     'invoice' => $p->invoice ? ['id' => $p->invoice->id, 'number' => $p->invoice->number] : null,
                     'order' => $p->order?->number,
                 ])->all(),
-        ]);
+        ] + array_filter([
+            // قسمُ «رابط بوابة العميل» — لمتجر سعود ومن يشارك وحدهم
+            'portalLink' => RibbonPortalController::panelFor(auth()->user(), (int) $id),
+        ]));
     }
 
     /* ----------------------------- الموظفون ----------------------------- */
@@ -1153,7 +1156,10 @@ class PageController extends Controller
              */
             'section' => $section,
             ...$this->settingsSection($section, $request),
-        ]);
+        ] + array_filter([
+            // بطاقةُ «بوابة العملاء» — لمتجر سعود ولمن يديرها وحدهم
+            'portalUrl' => \App\Support\RibbonPortal\Portal::mayManage($request->user()) ? route('admin.settings.portal.index') : null,
+        ]));
     }
 
     /**

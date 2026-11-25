@@ -221,6 +221,8 @@ final class BoutiqueInvoiceReview
 
                     $class = match (true) {
                         $b === null => self::NONE,
+                        // لقطةُ بوتيكٍ بلا نسبة لا تقول كم له — ولا تُقرأ «عمولة صفر»
+                        $b['boutique_id'] !== null && $b['rate'] === null => self::NONE,
                         $a === null => self::BEFORE_ONLY,
                         ! $kept => self::CONFLICT,
                         $b['boutique_id'] === null => self::SHOP,

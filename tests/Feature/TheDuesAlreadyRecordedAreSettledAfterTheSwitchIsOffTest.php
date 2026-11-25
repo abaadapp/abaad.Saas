@@ -297,9 +297,7 @@ class TheDuesAlreadyRecordedAreSettledAfterTheSwitchIsOffTest extends TestCase
         $this->sell(3);
         $s = Boutiques::statement($this->shop->id, $this->lama->id, self::PERIOD);
         $this->assertEquals([14.0, 2.8, 11.2], [$s['gross'], $s['commission'], $s['net']], 'منطقُ المنفرد تغيّر');
-        if (! $components) {
-            $this->assertSame(0, DB::table('boutique_component_dues')->where('business_id', $this->shop->id)->count(), 'مستحقُّ قطعٍ كُتب ومفتاحُه مطفأ');
-        }
+        $this->assertSame(0, DB::table('boutique_component_dues')->where('business_id', $this->shop->id)->count(), 'مستحقُّ قطعٍ كُتب ومفتاحُه مطفأ');
     }
 
     public function test_a_shop_that_never_recorded_any_still_meets_a_closed_door(): void

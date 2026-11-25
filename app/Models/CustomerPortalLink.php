@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** رابطُ دخولٍ شخصيٌّ إلى بوابة عملاء RIBBON — انظر `RibbonPortal\Access` */
+/** إذنُ عميلٍ إلى بوابة RIBBON، وإيقافُه — انظر `RibbonPortal\Access` */
 class CustomerPortalLink extends Model
 {
     protected $guarded = [];

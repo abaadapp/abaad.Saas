@@ -65,7 +65,7 @@
 
     {{-- الخروجُ ينسى الجهاز: يُقال قبل أن يقع --}}
     <dialog id="leave" class="card" data-testid="portal-leave" aria-labelledby="leave-text">
-        <p id="leave-text" style="margin:0 0 16px">{{ $t('logoutAsk', ['shop' => $shop]) }}</p>
+        <p id="leave-text" style="margin:0 0 16px">{{ $t('logoutAsk') }}</p>
         <form method="post" action="{{ route('my.logout', [], false) }}" data-leave>@csrf
             <button class="btn main" type="submit" data-testid="portal-leave-yes">{{ $t('logout') }}</button>
             <button class="btn" type="button" id="leave-no">{{ $t('logoutNo') }}</button>

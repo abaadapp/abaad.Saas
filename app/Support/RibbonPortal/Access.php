@@ -9,47 +9,57 @@ use App\Models\User;
 use App\Support\Activity;
 use App\Support\Contention;
 use App\Support\Digits;
+use App\Support\Lists\SalesRegister;
 use App\Support\WhatsAppPhone;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Cookie;
 
 /**
- * بابُ البوابة — رابطٌ واحدٌ للجميع: يكتب العميلُ رقمَ هاتفه، ويُعتمد جهازُه مرّةً (`Devices`).
+ * بابُ البوابة — رابطٌ واحدٌ للجميع: يكتب العميلُ رقمَ هاتفه المسجَّل فتفتح صفحتُه.
  *
- * ═══ الرقمُ يقول من هو، والجهازُ المعتمد يقول إنّه هو ═══
+ * ═══ الرقمُ وحده ═══
  *
- * فلا يُقرأ حسابٌ برقمٍ وحده: الرقمُ يعرفه كلُّ من يعرف صاحبَه. والجهازُ يُعرف بعد اعتماده
- * بكعكةٍ لا يقرؤها نصُّ صفحةٍ ولا موقعٌ آخر، فيدخل منه صاحبُه بلا كتابة شيء.
+ * قرارُ المالك (2026-11-25): لا رقمَ جهازٍ ولا اعتمادَ موظّف ولا رمزَ ولا كلمةَ مرور. فمن يعرف
+ * رقمَ عميلٍ يفتح صفحتَه — يُقال ذلك لصاحب النشاط في شاشته، وله أن يوقف صفحةَ من يطلب (`stop`).
+ * وتُحدّ المحاولاتُ (`LIMITS`): فلا تُجرَّب الأرقامُ لتُعرف، ولا تُفتح صفحاتُ قائمةٍ منها.
  *
- * ═══ والإذنُ صفٌّ لكلّ عميل ═══
+ * ═══ والجهازُ يُذكر ═══
  *
- * يُكتب عند أوّل اعتماد (`customer_portal_links`)، وتتبعه جلساتُ أجهزته.
+ * كعكةٌ لا يقرؤها نصُّ صفحةٍ ولا موقعٌ آخر: يدخل منه صاحبُه بعدها بلا كتابة شيء.
  *
  * ═══ ويُسأل في كلّ طلب ═══
  *
- * الإذنُ لم يُلغَ، والعميلُ لم يُحذف، ورقمُه هو الذي اعتُمد به. فما تغيّر منها يُغلق
- * الجلساتِ كلَّها في الطلب التالي — لا حين تنقضي.
+ * لم يُوقَف، ولم يُحذف العميل، ورقمُه هو الذي دخل به. فما تغيّر منها يُغلق الجلساتِ كلَّها في
+ * الطلب التالي — لا حين تنقضي.
  */
 final class Access
 {
     public const COOKIE = 'rb_my';
 
-    /** عمرُ الجلسة على الجهاز المعتمد — يتجدّد بالزيارة */
+    /** عمرُ الجلسة على الجهاز — يتجدّد بالزيارة */
     public const DAYS = 90;
 
-    /** جهازٌ اعتُمد ولم يعد إليه صاحبُه: كم ساعةً تنتظره جلستُه */
-    public const UNSEEN_HOURS = 24;
+    /** أوقف الموظّفُ صفحتَه: لا تُفتح برقمه حتّى يُسمح بها */
+    public const STOPPED = 'staff';
 
-    public const REVOKED_BY_STAFF = 'staff';
+    /** إيقافٌ سُمح بعده */
+    private const LIFTED = 'staff_lifted';
+
+    /** دخولٌ سبق الإيقافَ بلحظة */
+    private const LATE = 'stopped';
 
     public const REVOKED_PHONE = 'phone_changed';
 
     public const REVOKED_CUSTOMER = 'customer_gone';
 
-    /** طلباتٌ جديدة: للرقم من عنوانٍ واحد في ربع ساعة، وللرقم في اليوم، وللعنوان في الساعة */
-    private const LIMITS = ['who' => [5, 900], 'day' => [20, 86400], 'ip' => [40, 3600]];
+    /**
+     * دخولٌ جديد: للرقم من عنوانٍ واحد في ربع ساعة، وللرقم في اليوم، وللعنوان في الساعة وفي اليوم،
+     * وأرقامٌ لا عميلَ لها من عنوانٍ واحد في الساعة. ومن دخل من قبل لا يُسأل عنها.
+     */
+    private const LIMITS = ['who' => [5, 900], 'day' => [20, 86400], 'ip' => [20, 3600], 'ipday' => [60, 86400], 'miss' => [10, 3600]];
 
     /* ─────────────────────────── الإذن ─────────────────────────── */
 
@@ -71,71 +81,123 @@ final class Access
         return WhatsAppPhone::normalize(Digits::western($raw));
     }
 
-    /** إذنُه القائم — أو `null` لمن لم يُعتمد له جهاز */
+    /**
+     * صاحبُ هذا الرقم في المتجر — أو `null`. والمحذوفُ لا يُقرأ.
+     *
+     * ورقمٌ في سجلّين (كُتب قبل أن يُمنع التكرار) يفتح الذي اشترى آخرًا.
+     */
+    private static function holder(int $businessId, string $phone): ?Customer
+    {
+        $found = Customer::where('business_id', $businessId)
+            ->where(fn ($q) => $q->where('phone', '!=', '')->orWhere('contact_phone', '!=', ''))
+            ->orderBy('id')->get()
+            ->filter(fn (Customer $c) => self::phone($c) === $phone);
+
+        return $found->count() < 2 ? $found->first() : $found
+            ->sortByDesc(fn (Customer $c) => (string) SalesRegister::forCustomer($businessId, (int) $c->id)->max('r.sold_at'))->first();
+    }
+
+    /**
+     * يدخل برقم هاتفه — ويردّ رمزَ جهازه، أو `null`: لا عميلَ بهذا الرقم، أو أوقف المتجرُ صفحتَه.
+     *
+     * ولا حسابَ يُنشأ هنا. ومن كان داخلًا باسم غيره على هذا الجهاز خرج.
+     */
+    public static function enter(int $businessId, string $phone, Request $request): ?string
+    {
+        $customer = self::holder($businessId, $phone);
+        $link = $customer === null || self::stopped($customer) ? null : self::grant($customer);
+        if ($link === null) {
+            return null;
+        }
+
+        self::logout(self::session($businessId, $request));
+
+        $raw = bin2hex(random_bytes(32));
+        Session::create([
+            'business_id' => $link->business_id,
+            'customer_id' => $link->customer_id,
+            'link_id' => $link->id,
+            'token_hash' => self::hash($raw),
+            'expires_at' => now()->addDays(self::DAYS),
+        ]);
+
+        return $raw;
+    }
+
+    /** إذنُه القائم — أو `null` لمن لم يدخل */
     public static function live(Customer $customer): ?Link
     {
-        $link = Link::where('business_id', $customer->business_id)->where('customer_id', $customer->id)
-            ->whereNull('revoked_at')->first();
+        $link = self::links($customer)->whereNull('revoked_at')->first();
 
         return $link && self::stands($link) ? $link : null;
     }
 
-    /** إذنُه — القائمُ وإلّا جديد. وموظّفان يعتمدان معًا لا يكتبان إذنين: يردّ الفهرسُ الثاني فيُقرأ الأوّل */
-    public static function grant(Customer $customer): ?Link
+    /** إذنُه — القائمُ وإلّا جديد. ودخولان معًا لا يكتبان إذنين: يردّ الفهرسُ الثاني فيُقرأ الأوّل */
+    private static function grant(Customer $customer): ?Link
     {
         return self::live($customer)
             ?? Contention::attempt(fn () => DB::transaction(fn () => self::write($customer)))
             ?? self::live($customer);
     }
 
-    private static function write(Customer $customer): Link
+    private static function write(Customer $customer, array $with = []): Link
     {
-        $link = new Link([
+        // `token_hash` و`nonce` عمودان لازمان لا يفتحان شيئًا: رابطٌ شخصيٌّ لا يوجد
+        return Link::create($with + [
             'business_id' => (int) $customer->business_id,
             'customer_id' => (int) $customer->id,
             'nonce' => bin2hex(random_bytes(32)),
+            'token_hash' => self::hash(bin2hex(random_bytes(32))),
             'phone_hash' => self::phoneHash((string) self::phone($customer)),
         ]);
-        // العمودُ فريدٌ ولا يفتح شيئًا: رابطٌ شخصيٌّ لا يوجد، والدخولُ بجهازٍ معتمد
-        $link->token_hash = self::hash(self::token($link));
-        $link->save();
-
-        return $link;
     }
 
-    /** يفتح جلسةَ الجهاز الذي اعتُمد — وإن لم يعد صاحبُه إليها في يومها انقضت */
-    public static function open(Link $link, string $tokenHash): Session
+    /** أوقف المتجرُ صفحةَ هذا العميل؟ */
+    public static function stopped(Customer $customer): bool
     {
-        return Session::create([
-            'business_id' => $link->business_id,
-            'customer_id' => $link->customer_id,
-            'link_id' => $link->id,
-            'token_hash' => $tokenHash,
-            'expires_at' => now()->addHours(self::UNSEEN_HOURS),
-        ]);
+        return self::links($customer)->where('revoked_why', self::STOPPED)->exists();
     }
 
-    /** يُخرجه من أجهزته كلِّها، ويُغلق ما ينتظر منها */
-    public static function revoke(Customer $customer, ?User $by): void
+    /** يُخرجه من أجهزته كلِّها، ولا تُفتح صفحتُه برقمه حتّى يُسمح بها — ولو لم يدخل بعد */
+    public static function stop(Customer $customer, ?User $by): void
     {
         DB::transaction(function () use ($customer, $by) {
-            Devices::drop($customer);
-            Link::where('business_id', $customer->business_id)->where('customer_id', $customer->id)
-                ->whereNull('revoked_at')->lockForUpdate()->get()
-                ->each(fn (Link $l) => self::close($l, $by, self::REVOKED_BY_STAFF));
+            $open = self::links($customer)->whereNull('revoked_at')->lockForUpdate()->get();
+            $open->each(fn (Link $l) => self::close($l, $by, self::STOPPED));
+            // ومن لم يدخل: صفٌّ مُغلقٌ من أوّله — فلا يزاحم دخولًا يقع الآن، ويُغلقه في طلبه التالي
+            if (! self::stopped($customer)) {
+                self::write($customer, ['revoked_at' => now(), 'revoked_by' => $by?->id, 'revoked_why' => self::STOPPED]);
+            }
         });
     }
 
-    /** كلُّ من دخل — للطوارئ */
-    public static function revokeAll(int $businessId, User $by): int
+    public static function allow(Customer $customer): void
     {
-        return DB::transaction(function () use ($businessId, $by) {
-            Devices::dropAll($businessId);
-            $links = Link::where('business_id', $businessId)->whereNull('revoked_at')->lockForUpdate()->get();
-            $links->each(fn (Link $l) => self::close($l, $by, self::REVOKED_BY_STAFF));
+        self::links($customer)->where('revoked_why', self::STOPPED)->update(['revoked_why' => self::LIFTED, 'updated_at' => now()]);
+    }
 
-            return $links->count();
-        });
+    /** يُخرج الجميع من أجهزتهم — ويدخل كلٌّ منهم برقمه من جديد */
+    public static function signOutAll(int $businessId): int
+    {
+        return Session::where('business_id', $businessId)->whereNull('revoked_at')->where('expires_at', '>', now())
+            ->update(['revoked_at' => now(), 'updated_at' => now()]);
+    }
+
+    /**
+     * كم جهازًا داخلٌ الآن بكلّ إذن.
+     *
+     * @param  list<int>  $links
+     * @return array<int, int>
+     */
+    public static function devices(array $links): array
+    {
+        return Session::whereIn('link_id', $links)->whereNull('revoked_at')->where('expires_at', '>', now())
+            ->selectRaw('link_id, count(*) as n')->groupBy('link_id')->pluck('n', 'link_id')->map(fn ($n) => (int) $n)->all();
+    }
+
+    private static function links(Customer $customer): Builder
+    {
+        return Link::query()->where('business_id', $customer->business_id)->where('customer_id', $customer->id);
     }
 
     private static function close(Link $link, ?User $by, string $why): void
@@ -144,7 +206,7 @@ final class Access
         Session::where('link_id', $link->id)->whereNull('revoked_at')->update(['revoked_at' => now(), 'updated_at' => now()]);
     }
 
-    /** أما زال قائمًا؟ — لم يُلغَ، وصاحبُه باقٍ في المتجر، ورقمُه هو الذي اعتُمد به. وما سقط يُغلق الآن. */
+    /** أما زال قائمًا؟ — لم يُوقَف، وصاحبُه باقٍ في المتجر، ورقمُه هو الذي دخل به. وما سقط يُغلق الآن. */
     private static function stands(Link $link): bool
     {
         if ($link->revoked_at !== null) {
@@ -155,6 +217,7 @@ final class Access
         $why = match (true) {
             $customer === null || (int) $customer->business_id !== (int) $link->business_id => self::REVOKED_CUSTOMER,
             ! hash_equals($link->phone_hash, self::phoneHash((string) self::phone($customer))) => self::REVOKED_PHONE,
+            self::stopped($customer) => self::LATE,
             default => null,
         };
 
@@ -169,11 +232,11 @@ final class Access
 
     /* ─────────────────────────── حدُّ المحاولات ─────────────────────────── */
 
-    /** كم ثانيةً حتى يُقبل طلبٌ جديد — أو صفر. `$key` بصمةُ الرقم (`Devices::key`) لا الرقمُ نفسُه: لا يُكتب رقمٌ في العدّاد */
-    public static function blockedFor(string $key, Request $request): int
+    /** كم ثانيةً حتى يُقبل دخولٌ جديد — أو صفر. `$phone` مطبَّعًا، وفي العدّاد بصمتُه لا هو */
+    public static function blockedFor(string $phone, Request $request): int
     {
         $wait = 0;
-        foreach (self::keys($key, $request) as $name => $limiter) {
+        foreach (self::keys($phone, $request) as $name => $limiter) {
             if (RateLimiter::tooManyAttempts($limiter, self::LIMITS[$name][0])) {
                 $wait = max($wait, RateLimiter::availableIn($limiter));
             }
@@ -182,18 +245,26 @@ final class Access
         return $wait;
     }
 
-    /** ويُحسب كلُّ طلبٍ جديد، لرقمٍ مسجَّلٍ أو غيره */
-    public static function count(string $key, Request $request): void
+    /** يُحسب كلُّ دخولٍ يُطلب، ورقمٌ لا عميلَ له يُحسب مرّتين: مع غيره، ووحدَه (`$missed`) */
+    public static function count(string $phone, Request $request, bool $missed = false): void
     {
-        foreach (self::keys($key, $request) as $name => $limiter) {
-            RateLimiter::hit($limiter, self::LIMITS[$name][1]);
+        foreach (self::keys($phone, $request) as $name => $limiter) {
+            if (($name === 'miss') === $missed) {
+                RateLimiter::hit($limiter, self::LIMITS[$name][1]);
+            }
         }
     }
 
-    /** @return array{who: string, day: string, ip: string} */
-    private static function keys(string $key, Request $request): array
+    /** @return array<string, string> */
+    private static function keys(string $phone, Request $request): array
     {
-        return ['who' => 'ribbon-portal:w:'.$key.':'.$request->ip(), 'day' => 'ribbon-portal:d:'.$key, 'ip' => 'ribbon-portal:ip:'.$request->ip()];
+        $key = self::phoneHash($phone);
+        $ip = $request->ip();
+
+        return [
+            'who' => 'ribbon-portal:w:'.$key.':'.$ip, 'day' => 'ribbon-portal:d:'.$key,
+            'ip' => 'ribbon-portal:ip:'.$ip, 'ipday' => 'ribbon-portal:id:'.$ip, 'miss' => 'ribbon-portal:m:'.$ip,
+        ];
     }
 
     /* ─────────────────────────── الجلسة ─────────────────────────── */
@@ -253,8 +324,8 @@ final class Access
     /**
      * `__Host-`: لا يكتبها إلّا هذا المضيفُ نفسُه.
      *
-     * فلا تزرع صفحةٌ على نطاقٍ شقيقٍ (`*.abaadapp.om`) رمزَ جهازِ غيره في متصفّح العميل، فيعتمد
-     * الموظّفُ ذاك وهو يظنّه هذا. وتلزم لها `https` — وبلاها (بيئةُ التطوير) الاسمُ وحده.
+     * فلا تزرع صفحةٌ على نطاقٍ شقيقٍ (`*.abaadapp.om`) جلسةَ غيره في متصفّح العميل. وتلزم لها
+     * `https` — وبلاها (بيئةُ التطوير) الاسمُ وحده.
      */
     public static function name(Request $request): string
     {
@@ -283,13 +354,6 @@ final class Access
         return hash_hmac('sha256', 'ribbon-customer-portal', (string) config('app.key'), true);
     }
 
-    private static function token(Link $link): string
-    {
-        $raw = hash_hmac('sha256', 'link|'.$link->business_id.'|'.$link->customer_id.'|'.$link->nonce, self::secret(), true);
-
-        return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
-    }
-
     public static function hash(?string $value): string
     {
         return hash('sha256', (string) $value);
@@ -301,7 +365,7 @@ final class Access
         return hash_hmac('sha256', 'phone|'.$normalized, self::secret());
     }
 
-    /** سطرُ السجلّ — بلا رمزٍ ولا خانات */
+    /** سطرُ السجلّ — بلا رمزٍ ولا رقم */
     public static function log(string $what, Customer $customer): void
     {
         Activity::log('updated', $what.' — '.$customer->name, ['subject_id' => $customer->id, 'subject_type' => 'customer']);

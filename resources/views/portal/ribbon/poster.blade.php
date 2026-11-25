@@ -1,4 +1,4 @@
-{{-- ورقةٌ بجانب الكاشير: الرابطُ العامّ لبوابة العملاء رمزًا — لا تكشف شيئًا وحدها --}}
+{{-- ورقةٌ بجانب الكاشير: الرابطُ الواحد لبوابة العملاء رمزًا --}}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -23,8 +23,8 @@
     <div class="sheet">
         <img src="{{ $logo }}" alt="{{ $shop }}">
         <h1>مشترياتك وفواتيرك ونقاطك</h1>
-        <p>امسح الرمز واكتب رقم هاتفك. أول مرة، أرِ الموظف رقم جهازك.</p>
-        <p class="en">Scan and enter your phone number. The first time, show us your device number.</p>
+        <p>امسح الرمز واكتب رقم هاتفك المسجّل لدينا.</p>
+        <p class="en">Scan and enter your phone number registered with us.</p>
         <div class="qr">{!! $qr !!}</div>
         <p class="url">{{ \Illuminate\Support\Str::after($url, 'https://') }}</p>
         <small>Powered by ABAAD</small>

@@ -1428,7 +1428,7 @@ export function usePosCart({ products, customers: initialCustomers, customersSco
                          */
                         balance: typeof d.points_balance === 'number' ? d.points_balance : null,
                         total: typeof d.total === 'number' ? d.total : undefined,
-                        portal: typeof d.portal?.url === 'string' && typeof d.portal.device === 'string' ? d.portal : null,
+                        portal: typeof d.portal?.url === 'string' ? d.portal : null,
                     };
                 }
                 /*

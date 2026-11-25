@@ -31,7 +31,7 @@ const TONE: Record<LinkHealth['tone'], string> = {
 const unproven = (row: OwnNumberRow) => !!row.billing && row.billing.state !== 'proven';
 
 /**
- * كم متجرًا لم تثبت جهةُ رسومه بعد — وكم منها يُرسل اليوم بلا إثبات.
+ * كم متجرًا لم تثبت جهةُ رسومه بعد — وكم منها إرسالُه مفتوحٌ بلا إثبات.
  *
  * يُعدّ من الصفوف المعروضة تحته نفسِها، فلا يقول العددُ غيرَ ما تقوله القائمة.
  */
@@ -67,7 +67,7 @@ function BillingTally({ rows }: { rows: OwnNumberRow[] }) {
             </div>
             {sending > 0 && (
                 <p className="mt-2 text-[12px] leading-relaxed text-[#92400e]" data-testid="billing-tally-sending" data-count={sending}>
-                    {t('منها :count تُرسل الآن لأنها رُبطت قبل القفل، ولا تتوقف إلا بقرارك. راجع جهة رسومها من صفحة المتجر.', { count: sending })}
+                    {t('منها :count إرسالها مفتوح لأنها رُبطت قبل القفل، ولا تتوقف إلا بقرارك. راجع جهة رسومها من صفحة المتجر.', { count: sending })}
                 </p>
             )}
         </div>

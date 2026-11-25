@@ -75,7 +75,7 @@ final class Devices
 
             $key = self::key($phone);
             $others = self::live($businessId)->where('phone_hash', $key)->orderByDesc('id')->get();
-            $others->slice(self::PER_PHONE - 1)->each(fn (Waiting $w) => self::close($w));
+            Waiting::whereKey($others->slice(self::PER_PHONE - 1)->modelKeys())->update(['closed_at' => now(), 'updated_at' => now()]);
             $taken = $others->map(fn (Waiting $w) => self::number($w))->all();
 
             do {

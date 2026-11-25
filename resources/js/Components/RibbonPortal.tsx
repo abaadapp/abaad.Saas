@@ -206,7 +206,7 @@ export function CustomerPortalCard({ state }: { state: PortalCustomerState }) {
                             />
                         </div>
                     )}
-                    {now.urls.revoke && (
+                    {now.urls.revoke && (now.devices > 0 || now.waiting.length > 0) && (
                         <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-3">
                             <Button variant="ghost" size="sm" className="text-[#b91c1c]" loading={busy} onClick={() => void revoke()} data-testid="portal-revoke"><ShieldOff />{t('إلغاء الدخول')}</Button>
                         </div>

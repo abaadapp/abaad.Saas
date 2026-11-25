@@ -208,6 +208,14 @@ describe('ملفُّ العميل: «بوابة العميل»', () => {
         expect(screen.queryByTestId('portal-revoke')).toBeNull();
     });
 
+    it('ولا زرَّ إلغاءٍ لمن لا جهازَ له ينتظر ولا معتمد', () => {
+        const { unmount } = render(<CustomerPortalCard state={state} />);
+        expect(screen.queryByTestId('portal-revoke')).toBeNull();
+        unmount();
+        render(<CustomerPortalCard state={{ ...state, waiting: maryam.devices }} />);
+        expect(screen.getByTestId('portal-revoke')).toBeInTheDocument();
+    });
+
     it('ومن لا رقمَ له يُقال له، ولا يُطلب له شيء', () => {
         const fetch = answer(200, {});
         render(<CustomerPortalCard state={{ ...state, hasPhone: false }} />);

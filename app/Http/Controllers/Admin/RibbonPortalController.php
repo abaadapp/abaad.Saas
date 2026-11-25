@@ -9,7 +9,6 @@ use App\Models\Order;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Demo;
-use App\Support\Digits;
 use App\Support\InvoiceBranding;
 use App\Support\Pagination;
 use App\Support\Permissions;
@@ -86,8 +85,8 @@ class RibbonPortalController extends Controller
             return $this->json(['message' => __('أضف رقم هاتف العميل أولًا — يدخل به إلى بوابته.')], 422);
         }
 
-        $digits = (string) preg_replace('/\D+/', '', Digits::western($data['device']));
-        $device = Devices::approve($customer, $digits, auth()->user());
+        // والأرقامُ العربيّةُ قرأها `NormalizeNumbers` أرقامًا قبل أن تصل
+        $device = Devices::approve($customer, (string) preg_replace('/\D+/', '', $data['device']), auth()->user());
         if ($device === null) {
             return $this->json(['message' => __('لا جهاز ينتظر لهذا العميل بهذا الرقم. تأكد من رقم الهاتف الذي كتبه ومن الرقم الظاهر على شاشته. وبعد ثلاثة أخطاء يكتب رقمه من جديد.')], 422);
         }

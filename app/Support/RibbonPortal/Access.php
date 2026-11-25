@@ -16,50 +16,53 @@ use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Cookie;
 
 /**
- * بابُ البوابة — رابطٌ شخصيٌّ ورقمُ هاتفه، ثمّ جلسةٌ على جهازه.
+ * بابُ البوابة — رابطٌ واحدٌ للجميع: يكتب العميلُ رقمَ هاتفه، ويُعتمد جهازُه مرّةً (`Devices`).
  *
- * ═══ عاملان لا واحد ═══
+ * ═══ الرقمُ يقول من هو، والجهازُ المعتمد يقول إنّه هو ═══
  *
- * الرقمُ يُخمَّن والرابطُ يُعاد توجيهه، فلا يكفي أيُّهما: الرابطُ (256 بتًّا)
- * يقول من هو، ورقمُه المسجَّل يقول إنّ حاملَه صاحبُه. ولا يُسأل الرقمُ وحده
- * عن أحد، فلا يُعرف من هذا الباب أرقمٌ مسجَّلٌ أم لا.
+ * فلا يُقرأ حسابٌ برقمٍ وحده: الرقمُ يعرفه كلُّ من يعرف صاحبَه. والجهازُ يُعرف بعد اعتماده
+ * بكعكةٍ لا يقرؤها نصُّ صفحةٍ ولا موقعٌ آخر، فيدخل منه صاحبُه بلا كتابة شيء.
  *
- * ═══ والرمزُ لا يُحفظ ═══
+ * ═══ والإذنُ صفٌّ لكلّ عميل ═══
  *
- * بصمتُه وحدها في القاعدة. ويُشتقّ ثانيةً بمفتاح الخادم من `nonce` ليُنسخ
- * الرابطُ نفسُه بعد كلّ بيعةٍ بلا إبطال ما في يد العميل. ويُرسل في جزء `#`
- * من العنوان: لا يبلغ الخادمَ ولا سجلَّه ولا المُحيل، وتقرؤه الصفحةُ وترسله
- * في جسم الطلب.
+ * يُكتب عند أوّل اعتماد (`customer_portal_links`)، وتتبعه جلساتُ أجهزته.
  *
  * ═══ ويُسأل في كلّ طلب ═══
  *
- * الرابطُ لم يُلغَ، والعميلُ لم يُحذف، ورقمُه هو الذي صدر به الرابط. فما تغيّر
- * منها يُغلق الجلساتِ كلَّها في الطلب التالي — لا حين تنقضي.
+ * الإذنُ لم يُلغَ، والعميلُ لم يُحذف، ورقمُه هو الذي اعتُمد به. فما تغيّر منها يُغلق
+ * الجلساتِ كلَّها في الطلب التالي — لا حين تنقضي.
  */
 final class Access
 {
     public const COOKIE = 'rb_my';
 
-    /** عمرُ الجلسة على الجهاز — يتجدّد بالزيارة */
+    /** عمرُ الجلسة على الجهاز المعتمد — يتجدّد بالزيارة */
     public const DAYS = 90;
 
-    public const REVOKED_BY_STAFF = 'staff';
+    /** جهازٌ اعتُمد ولم يعد إليه صاحبُه: كم ساعةً تنتظره جلستُه */
+    public const UNSEEN_HOURS = 24;
 
-    public const REVOKED_REISSUED = 'reissued';
+    public const REVOKED_BY_STAFF = 'staff';
 
     public const REVOKED_PHONE = 'phone_changed';
 
     public const REVOKED_CUSTOMER = 'customer_gone';
 
-    /** محاولاتٌ خاطئة: للرابط في ربع ساعة، وله في اليوم، وللعنوان في الساعة */
-    private const LIMITS = ['token' => [5, 900], 'day' => [15, 86400], 'ip' => [20, 3600]];
+    /** طلباتٌ جديدة: للرقم من عنوانٍ واحد في ربع ساعة، وللرقم في اليوم، وللعنوان في الساعة */
+    private const LIMITS = ['who' => [5, 900], 'day' => [20, 86400], 'ip' => [40, 3600]];
 
-    /* ─────────────────────────── الرابط ─────────────────────────── */
+    /* ─────────────────────────── الإذن ─────────────────────────── */
 
     /** الرقمُ المسجَّل الذي يُدخله العميل — هاتفُه، وإلّا رقمُ تواصله */
     public static function phone(Customer $customer): ?string
     {
-        return self::normalize((string) (filled($customer->phone) ? $customer->phone : $customer->contact_phone));
+        return self::normalize(self::shown($customer));
+    }
+
+    /** كما كُتب في سجلّه — يقرؤه الموظّفُ ليتّصل به هو */
+    public static function shown(Customer $customer): string
+    {
+        return (string) (filled($customer->phone) ? $customer->phone : $customer->contact_phone);
     }
 
     /** بأيّ صيغةٍ كُتب — بقاعدة النظام (`WhatsAppPhone`): أرقامٌ عربيّة، ومفتاحٌ أو بلا مفتاح، ومسافات */
@@ -68,7 +71,7 @@ final class Access
         return WhatsAppPhone::normalize(Digits::western($raw));
     }
 
-    /** الرابطُ الحيّ لهذا العميل — صالحًا، وإلّا `null` */
+    /** إذنُه القائم — أو `null` لمن لم يُعتمد له جهاز */
     public static function live(Customer $customer): ?Link
     {
         $link = Link::where('business_id', $customer->business_id)->where('customer_id', $customer->id)
@@ -77,74 +80,57 @@ final class Access
         return $link && self::stands($link) ? $link : null;
     }
 
-    /**
-     * رابطُ العميل ليُشارَك — القائمُ إن كان صالحًا، وإلّا جديد.
-     *
-     * @return array{url: string, link: Link, created: bool}|null `null` لمن لا رقمَ له يُدخله
-     */
-    public static function share(Customer $customer, ?User $by): ?array
+    /** إذنُه — القائمُ وإلّا جديد. وموظّفان يعتمدان معًا لا يكتبان إذنين: يردّ الفهرسُ الثاني فيُقرأ الأوّل */
+    public static function grant(Customer $customer): ?Link
     {
-        if (self::phone($customer) === null) {
-            return null;
-        }
-
-        $link = self::live($customer);
-        $token = $link ? self::token($link) : null;
-
-        // ومفتاحُ خادمٍ تبدّل لا يشتقّ الرمزَ القديم: يُصدر بدلَه
-        if ($link && hash_equals($link->token_hash, self::hash($token))) {
-            return ['url' => Portal::url().'#'.$token, 'link' => $link, 'created' => false];
-        }
-
-        return self::reissue($customer, $by);
+        return self::live($customer)
+            ?? Contention::attempt(fn () => DB::transaction(fn () => self::write($customer)))
+            ?? self::live($customer);
     }
 
-    /** رابطٌ جديد — والقديمُ وجلساتُه يُغلقان معًا */
-    public static function reissue(Customer $customer, ?User $by): ?array
+    private static function write(Customer $customer): Link
     {
-        $phone = self::phone($customer);
-        if ($phone === null) {
-            return null;
-        }
+        $link = new Link([
+            'business_id' => (int) $customer->business_id,
+            'customer_id' => (int) $customer->id,
+            'nonce' => bin2hex(random_bytes(32)),
+            'phone_hash' => self::phoneHash((string) self::phone($customer)),
+        ]);
+        // العمودُ فريدٌ ولا يفتح شيئًا: رابطٌ شخصيٌّ لا يوجد، والدخولُ بجهازٍ معتمد
+        $link->token_hash = self::hash(self::token($link));
+        $link->save();
 
-        $write = fn () => DB::transaction(function () use ($customer, $by, $phone) {
-            Link::where('customer_id', $customer->id)->whereNull('revoked_at')->lockForUpdate()->get()
-                ->each(fn (Link $old) => self::close($old, $by, self::REVOKED_REISSUED));
-
-            $link = new Link([
-                'business_id' => (int) $customer->business_id,
-                'customer_id' => (int) $customer->id,
-                'nonce' => bin2hex(random_bytes(32)),
-                'phone_hash' => self::phoneHash($phone),
-                'created_by' => $by?->id,
-            ]);
-            $link->token_hash = self::hash(self::token($link));
-            $link->save();
-
-            return $link;
-        });
-
-        // موظّفان في اللحظة نفسها: يردّ الفهرسُ الثاني فيقرأ ما كتبه الأوّل
-        $link = Contention::attempt($write) ?? self::live($customer);
-
-        return $link ? ['url' => Portal::url().'#'.self::token($link), 'link' => $link, 'created' => true] : null;
+        return $link;
     }
 
-    public static function revoke(Customer $customer, ?User $by): bool
+    /** يفتح جلسةَ الجهاز الذي اعتُمد — وإن لم يعد صاحبُه إليها في يومها انقضت */
+    public static function open(Link $link, string $tokenHash): Session
     {
-        return DB::transaction(function () use ($customer, $by) {
-            $links = Link::where('business_id', $customer->business_id)->where('customer_id', $customer->id)
-                ->whereNull('revoked_at')->lockForUpdate()->get();
-            $links->each(fn (Link $l) => self::close($l, $by, self::REVOKED_BY_STAFF));
+        return Session::create([
+            'business_id' => $link->business_id,
+            'customer_id' => $link->customer_id,
+            'link_id' => $link->id,
+            'token_hash' => $tokenHash,
+            'expires_at' => now()->addHours(self::UNSEEN_HOURS),
+        ]);
+    }
 
-            return $links->isNotEmpty();
+    /** يُخرجه من أجهزته كلِّها، ويُغلق ما ينتظر منها */
+    public static function revoke(Customer $customer, ?User $by): void
+    {
+        DB::transaction(function () use ($customer, $by) {
+            Devices::drop($customer);
+            Link::where('business_id', $customer->business_id)->where('customer_id', $customer->id)
+                ->whereNull('revoked_at')->lockForUpdate()->get()
+                ->each(fn (Link $l) => self::close($l, $by, self::REVOKED_BY_STAFF));
         });
     }
 
-    /** كلُّ روابط المتجر — للطوارئ */
+    /** كلُّ من دخل — للطوارئ */
     public static function revokeAll(int $businessId, User $by): int
     {
         return DB::transaction(function () use ($businessId, $by) {
+            Devices::dropAll($businessId);
             $links = Link::where('business_id', $businessId)->whereNull('revoked_at')->lockForUpdate()->get();
             $links->each(fn (Link $l) => self::close($l, $by, self::REVOKED_BY_STAFF));
 
@@ -158,7 +144,7 @@ final class Access
         Session::where('link_id', $link->id)->whereNull('revoked_at')->update(['revoked_at' => now(), 'updated_at' => now()]);
     }
 
-    /** أما زال قائمًا؟ — لم يُلغَ، وصاحبُه باقٍ في المتجر، ورقمُه هو الذي صدر به. وما سقط يُغلق الآن. */
+    /** أما زال قائمًا؟ — لم يُلغَ، وصاحبُه باقٍ في المتجر، ورقمُه هو الذي اعتُمد به. وما سقط يُغلق الآن. */
     private static function stands(Link $link): bool
     {
         if ($link->revoked_at !== null) {
@@ -181,104 +167,59 @@ final class Access
         return true;
     }
 
-    /* ─────────────────────────── الدخول ─────────────────────────── */
+    /* ─────────────────────────── حدُّ المحاولات ─────────────────────────── */
 
-    /**
-     * يدخل بالرابط ورقم الهاتف — رمزُ الجلسة، أو `null` لأيّ خطأٍ كان.
-     *
-     * ردٌّ واحدٌ لرابطٍ لا وجودَ له ولرابطٍ أُلغي ولرقمٍ لا يطابق: من يجرّب لا
-     * يعرف أيَّها أصاب.
-     */
-    public static function login(int $businessId, string $token, string $phone, Request $request): ?string
-    {
-        $link = self::find($businessId, $token);
-        $given = self::normalize($phone);
-
-        if (! $link || $given === null || ! hash_equals($link->phone_hash, self::phoneHash($given))) {
-            foreach (self::keys($token, $request) as $name => $key) {
-                RateLimiter::hit($key, self::LIMITS[$name][1]);
-            }
-
-            return null;
-        }
-
-        RateLimiter::clear(self::keys($token, $request)['token']);
-
-        $raw = bin2hex(random_bytes(32));
-        Session::create([
-            'business_id' => $businessId,
-            'customer_id' => $link->customer_id,
-            'link_id' => $link->id,
-            'token_hash' => self::hash($raw),
-            'last_seen_at' => now(),
-            'expires_at' => now()->addDays(self::DAYS),
-        ]);
-        $link->forceFill(['last_used_at' => now()])->save();
-
-        // وما انقضى منذ شهرٍ لا يبقى
-        Session::where('business_id', $businessId)->where('expires_at', '<', now()->subDays(30))->delete();
-
-        return $raw;
-    }
-
-    /** كم ثانيةً حتى تُقبل محاولة — أو صفر */
-    public static function blockedFor(string $token, Request $request): int
+    /** كم ثانيةً حتى يُقبل طلبٌ جديد — أو صفر. `$key` بصمةُ الرقم (`Devices::key`) لا الرقمُ نفسُه: لا يُكتب رقمٌ في العدّاد */
+    public static function blockedFor(string $key, Request $request): int
     {
         $wait = 0;
-        foreach (self::keys($token, $request) as $name => $key) {
-            if (RateLimiter::tooManyAttempts($key, self::LIMITS[$name][0])) {
-                $wait = max($wait, RateLimiter::availableIn($key));
+        foreach (self::keys($key, $request) as $name => $limiter) {
+            if (RateLimiter::tooManyAttempts($limiter, self::LIMITS[$name][0])) {
+                $wait = max($wait, RateLimiter::availableIn($limiter));
             }
         }
 
         return $wait;
     }
 
-    /** أهذا الرابطُ لصاحب هذه الجلسة؟ */
-    public static function sameCustomer(int $businessId, string $token, ?Session $session): bool
+    /** ويُحسب كلُّ طلبٍ جديد، لرقمٍ مسجَّلٍ أو غيره */
+    public static function count(string $key, Request $request): void
     {
-        return $session !== null && self::find($businessId, $token)?->customer_id === $session->customer_id;
-    }
-
-    private static function find(int $businessId, string $token): ?Link
-    {
-        if (! preg_match('/^[A-Za-z0-9_-]{43}$/', $token)) {
-            return null;
+        foreach (self::keys($key, $request) as $name => $limiter) {
+            RateLimiter::hit($limiter, self::LIMITS[$name][1]);
         }
-
-        $link = Link::with('customer')->where('token_hash', self::hash($token))->where('business_id', $businessId)->first();
-
-        return $link && self::stands($link) ? $link : null;
     }
 
-    /** @return array{token: string, day: string, ip: string} */
-    private static function keys(string $token, Request $request): array
+    /** @return array{who: string, day: string, ip: string} */
+    private static function keys(string $key, Request $request): array
     {
-        $t = self::hash($token);
-
-        return ['token' => 'ribbon-portal:t:'.$t, 'day' => 'ribbon-portal:d:'.$t, 'ip' => 'ribbon-portal:ip:'.$request->ip()];
+        return ['who' => 'ribbon-portal:w:'.$key.':'.$request->ip(), 'day' => 'ribbon-portal:d:'.$key, 'ip' => 'ribbon-portal:ip:'.$request->ip()];
     }
 
     /* ─────────────────────────── الجلسة ─────────────────────────── */
 
-    /** جلسةُ هذا الطلب — قائمةً وصاحبُها ورابطُه قائمان، وإلّا `null` */
+    /** جلسةُ هذا الطلب — قائمةً وصاحبُها وإذنُه قائمان، وإلّا `null` */
     public static function session(int $businessId, Request $request): ?Session
     {
-        $raw = $request->cookie(self::COOKIE);
-        if (! is_string($raw) || ! preg_match('/^[a-f0-9]{64}$/', $raw)) {
-            return null;
+        // وجهازٌ دخل قبل أن يتغيّر اسمُ الكعكة يبقى داخلًا
+        foreach (array_unique([self::raw($request), self::read($request, self::COOKIE)]) as $raw) {
+            $session = $raw === null ? null : Session::with('link.customer')->where('token_hash', self::hash($raw))
+                ->where('business_id', $businessId)->whereNull('revoked_at')->where('expires_at', '>', now())->first();
+
+            if ($session && $session->link && (int) $session->link->customer_id === (int) $session->customer_id && self::stands($session->link)) {
+                return self::visited($session);
+            }
         }
 
-        $session = Session::with('link.customer')->where('token_hash', self::hash($raw))
-            ->where('business_id', $businessId)->whereNull('revoked_at')->where('expires_at', '>', now())->first();
+        return null;
+    }
 
-        if (! $session || ! $session->link || (int) $session->link->customer_id !== (int) $session->customer_id || ! self::stands($session->link)) {
-            return null;
-        }
-
-        // والزيارةُ تُطيلها — كتابةٌ كلَّ ساعةٍ لا كلَّ نبضة
+    /** والزيارةُ تُطيلها — كتابةٌ كلَّ ساعةٍ لا كلَّ نبضة */
+    private static function visited(Session $session): Session
+    {
         if ($session->last_seen_at === null || $session->last_seen_at->lt(now()->subHour())) {
             $session->forceFill(['last_seen_at' => now(), 'expires_at' => now()->addDays(self::DAYS)])->save();
+            $session->link->forceFill(['last_used_at' => now()])->save();
         }
 
         return $session;
@@ -289,41 +230,78 @@ final class Access
         $session?->forceFill(['revoked_at' => now()])->save();
     }
 
-    /** كعكةٌ لمسار البوابة وحده: لا يقرؤها المتجرُ ولا نصٌّ في الصفحة ولا موقعٌ آخر */
+    /** رمزُ هذا الجهاز من كعكته — أو `null` */
+    public static function raw(Request $request): ?string
+    {
+        return self::read($request, self::name($request));
+    }
+
+    /** رمزُ الكعكة التي فُتحت بها هذه الجلسة — باسمها اليوم أو باسمها من قبل */
+    public static function held(Request $request, Session $session): ?string
+    {
+        return collect([self::raw($request), self::read($request, self::COOKIE)])
+            ->first(fn (?string $raw) => $raw !== null && hash_equals($session->token_hash, self::hash($raw)));
+    }
+
+    private static function read(Request $request, string $name): ?string
+    {
+        $raw = $request->cookie($name);
+
+        return is_string($raw) && preg_match('/^[a-f0-9]{64}$/', $raw) ? $raw : null;
+    }
+
+    /**
+     * `__Host-`: لا يكتبها إلّا هذا المضيفُ نفسُه.
+     *
+     * فلا تزرع صفحةٌ على نطاقٍ شقيقٍ (`*.abaadapp.om`) رمزَ جهازِ غيره في متصفّح العميل، فيعتمد
+     * الموظّفُ ذاك وهو يظنّه هذا. وتلزم لها `https` — وبلاها (بيئةُ التطوير) الاسمُ وحده.
+     */
+    public static function name(Request $request): string
+    {
+        return (self::secure($request) ? '__Host-' : '').self::COOKIE;
+    }
+
+    private static function secure(Request $request): bool
+    {
+        return $request->isSecure() || app()->isProduction();
+    }
+
+    /** كعكةُ هذا المضيف: لا يقرؤها نصٌّ في الصفحة ولا موقعٌ آخر */
     public static function cookie(Request $request, ?string $raw): Cookie
     {
         return Cookie::create(
-            self::COOKIE, (string) $raw, $raw === null ? 1 : now()->addDays(self::DAYS),
-            '/'.Portal::PATH, null, $request->isSecure() || app()->isProduction(), true, false, Cookie::SAMESITE_LAX,
+            self::name($request), (string) $raw, $raw === null ? 1 : now()->addDays(self::DAYS),
+            self::secure($request) ? '/' : '/'.Portal::PATH, null, self::secure($request), true, false, Cookie::SAMESITE_LAX,
         );
     }
 
     /* ─────────────────────────── الأسرار ─────────────────────────── */
 
+    /** مفتاحُ البوابة من مفتاح الخادم */
+    public static function secret(): string
+    {
+        return hash_hmac('sha256', 'ribbon-customer-portal', (string) config('app.key'), true);
+    }
+
     private static function token(Link $link): string
     {
-        $raw = hash_hmac('sha256', 'link|'.$link->business_id.'|'.$link->customer_id.'|'.$link->nonce, self::key(), true);
+        $raw = hash_hmac('sha256', 'link|'.$link->business_id.'|'.$link->customer_id.'|'.$link->nonce, self::secret(), true);
 
         return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
     }
 
-    private static function hash(?string $value): string
+    public static function hash(?string $value): string
     {
         return hash('sha256', (string) $value);
     }
 
     /** والرقمُ بمفتاح الخادم لا بصمةً عارية: أرقامُ عُمان تُعدّ كلُّها في دقائق */
-    private static function phoneHash(string $normalized): string
+    public static function phoneHash(string $normalized): string
     {
-        return hash_hmac('sha256', 'phone|'.$normalized, self::key());
+        return hash_hmac('sha256', 'phone|'.$normalized, self::secret());
     }
 
-    private static function key(): string
-    {
-        return hash_hmac('sha256', 'ribbon-customer-portal', (string) config('app.key'), true);
-    }
-
-    /** سطرُ السجلّ — بلا رمزٍ ولا رابط */
+    /** سطرُ السجلّ — بلا رمزٍ ولا خانات */
     public static function log(string $what, Customer $customer): void
     {
         Activity::log('updated', $what.' — '.$customer->name, ['subject_id' => $customer->id, 'subject_type' => 'customer']);

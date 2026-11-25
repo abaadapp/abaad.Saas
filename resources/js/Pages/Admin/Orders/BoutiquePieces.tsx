@@ -20,7 +20,8 @@ export type BoutiquePiece = {
     product: string;
     boutique: string | null;
     quantity: number;
-    unit_price: number;
+    /** لمن يقرأ مالَ البوتيك وحده */
+    unit_price?: number;
     source: string;
     /** `null` لقطعةٍ حيّة في طلبٍ قائم، و`lost` أو `unverified` لما بقي بعد الإلغاء */
     state: string | null;

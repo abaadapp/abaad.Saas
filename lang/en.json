@@ -11640,5 +11640,7 @@
     "ثبتت جهة رسوم واتساب عند كل المتاجر (:total)": "Who pays WhatsApp charges is proven for every shop (:total)",
     "لم تثبت جهة رسوم واتساب عند :count من :total من المتاجر": "Who pays WhatsApp charges is not proven for :count of :total shops",
     "منها :count إرسالها مفتوح لأنها رُبطت قبل القفل، ولا تتوقف إلا بقرارك. راجع جهة رسومها من صفحة المتجر.": ":count of them may send because they were linked before the lock, and stop only by your decision. Review who pays from the shop's page.",
-    "بتطبيقه الخاص": "On its own app"
+    "بتطبيقه الخاص": "On its own app",
+    "أصناف هذا البوتيك": "This boutique's products",
+    "ليس لديك صلاحية على مال البوتيكات.": "You do not have permission on boutique money."
 }

@@ -12,6 +12,7 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueDues;
 use App\Support\BoutiqueReturns;
 use App\Support\Boutiques;
@@ -44,6 +45,12 @@ class BoutiqueController extends Controller
         return $business;
     }
 
+    /** حارسُ المال: القراءةُ لمن قسمُه المصروفات — والإصدارُ والسدادُ بإذنيهما (`BoutiqueAccess`) */
+    private function money(string $act = 'read'): void
+    {
+        abort_unless(BoutiqueAccess::{$act}(auth()->user()), 403, __('ليس لديك صلاحية على مال البوتيكات.'));
+    }
+
     private function find(int $id): Boutique
     {
         return Boutique::where('business_id', $this->bid())->findOrFail($id);
@@ -54,6 +61,7 @@ class BoutiqueController extends Controller
     public function index()
     {
         $business = $this->shop();
+        $seesMoney = BoutiqueAccess::read(auth()->user());
         $period = Boutiques::period(request()->query('period'));
 
         /*
@@ -62,7 +70,7 @@ class BoutiqueController extends Controller
          * «كم صنفًا له» سؤالُ إدارة، و«كم باع هذا الشهر» سؤالُ المال — ومن
          * فتح الشاشة آخرَ الشهر يسأل الثاني. فيُقرآن معًا بلا فتح كلّ صفّ.
          */
-        $sold = $this->monthlyGross($business->id, $period);
+        $sold = $seesMoney ? $this->monthlyGross($business->id, $period) : [];
 
         /*
          * وما ينتظر ورقةً غيرُ ما بِيع.
@@ -71,7 +79,7 @@ class BoutiqueController extends Controller
          * أُغلق: تُصدَر في العاشر ثمّ يُباع في الحادي عشر. و«سُوّي هذا
          * الشهر» على صفٍّ ينتظر مالًا تجعل صاحبَه يمرّ عليه ولا يفتحه.
          */
-        $pending = $this->monthlyGross($business->id, $period, true);
+        $pending = $seesMoney ? $this->monthlyGross($business->id, $period, true) : [];
 
         $rows = Boutique::where('business_id', $business->id)
             ->withCount('products')
@@ -83,23 +91,31 @@ class BoutiqueController extends Controller
                 'name_en' => $b->name_en,
                 'phone' => $b->phone,
                 'contact_person' => $b->contact_person,
-                'rate' => (float) $b->commission_rate,
                 'active' => (bool) $b->active,
-                // وما تحمله نافذةُ التعديل كلُّه — حقلٌ لا يصلها يُرسَل فارغًا فيُمحى
-                'notes' => $b->notes,
-                'returns_terms' => $b->returns_terms,
-                'returns_terms_ref' => $b->returns_terms_ref,
                 'products_count' => (int) $b->products_count,
-                'gross' => round((float) ($sold[$b->id] ?? 0), 3),
-                // وكم ينتظر ورقةً منه — به يُعرف الصفُّ الذي يُفتح
-                'pending' => round((float) ($pending[$b->id] ?? 0), 3),
-                // وأصدرتْ ورقةً في هذا الشهر؟ — خبرٌ عن المضى لا عن الانتظار
-                'settled' => BoutiqueSettlement::where('business_id', $business->id)
-                    ->where('boutique_id', $b->id)->where('period', $period)->exists(),
+                /*
+                 * والنسبةُ وشروطُ الاتّفاقية ومبيعاتُ الشهر مالٌ: لا تُرسَل لمن لا يقرأه،
+                 * ولا تكفي أن تُخفى في الشاشة. ونافذةُ التعديل لا تُفتح له (`canManage`) —
+                 * فحقلٌ لم يصله لا يُرسَل فارغًا فيُمحى.
+                 */
+                ...($seesMoney ? [
+                    'rate' => (float) $b->commission_rate,
+                    // وما تحمله نافذةُ التعديل كلُّه — حقلٌ لا يصلها يُرسَل فارغًا فيُمحى
+                    'notes' => $b->notes,
+                    'returns_terms' => $b->returns_terms,
+                    'returns_terms_ref' => $b->returns_terms_ref,
+                    'gross' => round((float) ($sold[$b->id] ?? 0), 3),
+                    // وكم ينتظر ورقةً منه — به يُعرف الصفُّ الذي يُفتح
+                    'pending' => round((float) ($pending[$b->id] ?? 0), 3),
+                    // وأصدرتْ ورقةً في هذا الشهر؟ — خبرٌ عن المضى لا عن الانتظار
+                    'settled' => BoutiqueSettlement::where('business_id', $business->id)
+                        ->where('boutique_id', $b->id)->where('period', $period)->exists(),
+                ] : []),
             ])->all();
 
         return Inertia::render('Admin/Boutiques/Index', [
             'boutiques' => $rows,
+            'canSeeMoney' => $seesMoney,
             'period' => $period,
             'periods' => $this->periodOptions(),
         ]);
@@ -112,8 +128,11 @@ class BoutiqueController extends Controller
         $business = $this->shop();
         $boutique = $this->find($id);
         $period = Boutiques::period(request()->query('period'));
+        $user = auth()->user();
+        $seesMoney = BoutiqueAccess::read($user);
 
-        $statement = Boutiques::statement($business->id, $boutique->id, $period);
+        // والكشفُ لمن يقرأ المال — لا يُحسب لغيره ولا يُرسَل
+        $statement = $seesMoney ? Boutiques::statement($business->id, $boutique->id, $period) : null;
 
         /*
          * وآخرُ ورقةٍ لا أوّلُها.
@@ -121,9 +140,9 @@ class BoutiqueController extends Controller
          * صار الشهرُ يحمل ورقاتٍ، و`first()` بلا ترتيبٍ تُعطي أقدمَها —
          * فيقرأ صاحبُ المحلّ ورقةً سُدِّدت من زمنٍ ويظنّها آخرَ ما صدر.
          */
-        $settlement = BoutiqueSettlement::where('business_id', $business->id)
+        $settlement = $seesMoney ? BoutiqueSettlement::where('business_id', $business->id)
             ->where('boutique_id', $boutique->id)->where('period', $period)
-            ->with('expense:id,status,amount,reference')->latest('id')->first();
+            ->with('expense:id,status,amount,reference')->latest('id')->first() : null;
 
         return Inertia::render('Admin/Boutiques/Show', [
             'boutique' => [
@@ -132,15 +151,19 @@ class BoutiqueController extends Controller
                 'name_en' => $boutique->name_en,
                 'phone' => $boutique->phone,
                 'contact_person' => $boutique->contact_person,
-                'rate' => (float) $boutique->commission_rate,
+                // والنسبةُ وشروطُ الاتّفاقية وملاحظاتُها مالٌ — `null` لمن لا يقرؤه
+                'rate' => $seesMoney ? (float) $boutique->commission_rate : null,
                 'active' => (bool) $boutique->active,
-                'notes' => $boutique->notes,
-                'returns_terms' => $boutique->returns_terms,
-                'returns_terms_ref' => $boutique->returns_terms_ref,
+                'notes' => $seesMoney ? $boutique->notes : null,
+                'returns_terms' => $seesMoney ? $boutique->returns_terms : null,
+                'returns_terms_ref' => $seesMoney ? $boutique->returns_terms_ref : null,
             ],
+            'canSeeMoney' => $seesMoney,
+            'canIssue' => BoutiqueAccess::issue($user),
+            'canPay' => BoutiqueAccess::pay($user),
             'statement' => $statement,
             // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
-            'returns' => $this->returnsOf((int) $business->id, $boutique),
+            'returns' => $seesMoney ? $this->returnsOf((int) $business->id, $boutique) : null,
             'period' => $period,
             'periods' => $this->periodOptions(),
             /*
@@ -179,12 +202,12 @@ class BoutiqueController extends Controller
                 'expense_reference' => $settlement->expense?->reference,
                 ...self::componentsOf($settlement),
             ] : null,
-            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن فُتح له سجلُّ المكوّنات وحده
-            'ledger' => BoutiqueDues::active((int) $business->id) ? BoutiqueDues::ledgerFor((int) $business->id, (int) $boutique->id) : null,
+            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن يقرأ المال، وفُتح للمتجر سجلُّ المكوّنات أو سُجّل لبوتيكه شيءٌ من قبل
+            'ledger' => $seesMoney && BoutiqueDues::reachable((int) $business->id, (int) $boutique->id) ? BoutiqueDues::ledgerFor((int) $business->id, (int) $boutique->id) : null,
             /*
              * وتاريخُ ما صدر — فيُقرأ ما مضى بلا تنقّلٍ بين الشهور.
              */
-            'history' => BoutiqueSettlement::where('business_id', $business->id)
+            'history' => ! $seesMoney ? [] : BoutiqueSettlement::where('business_id', $business->id)
                 ->where('boutique_id', $boutique->id)->with('expense:id,status')
                 ->orderByDesc('period')->limit(24)->get()
                 ->map(fn (BoutiqueSettlement $s) => [
@@ -200,6 +223,8 @@ class BoutiqueController extends Controller
 
     public function store(Request $request)
     {
+        // النسبةُ والاتّفاقيةُ مالٌ: لمن يقرأه (`BoutiqueAccess`)
+        $this->money();
         $business = $this->shop();
 
         Boutique::create($this->validated($request) + ['business_id' => $business->id]);
@@ -209,6 +234,8 @@ class BoutiqueController extends Controller
 
     public function update(Request $request, int $id)
     {
+        // النسبةُ والاتّفاقيةُ مالٌ: لمن يقرأه (`BoutiqueAccess`)
+        $this->money();
         $this->shop();
         $boutique = $this->find($id);
 
@@ -239,6 +266,8 @@ class BoutiqueController extends Controller
      */
     public function destroy(int $id)
     {
+        // النسبةُ والاتّفاقيةُ مالٌ: لمن يقرأه (`BoutiqueAccess`)
+        $this->money();
         $this->shop();
         $boutique = $this->find($id);
 
@@ -281,9 +310,11 @@ class BoutiqueController extends Controller
      */
     public function payComponents(Request $request, int $id, int $settlement)
     {
+        $this->money('pay');
         $business = $this->shop();
         $boutique = $this->find($id);
-        abort_unless(BoutiqueDues::active((int) $business->id), 404);
+        // ما صدر يُسدَّد ولو أُطفئ حسابُ القطع — فالمفتاحُ يوقف الجديد لا الدين
+        abort_unless(BoutiqueDues::reachable((int) $business->id, (int) $boutique->id), 404);
         $data = $request->validate(['method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)]]);
 
         $doc = BoutiqueSettlement::where('business_id', $business->id)->where('boutique_id', $boutique->id)
@@ -296,9 +327,10 @@ class BoutiqueController extends Controller
     /** سندُ استرداد: البوتيكُ ردّ نقدًا ما للمتجر عليه — كلَّه أو بعضَه */
     public function refund(Request $request, int $id)
     {
+        $this->money('pay');
         $business = $this->shop();
         $boutique = $this->find($id);
-        abort_unless(BoutiqueDues::active((int) $business->id), 404);
+        abort_unless(BoutiqueDues::reachable((int) $business->id, (int) $boutique->id), 404);
         $data = $request->validate([
             'method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)],
             'amount' => ['nullable', 'numeric', 'gt:0', 'max:1000000'],
@@ -348,6 +380,7 @@ class BoutiqueController extends Controller
     /** استلامٌ من البوتيك بمستندٍ ومرجع — يُطفئ مطالباتِه الأقدمَ أوّلًا */
     public function returnReceipt(Request $request, int $id)
     {
+        $this->money('pay');
         $business = $this->shop();
         $boutique = $this->find($id);
         abort_unless(auth()->user()?->allows('expenses'), 403);
@@ -370,6 +403,7 @@ class BoutiqueController extends Controller
     /** خصمُ المطالبات المفتوحة من ورقةٍ لاحقة لهذا البوتيك لم تُسدَّد */
     public function returnOffset(Request $request, int $id)
     {
+        $this->money('pay');
         $business = $this->shop();
         $boutique = $this->find($id);
         abort_unless(auth()->user()?->allows('expenses'), 403);
@@ -425,11 +459,14 @@ class BoutiqueController extends Controller
             'review' => $notes->where('status', BoutiqueReturn::REVIEW)->count(),
             'targets' => $targets,
             'can_decide' => (bool) auth()->user()?->allows('expenses'),
+            // والاستلامُ والمقاصّةُ مالٌ: بإذن السداد لا بالقراءة
+            'can_receive' => BoutiqueAccess::pay(auth()->user()),
         ];
     }
 
     public function settle(Request $request, int $id)
     {
+        $this->money('issue');
         $business = $this->shop();
         $boutique = $this->find($id);
         $period = Boutiques::period($request->input('period'));

@@ -604,6 +604,30 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         WhatsAppSenderAdoption::flushEventListeners();
     }
 
+    /** ‏‏ووصلةٌ من قبل القفل تُرسل كما كانت — لكنّ رقمها لا يصير رقمَ الإرسال آليًّا قبل الإثبات، ولو نُقض في ثواني الفحص */
+    public function test_a_link_from_before_the_lock_is_not_switched_to_without_proof(): void
+    {
+        $this->legacy();
+        $this->link()->assertSessionHasNoErrors();
+        $this->assertTrue($this->c()->billing_exempt);
+        $this->tick();
+        $this->assertSame([WhatsAppMode::ABAAD_SHARED, WhatsAppBillingLock::UNPROVEN], [$this->shop->fresh()->whatsapp_mode, WhatsAppSenderAdoption::latest('id')->first()->code]);
+
+        $this->proveWhatsAppBilling((int) $this->shop->id, '1001');
+        $hit = false;
+        WhatsAppSenderAdoption::updating(function ($row) use (&$hit) {
+            if (! $hit && $row->isDirty('checks')) {
+                $hit = true;
+                WhatsAppBilling::query()->update(['state' => 'recheck', 'code' => WhatsAppBillingLock::REVOKED]);
+            }
+        });
+        $this->tick();
+        $this->assertTrue($hit);
+        $this->assertTrue($this->c()->isUsable());
+        $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->shop->fresh()->whatsapp_mode);
+        WhatsAppSenderAdoption::flushEventListeners();
+    }
+
     public function test_a_reviewed_link_from_before_the_lock_carries_its_review_to_the_new_link(): void
     {
         $c = $this->legacy();
@@ -640,6 +664,10 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
         $this->link()->assertSessionHasNoErrors();
         $staff = User::create(['business_id' => $this->shop->id, 'name' => 'موظف', 'email' => 'e@abaadapp.om', 'password' => bcrypt('password12345'), 'role' => 'cashier', 'status' => 'نشط']);
         $this->actingAs($staff)->post(route('admin.integrations.whatsapp.billing.request'));
+        $this->assertSame('unverified', $this->billing()->state);
+        // ‏‏ومديرٌ يفتح التكاملات ليس صاحبَ الحساب
+        $manager = User::create(['business_id' => $this->shop->id, 'name' => 'مدير', 'email' => 'm@abaadapp.om', 'password' => bcrypt('password12345'), 'role' => 'manager', 'status' => 'نشط']);
+        $this->actingAs($manager)->post(route('admin.integrations.whatsapp.billing.request'))->assertSessionHasErrors('billing');
         $this->assertSame('unverified', $this->billing()->state);
 
         [$two, $his] = $this->makeShop('متجر ثانٍ', 's@abaadapp.om', '92222222');
@@ -741,7 +769,9 @@ class AbaadNeverPaysForAShopsMessagesTest extends TestCase
             $this->meta = array_merge($this->meta, $says);
             $this->billing()->update(['checked_at' => now()->subDays(2)]);
             WhatsAppSenderAdoption::where('state', 'adopted')->update(['health_checked_at' => now()->subHours(2)]);
-            $this->artisan($command)->assertSuccessful();
+            $run = $this->artisan($command)->assertSuccessful();
+            $i === 0 && $run->expectsOutputToContain('أُوقفت وصلة المتجر');
+            $run->run();
 
             $this->assertSame([$state, $code], [$this->billing()->state, $this->billing()->code], $command);
             $this->assertFalse($this->c()->isUsable());

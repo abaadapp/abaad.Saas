@@ -442,6 +442,8 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
         }
         $this->pass($trial)->assertSessionHasErrors('price_id');
         $this->assertFalse(WhatsAppBillingTrials::launched());
+        // ‏‏والنوعُ يغلب `billable`: هو ما تقول Meta إنّه يبقى
+        $this->assertSame($pricing['type'] === 'regular', WhatsAppPrices::charged(WhatsAppMessagePrice::first()));
     }
 
     public function test_a_message_of_another_shop_or_from_before_the_trial_proves_nothing(): void

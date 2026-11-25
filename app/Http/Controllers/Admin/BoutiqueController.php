@@ -217,7 +217,7 @@ class BoutiqueController extends Controller
                 'expense_reference' => $settlement->expense?->reference,
                 ...self::componentsOf($settlement),
             ] : null,
-            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن يقرأ المال، وفُتح له سجلُّ المكوّنات أو سُجّل لبوتيكه شيءٌ من قبل
+            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن يقرأ المال، وفُتح للمتجر سجلُّ المكوّنات أو سُجّل لبوتيكه شيءٌ من قبل
             'ledger' => $seesMoney && BoutiqueDues::reachable((int) $business->id, (int) $boutique->id) ? BoutiqueDues::ledgerFor((int) $business->id, (int) $boutique->id) : null,
             /*
              * وتاريخُ ما صدر — فيُقرأ ما مضى بلا تنقّلٍ بين الشهور.

@@ -382,6 +382,23 @@ class OneCalculationForEveryBoutiqueBaisaTest extends TestCase
         $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
     }
 
+    /** مرتجعٌ على ورقةٍ قُرّبت بندًا بندًا يحمل قاعدتَه — وما كتبه كودٌ أقدم بلا علامةٍ يُسمّى ليُراجَع */
+    public function test_a_return_says_its_sheets_rounding_and_one_written_by_older_code_is_named(): void
+    {
+        $b = $this->boutique('لمى', 33.33);
+        $order = $this->sell([[$this->product('قطعة', 7.335, $b), 3]]);
+        $sheet = Boutiques::settle($this->shop->fresh(), $b, self::PERIOD);
+        OrderCorrection::setQuantity($order->fresh(), OrderItem::sole(), 2, 'نقص', 'refunded', 'نقدي');
+        $this->assertSame([BoutiqueMoney::LINE], BoutiqueReturn::pluck('rounding')->unique()->values()->all());
+        $this->assertSame([], BoutiqueReturns::olderRounding($this->shop->id));
+        $this->artisan('boutiques:holds')->doesntExpectOutputToContain('كتبها كود أقدم')->assertSuccessful();
+
+        // كودٌ أقدم كتبه بلا علامة
+        DB::table('boutique_returns')->update(['rounding' => null]);
+        $this->assertSame([$sheet->number], array_column(BoutiqueReturns::olderRounding($this->shop->id), 'sheet'));
+        $this->artisan('boutiques:holds')->expectsOutputToContain('كتبها كود أقدم على أوراق قُرّبت بندًا بندًا')->assertSuccessful();
+    }
+
     /** وبندُ الفاتورة كذلك: لقطتُه تحمل قاعدتَه، ومرتجعُه بها */
     public function test_an_invoice_line_keeps_the_rule_it_was_issued_by(): void
     {

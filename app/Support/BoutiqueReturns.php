@@ -173,6 +173,7 @@ final class BoutiqueReturns
             'status' => BoutiqueReturn::AWAITING,
             'reason' => mb_substr($reason, 0, 255),
             'user_id' => auth()->id(),
+            'rounding' => BoutiqueSettlement::whereKey($line->boutique_settlement_id)->value('rounding'),
         ]);
 
         $parts = self::split($note, array_filter([
@@ -707,7 +708,26 @@ final class BoutiqueReturns
             'status' => BoutiqueReturn::AWAITING,
             'reason' => mb_substr($reason, 0, 255),
             'user_id' => PosCashier::id() ?? auth()->id(),
+            // قاعدةُ الورقة التي حُسبت بها حصّتُه — به يُعرف ما كتبه كودٌ أقدم (`olderRounding`)
+            'rounding' => BoutiqueSettlement::whereKey($line['settlement_id'])->value('rounding'),
         ]);
+    }
+
+    /**
+     * مرتجعاتٌ على أوراقٍ قُرّبت بندًا بندًا ولا تحمل قاعدتَها — كتبها كودٌ أقدم أثناء رجوعٍ بالكود.
+     *
+     * ذاك الكودُ يحسب حصّةَ المرتجع بتقريب الصنف مجموعًا، فقد تخالف قاعدةَ ورقتها ببيسة. فتُسمّى
+     * بعد العودة لتُراجَع بيد قبل سداد أوراقها أو استرداد مطالباتها — لا تُعدَّل وحدها.
+     *
+     * @return list<array{id: int, sheet: string, name: string, amount: float}>
+     */
+    public static function olderRounding(?int $businessId = null): array
+    {
+        return BoutiqueReturn::query()->join('boutique_settlements as s', 's.id', '=', 'boutique_returns.boutique_settlement_id')
+            ->where('s.rounding', BoutiqueMoney::LINE)->whereNull('boutique_returns.rounding')
+            ->when($businessId !== null, fn ($q) => $q->where('boutique_returns.business_id', $businessId))
+            ->orderBy('boutique_returns.id')->get(['boutique_returns.id', 's.number', 'boutique_returns.name', 'boutique_returns.amount'])
+            ->map(fn ($r) => ['id' => (int) $r->id, 'sheet' => (string) $r->number, 'name' => (string) $r->name, 'amount' => round((float) $r->amount, 3)])->all();
     }
 
     /**

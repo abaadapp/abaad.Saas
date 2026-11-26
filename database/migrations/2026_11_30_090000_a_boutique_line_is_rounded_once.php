@@ -38,6 +38,13 @@ return new class extends Migration
             }
         });
 
+        // ومرتجعٌ بعد ورقةٍ قُرّبت بندًا بندًا يحمل قاعدتَه: ما كتبه كودٌ أقدم بلا علامة يُراجَع بيد
+        Schema::table('boutique_returns', function (Blueprint $table) {
+            if (! Schema::hasColumn('boutique_returns', 'rounding')) {
+                $table->string('rounding', 8)->nullable();
+            }
+        });
+
         Schema::table('businesses', function (Blueprint $table) {
             if (! Schema::hasColumn('businesses', 'boutique_commission_before_vat_from')) {
                 $table->date('boutique_commission_before_vat_from')->nullable()->after('boutiques_enabled');
@@ -63,6 +70,7 @@ return new class extends Migration
             );
         }
 
+        Schema::table('boutique_returns', fn (Blueprint $table) => $table->dropColumn('rounding'));
         Schema::table('order_items', fn (Blueprint $table) => $table->dropColumn('boutique_vat_rate'));
         Schema::table('boutique_settlements', fn (Blueprint $table) => $table->dropColumn(['rounding', 'vat']));
         Schema::table('businesses', fn (Blueprint $table) => $table->dropColumn('boutique_commission_before_vat_from'));

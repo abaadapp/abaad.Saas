@@ -15,6 +15,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class BoutiqueInvoiceLine extends Model
 {
+    /** صنفُ بوتيكٍ بِيع منفردًا في بندٍ من الفاتورة */
+    public const LINE = 'line';
+
+    /** قطعةُ بوتيكٍ داخل باقةٍ أو إضافةٍ في بندٍ من الفاتورة (`BoutiqueInvoicePieces`) */
+    public const PIECE = 'piece';
+
+    /** قاعدةُ القطعة: ثمنُها في بطاقتها كاملًا، وعمولتُها داخل الباقة باتّفاقٍ إن كُتب */
+    public const RULE_PIECE = 'piece';
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -33,6 +42,7 @@ class BoutiqueInvoiceLine extends Model
         'business_id', 'boutique_id', 'boutique_name', 'customer_invoice_id', 'customer_invoice_item_id', 'product_id', 'name',
         'quantity', 'unit_price', 'list_price', 'gross', 'discount', 'tax_rate', 'tax_inclusive', 'tax_amount',
         'rule', 'base', 'rate', 'commission', 'net', 'issued_at',
+        'kind', 'piece_key', 'source', 'recipe_item_id', 'addon_id', 'parent_name', 'unit_quantity',
     ];
 
     protected static function booted(): void

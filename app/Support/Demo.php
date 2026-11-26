@@ -2474,6 +2474,18 @@ class Demo
             foreach (self::addonCostByBucket($bid, $start, $end, $branchId, $bucket) as $key => $cost) {
                 $cogs[$key] = ($cogs[$key] ?? 0.0) + $cost;
             }
+
+            /*
+             * وقطعُ البوتيك داخل باقات فواتير العملاء: لا بندَ طلبٍ لها يحمل تكلفتَها، وقيدُها في
+             * الدفتر يومَ الفاتورة (`BoutiqueInvoicePieces`). وفاتورةُ العميل ليست قناةً في
+             * `SalesChannel`، فلا تُعدّ لقناةٍ بعينها.
+             */
+            $entryBucket = $unit === null ? "'all'" : self::bucketSql('journal_entries.entry_date', $unit);
+            BoutiqueInvoicePieces::cost($bid, $start, $end, $branchId)
+                ->selectRaw("{$entryBucket} as bucket, SUM(journal_lines.debit - journal_lines.credit) as cost")->groupBy('bucket')->get()
+                ->each(function ($r) use (&$cogs) {
+                    $cogs[(string) $r->bucket] = ($cogs[(string) $r->bucket] ?? 0.0) + (float) $r->cost;
+                });
         }
 
         return $cogs;

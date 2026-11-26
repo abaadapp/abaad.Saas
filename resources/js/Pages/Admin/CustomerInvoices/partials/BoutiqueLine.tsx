@@ -57,6 +57,8 @@ export function BoutiqueLineNote({ boutique, rate, gross, discount, price, liste
 
 export interface BoutiqueShare {
     id: number; item_id: number; boutique_id: number; boutique: string; name: string;
+    /** صنفٌ منفرد، أو قطعةٌ داخل باقةٍ بثمنها كاملًا — وباقتُها */
+    kind?: 'line' | 'piece'; parent?: string | null;
     quantity: number; returned: number; unit_price: number; gross: number; discount: number;
     rate: number; commission: number; net: number; under_list: number | null;
     state: 'awaiting' | 'pending' | 'issued' | 'paid' | 'returned' | 'void';
@@ -93,7 +95,9 @@ export function BoutiqueSharesCard({ shares, currency }: { shares: BoutiqueShare
                     <span className="min-w-0">
                         {s.name} <span className="text-[#6b7280]">— {s.boutique}</span>
                         <span className="block text-[12px] text-[#6b7280]">
-                            {t('عمولة المتجر :rate% = :commission', { rate: String(s.rate), commission: m(s.commission) })}
+                            {s.kind === 'piece'
+                                ? t('قطعة في «:parent» × :n بثمنها كاملًا', { parent: s.parent ?? '', n: String(s.quantity) })
+                                : t('عمولة المتجر :rate% = :commission', { rate: String(s.rate), commission: m(s.commission) })}
                             {s.discount > 0 && <> · {t('خصم البند :amount على المتجر', { amount: m(s.discount) })}</>}
                             {s.returned > 0 && <> · {t('رُدّ منه :n', { n: String(s.returned) })}</>}
                             {s.under_list !== null && <> · <span className="text-[#b45309]">{t('كُتب بأقل من سعر الصنف :listed', { listed: m(s.under_list) })}</span></>}

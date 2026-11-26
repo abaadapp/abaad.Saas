@@ -647,7 +647,7 @@ final class CustomerInvoices
      * `TwoHandsOnOneCustomersPointsAtOnceTest`. فالإصدارُ والإلغاءُ يأخذان
      * المتجرَ أوّلًا كذلك — وأخذُه ثانيةً في المعاملة نفسِها لا يكلّف شيئًا.
      */
-    private static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
+    public static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
     {
         Business::whereKey($invoice->business_id)->lockForUpdate()->first();
 
@@ -720,6 +720,8 @@ final class CustomerInvoices
              * ويُسأل عن تحصيلها فورًا: ورقةٌ غطّتها النقاطُ كلَّها صدرت مسدَّدة.
              */
             BoutiqueInvoiceDues::snapshot($locked);
+            // وقطعُ البوتيك داخل باقاتها بحاسبة الصندوق — وما يرفضه يُرفض به الإصدار
+            BoutiqueInvoicePieces::snapshot($locked);
             BoutiqueInvoiceDues::sync((int) $locked->id);
 
             Activity::log('updated', 'أصدر فاتورة عميل '.$locked->number.' بمبلغ '.$locked->total, [

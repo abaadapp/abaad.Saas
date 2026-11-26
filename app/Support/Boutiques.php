@@ -529,12 +529,16 @@ final class Boutiques
          */
         foreach ($invoiced as $l) {
             $rate = round((float) $l->rate, 2);
-            $key = 'i|'.((int) $l->product_id).'|'.$l->name.'|'.$rate;
+            // والقطعةُ داخل باقةٍ سطرٌ غيرُ سطر بيعها منفردة: ثمنُها كاملًا، وباقتُها معها
+            $piece = $l->kind === BoutiqueInvoiceLine::PIECE;
+            $key = 'i|'.$l->kind.'|'.((int) $l->product_id).'|'.$l->name.'|'.$rate.'|'.($piece ? $l->parent_name : '');
             $lines[$key] ??= [
                 'product_id' => $l->product_id ? (int) $l->product_id : null,
                 'name' => (string) $l->name,
                 'variant' => null,
                 'rate' => $rate,
+                'piece' => $piece,
+                'parent' => $piece ? $l->parent_name : null,
                 'source' => self::FROM_INVOICES,
                 'quantity' => 0.0,
                 'gross' => 0.0,

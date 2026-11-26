@@ -73,6 +73,9 @@ final class BoutiqueInvoiceDues
     /** مصدرُ قيد الاعتراف بنصيب البوتيك من فاتورة عميل، وردِّه قبل ورقته */
     public const ACCRUAL = 'استحقاق فاتورة بوتيك';
 
+    /** وقطعُه داخل الباقات: تكلفةُ بضاعةٍ مباعة لا مصروف — كما في الصندوق (`Books::recordSale`) */
+    public const PIECE_ACCRUAL = 'تكلفة قطع فاتورة بوتيك';
+
     /** متى يُعترف به — `config('boutiques.recognise')` */
     public const AT_ISSUE = 'issue';
 
@@ -157,7 +160,7 @@ final class BoutiqueInvoiceDues
      * بندٌ لكلّ قيد: ما يُردّ منه أو يُلغى يُقابَل قيدُه هو، وورقةٌ تحمل بعضَ بنود
      * فاتورةٍ لا تمسّ أخواتها.
      */
-    private static function accrue(BoutiqueInvoiceLine $line, CustomerInvoice $invoice): void
+    public static function accrue(BoutiqueInvoiceLine $line, CustomerInvoice $invoice): void
     {
         $net = round((float) $line->net, 3);
 
@@ -166,15 +169,17 @@ final class BoutiqueInvoiceDues
         }
 
         $at = Carbon::parse($invoice->issued_at);
+        $piece = $line->kind === BoutiqueInvoiceLine::PIECE;
         Ledger::post(
             (int) $line->business_id,
-            __('استحقاق بوتيك — فاتورة ').$invoice->number,
+            ($piece ? __('تكلفة قطعة بوتيك — فاتورة ') : __('استحقاق بوتيك — فاتورة ')).$invoice->number,
             [
-                ['account' => Books::expenseAccount(Boutiques::EXPENSE_TYPE, (int) $line->business_id), 'debit' => $net, 'memo' => $line->boutique_name.' — '.$line->name],
+                ['account' => $piece ? 'cogs' : Books::expenseAccount(Boutiques::EXPENSE_TYPE, (int) $line->business_id), 'debit' => $net,
+                    'memo' => $line->boutique_name.' — '.$line->name.($piece ? ' / '.$line->parent_name : '')],
                 ['account' => 'boutique_payable', 'credit' => $net],
             ],
             $at,
-            self::ACCRUAL,
+            $piece ? self::PIECE_ACCRUAL : self::ACCRUAL,
             $line->branch_id,
             auth()->id(),
             $line,
@@ -200,7 +205,7 @@ final class BoutiqueInvoiceDues
                 ['account' => self::account($line), 'credit' => $amount, 'memo' => $line->boutique_name.' — '.$line->name],
             ],
             BooksPeriod::openOr((int) $line->business_id, now()),
-            self::ACCRUAL,
+            $line->kind === BoutiqueInvoiceLine::PIECE ? self::PIECE_ACCRUAL : self::ACCRUAL,
             $line->branch_id,
             auth()->id(),
             $document,
@@ -211,10 +216,10 @@ final class BoutiqueInvoiceDues
     public static function account(BoutiqueInvoiceLine $line): Account|string
     {
         $entry = JournalEntry::where('sourceable_type', BoutiqueInvoiceLine::class)->where('sourceable_id', $line->id)
-            ->where('source', self::ACCRUAL)->orderBy('id')->first();
+            ->whereIn('source', [self::ACCRUAL, self::PIECE_ACCRUAL])->orderBy('id')->first();
 
         return $entry?->lines()->where('debit', '>', 0)->with('account')->first()?->account
-            ?? Books::expenseAccount(Boutiques::EXPENSE_TYPE, (int) $line->business_id);
+            ?? ($line->kind === BoutiqueInvoiceLine::PIECE ? 'cogs' : Books::expenseAccount(Boutiques::EXPENSE_TYPE, (int) $line->business_id));
     }
 
     /** ما قُيّد مع الفواتير ولم تحمله ورقةٌ بعد — دَينٌ في 2160 لا يُسدَّد قبل ورقته */
@@ -360,6 +365,16 @@ final class BoutiqueInvoiceDues
     public static function returned(CustomerInvoice $invoice, CustomerCreditNote $note, array $items): void
     {
         foreach ($items as $row) {
+            // قطعةٌ في باقة: يُسأل عنها وحدها — كم عاد وكم لم يعد (`BoutiqueInvoicePieces::answered`)
+            if (preg_match('/^p(\d+)$/', (string) ($row['key'] ?? ''), $m)) {
+                $piece = BoutiqueInvoiceLine::where('customer_invoice_id', $invoice->id)->where('kind', BoutiqueInvoiceLine::PIECE)
+                    ->whereKey((int) $m[1])->whereNull('voided_at')->lockForUpdate()->first();
+                if ($piece !== null) {
+                    BoutiqueInvoicePieces::answered($piece, $note, $row);
+                }
+
+                continue;
+            }
             if (! preg_match('/^i(\d+)$/', (string) ($row['key'] ?? ''), $m)) {
                 continue;
             }
@@ -369,7 +384,7 @@ final class BoutiqueInvoiceDues
                 continue;
             }
 
-            $line = BoutiqueInvoiceLine::where('customer_invoice_id', $invoice->id)
+            $line = BoutiqueInvoiceLine::where('customer_invoice_id', $invoice->id)->where('kind', BoutiqueInvoiceLine::LINE)
                 ->where('customer_invoice_item_id', (int) $m[1])->whereNull('voided_at')->lockForUpdate()->first();
 
             if ($line !== null) {
@@ -381,7 +396,7 @@ final class BoutiqueInvoiceDues
     /**
      * يأخذ كمّيّةً مرتجعة من بند — بالفرق بين ما كان وما بقي، فتجمع الأجزاءُ إلى البند بالبيسة.
      */
-    private static function take(BoutiqueInvoiceLine $line, float $qty, ?CustomerCreditNote $note, float $sellable, float $damaged, string $reason): void
+    public static function take(BoutiqueInvoiceLine $line, float $qty, ?CustomerCreditNote $note, float $sellable, float $damaged, string $reason): void
     {
         $left = round((float) $line->quantity - (float) $line->returned_quantity, 3);
 
@@ -497,6 +512,8 @@ final class BoutiqueInvoiceDues
             ->join('customer_invoices', 'customer_invoices.id', '=', 'boutique_invoice_lines.customer_invoice_id')
             ->where('boutique_invoice_lines.business_id', $businessId)
             ->where('boutique_invoice_lines.boutique_id', $boutiqueId)
+            // والقطعةُ في باقةٍ ليست بيعًا للبوتيك: ثمنُ الباقة للمتجر، وللبوتيك ثمنُ قطعته — كما في الصندوق
+            ->where('boutique_invoice_lines.kind', BoutiqueInvoiceLine::LINE)
             ->where('customer_invoices.status', CustomerInvoice::ISSUED)
             ->whereColumn('boutique_invoice_lines.quantity', '>', 'boutique_invoice_lines.returned_quantity')
             ->when($start, fn ($q) => $q->where('customer_invoices.issued_at', '>=', $start->toDateString()))
@@ -569,6 +586,9 @@ final class BoutiqueInvoiceDues
         return self::lines($invoice)->map(fn (BoutiqueInvoiceLine $l) => [
             'id' => (int) $l->id,
             'item_id' => (int) $l->customer_invoice_item_id,
+            // صنفٌ منفرد، أو قطعةٌ داخل باقةٍ بثمنها كاملًا — وباقتُها
+            'kind' => (string) $l->kind,
+            'parent' => $l->parent_name,
             'boutique_id' => (int) $l->boutique_id,
             'boutique' => (string) $l->boutique_name,
             'name' => (string) $l->name,
@@ -594,12 +614,13 @@ final class BoutiqueInvoiceDues
      */
     public static function pieces(CustomerInvoice $invoice): array
     {
-        $lines = self::lines($invoice)
-            ->filter(fn (BoutiqueInvoiceLine $l) => $l->voided_at === null && (float) $l->quantity > (float) $l->returned_quantity);
+        $all = self::lines($invoice);
+        $lines = $all->filter(fn (BoutiqueInvoiceLine $l) => $l->kind === BoutiqueInvoiceLine::LINE && $l->voided_at === null && (float) $l->quantity > (float) $l->returned_quantity);
         $paid = $lines->isEmpty() ? collect() : CustomerInvoiceItem::whereIn('id', $lines->pluck('customer_invoice_item_id'))->pluck('line_total', 'id');
 
         return $lines
             ->map(fn (BoutiqueInvoiceLine $l) => [
+                'key' => 'i'.$l->customer_invoice_item_id,
                 'item_id' => (int) $l->customer_invoice_item_id,
                 'name' => (string) $l->name,
                 'boutique' => (string) $l->boutique_name,
@@ -608,7 +629,11 @@ final class BoutiqueInvoiceDues
                 'each' => round((float) ($paid[$l->customer_invoice_item_id] ?? 0) / (float) $l->quantity, 3),
                 // ما حملته ورقةٌ يُسأل عن حال قطعه: بها يُحسم من يتحمّل
                 'on_sheet' => $l->boutique_settlement_id !== null,
-            ])->values()->all();
+                'piece' => false,
+                'parent' => null,
+            ])->values()
+            // وقطعُ الباقات: يُسأل عن كلٍّ منها، عادت أم لا — بلا ثمن (`BoutiqueInvoicePieces::askable`)
+            ->concat(BoutiqueInvoicePieces::askable($all))->all();
     }
 
     /** @return Collection<int, BoutiqueInvoiceLine> */
@@ -616,6 +641,26 @@ final class BoutiqueInvoiceDues
     {
         return BoutiqueInvoiceLine::where('customer_invoice_id', $invoice->id)
             ->with(['settlement:id,number,expense_id', 'settlement.expense:id,status'])->orderBy('id')->get();
+    }
+
+    /** ما قيل عن قطعةٍ في باقة — صفٌّ داخليّ في الإشعار بلا مبلغ: لا يُطبع للعميل */
+    private static function pieceItem(CustomerInvoice $invoice, int $lineId, array $p): ?array
+    {
+        $line = BoutiqueInvoiceLine::where('customer_invoice_id', $invoice->id)->where('kind', BoutiqueInvoiceLine::PIECE)->find($lineId);
+        $qty = round((float) ($p['quantity'] ?? 0), 3);
+
+        if ($line === null) {
+            throw new RuntimeException(__('قطعةٌ ليست من هذه الفاتورة.'));
+        }
+
+        return $qty <= 0 ? null : [
+            'key' => 'p'.$line->id,
+            'piece' => true,
+            'description' => $line->name.' — '.$line->parent_name,
+            'quantity' => $qty,
+            'sellable' => round((float) ($p['sellable'] ?? 0), 3),
+            'damaged' => round((float) ($p['damaged'] ?? 0), 3),
+        ];
     }
 
     /**
@@ -626,9 +671,21 @@ final class BoutiqueInvoiceDues
      */
     public static function noteItems(CustomerInvoice $invoice, array $pieces): array
     {
-        $items = CustomerInvoiceItem::where('customer_invoice_id', $invoice->id)->whereIn('id', array_map('intval', array_keys($pieces)))->get()->keyBy('id');
-        $taken = self::lines($invoice)->keyBy('customer_invoice_item_id');
+        // «i12» أو «12» بندٌ منفرد، و«p34» قطعةٌ في باقة
+        $byItem = [];
         $out = [];
+        foreach ($pieces as $key => $p) {
+            if (preg_match('/^p(\d+)$/', (string) $key, $m)) {
+                $out[] = self::pieceItem($invoice, (int) $m[1], (array) $p);
+
+                continue;
+            }
+            $byItem[(int) preg_replace('/^i/', '', (string) $key)] = $p;
+        }
+        $out = array_values(array_filter($out));
+        $pieces = $byItem;
+        $items = CustomerInvoiceItem::where('customer_invoice_id', $invoice->id)->whereIn('id', array_map('intval', array_keys($pieces)))->get()->keyBy('id');
+        $taken = self::lines($invoice)->where('kind', BoutiqueInvoiceLine::LINE)->keyBy('customer_invoice_item_id');
 
         foreach ($pieces as $id => $p) {
             $qty = round((float) ($p['quantity'] ?? 0), 3);

@@ -274,6 +274,14 @@ final class BoutiqueReturns
             return;
         }
 
+        // وقطعةٌ داخل باقةٍ عادت: على البوتيك بقاعدة القطع نفسِها في الصندوق — لا بشرط مرتجع المنفرد
+        if ($note->boutique_invoice_line_id !== null
+            && BoutiqueInvoiceLine::whereKey($note->boutique_invoice_line_id)->value('kind') === BoutiqueInvoiceLine::PIECE) {
+            self::bear($note, 'piece', null);
+
+            return;
+        }
+
         $boutique = Boutique::find($note->boutique_id);
         $terms = $boutique?->returns_terms;
         $agreed = filled($boutique?->returns_terms_ref) && (
@@ -653,6 +661,9 @@ final class BoutiqueReturns
     public static function booked(int $businessId, ?Carbon $start, ?Carbon $end)
     {
         return BoutiqueReturn::where('boutique_returns.business_id', $businessId)
+            // وقطعةُ الباقة في فاتورةٍ تُردّ إلى تكلفة البضاعة لا إلى المصروفات (`BoutiqueInvoicePieces::cost`)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('boutique_invoice_lines as bl')
+                ->whereColumn('bl.id', 'boutique_returns.boutique_invoice_line_id')->where('bl.kind', BoutiqueInvoiceLine::PIECE))
             ->whereIn('boutique_returns.status', BoutiqueReturn::BORNE)
             ->whereNotNull('booked_at')
             ->when($start, fn ($q) => $q->where('booked_at', '>=', $start->toDateString()))

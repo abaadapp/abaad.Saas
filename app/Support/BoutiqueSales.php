@@ -139,7 +139,8 @@ final class BoutiqueSales
         $branches = array_values(array_filter([
             $f['type'] === null || $f['type'] === self::STANDALONE ? self::standalone($businessId, $f, $orders) : null,
             $f['type'] === null || in_array($f['type'], [self::BUNDLE, self::ADDON], true) ? self::pieces($businessId, $f, $orders) : null,
-            $f['type'] === null || $f['type'] === self::INVOICE ? self::invoiced($businessId, $f, $from, $to) : null,
+            // وفواتيرُ العملاء: بندٌ منفرد، أو قطعةٌ داخل باقةٍ أو إضافة — بنوعها
+            self::invoiced($businessId, $f, $from, $to),
         ]));
 
         $union = array_shift($branches);
@@ -162,9 +163,9 @@ final class BoutiqueSales
 
         $states = self::invoiceStates(collect($page->items())->pluck('order_id')->filter()->unique()->all());
         // وبندُ فاتورة العميل بأرقام لقطته هي — لا تُعاد من مبلغٍ ونسبة
-        $kept = BoutiqueInvoiceLine::whereIn('id', collect($page->items())->where('type', self::INVOICE)->pluck('ref_id'))->get()->keyBy('id');
+        $kept = BoutiqueInvoiceLine::whereIn('id', collect($page->items())->whereNotNull('invoice_id')->pluck('ref_id'))->get()->keyBy('id');
 
-        $page->setCollection(collect($page->items())->map(fn ($r) => $r->type === self::INVOICE
+        $page->setCollection(collect($page->items())->map(fn ($r) => $r->invoice_id !== null
             ? self::presentInvoice($r, $kept->get($r->ref_id))
             : self::present($r, $states)));
 
@@ -263,10 +264,15 @@ final class BoutiqueSales
             ->where('bil.business_id', $businessId)
             ->whereRaw('COALESCE(bil.collected_at, bil.issued_at) BETWEEN ? AND ?', [$from->toDateTimeString(), $to->toDateTimeString()])
             ->when($f['boutique'] !== null, fn ($q) => $q->where('bil.boutique_id', $f['boutique']))
-            ->selectRaw('? as type', [self::INVOICE])
+            ->when($f['type'] === self::INVOICE, fn ($q) => $q->where('bil.kind', BoutiqueInvoiceLine::LINE))
+            ->when($f['type'] === self::BUNDLE, fn ($q) => $q->where('bil.kind', BoutiqueInvoiceLine::PIECE)->where('bil.source', BoutiqueComponentDue::RECIPE))
+            ->when($f['type'] === self::ADDON, fn ($q) => $q->where('bil.kind', BoutiqueInvoiceLine::PIECE)->where('bil.source', BoutiqueComponentDue::ADDON))
+            ->when($f['type'] === self::STANDALONE, fn ($q) => $q->whereRaw('1 = 0'))
+            ->selectRaw("CASE WHEN bil.kind = ? THEN (CASE WHEN bil.source = ? THEN ? ELSE ? END) ELSE ? END as type",
+                [BoutiqueInvoiceLine::PIECE, BoutiqueComponentDue::RECIPE, self::BUNDLE, self::ADDON, self::INVOICE])
             ->selectRaw('bil.id as ref_id, CAST(NULL AS BIGINT) as order_id, ci.number as order_number, bil.issued_at as ordered_at, ci.status as order_status, NULL as channel')
             ->selectRaw('bil.boutique_id, bil.boutique_name, bil.name as product_name, NULL as variant')
-            ->selectRaw('NULL as parent_name, NULL as parent_variant, CAST(NULL AS DECIMAL) as parent_total, NULL as addon_name')
+            ->selectRaw('bil.parent_name as parent_name, NULL as parent_variant, CAST(NULL AS DECIMAL) as parent_total, NULL as addon_name')
             ->selectRaw('bil.quantity - bil.returned_quantity as quantity, bil.unit_price, bil.gross - bil.returned_gross as amount, bil.rate as rate, CAST(NULL AS DECIMAL) as vat_rate')
             ->selectRaw('0 as credited, NULL as kept_state, bil.boutique_settlement_id as settlement_id, bs.number as settlement_number')
             ->selectRaw('ci.id as invoice_id')
@@ -407,7 +413,7 @@ final class BoutiqueSales
 
         return [
             'key' => self::INVOICE.':'.$r->ref_id,
-            'type' => self::INVOICE,
+            'type' => $r->type,
             'order_id' => null,
             'invoice_id' => (int) $r->invoice_id,
             'order_number' => (string) $r->order_number,
@@ -420,7 +426,7 @@ final class BoutiqueSales
             'boutique' => (string) $r->boutique_name,
             'product' => (string) $r->product_name,
             'variant' => null,
-            'parent' => null,
+            'parent' => $r->parent_name,
             'parent_variant' => null,
             'parent_total' => null,
             'addon' => null,
@@ -749,6 +755,11 @@ final class BoutiqueSales
             'commission' => round((float) $row->commission, 3) + 0.0,
             'net' => round((float) $row->net, 3) + 0.0,
             'awaiting' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::awaiting($businessId)->whereIn('boutique_invoice_lines.boutique_id', $ids ?: [0])),
+            // ومنها قطعٌ داخل باقات: ثمنُها كاملًا بلا عمولة — لا بيعٌ للبوتيك
+            'pieces' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceLine::query()->where('boutique_invoice_lines.business_id', $businessId)
+                ->whereIn('boutique_invoice_lines.boutique_id', $ids ?: [0])->where('boutique_invoice_lines.kind', BoutiqueInvoiceLine::PIECE)
+                ->whereNull('boutique_invoice_lines.voided_at')->whereColumn('boutique_invoice_lines.quantity', '>', 'boutique_invoice_lines.returned_quantity')
+                ->whereBetween('boutique_invoice_lines.collected_at', [$from, $to])),
             'reopened' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::reopened($businessId)->whereIn('boutique_invoice_lines.boutique_id', $ids ?: [0])),
         ];
     }

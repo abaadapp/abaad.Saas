@@ -19,6 +19,7 @@ use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueInvoiceDues;
+use App\Support\BoutiqueInvoicePieces;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -309,6 +310,8 @@ class CustomerInvoiceController extends Controller
              */
             'boutiquePieces' => BoutiqueInvoiceDues::pieces($invoice),
             'boutiqueShares' => BoutiqueAccess::read(auth()->user()) ? BoutiqueInvoiceDues::of($invoice) : [],
+            // وقطعُ باقاتٍ لم يُتحقَّق منها — لمن يكتب الإشعار (`BoutiqueInvoicePieces::waiting`)
+            'boutiqueWaiting' => auth()->user()?->may(Permissions::CUSTOMER_CREDIT_NOTE) ? BoutiqueInvoicePieces::waiting($invoice) : [],
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*
@@ -1799,6 +1802,33 @@ class CustomerInvoiceController extends Controller
         return back()->with('toast', [
             'msg' => __('أُصدر إشعار الدائن :n', ['n' => $note->number]), 'type' => 'success',
         ]);
+    }
+
+    /**
+     * قطعُ بوتيكٍ في باقةٍ شملها إشعارٌ ولم يُعرف حالُها: عادت (يُنقص مستحقُّها) أم لن تعود (تبقى).
+     *
+     * بإذن الإشعار الدائن نفسِه: هو من سأل عنها أوّلَ مرّة.
+     */
+    public function boutiquePieces(Request $request, int|string $id)
+    {
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_CREDIT_NOTE), 403);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:200'],
+            'pieces' => ['required', 'array', 'max:200'],
+            'pieces.*.returned' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'pieces.*.lost' => ['nullable', 'integer', 'min:0', 'max:100000'],
+        ], [], [
+            'reason' => __('السبب'), 'pieces' => __('قطع البوتيك'),
+            'pieces.*.returned' => __('عادت إلى الرف'), 'pieces.*.lost' => __('لن تعود'),
+        ]);
+
+        $n = BoutiqueInvoicePieces::cameBack($this->find($id), $data['pieces'], $data['reason']);
+        if ($n === 0) {
+            return back()->withErrors(['pieces' => __('اكتب كم عاد أو كم لن يعود من قطعةٍ واحدةٍ على الأقلّ.')]);
+        }
+
+        return back()->with('toast', ['msg' => __('سُجّل حال القطع'), 'type' => 'success']);
     }
 
     /** تسجيلُ تحصيل — من الفاتورة أو على حساب العميل */

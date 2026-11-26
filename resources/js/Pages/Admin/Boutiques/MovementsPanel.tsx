@@ -132,7 +132,7 @@ export default function MovementsPanel({ boutiqueId, period, currency }: Props) 
     const signed = (v: number) => (v === 0 ? '—' : `${v > 0 ? '+' : '−'}${money(Math.abs(v), currency)}`);
 
     return (
-        <Card className="mb-5 overflow-hidden" data-testid="boutique-movements">
+        <Card className="mb-5 overflow-hidden" data-testid="boutique-register">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <ScrollText className="size-4 shrink-0 text-[#6b7280]" />

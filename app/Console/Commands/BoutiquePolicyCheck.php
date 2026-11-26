@@ -40,6 +40,10 @@ class BoutiquePolicyCheck extends Command
                 'waiting_lines' => (int) DB::table('order_items')->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->where('orders.business_id', $shop->id)->whereNotNull('order_items.boutique_policy')->whereNull('order_items.boutique_settlement_id')
                     ->whereRaw('NOT '.BoutiquePolicy::orderCollectedSql())->count(),
+                // وقطعُ الباقات: باقةٌ للمتجر قطعُها لبوتيك
+                'waiting_pieces' => (int) DB::table('boutique_component_dues')->join('orders', 'orders.id', '=', 'boutique_component_dues.order_id')
+                    ->where('orders.business_id', $shop->id)->where('boutique_component_dues.waits', true)->whereNull('boutique_component_dues.boutique_settlement_id')
+                    ->whereRaw('NOT '.BoutiquePolicy::orderCollectedSql())->count(),
             ];
         }
 
@@ -51,7 +55,7 @@ class BoutiquePolicyCheck extends Command
 
         foreach ($out as $s) {
             $this->line("#{$s['business']} {$s['name']}: ".($s['policy_from'] ? 'السياسة من '.$s['policy_from'] : 'السياسة مطفأة')
-                .' · بلا سعر متفق عليه: '.count($s['without_agreed_price']).' · بيع بها: '.$s['sold_by_policy'].' · ينتظر التحصيل: '.$s['waiting_lines']);
+                .' · بلا سعر متفق عليه: '.count($s['without_agreed_price']).' · بيع بها: '.$s['sold_by_policy'].' · ينتظر التحصيل: '.$s['waiting_lines'].' بندًا و'.$s['waiting_pieces'].' قطعة');
         }
 
         return self::SUCCESS;

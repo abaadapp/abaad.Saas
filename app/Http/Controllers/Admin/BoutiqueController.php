@@ -856,7 +856,10 @@ class BoutiqueController extends Controller
         return OrderItem::query()
             ->whereNotNull('order_items.boutique_id')
             // وما ينتظر ورقةً هو ما لا ختمَ عليه — انظر `Boutiques::unsettled`
-            ->when($pendingOnly, fn ($q) => $q->whereNull('order_items.boutique_settlement_id'))
+            ->when($pendingOnly, fn ($q) => $q->whereNull('order_items.boutique_settlement_id')
+                // وما بيع بالسياسة لا ينتظر ورقةً قبل اكتمال تحصيله
+                ->where(fn ($w) => $w->whereNull('order_items.boutique_policy')
+                    ->orWhereIn('order_items.order_id', Order::where('business_id', $businessId)->whereRaw(BoutiquePolicy::orderCollectedSql())->select('id'))))
             ->whereIn('order_items.order_id', Order::where('business_id', $businessId)->sold()
                 ->whereBetween('ordered_at', [$from, $to])->select('id'))
             ->selectRaw('order_items.boutique_id, COALESCE(SUM(order_items.total), 0) as gross')

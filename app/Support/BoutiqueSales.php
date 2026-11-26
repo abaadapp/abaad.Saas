@@ -194,9 +194,10 @@ final class BoutiqueSales
              * وحالُ تسويته كما يقرؤها `BoutiqueSettlement::paid` لجزء المنفرد:
              * سُدِّد إن كان مصروفُ ورقته مدفوعًا — لا ما يُخمَّن من تاريخ.
              */
+            // وبيعٌ بالسياسة لم يكتمل تحصيلُ طلبه ينتظر كفاتورة العميل
             ->selectRaw(
-                'CASE WHEN oi.boutique_settlement_id IS NULL THEN ? WHEN e.status = ? THEN ? ELSE ? END as settle_state',
-                [self::PENDING, Expense::PAID, self::PAID, self::ISSUED],
+                'CASE WHEN oi.boutique_settlement_id IS NULL THEN (CASE WHEN oi.boutique_policy IS NOT NULL AND NOT '.BoutiquePolicy::orderCollectedSql('o').' THEN ? ELSE ? END) WHEN e.status = ? THEN ? ELSE ? END as settle_state',
+                [self::AWAITING, self::PENDING, Expense::PAID, self::PAID, self::ISSUED],
             );
     }
 
@@ -507,6 +508,8 @@ final class BoutiqueSales
         $lines = 0;
         // استعلامٌ واحد لكلّ البوتيكات — لا اثنان لكلّ بوتيك
         $sold = Order::where('business_id', $businessId)->sold()->whereBetween('ordered_at', [$from, $to])->select('id');
+        $collected = '(order_items.boutique_policy IS NULL OR order_items.order_id IN (SELECT orders.id FROM orders WHERE orders.business_id = '.(int) $businessId.' AND '.BoutiquePolicy::orderCollectedSql().'))';
+        $awaitingB = 0;
         $perBoutique = $ids === [] ? collect() : DB::table('order_items')->whereIn('order_items.boutique_id', $ids)
             ->whereIn('order_items.order_id', $sold)
             ->groupBy('order_items.boutique_id')
@@ -514,8 +517,10 @@ final class BoutiqueSales
             ->selectRaw("COALESCE(SUM({$sql['gross']}), 0) as gross_b")
             ->selectRaw("COALESCE(SUM({$sql['commission']}), 0) as commission_b")
             ->selectRaw("COALESCE(SUM({$sql['net']}), 0) as net_b")
-            // وما لم تحمله ورقةٌ منها — وهو ما يقوله كشفُ البوتيك (`Boutiques::statement`)
-            ->selectRaw("COALESCE(SUM(CASE WHEN order_items.boutique_settlement_id IS NULL THEN {$sql['net']} ELSE 0 END), 0) as pending_net_b")
+            // وما لم تحمله ورقةٌ منها — وهو ما يقوله كشفُ البوتيك (`Boutiques::statement`): وما بيع بالسياسة بعد اكتمال تحصيل طلبه
+            ->selectRaw("COALESCE(SUM(CASE WHEN order_items.boutique_settlement_id IS NULL AND {$collected} THEN {$sql['net']} ELSE 0 END), 0) as pending_net_b")
+            // وما بيع بالسياسة ولم يكتمل تحصيلُه: بِيع، ولا تحمله ورقةٌ بعد (`BoutiquePolicy`)
+            ->selectRaw("COALESCE(SUM(CASE WHEN order_items.boutique_settlement_id IS NULL AND NOT {$collected} THEN {$sql['net']} ELSE 0 END), 0) as awaiting_net_b")
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
             ->selectRaw('COUNT(*) as line_count')
             ->get();
@@ -524,6 +529,7 @@ final class BoutiqueSales
             $commB += (int) $row->commission_b;
             $netB += (int) $row->net_b;
             $nets[(int) $row->boutique_id] = self::money((int) $row->pending_net_b);
+            $awaitingB += (int) $row->awaiting_net_b;
             $quantity = round($quantity + (float) $row->quantity, 3);
             $lines += (int) $row->line_count;
         }
@@ -533,6 +539,7 @@ final class BoutiqueSales
             'net' => self::money($netB),
             'quantity' => $quantity,
             'lines' => $lines,
+            'awaiting_net' => self::money($awaitingB),
         ];
 
         $standalone['orders'] = $ids === [] ? 0 : (int) OrderItem::whereIn('order_id', $sold)
@@ -594,6 +601,7 @@ final class BoutiqueSales
 
         // وما سُدّدت ورقتُه دونه لأنّ تحصيلَه أُلغي: صدر ولم يُسدَّد (`BoutiqueHolds::owed`)
         $withheld = BoutiqueHolds::owedOn($sheetIds);
+        $withheldPieces = BoutiqueHolds::owedOn($sheetIds, true);
 
         $issued = 0.0;
         $paid = 0.0;
@@ -611,10 +619,14 @@ final class BoutiqueSales
                 $unpaid = round($unpaid + $part, 3);
             }
 
+            // وقطعٌ سُدّدت ورقتُها دونها لأنّ تحصيلَ طلبها أُلغي: صدرت ولم تُسدَّد (`BoutiqueHolds::withholdPieces`)
             $componentsNet = round((float) $s->components_net, 3);
-            $s->components_paid_at !== null || (float) $s->components_due <= 0
-                ? $paid = round($paid + $componentsNet, 3)
-                : $unpaid = round($unpaid + $componentsNet, 3);
+            if ($s->components_paid_at !== null || (float) $s->components_due <= 0) {
+                $paid = round($paid + $componentsNet - ($withheldPieces[$s->id] ?? 0.0), 3);
+                $unpaid = round($unpaid + ($withheldPieces[$s->id] ?? 0.0), 3);
+            } else {
+                $unpaid = round($unpaid + $componentsNet, 3);
+            }
         }
 
         $pending = ['standalone' => 0.0, 'components' => 0.0, 'credit' => 0.0, 'total' => 0.0];
@@ -635,6 +647,8 @@ final class BoutiqueSales
         $dueByBoutique = $ids === [] ? collect() : BoutiqueComponentDue::where('business_id', $businessId)->whereIn('boutique_id', $ids)
             ->whereNull('boutique_settlement_id')
             ->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL])
+            // وقطعةٌ بيعت بالسياسة تنتظر تحصيلَ طلبها — كما يقرؤها الكشف (`BoutiqueDues::statement`)
+            ->where(fn ($q) => $q->where('waits', false)->orWhereIn('order_id', Order::where('business_id', $businessId)->whereRaw(BoutiquePolicy::orderCollectedSql())->select('id')))
             ->whereBetween('period_at', [$from, $to])
             ->groupBy('boutique_id')->selectRaw('boutique_id, SUM(amount) as due')->pluck('due', 'boutique_id');
         $withCredit = $ids === [] ? [] : BoutiqueComponentDue::where('business_id', $businessId)->whereIn('boutique_id', $ids)

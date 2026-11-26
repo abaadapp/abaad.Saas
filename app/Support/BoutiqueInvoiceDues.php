@@ -306,8 +306,10 @@ final class BoutiqueInvoiceDues
 
         $lines = BoutiqueInvoiceLine::where('customer_invoice_id', $invoiceId)->whereNull('voided_at')->exists();
         // وفاتورةٌ تغطّي طلباتٍ بيعت بالسياسة: ما حملته ورقةٌ منها يُعلَّق ويُفكّ بتحصيلها (`BoutiquePolicy`)
-        $orders = DB::table('customer_invoice_orders as cio')->join('order_items as oi', 'oi.order_id', '=', 'cio.order_id')
-            ->where('cio.customer_invoice_id', $invoiceId)->whereNotNull('oi.boutique_policy')->exists();
+        // — بندُها أو قطعةٌ فيها: باقةٌ للمتجر قطعُها لبوتيك لا بندَ بوتيكٍ فيها
+        $covered = DB::table('customer_invoice_orders')->where('customer_invoice_id', $invoiceId)->select('order_id');
+        $orders = DB::table('order_items')->whereIn('order_id', $covered)->whereNotNull('boutique_policy')->exists()
+            || DB::table('boutique_component_dues')->whereIn('order_id', $covered)->where('waits', true)->exists();
 
         if (! $lines && ! $orders) {
             return;

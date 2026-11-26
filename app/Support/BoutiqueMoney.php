@@ -99,7 +99,7 @@ final class BoutiqueMoney
     /**
      * القسمةُ نفسُها بلغة القاعدة — بالبيسات الصحيحة، لكلّ صفّ.
      *
-     * @return array{gross: string, agreed: string, adjustment: string, vat: string, base: string, commission: string, net: string}
+     * @return array{gross: string, agreed: string, vat: string, base: string, commission: string, net: string}
      */
     public static function sql(string $alias = 'order_items'): array
     {
@@ -113,7 +113,7 @@ final class BoutiqueMoney
         $base = "({$agreed} - {$vat})";
         $commission = "(({$base} * {$rate} + 5000) / 10000)";
 
-        return ['gross' => $gross, 'agreed' => $agreed, 'adjustment' => "({$gross} - {$agreed})", 'vat' => $vat, 'base' => $base, 'commission' => $commission, 'net' => "({$base} - {$commission})"];
+        return ['gross' => $gross, 'agreed' => $agreed, 'vat' => $vat, 'base' => $base, 'commission' => $commission, 'net' => "({$base} - {$commission})"];
     }
 
     /* ═══════════ أيُّ أساس؟ ═══════════ */

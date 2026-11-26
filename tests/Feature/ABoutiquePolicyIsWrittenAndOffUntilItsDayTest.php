@@ -20,6 +20,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\RecipeItem;
 use App\Models\Setting;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Support\BoutiqueDues;
 use App\Support\BoutiqueHolds;
@@ -28,6 +29,7 @@ use App\Support\BoutiqueMovements;
 use App\Support\BoutiquePolicy;
 use App\Support\BoutiqueReturns;
 use App\Support\Boutiques;
+use App\Support\BoutiqueSales;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Ledger;
@@ -154,6 +156,15 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->assertSame(17.6, $this->statement()['net'], 'الأولى 8.000 كما بيعت، والثانية 9.600');
     }
 
+    public function test_a_day_in_the_future_is_not_yet_on(): void
+    {
+        $this->on('2027-03-01');
+        $this->agree(12, '2027-02-01');
+        $item = OrderItem::where('order_id', $this->sell($this->ring, 1, null, credit: true)->id)->sole();
+        $this->assertSame([null, null], [$item->boutique_agreed_price, $item->boutique_policy]);
+        $this->assertSame(9.6, $this->statement()['net'], 'آجلٌ قبل يومها يدخل عند البيع كما كان');
+    }
+
     /* ═══════════ السعرُ المتّفق عليه ═══════════ */
 
     public function test_a_discount_is_the_shops_and_an_overage_is_the_shops(): void
@@ -188,8 +199,11 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->agree(12, '2027-02-01');
         $this->agree(9, '2027-02-12', '2027-02-14');
         $this->agree(11, '2027-02-20');
+        // وعرضٌ له نهايةٌ يغلب سعرًا دائمًا بدأ في أثنائه
+        $this->agree(10, '2027-02-25', '2027-02-27');
+        $this->agree(13, '2027-02-26');
         $price = fn (string $day) => BoutiquePolicy::agreed($this->shop->id, $this->ring, null, Carbon::parse($day));
-        $this->assertSame([12.0, 9.0, 12.0, 11.0], [$price('2027-02-11'), $price('2027-02-13'), $price('2027-02-15'), $price('2027-02-21')]);
+        $this->assertSame([12.0, 9.0, 12.0, 11.0, 10.0, 13.0], [$price('2027-02-11'), $price('2027-02-13'), $price('2027-02-15'), $price('2027-02-21'), $price('2027-02-26'), $price('2027-02-28')]);
         $this->expectException(\LogicException::class);
         BoutiquePriceAgreement::first()->update(['price' => 1]);
     }
@@ -245,12 +259,56 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->ties('فاتورة الشهر');
     }
 
-    public function test_a_cash_sale_is_collected_at_once(): void
+    public function test_a_cash_sale_is_collected_at_once_and_a_balance_left_on_it_waits(): void
     {
         $this->on();
-        $this->sell($this->ring);
+        $this->agree();
+        $cash = $this->sell($this->ring, 2);
         $this->sell($this->bundle);
-        $this->assertSame([9.6, 12.0], [$this->statement()['net'], $this->statement()['components']['net']]);
+        $this->assertSame([19.2, 12.0], [$this->statement()['net'], $this->statement()['components']['net']]);
+        // والقسمُ بالقاعدة نفسِها: المتّفقُ عليه × الكمّيّة
+        $sum = BoutiqueSales::summary($this->shop->id, ['period' => '2027-02', 'boutique' => $this->lama->id, 'type' => null, 'settle' => null, 'state' => null, 'q' => '', 'page' => 1]);
+        $this->assertSame([19.2, 19.2], [$sum['standalone']['net'], $sum['settlement']['pending']['standalone']]);
+        // ومدفوعةٌ بقي عليها شيء: لم يكتمل تحصيلُها
+        DB::table('orders')->where('id', $cash->id)->update(['balance_due' => 1]);
+        $this->assertSame(0.0, $this->statement()['net'] + 0.0);
+        $sum = BoutiqueSales::summary($this->shop->id, ['period' => '2027-02', 'boutique' => $this->lama->id, 'type' => null, 'settle' => null, 'state' => null, 'q' => '', 'page' => 1]);
+        $this->assertSame([0.0, 19.2], [$sum['settlement']['pending']['standalone'] + 0.0, $sum['standalone']['awaiting_net']]);
+    }
+
+    /** قطعةُ بيعٍ بالسياسة يُنقص طلبُها قبل تحصيله: عكسُها ينتظر مثلها — لا يُحسب ناقصًا */
+    public function test_a_waiting_piece_and_its_reversal_wait_together(): void
+    {
+        $this->on();
+        $order = $this->sell($this->bundle, 2, null, credit: true);
+        OrderCorrection::setQuantity($order->fresh(), OrderItem::where('order_id', $order->id)->sole(), 1, 'نقص', 'refunded', 'نقدي');
+        $this->assertSame([true], BoutiqueComponentDue::pluck('waits')->unique()->values()->all());
+        $this->assertSame(0.0, $this->statement()['components']['net'] + 0.0);
+    }
+
+    /** قطعتان في ورقة، أُلغي تحصيلُ إحداهما: تُسدَّد الأخرى، وتبقى المعلّقة دَينًا حتّى تُسدَّد */
+    public function test_pieces_are_paid_without_the_one_whose_collection_was_cancelled(): void
+    {
+        $this->on();
+        $a = $this->sell($this->bundle, 1, null, credit: true);
+        $b = $this->sell($this->bundle, 1, null, credit: true);
+        $first = CustomerInvoices::consolidate($this->company->fresh(), [$a->id]);
+        $second = CustomerInvoices::consolidate($this->company->fresh(), [$b->id]);
+        $pay = CustomerPayments::record($this->shop->id, $this->company, 30, ['method' => 'نقدي'], [$first->id => 30]);
+        CustomerPayments::record($this->shop->id, $this->company, 30, ['method' => 'نقدي'], [$second->id => 30]);
+        $sheet = Boutiques::settle($this->shop->fresh(), $this->lama, '2027-02');
+        $this->assertSame(24.0, (float) $sheet->components_net);
+        CustomerPayments::cancel($pay, 'خطأ');
+
+        BoutiqueDues::pay($sheet->fresh(), 'نقدي');
+        $this->assertSame(12.0, round((float) Transaction::where('kind', Transaction::BOUTIQUE_PIECES)->sum('amount'), 3));
+        $hold = BoutiqueSheetHold::whereNotNull('boutique_component_due_id')->sole();
+        $this->assertSame([12.0, 12.0], [(float) $hold->withheld_amount, $this->payable()]);
+        $this->ties('سُدّدت دون المعلّقة');
+        CustomerPayments::record($this->shop->id, $this->company, 30, ['method' => 'نقدي'], [$first->id => 30]);
+        BoutiqueHolds::pay($hold->fresh(), 'نقدي');
+        $this->assertSame(0.0, $this->payable());
+        $this->ties('سُدّدت المعلّقة');
     }
 
     public function test_a_collection_cancelled_after_the_sheet_holds_the_order_line_and_its_piece(): void
@@ -311,6 +369,14 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         DB::table('expenses')->where('id', $sheet->expense_id)->update(['status' => Expense::PAID]);
     }
 
+    public function test_the_migration_is_not_undone_once_something_was_sold_by_it(): void
+    {
+        $this->on();
+        $this->sell($this->ring);
+        $this->expectException(\RuntimeException::class);
+        (require database_path('migrations/2026_12_05_090000_a_boutique_share_follows_the_agreed_price_and_waits_for_its_collection.php'))->down();
+    }
+
     public function test_the_check_reads_and_writes_nothing(): void
     {
         $count = fn () => [DB::table('businesses')->whereNotNull('boutique_policy_from')->count(), BoutiquePriceAgreement::count(), DB::table('order_items')->count()];
@@ -319,8 +385,9 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->assertSame($before, $count());
         $this->on();
         $this->sell($this->ring, 1, null, credit: true);
+        $this->sell($this->bundle, 1, null, credit: true);
         $this->artisan('boutiques:policy', ['--business' => $this->shop->id])
-            ->expectsOutputToContain('السياسة من 2027-02-01 · بلا سعر متفق عليه: 1 · بيع بها: 1 · ينتظر التحصيل: 1')->assertSuccessful();
+            ->expectsOutputToContain('السياسة من 2027-02-01 · بلا سعر متفق عليه: 1 · بيع بها: 1 · ينتظر التحصيل: 1 بندًا و1 قطعة')->assertSuccessful();
     }
 
     /* ═══════════ من يكتب الاتّفاق ═══════════ */

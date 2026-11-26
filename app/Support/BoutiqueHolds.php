@@ -400,9 +400,11 @@ final class BoutiqueHolds
     }
 
     /** ما سُدّدت أوراقٌ دونه ولم يُسدَّد بعد — `[رقمُ الورقة => المبلغ]` */
-    public static function owedOn(Collection|array $sheetIds): array
+    public static function owedOn(Collection|array $sheetIds, bool $pieces = false): array
     {
-        return BoutiqueSheetHold::whereIn('boutique_settlement_id', $sheetIds)->whereNotNull('withheld_at')->whereNull('paid_at')->get()
+        // جزءُ المنفرد أو جزءُ القطع — لكلٍّ سدادُه
+        return BoutiqueSheetHold::whereIn('boutique_settlement_id', $sheetIds)->whereNotNull('withheld_at')->whereNull('paid_at')
+            ->when($pieces, fn ($q) => $q->whereNotNull('boutique_component_due_id'), fn ($q) => $q->whereNull('boutique_component_due_id'))->get()
             ->groupBy('boutique_settlement_id')->map(fn ($hs) => round($hs->sum(fn ($h) => self::owed($h)), 3))->filter(fn ($v) => $v > 0)->all();
     }
 

@@ -535,7 +535,9 @@ class AnInvoiceOwesTheBoutiquePiecesInsideItsBundlesTest extends TestCase
         $i = $this->invoice([[$this->bundle(17), 1]]);
         $line = BoutiqueInvoiceLine::sole();
         $this->note($i, 17, ['p'.$line->id => ['quantity' => 1]]);
-        $seller = User::create(['business_id' => $this->shop->id, 'name' => 'بائع', 'email' => 's2@pieces.om', 'password' => bcrypt('x'), 'role' => 'custom', 'status' => 'نشط', 'permissions' => ['customer_invoices']]);
+        // موظّفُ المبيعات يفتح الفاتورة ولا يكتب إشعارًا دائنًا
+        $seller = User::create(['business_id' => $this->shop->id, 'name' => 'بائع', 'email' => 's2@pieces.om', 'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط']);
+        $this->actingAs($seller)->get(route('admin.customerInvoices.show', $i->id))->assertOk();
         $this->actingAs($seller)->post(route('admin.customerInvoices.boutiquePieces', $i->id), ['reason' => 'x', 'pieces' => [$line->id => ['returned' => 1]]])->assertForbidden();
         $this->assertSame(0.0, (float) $line->fresh()->returned_quantity);
     }

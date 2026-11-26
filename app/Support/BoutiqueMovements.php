@@ -635,7 +635,7 @@ final class BoutiqueMovements
                 'order_url' => match (true) {
                     ! $opens['orders'] => null,
                     $number !== null => route('admin.orders.show', $number),
-                    $invoice !== null => route('admin.customer-invoices.show', (int) $r->invoice_id),
+                    $invoice !== null => route('admin.customerInvoices.show', (int) $r->invoice_id),
                     default => null,
                 },
                 'entry_url' => $entry !== null && $opens['finance'] ? route('admin.finance.journal', ['q' => $entry->number]) : null,

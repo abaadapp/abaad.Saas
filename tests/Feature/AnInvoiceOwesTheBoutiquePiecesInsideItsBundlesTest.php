@@ -32,6 +32,7 @@ use App\Support\CustomerPayments;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
+use App\Support\Profitability;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -435,6 +436,8 @@ class AnInvoiceOwesTheBoutiquePiecesInsideItsBundlesTest extends TestCase
         // ثمّ عادت التي لم يُتحقَّق منها — من شاشة الفاتورة
         $this->post(route('admin.customerInvoices.boutiquePieces', $i->id), ['reason' => 'وُجدت', 'pieces' => [$line->id => ['returned' => 1]]])->assertSessionHasNoErrors();
         $this->assertSame([7.0, []], [$this->payable(), BoutiqueInvoicePieces::waiting($i)]);
+        // وما سُئل عنه كلُّه لا يُسأل عنه ثانيةً في إشعار
+        $this->assertSame([], array_values(array_filter(BoutiqueInvoiceDues::pieces($i), fn ($p) => $p['piece'])));
         $this->post(route('admin.customerInvoices.boutiquePieces', $i->id), ['reason' => 'x', 'pieces' => [$line->id => ['returned' => 1]]])->assertSessionHasErrors('pieces');
 
         // والفاتورةُ صارت مسدَّدةً بإشعارها: ما بقي للبوتيك (التالفة) يُسوّى
@@ -454,6 +457,11 @@ class AnInvoiceOwesTheBoutiquePiecesInsideItsBundlesTest extends TestCase
         $this->assertSame([BoutiqueReturn::REDUCED, 'piece', 7.0], [$note->status, $note->basis, (float) $note->amount]);
         $this->assertSame(7.0, BoutiqueReturns::payable($sheet->fresh()->expense));
         $this->assertSame(7.0, round(Ledger::balance($this->shop->id, 'cogs'), 3), 'رُدّت التكلفةُ لا المصروف');
+        $this->assertSame(7.0, round(Demo::cogsFor($this->shop->id, Carbon::parse('2027-02-01'), Carbon::parse('2027-03-01')), 3), 'وتقريرُ الربح يقرأ ما رُدّ');
+        // وفرعُ المتجر لا يُنقص من مصروفاته ما رُدّ إلى التكلفة: الجملةُ = الفرعُ + العامّ
+        $whole = Profitability::summary($this->shop->id, Carbon::parse('2027-02-01'), Carbon::parse('2027-03-01'));
+        $branch = Profitability::summary($this->shop->id, Carbon::parse('2027-02-01'), Carbon::parse('2027-03-01'), (int) Branch::value('id'));
+        $this->assertSame(number_format($whole['expenses'], 3), number_format($branch['expenses'] + $branch['unallocated'], 3));
         $this->post("/admin/expenses/{$sheet->expense_id}/paid", ['method' => 'نقدي'])->assertSessionHasNoErrors();
         $this->note($i, 17, ['p'.$line->id => ['quantity' => 1, 'sellable' => 1]]);
         $this->assertSame([BoutiqueReturn::CLAIM, 7.0], [BoutiqueReturn::latest('id')->first()->status, round(Ledger::balance($this->shop->id, 'boutique_receivable'), 3)]);
@@ -465,6 +473,7 @@ class AnInvoiceOwesTheBoutiquePiecesInsideItsBundlesTest extends TestCase
         $this->assertGreaterThan(0, $this->payable());
         CustomerInvoices::cancel($i->fresh(), 'خطأ', $this->owner->id);
         $this->assertSame([0.0, 0.0], [$this->payable(), round(Ledger::balance($this->shop->id, 'cogs'), 3) + 0.0]);
+        $this->assertSame(0.0, round(Demo::cogsFor($this->shop->id, null), 3) + 0.0, 'وتقريرُ الربح يقرأ الردّ');
         $this->assertSame(0, BoutiqueInvoiceLine::whereNull('voided_at')->count());
     }
 
@@ -511,6 +520,26 @@ class AnInvoiceOwesTheBoutiquePiecesInsideItsBundlesTest extends TestCase
         $sold = $this->actingAs($seller)->get(route('admin.customerInvoices.show', $i->id))->assertOk()->viewData('page')['props'];
         $this->assertSame([], $sold['boutiqueShares']);
         $this->assertStringNotContainsString('15', json_encode($sold['boutiquePieces']));
+    }
+
+    /** بندُ الباقة ليس صنفًا منفردًا: مفتاحُه في الإشعار لا يُنقص قطعتَها */
+    public function test_the_bundles_own_line_key_never_lowers_its_piece(): void
+    {
+        $i = $this->invoice([[$this->bundle(17), 1]]);
+        $this->note($i, 17, ['i'.BoutiqueInvoiceLine::sole()->customer_invoice_item_id => ['quantity' => 1]]);
+        $this->assertSame([0.0, 7.0], [(float) BoutiqueInvoiceLine::sole()->returned_quantity, $this->payable()]);
+    }
+
+    public function test_recording_a_pieces_state_is_for_who_writes_credit_notes(): void
+    {
+        $i = $this->invoice([[$this->bundle(17), 1]]);
+        $line = BoutiqueInvoiceLine::sole();
+        $this->note($i, 17, ['p'.$line->id => ['quantity' => 1]]);
+        // موظّفُ المبيعات يفتح الفاتورة ولا يكتب إشعارًا دائنًا
+        $seller = User::create(['business_id' => $this->shop->id, 'name' => 'بائع', 'email' => 's2@pieces.om', 'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط']);
+        $this->actingAs($seller)->get(route('admin.customerInvoices.show', $i->id))->assertOk();
+        $this->actingAs($seller)->post(route('admin.customerInvoices.boutiquePieces', $i->id), ['reason' => 'x', 'pieces' => [$line->id => ['returned' => 1]]])->assertForbidden();
+        $this->assertSame(0.0, (float) $line->fresh()->returned_quantity);
     }
 
     public function test_another_shop_never_reaches_a_piece(): void

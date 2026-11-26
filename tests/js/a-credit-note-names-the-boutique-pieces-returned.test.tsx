@@ -64,9 +64,11 @@ const invoice = {
     items: [], payments: [], credit_notes: [], attachments: [], orders: [], notes: null, internal_notes: null, cancellation_reason: null, days_overdue: 0,
 };
 const pieces = [
-    { item_id: 7, name: 'قطعة فضّة', boutique: 'بوتيك لمى', left: 2, each: 6, on_sheet: false },
-    { item_id: 8, name: 'عطر', boutique: 'بوتيك ريم', left: 1, each: 10, on_sheet: true },
+    { key: 'i7', item_id: 7, name: 'قطعة فضّة', boutique: 'بوتيك لمى', left: 2, each: 6, on_sheet: false },
+    { key: 'i8', item_id: 8, name: 'عطر', boutique: 'بوتيك ريم', left: 1, each: 10, on_sheet: true },
 ];
+// قطعةٌ داخل باقة: يُسأل عنها عادت أم لا، ولا يُقترح بها مبلغ
+const bundled = { key: 'p41', item_id: 9, name: 'قطعة فضّة', boutique: 'بوتيك لمى', left: 3, each: 0, on_sheet: true, piece: true, parent: 'باقة فضّة' };
 const share = (over: Record<string, unknown> = {}) => ({
     id: 1, item_id: 7, boutique_id: 5, boutique: 'بوتيك لمى', name: 'قطعة فضّة', quantity: 2, returned: 0, unit_price: 6,
     gross: 12, discount: 0, rate: 20, commission: 2.4, net: 9.6, under_list: null, state: 'awaiting', sheet: null, ...over,
@@ -124,7 +126,20 @@ describe('إشعارُ الدائن وقطعُ البوتيك', () => {
         fireEvent.change(within(rows[1]).getByLabelText('عاد سليمًا'), { target: { value: '1' } });
         save();
         expect(sent[0].url).toBe('/admin/customer-invoices/31/credit-note');
-        expect(sent[0].data).toMatchObject({ basis: 'return', amount: '16', pieces: { 7: { quantity: '1' }, 8: { quantity: '1', sellable: '1' } } });
+        expect(sent[0].data).toMatchObject({ basis: 'return', amount: '16', pieces: { i7: { quantity: '1' }, i8: { quantity: '1', sellable: '1' } } });
+    });
+
+    it('قطعةُ الباقة يُسأل عنها كم عاد وكم لن يعود، باسم باقتها، ولا يتغيّر بها المبلغ', () => {
+        mount({ boutiquePieces: [...pieces, bundled] });
+        openNote();
+        fireEvent.click(screen.getByLabelText('رُدّت بضاعة'));
+        const row = screen.getByTestId('credit-bundle-piece');
+        expect(row.textContent).toContain('باقة فضّة');
+        fireEvent.change(within(row).getByLabelText('رُدّ من قطعة فضّة'), { target: { value: '2' } });
+        fireEvent.change(within(row).getByLabelText('عادت إلى الرف'), { target: { value: '1' } });
+        fireEvent.change(within(row).getByLabelText('تالف أو لن يعود'), { target: { value: '1' } });
+        save();
+        expect(sent[0].data).toMatchObject({ basis: 'return', amount: '42', pieces: { p41: { quantity: '2', sellable: '1', damaged: '1' } } });
     });
 
     it('والمبلغُ المكتوب بيدٍ لا يُبدَّل', () => {

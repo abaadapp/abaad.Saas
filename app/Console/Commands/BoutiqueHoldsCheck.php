@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Business;
 use App\Support\BoutiqueHolds;
 use App\Support\BoutiqueInvoiceDues;
+use App\Support\BoutiqueReturns;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -35,9 +36,11 @@ class BoutiqueHoldsCheck extends Command
 
         $guarded = BoutiqueHolds::guarded();
         $shops = BoutiqueHolds::overview($only);
+        // ومرتجعاتٌ كتبها كودٌ أقدم على أوراقٍ قُرّبت بندًا بندًا — قد تخالف قاعدتَها ببيسة
+        $older = BoutiqueReturns::olderRounding($only);
 
         if ($this->option('json')) {
-            $this->line((string) json_encode(['guarded' => $guarded, 'shops' => $shops], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $this->line((string) json_encode(['guarded' => $guarded, 'shops' => $shops, 'older_rounding_notes' => $older], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
             return $guarded ? self::SUCCESS : self::FAILURE;
         }
@@ -56,6 +59,9 @@ class BoutiqueHoldsCheck extends Command
         }
 
         $shops !== [] ?: $this->line('لا ورقة تحمل فاتورة عميل في أيّ متجر.');
+
+        $older === [] ?: $this->warn('مرتجعات كتبها كود أقدم على أوراق قُرّبت بندًا بندًا — تُراجَع بيد (قد تخالف ببيسة): '
+            .implode('، ', array_map(fn ($r) => $r['sheet'].' «'.$r['name'].'» '.number_format($r['amount'], 3), $older)));
 
         return $guarded ? self::SUCCESS : self::FAILURE;
     }

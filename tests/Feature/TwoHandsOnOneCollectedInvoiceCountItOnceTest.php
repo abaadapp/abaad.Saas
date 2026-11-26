@@ -190,7 +190,8 @@ class TwoHandsOnOneCollectedInvoiceCountItOnceTest extends TestCase
         } else {
             $this->assertSame('refused', $settle);
             $this->assertSame([0, null, null], [BoutiqueSettlement::count(), $line->boutique_settlement_id, $line->collected_at]);
-            $this->assertEquals(0.0, round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
+            // وفي 2160 ما قُيّد مع الفاتورة يومَ صدورها — لا ورقةَ تحمله ولا سدادَ له قبل تحصيله
+            $this->assertEquals(9.6, round(Ledger::balance($this->shop->id, 'boutique_payable'), 3));
         }
         $this->balanced();
     }

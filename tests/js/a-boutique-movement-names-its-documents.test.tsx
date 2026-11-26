@@ -112,7 +112,7 @@ describe('حركات البوتيك', () => {
     it('الرصيدُ قبل الشهر وآخرَه والآن من الخادم', async () => {
         await open();
         expect(await screen.findByText('قبل هذا الشهر')).toBeInTheDocument();
-        const panel = screen.getByTestId('boutique-movements');
+        const panel = screen.getByTestId('boutique-register');
         for (const v of ['3.000', '12.600']) expect(panel.textContent).toContain(v);
     });
 

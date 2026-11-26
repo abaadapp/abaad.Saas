@@ -58,7 +58,8 @@ final class BoutiquePolicy
         $row = BoutiquePriceAgreement::where('business_id', $businessId)->where('product_id', $product->id)
             ->where('boutique_id', $product->boutique_id)
             ->where(fn ($q) => $q->whereNull('variant_id')->when($variantId, fn ($w) => $w->orWhere('variant_id', $variantId)))
-            ->where('starts_on', '<=', $day)->where(fn ($q) => $q->whereNull('ends_on')->orWhere('ends_on', '>=', $day))
+            // باليوم لا بالنصّ: SQLite تحفظ التاريخ بساعته، فـ«2027-02-26 00:00:00» بعد «2027-02-26» حرفًا
+            ->whereDate('starts_on', '<=', $day)->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $day))
             ->orderByRaw('CASE WHEN variant_id IS NULL THEN 1 ELSE 0 END')
             ->orderByRaw('CASE WHEN ends_on IS NULL THEN 1 ELSE 0 END')
             ->orderByDesc('starts_on')->orderByDesc('id')->first();

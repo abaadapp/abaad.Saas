@@ -204,6 +204,8 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->agree(13, '2027-02-26');
         $price = fn (string $day) => BoutiquePolicy::agreed($this->shop->id, $this->ring, null, Carbon::parse($day));
         $this->assertSame([12.0, 9.0, 12.0, 11.0, 10.0, 13.0], [$price('2027-02-11'), $price('2027-02-13'), $price('2027-02-15'), $price('2027-02-21'), $price('2027-02-26'), $price('2027-02-28')]);
+        // ويسري يومَ بدايته ويومَ نهايته نفسَيهما
+        $this->assertSame([9.0, 9.0, 11.0, 10.0], [$price('2027-02-12'), $price('2027-02-14'), $price('2027-02-20'), $price('2027-02-27')]);
         $this->expectException(\LogicException::class);
         BoutiquePriceAgreement::first()->update(['price' => 1]);
     }
@@ -299,6 +301,8 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $sheet = Boutiques::settle($this->shop->fresh(), $this->lama, '2027-02');
         $this->assertSame(24.0, (float) $sheet->components_net);
         CustomerPayments::cancel($pay, 'خطأ');
+        // معلّقةٌ في ورقتها، لا «تنتظر التحصيل» قبل ورقة
+        $this->artisan('boutiques:policy', ['--business' => $this->shop->id])->expectsOutputToContain('ينتظر التحصيل: 0 بندًا و0 قطعة')->assertSuccessful();
 
         BoutiqueDues::pay($sheet->fresh(), 'نقدي');
         $this->assertSame(12.0, round((float) Transaction::where('kind', Transaction::BOUTIQUE_PIECES)->sum('amount'), 3));

@@ -278,6 +278,32 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->assertSame([0.0, 19.2], [$sum['settlement']['pending']['standalone'] + 0.0, $sum['standalone']['awaiting_net']]);
     }
 
+    /** طلبُ الموقع بالدفع عند الاستلام: حصّتُه تنتظر دفعَه، ثمّ تُسوّى بالسعر المتّفق عليه */
+    public function test_a_website_order_waits_until_it_is_paid(): void
+    {
+        $this->on();
+        $this->agree(10);
+        // قالبُ الموقع العامّ — وقوائمُ المتاجر في الإعدادات بمعرّفاتها فارغة، فلا يصير متجرٌ بعينه
+        foreach (array_keys((array) config('storefront')) as $key) {
+            if (str_starts_with($key, 'ribbon_') && str_ends_with($key, '_businesses')) {
+                config(['storefront.'.$key => []]);
+            }
+        }
+        $this->shop->update(['site_slug' => 'policy-shop', 'storefront_theme' => Business::THEME_RIBBON]);
+        $order = \App\Support\Store\WebCheckout::place($this->shop->fresh(), [
+            'items' => [['id' => $this->ring->id, 'variant_id' => null, 'qty' => 2], ['id' => $this->bundle->id, 'variant_id' => null, 'qty' => 1]],
+            'fulfil' => 'pickup', 'pay' => 'cod', 'name' => 'مريم', 'phone' => '96899110001', 'date' => '2027-02-11',
+        ], 'ar');
+        $item = OrderItem::where('order_id', $order->id)->where('product_id', $this->ring->id)->sole();
+        $this->assertSame([10.0, BoutiquePolicy::COLLECTED], [(float) $item->boutique_agreed_price, $item->boutique_policy]);
+        $this->assertSame([true], BoutiqueComponentDue::where('order_id', $order->id)->pluck('waits')->unique()->values()->all());
+        $this->assertSame([0.0, 0.0], [$this->statement()['net'] + 0.0, $this->statement()['components']['net'] + 0.0]);
+
+        $order->update(['payment_status' => 'مدفوع', 'balance_due' => 0]);
+        // 2 × 10 × 80٪ — لا من 12 المكتوبة، والقطعة كاملة
+        $this->assertSame([16.0, 12.0], [$this->statement()['net'], $this->statement()['components']['net']]);
+    }
+
     /** قطعةُ بيعٍ بالسياسة يُنقص طلبُها قبل تحصيله: عكسُها ينتظر مثلها — لا يُحسب ناقصًا */
     public function test_a_waiting_piece_and_its_reversal_wait_together(): void
     {

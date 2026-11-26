@@ -271,6 +271,9 @@ class AShareIsRecognisedWithItsInvoiceAndSettledOnceCollectedTest extends TestCa
         $this->assertBooks('ملغاة');
         $rows = collect(BoutiqueMovements::page($this->shop->id, $this->lama->id, ['period' => '2027-03', 'group' => null, 'page' => 1])['rows']);
         $this->assertSame([-9.6], $rows->where('kind', 'voided')->pluck('effect')->all());
+        // والفاتورةُ بابُها في السجلّ لمن يفتح المبيعات
+        $invoiced = collect($this->getJson(route('admin.boutiques.movements', ['id' => $this->lama->id, 'period' => '2027-02']))->assertOk()->json('rows'))->firstWhere('kind', 'invoiced');
+        $this->assertSame([$invoice->number, route('admin.customerInvoices.show', $invoice->id)], [$invoiced['invoice'], $invoiced['order_url']]);
         $this->assertNotNull($rows->firstWhere('kind', 'voided')['entry']);
     }
 

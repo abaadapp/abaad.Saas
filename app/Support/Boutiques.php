@@ -318,10 +318,13 @@ final class Boutiques
         $boutiques = Boutique::where('business_id', $businessId)
             ->whereIn('id', $ids->all())->get()->keyBy('id');
         $rule = BoutiqueMoney::rule($businessId);
+        // والسياسةُ المقترحة مطفأةٌ لكلّ متجرٍ حتّى يُكتب يومُها (`BoutiquePolicy`)
+        $policy = BoutiquePolicy::on($businessId);
 
         $out = [];
         foreach (array_values($lines) as $i => $l) {
             $b = $boutiques->get((int) (($l['product'] ?? null)?->boutique_id ?? 0));
+            $variant = $l['variant'] ?? null;
 
             $out[$i] = $b === null ? null : [
                 'id' => (int) $b->id,
@@ -330,6 +333,9 @@ final class Boutiques
                 'rate' => round((float) $b->commission_rate, 2),
                 // وما يُخرَج من سعره قبل العمولة — `null` في القاعدة القائمة (`BoutiqueMoney`)
                 'vat' => BoutiqueMoney::vatInside($businessId, $l['product'] ?? null, $rule),
+                // وبالسياسة: سعرُ الاتّفاق ساعةَ البيع، وحصّتُه تنتظر تحصيلَ بيعها
+                'agreed' => $policy ? BoutiquePolicy::agreed($businessId, $l['product'] ?? null, is_object($variant) ? (int) $variant->id : (is_numeric($variant) ? (int) $variant : null)) : null,
+                'policy' => $policy ? BoutiquePolicy::COLLECTED : null,
             ];
         }
 
@@ -350,7 +356,7 @@ final class Boutiques
     public static function itemColumns(?array $at, float $cost): array
     {
         if ($at === null) {
-            return ['boutique_id' => null, 'boutique_name' => null, 'boutique_rate' => null, 'boutique_vat_rate' => null, 'cost' => $cost];
+            return ['boutique_id' => null, 'boutique_name' => null, 'boutique_rate' => null, 'boutique_vat_rate' => null, 'boutique_agreed_price' => null, 'boutique_policy' => null, 'cost' => $cost];
         }
 
         return [
@@ -358,6 +364,8 @@ final class Boutiques
             'boutique_name' => $at['name'],
             'boutique_rate' => $at['rate'],
             'boutique_vat_rate' => $at['vat'] ?? null,
+            'boutique_agreed_price' => $at['agreed'] ?? null,
+            'boutique_policy' => $at['policy'] ?? null,
             'cost' => self::CONSIGNED_COST,
         ];
     }
@@ -420,7 +428,10 @@ final class Boutiques
             ->where('order_items.boutique_id', $boutiqueId)
             ->whereNull('order_items.boutique_settlement_id')
             ->whereIn('order_items.order_id', Order::where('business_id', $businessId)->sold()
-                ->whereBetween('ordered_at', [$from, (clone $from)->endOfMonth()])->select('id'));
+                ->whereBetween('ordered_at', [$from, (clone $from)->endOfMonth()])->select('id'))
+            // وما بيع بالسياسة لا تحمله ورقةٌ قبل اكتمال تحصيل طلبه (`BoutiquePolicy`)
+            ->where(fn ($q) => $q->whereNull('order_items.boutique_policy')
+                ->orWhereIn('order_items.order_id', Order::where('business_id', $businessId)->whereRaw(BoutiquePolicy::orderCollectedSql())->select('id')));
     }
 
     /**
@@ -457,7 +468,7 @@ final class Boutiques
             ->toBase()->get([
                 'order_items.product_id', 'order_items.name', 'order_items.variant_name',
                 'order_items.quantity', 'order_items.total', 'order_items.boutique_rate', 'order_items.boutique_vat_rate',
-                'orders.ordered_at',
+                'order_items.boutique_agreed_price', 'orders.ordered_at',
             ]);
 
         // وبنودُ فواتير العملاء التي اكتمل تحصيلُها في الشهر — بلقطتها ساعةَ الإصدار (`BoutiqueInvoiceDues`)
@@ -491,6 +502,7 @@ final class Boutiques
                 'quantity' => 0.0,
                 // بالبيسات حتّى تكتمل، ثمّ ريالات
                 'gross' => 0,
+                'adjustment' => 0,
                 'vat' => 0,
                 'commission' => 0,
                 'net' => 0,
@@ -504,12 +516,12 @@ final class Boutiques
              */
             $part = BoutiqueMoney::item($r);
             $lines[$key]['quantity'] += (float) $r->quantity;
-            foreach (['gross', 'vat', 'commission', 'net'] as $k) {
+            foreach (['gross', 'adjustment', 'vat', 'commission', 'net'] as $k) {
                 $lines[$key][$k] += $part[$k];
             }
         }
 
-        $totals = ['gross' => 0, 'vat' => 0, 'commission' => 0, 'net' => 0];
+        $totals = ['gross' => 0, 'adjustment' => 0, 'vat' => 0, 'commission' => 0, 'net' => 0];
         $quantity = 0.0;
 
         foreach ($lines as $k => $l) {
@@ -542,6 +554,7 @@ final class Boutiques
                 'source' => self::FROM_INVOICES,
                 'quantity' => 0.0,
                 'gross' => 0.0,
+                'adjustment' => 0.0,
                 'vat' => 0.0,
                 'commission' => 0.0,
                 'net' => 0.0,
@@ -553,7 +566,9 @@ final class Boutiques
             foreach (['gross', 'commission', 'net'] as $k) {
                 $part[$k] = BoutiqueMoney::baisa($l->{$k}) - BoutiqueMoney::baisa($l->{'returned_'.$k});
             }
-            $part['vat'] = $part['gross'] - $part['commission'] - $part['net'];
+            // وبالسعر المتّفق عليه: ما بين ما دفعه العميل والمتّفق عليه للمتجر أو عليه — لا ضريبة
+            $part['adjustment'] = $l->agreed_price === null ? 0 : $part['gross'] - BoutiqueMoney::gross($left, (float) $l->agreed_price);
+            $part['vat'] = $part['gross'] - $part['adjustment'] - $part['commission'] - $part['net'];
             foreach ($part as $k => $v) {
                 $totals[$k] += $v;
                 $lines[$key][$k] = Baisa::toMoney(BoutiqueMoney::baisa($lines[$key][$k]) + $v);
@@ -589,6 +604,8 @@ final class Boutiques
             'lines' => $lines,
             'quantity' => round($quantity, 3),
             'gross' => Baisa::toMoney($totals['gross']),
+            // ما بين إجماليّ البنود والمتّفق عليه — صفرٌ في القاعدة القائمة (`BoutiqueMoney`)
+            'adjustment' => Baisa::toMoney($totals['adjustment']),
             // ضريبةٌ داخل الأسعار أُخرجت قبل العمولة — صفرٌ في القاعدة القائمة
             'vat' => Baisa::toMoney($totals['vat']),
             'commission' => Baisa::toMoney($totals['commission']),
@@ -753,7 +770,10 @@ final class Boutiques
                 'covered_from' => $statement['from_at'],
                 'covered_to' => $statement['to_at'],
                 'gross' => $statement['gross'],
+                'adjustment' => $statement['adjustment'],
                 'vat' => $statement['vat'],
+                // وهي تقرأ التحصيل: بها وحدها يُحمل بندُ سياسةٍ وقطعتُه (القادحان في هجرة السياسة)
+                'reads_collection' => true,
                 'commission' => $statement['commission'],
                 'net' => $statement['net'],
                 'lines_count' => $statement['lines_count'],
@@ -850,7 +870,7 @@ final class Boutiques
         $mils = [];
         $rows = OrderItem::query()->whereIn('order_items.id', $ids)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->get(['orders.branch_id', 'order_items.total', 'order_items.boutique_rate', 'order_items.boutique_vat_rate']);
+            ->get(['orders.branch_id', 'order_items.total', 'order_items.quantity', 'order_items.boutique_rate', 'order_items.boutique_vat_rate', 'order_items.boutique_agreed_price']);
         $invoiced = $invoiceLines === [] ? collect() : BoutiqueInvoiceLine::whereIn('id', $invoiceLines)
             ->groupBy('branch_id')->selectRaw('branch_id, SUM(settled_net) as net')->get();
 

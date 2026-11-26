@@ -31,6 +31,7 @@ class BoutiqueComponentDue extends Model
         'amount' => 'decimal:3',
         'occurred_at' => 'datetime',
         'period_at' => 'datetime',
+        'waits' => 'boolean',
     ];
 
     public function order(): BelongsTo

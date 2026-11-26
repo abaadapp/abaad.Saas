@@ -42,7 +42,7 @@ class BoutiqueInvoiceLine extends Model
         'business_id', 'boutique_id', 'boutique_name', 'customer_invoice_id', 'customer_invoice_item_id', 'product_id', 'name',
         'quantity', 'unit_price', 'list_price', 'gross', 'discount', 'tax_rate', 'tax_inclusive', 'tax_amount',
         'rule', 'base', 'rate', 'commission', 'net', 'issued_at',
-        'kind', 'piece_key', 'source', 'recipe_item_id', 'addon_id', 'parent_name', 'unit_quantity',
+        'agreed_price', 'kind', 'piece_key', 'source', 'recipe_item_id', 'addon_id', 'parent_name', 'unit_quantity',
     ];
 
     protected static function booted(): void

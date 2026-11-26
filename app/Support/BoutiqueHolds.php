@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Exceptions\SettlementRefused;
 use App\Models\Boutique;
+use App\Models\BoutiqueComponentDue;
 use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
@@ -13,6 +14,7 @@ use App\Models\Business;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\Expense;
+use App\Models\OrderItem;
 use App\Models\Transaction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -95,6 +97,101 @@ final class BoutiqueHolds
         return 'line:'.$line->id;
     }
 
+    /**
+     * طلباتٌ بيعت بالسياسة تغطّيها هذه الفاتورة: يُفتح تعليقُ ما حملته ورقةٌ منها حين يُلغى تحصيلُها،
+     * ويُغلق حين يُعاد — كبند الفاتورة نفسِه (`BoutiquePolicy`). بندُ الطلب في جزء المنفرد، وقطعتُه
+     * في جزء القطع.
+     */
+    public static function syncOrders(int $invoiceId, bool $collected, ?CustomerPayment $payment = null): void
+    {
+        $orders = DB::table('customer_invoice_orders')->where('customer_invoice_id', $invoiceId)->pluck('order_id');
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $targets = OrderItem::whereIn('order_id', $orders)->whereNotNull('boutique_policy')->whereNotNull('boutique_settlement_id')->orderBy('id')->get()
+            ->map(fn (OrderItem $i) => ['item:'.$i->id, ['order_item_id' => $i->id], $i])
+            ->concat(BoutiqueComponentDue::whereIn('order_id', $orders)->where('waits', true)->where('kind', BoutiqueComponentDue::DUE)
+                ->whereNotNull('boutique_settlement_id')->orderBy('id')->get()
+                ->map(fn (BoutiqueComponentDue $d) => ['due:'.$d->id, ['boutique_component_due_id' => $d->id], $d]));
+
+        foreach ($targets as [$key, $target, $row]) {
+            $live = BoutiqueSheetHold::where('live_key', $key)->lockForUpdate()->first();
+            if ($live !== null) {
+                self::settle($live, $collected);
+
+                continue;
+            }
+
+            $last = BoutiqueSheetHold::where($target)->latest('id')->first();
+            if ($collected) {
+                if ($last !== null && $last->recollected_at === null) {
+                    $last->update(['recollected_at' => now()]);
+                }
+
+                continue;
+            }
+
+            if ($last === null || $last->recollected_at !== null) {
+                self::openFor($row, $key, $target, $invoiceId, $payment);
+            }
+        }
+    }
+
+    /** تعليقُ بند طلبٍ أو قطعته — بما بقي منه في ورقته */
+    private static function openFor(OrderItem|BoutiqueComponentDue $row, string $key, array $target, int $invoiceId, ?CustomerPayment $payment): void
+    {
+        $sheet = BoutiqueSettlement::find($row->boutique_settlement_id);
+        $amount = $row instanceof OrderItem
+            ? round(Baisa::toMoney(BoutiqueMoney::item($row)['net']) + (float) BoutiqueReturn::where('order_item_id', $row->id)->where('source', BoutiqueReturn::QUANTITY)->sum('amount')
+                - self::sumOf($target, self::DECIDED), 3)
+            : round((float) $row->amount + (float) BoutiqueComponentDue::where('reverses_id', $row->id)->where('kind', BoutiqueComponentDue::CREDIT)->sum('amount'), 3);
+
+        if ($amount <= 0 || $sheet === null) {
+            return;
+        }
+
+        $components = $row instanceof BoutiqueComponentDue;
+        BoutiqueSheetHold::create($target + [
+            'business_id' => $sheet->business_id,
+            'boutique_id' => $row->boutique_id,
+            'boutique_settlement_id' => $sheet->id,
+            'customer_invoice_id' => $invoiceId,
+            'customer_payment_id' => $payment?->id,
+            'amount' => $amount,
+            'decided_base' => self::sumOf($target, self::DECIDED),
+            'why' => self::why($payment),
+            'paid_before' => $components ? $sheet->components_paid_at !== null
+                : $sheet->expense_id !== null && Expense::withTrashed()->find($sheet->expense_id)?->isPaid() === true,
+            'opened_at' => now(),
+            'live_key' => $key,
+        ]);
+
+        Activity::log('updated', 'علّق سداد جزءٍ من ورقة البوتيك '.$sheet->number.' — أُلغي تحصيل الفاتورة '.(string) CustomerInvoice::whereKey($invoiceId)->value('number'), [
+            'business_id' => $sheet->business_id, 'subject_id' => $sheet->id, 'subject_type' => 'boutique_settlement',
+        ]);
+    }
+
+    /** ما يُعلَّق عليه: بندُ فاتورة، أو بندُ طلب، أو قطعةٌ فيه */
+    private static function target(BoutiqueSheetHold $hold): array
+    {
+        return match (true) {
+            $hold->boutique_invoice_line_id !== null => ['boutique_invoice_line_id' => $hold->boutique_invoice_line_id],
+            $hold->order_item_id !== null => ['order_item_id' => $hold->order_item_id],
+            default => ['boutique_component_due_id' => $hold->boutique_component_due_id],
+        };
+    }
+
+    /** اسمُ ما عُلّق — للشاشة وقيد سداده */
+    public static function name(BoutiqueSheetHold $hold): ?string
+    {
+        return match (true) {
+            $hold->boutique_invoice_line_id !== null => $hold->line?->name,
+            $hold->order_item_id !== null => OrderItem::whereKey($hold->order_item_id)->value('name'),
+            default => BoutiqueComponentDue::whereKey($hold->boutique_component_due_id)->value('product_name'),
+        };
+    }
+
     private static function open(BoutiqueInvoiceLine $line, ?CustomerPayment $payment): void
     {
         // ما بقي من البند في ورقته: ما لم يُردّ، وما رُدّ ولم يُحسم بعد (ما زال في صافيها)
@@ -135,22 +232,32 @@ final class BoutiqueHolds
 
     /* ═══════════ ٢. كم هو معلَّق الآن؟ ═══════════ */
 
-    /** @param  list<string>  $statuses */
-    private static function sumOf(int $lineId, array $statuses): float
+    /**
+     * إشعاراتُ ما عُلّق عليه بأحوالها — بندُ فاتورةٍ أو بندُ طلب. والقطعةُ في طلبٍ لا إشعارَ لها: رصيدُها في 1370.
+     *
+     * @param  int|array<string, int>  $target
+     * @param  list<string>  $statuses
+     */
+    private static function sumOf(int|array $target, array $statuses): float
     {
-        return round((float) BoutiqueReturn::where('boutique_invoice_line_id', $lineId)->whereIn('status', $statuses)->sum('amount'), 3);
+        $target = is_int($target) ? ['boutique_invoice_line_id' => $target] : $target;
+        if (isset($target['boutique_component_due_id'])) {
+            return 0.0;
+        }
+
+        return round((float) BoutiqueReturn::where($target)->whereIn('status', $statuses)->sum('amount'), 3);
     }
 
     /** إشعاراتُ بندٍ تنتظر القطعةَ أو المحاسب — حصّتُها ما زالت في صافي ورقتها */
-    private static function pending(int $lineId): float
+    private static function pending(int|array $target): float
     {
-        return self::sumOf($lineId, [BoutiqueReturn::AWAITING, BoutiqueReturn::REVIEW]);
+        return self::sumOf($target, [BoutiqueReturn::AWAITING, BoutiqueReturn::REVIEW]);
     }
 
     /** ما لم يُحسم من المتأثّر: مبلغُه ناقصًا ما حُسم من مرتجعه منذ فُتح */
     private static function left(BoutiqueSheetHold $hold): float
     {
-        $decided = self::sumOf((int) $hold->boutique_invoice_line_id, self::DECIDED) - (float) $hold->decided_base;
+        $decided = self::sumOf(self::target($hold), self::DECIDED) - (float) $hold->decided_base;
 
         return max(0.0, round((float) $hold->amount - $decided, 3));
     }
@@ -164,7 +271,7 @@ final class BoutiqueHolds
 
         $left = self::left($hold);
 
-        return BoutiqueInvoiceDues::collected((int) $hold->customer_invoice_id) ? min($left, self::pending((int) $hold->boutique_invoice_line_id)) : $left;
+        return BoutiqueInvoiceDues::collected((int) $hold->customer_invoice_id) ? min($left, self::pending(self::target($hold))) : $left;
     }
 
     /** يُغلق ما لم يبق فيه شيءٌ يُراجَع */
@@ -172,7 +279,7 @@ final class BoutiqueHolds
     {
         $as = match (true) {
             self::left($hold) <= 0.0005 => BoutiqueSheetHold::RETURNED,
-            $collected && self::pending((int) $hold->boutique_invoice_line_id) <= 0.0005 => BoutiqueSheetHold::RECOLLECTED,
+            $collected && self::pending(self::target($hold)) <= 0.0005 => BoutiqueSheetHold::RECOLLECTED,
             default => null,
         };
 
@@ -189,10 +296,11 @@ final class BoutiqueHolds
         ]);
     }
 
-    /** حُسم مرتجعُ بند: ما اكتمل حسمُه يُغلق تعليقُه — من `BoutiqueReturns` */
-    public static function decided(?int $lineId): void
+    /** حُسم مرتجعُ بند: ما اكتمل حسمُه يُغلق تعليقُه — من `BoutiqueReturns`، ببند فاتورته أو بند طلبه */
+    public static function decided(?int $lineId, ?int $orderItemId = null): void
     {
-        $hold = $lineId === null ? null : BoutiqueSheetHold::where('live_key', 'line:'.$lineId)->lockForUpdate()->first();
+        $key = $lineId !== null ? 'line:'.$lineId : ($orderItemId !== null ? 'item:'.$orderItemId : null);
+        $hold = $key === null ? null : BoutiqueSheetHold::where('live_key', $key)->lockForUpdate()->first();
 
         if ($hold !== null) {
             self::settle($hold, BoutiqueInvoiceDues::collected((int) $hold->customer_invoice_id));
@@ -201,12 +309,32 @@ final class BoutiqueHolds
 
     /* ═══════════ ٣. سدادُ الورقة ═══════════ */
 
-    /** الموقوفُ من ورقةٍ لم تُسدَّد */
+    /** الموقوفُ من جزء المنفرد في ورقةٍ لم تُسدَّد — وقطعُها موقوفُها في `heldPieces` */
     public static function heldOn(?int $sheetId): float
     {
-        return $sheetId === null ? 0.0 : round(BoutiqueSheetHold::where('boutique_settlement_id', $sheetId)
+        return $sheetId === null ? 0.0 : round(BoutiqueSheetHold::where('boutique_settlement_id', $sheetId)->whereNull('boutique_component_due_id')
             ->whereNotNull('live_key')->where('paid_before', false)->whereNull('withheld_at')->get()
             ->sum(fn (BoutiqueSheetHold $h) => self::held($h)), 3);
+    }
+
+    /** الموقوفُ من قطع ورقةٍ لم تُسدَّد قطعُها — قطعٌ بيعت بالسياسة وأُلغي تحصيلُ طلبها */
+    public static function heldPieces(?int $sheetId): float
+    {
+        return $sheetId === null ? 0.0 : round(BoutiqueSheetHold::where('boutique_settlement_id', $sheetId)->whereNotNull('boutique_component_due_id')
+            ->whereNotNull('live_key')->where('paid_before', false)->whereNull('withheld_at')->get()
+            ->sum(fn (BoutiqueSheetHold $h) => self::held($h)), 3);
+    }
+
+    /** سُدّدت قطعُ الورقة دون الموقوف منها: يبقى دَينًا في 2160 بصفّه */
+    public static function withholdPieces(BoutiqueSettlement $sheet): void
+    {
+        BoutiqueSheetHold::where('boutique_settlement_id', $sheet->id)->whereNotNull('boutique_component_due_id')->whereNotNull('live_key')
+            ->where('paid_before', false)->whereNull('withheld_at')->lockForUpdate()->get()
+            ->each(function (BoutiqueSheetHold $h) {
+                if (($held = self::held($h)) > 0) {
+                    $h->update(['withheld_at' => now(), 'withheld_amount' => $held]);
+                }
+            });
     }
 
     /** ما يُسدَّد من الورقة الآن: صافيها بعد ما خُفّض، ناقصًا الموقوف */
@@ -250,11 +378,11 @@ final class BoutiqueHolds
             return;
         }
 
-        BoutiqueSheetHold::where('boutique_settlement_id', $sheet->id)->whereNotNull('live_key')
+        BoutiqueSheetHold::where('boutique_settlement_id', $sheet->id)->whereNull('boutique_component_due_id')->whereNotNull('live_key')
             ->where('paid_before', false)->whereNull('withheld_at')->lockForUpdate()->get()
             ->each(function (BoutiqueSheetHold $h) {
                 if (($held = self::held($h)) > 0) {
-                    $h->update(['withheld_at' => now(), 'withheld_amount' => $held, 'reduced_base' => self::sumOf((int) $h->boutique_invoice_line_id, [BoutiqueReturn::REDUCED])]);
+                    $h->update(['withheld_at' => now(), 'withheld_amount' => $held, 'reduced_base' => self::sumOf(self::target($h), [BoutiqueReturn::REDUCED])]);
                 }
             });
     }
@@ -266,7 +394,7 @@ final class BoutiqueHolds
             return 0.0;
         }
 
-        $reduced = self::sumOf((int) $hold->boutique_invoice_line_id, [BoutiqueReturn::REDUCED]) - (float) $hold->reduced_base;
+        $reduced = self::sumOf(self::target($hold), [BoutiqueReturn::REDUCED]) - (float) $hold->reduced_base;
 
         return max(0.0, round((float) $hold->withheld_amount - $reduced, 3));
     }
@@ -279,9 +407,10 @@ final class BoutiqueHolds
     }
 
     /** أسُدّدت ورقةُ هذا البند دونه، وفيه ما يكفي هذا الإشعار؟ — فيُنقص من 2160 لا مطالبةً على البوتيك */
-    public static function covers(?int $lineId, float $amount): bool
+    public static function covers(?int $lineId, float $amount, ?int $orderItemId = null): bool
     {
-        $hold = $lineId === null ? null : BoutiqueSheetHold::where('boutique_invoice_line_id', $lineId)
+        $target = $lineId !== null ? ['boutique_invoice_line_id' => $lineId] : ($orderItemId !== null ? ['order_item_id' => $orderItemId] : null);
+        $hold = $target === null ? null : BoutiqueSheetHold::where($target)
             ->whereNotNull('withheld_at')->whereNull('paid_at')->latest('id')->first();
 
         return $hold !== null && self::owed($hold) + 0.0005 >= $amount;
@@ -339,25 +468,26 @@ final class BoutiqueHolds
             }
 
             $sheet = BoutiqueSettlement::findOrFail($h->boutique_settlement_id);
-            $expense = Expense::withTrashed()->findOrFail($sheet->expense_id);
+            // والقطعةُ من ورقةٍ قد لا مصروفَ لها: فرعُها فرعُ طلبها
+            $expense = $sheet->expense_id ? Expense::withTrashed()->find($sheet->expense_id) : null;
             $at = now();
 
             $entry = Ledger::post(
                 (int) $h->business_id,
-                BooksPeriod::fit(__('سداد معلّق من تسوية بوتيك: ').$sheet->number, (string) $h->line?->name),
+                BooksPeriod::fit(__('سداد معلّق من تسوية بوتيك: ').$sheet->number, (string) self::name($h)),
                 [
-                    ['account' => 'boutique_payable', 'debit' => $owed, 'memo' => $h->line?->name],
+                    ['account' => 'boutique_payable', 'debit' => $owed, 'memo' => self::name($h)],
                     ['account' => Books::payingAccount($method), 'credit' => $owed],
                 ],
                 $at,
                 self::SOURCE,
-                ExpenseScope::journalBranch($expense),
+                $expense ? ExpenseScope::journalBranch($expense) : null,
                 auth()->id(),
                 $h,
             );
 
             $transaction = BoutiqueMovements::cash((int) $h->business_id, Transaction::BOUTIQUE_HELD, $owed, $method,
-                Boutiques::EXPENSE_TYPE.' — '.__('معلّق من الورقة :number', ['number' => $sheet->number]), $at, $entry, ExpenseScope::journalBranch($expense));
+                Boutiques::EXPENSE_TYPE.' — '.__('معلّق من الورقة :number', ['number' => $sheet->number]), $at, $entry, $expense ? ExpenseScope::journalBranch($expense) : null);
 
             $h->update(['paid_at' => $at, 'paid_amount' => $owed, 'paid_method' => $method, 'transaction_id' => $transaction->id]);
 
@@ -449,7 +579,7 @@ final class BoutiqueHolds
             ->with(['line:id,name', 'settlement:id,number'])->orderBy('id')->get()
             ->map(fn (BoutiqueSheetHold $h) => [
                 'id' => $h->id, 'sheet' => $h->settlement?->number, 'boutique' => Boutique::find($h->boutique_id)?->label(),
-                'name' => $h->line?->name, 'amount' => self::owed($h), 'held' => $h->closed_at === null,
+                'name' => self::name($h), 'amount' => self::owed($h), 'held' => $h->closed_at === null,
             ])->filter(fn (array $r) => $r['amount'] > 0)->values()->all();
     }
 
@@ -471,7 +601,7 @@ final class BoutiqueHolds
                     'sheet' => $h->settlement?->number,
                     'invoice_id' => (int) $h->customer_invoice_id,
                     'invoice' => $h->invoice?->number,
-                    'name' => $h->line?->name,
+                    'name' => self::name($h),
                     'amount' => round((float) $h->amount, 3),
                     'held' => $h->withheld_at !== null ? ($h->closed_at === null ? $owed : 0.0) : self::held($h),
                     'why' => $h->why,

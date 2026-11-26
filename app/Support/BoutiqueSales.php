@@ -187,7 +187,7 @@ final class BoutiqueSales
             ->selectRaw('oi.id as ref_id, o.id as order_id, o.number as order_number, o.ordered_at, o.status as order_status, o.channel as channel')
             ->selectRaw('oi.boutique_id, oi.boutique_name, oi.name as product_name, oi.variant_name as variant')
             ->selectRaw('NULL as parent_name, NULL as parent_variant, NULL as parent_total, NULL as addon_name')
-            ->selectRaw('oi.quantity as quantity, oi.price as unit_price, oi.total as amount, oi.boutique_rate as rate, oi.boutique_vat_rate as vat_rate')
+            ->selectRaw('oi.quantity as quantity, oi.price as unit_price, oi.total as amount, oi.boutique_rate as rate, oi.boutique_vat_rate as vat_rate, oi.boutique_agreed_price as agreed_price')
             ->selectRaw('0 as credited, NULL as kept_state, oi.boutique_settlement_id as settlement_id, bs.number as settlement_number')
             ->selectRaw('CAST(NULL AS BIGINT) as invoice_id, NULL as line_state, NULL as form_token')
             /*
@@ -237,7 +237,7 @@ final class BoutiqueSales
             ->selectRaw('g.ref_id, o.id as order_id, o.number as order_number, o.ordered_at, o.status as order_status, o.channel as channel')
             ->selectRaw('g.boutique_id, g.boutique_name, g.product_name, NULL as variant')
             ->selectRaw('oi.name as parent_name, oi.variant_name as parent_variant, oi.total as parent_total, a.name as addon_name')
-            ->selectRaw('g.quantity, g.unit_price, g.amount, CAST(NULL AS DECIMAL) as rate, CAST(NULL AS DECIMAL) as vat_rate')
+            ->selectRaw('g.quantity, g.unit_price, g.amount, CAST(NULL AS DECIMAL) as rate, CAST(NULL AS DECIMAL) as vat_rate, CAST(NULL AS DECIMAL) as agreed_price')
             ->selectRaw('g.credited, g.kept_state, g.settlement_id, bs.number as settlement_number')
             ->selectRaw('CAST(NULL AS BIGINT) as invoice_id, NULL as line_state, NULL as form_token')
             /*
@@ -273,7 +273,7 @@ final class BoutiqueSales
             ->selectRaw('bil.id as ref_id, CAST(NULL AS BIGINT) as order_id, ci.number as order_number, bil.issued_at as ordered_at, ci.status as order_status, NULL as channel')
             ->selectRaw('bil.boutique_id, bil.boutique_name, bil.name as product_name, NULL as variant')
             ->selectRaw('bil.parent_name as parent_name, NULL as parent_variant, CAST(NULL AS DECIMAL) as parent_total, NULL as addon_name')
-            ->selectRaw('bil.quantity - bil.returned_quantity as quantity, bil.unit_price, bil.gross - bil.returned_gross as amount, bil.rate as rate, CAST(NULL AS DECIMAL) as vat_rate')
+            ->selectRaw('bil.quantity - bil.returned_quantity as quantity, bil.unit_price, bil.gross - bil.returned_gross as amount, bil.rate as rate, CAST(NULL AS DECIMAL) as vat_rate, bil.agreed_price as agreed_price')
             ->selectRaw('0 as credited, NULL as kept_state, bil.boutique_settlement_id as settlement_id, bs.number as settlement_number')
             ->selectRaw('ci.id as invoice_id')
             ->selectRaw('CASE WHEN bil.voided_at IS NOT NULL THEN ? WHEN bil.returned_quantity >= bil.quantity THEN ? WHEN bil.returned_quantity > 0 THEN ? ELSE ? END as line_state',
@@ -363,7 +363,8 @@ final class BoutiqueSales
         $standalone = $r->type === self::STANDALONE;
         $rateH = $standalone ? BoutiqueMoney::rate($r->rate) : 0;
         $rate = $standalone ? $rateH / 100 : null;
-        $part = BoutiqueMoney::split($amountB, $rateH, $standalone ? BoutiqueMoney::rate($r->vat_rate) : 0);
+        $part = BoutiqueMoney::split($amountB, $rateH, $standalone ? BoutiqueMoney::rate($r->vat_rate) : 0,
+            $standalone && $r->agreed_price !== null ? BoutiqueMoney::gross((float) $r->quantity, (float) $r->agreed_price) : null);
         $commissionB = $part['commission'];
         /*
          * فاتورةٌ ملغاةٌ لم تحملها ورقة: بندُها كما سُجّل ولا نصيبَ فيه لأحد — كما في

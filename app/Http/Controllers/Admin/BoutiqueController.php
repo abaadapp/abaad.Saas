@@ -19,6 +19,7 @@ use App\Support\BoutiqueDues;
 use App\Support\BoutiqueHolds;
 use App\Support\BoutiqueInvoiceDues;
 use App\Support\BoutiqueMovements;
+use App\Support\BoutiquePolicy;
 use App\Support\BoutiqueReturns;
 use App\Support\BoutiqueSales;
 use App\Support\Boutiques;
@@ -283,6 +284,33 @@ class BoutiqueController extends Controller
         return response()->json(BoutiqueMovements::page((int) $business->id, (int) $boutique->id, BoutiqueMovements::filters($request), auth()->user()));
     }
 
+    /**
+     * سعرٌ متّفقٌ عليه لصنفٍ من أصناف البوتيك — سطرٌ بتاريخه ومرجعه (`BoutiquePolicy::record`).
+     *
+     * بإذن الإصدار: سعرٌ يحسب منه ما على المتجر. ولا أثرَ له إلّا لمتجرٍ سرت عليه السياسة.
+     */
+    public function agree(Request $request, int $id)
+    {
+        $this->money('issue');
+        $business = $this->shop();
+        $boutique = $this->find($id);
+        $data = $request->validate([
+            'product_id' => ['required', 'integer'],
+            'variant_id' => ['nullable', 'integer'],
+            'price' => ['required', 'numeric', 'gt:0', 'max:1000000'],
+            'starts_on' => ['required', 'date_format:Y-m-d'],
+            'ends_on' => ['nullable', 'date_format:Y-m-d'],
+            'reference' => ['required', 'string', 'max:255'],
+        ], [], [
+            'product_id' => __('الصنف'), 'variant_id' => __('المقاس'), 'price' => __('السعر المتفق عليه'),
+            'starts_on' => __('يسري من'), 'ends_on' => __('حتى'), 'reference' => __('مرجع الاتفاق'),
+        ]);
+
+        BoutiquePolicy::record((int) $business->id, $boutique, $data, auth()->id());
+
+        return back()->with('toast', ['msg' => __('سُجّل السعر المتفق عليه'), 'type' => 'success']);
+    }
+
     /** ملخّصُ الشهر — للبوتيك المختار أو للكلّ */
     public function salesSummary(Request $request)
     {
@@ -426,7 +454,11 @@ class BoutiqueController extends Controller
 
         $doc = BoutiqueSettlement::where('business_id', $business->id)->where('boutique_id', $boutique->id)
             ->where('kind', BoutiqueSettlement::SETTLEMENT)->findOrFail($settlement);
-        BoutiqueDues::pay($doc, $data['method']);
+        try {
+            BoutiqueDues::pay($doc, $data['method']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['components' => $e->getMessage()]);
+        }
 
         return back()->with('toast', ['msg' => __('سُجّل سدادُ مستحقّات المكوّنات في :number', ['number' => $doc->number]), 'type' => 'success']);
     }

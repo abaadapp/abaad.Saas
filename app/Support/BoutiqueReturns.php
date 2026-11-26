@@ -199,6 +199,7 @@ final class BoutiqueReturns
             'rate' => round((float) ($item->boutique_rate ?? 0), 2),
             'vat_rate' => $item->boutique_vat_rate === null ? null : round((float) $item->boutique_vat_rate, 2),
             'unit_price' => round((float) $item->price, 3),
+            'agreed' => $item->boutique_agreed_price === null ? null : round((float) $item->boutique_agreed_price, 3),
         ];
     }
 
@@ -326,7 +327,7 @@ final class BoutiqueReturns
         if ($expense === null || $amount <= 0) {
             $note->update($decided + ['status' => BoutiqueReturn::REDUCED, 'booked_at' => now()->toDateString()]);
 
-            BoutiqueHolds::decided($note->boutique_invoice_line_id);
+            BoutiqueHolds::decided($note->boutique_invoice_line_id, $note->order_item_id);
 
             return;
         }
@@ -335,18 +336,18 @@ final class BoutiqueReturns
 
         // وما سُدّدت ورقتُه دونه (`BoutiqueHolds::withhold`) ما زال دَينًا في 2160: يُنقص منه، ولا مطالبةَ بما لم يُدفع
         if ((! $expense->isPaid() && (! $accrued || $amount <= self::payable($expense) + 0.0005))
-            || ($expense->isPaid() && $accrued && BoutiqueHolds::covers($note->boutique_invoice_line_id, $amount))) {
+            || ($expense->isPaid() && $accrued && BoutiqueHolds::covers($note->boutique_invoice_line_id, $amount, $note->order_item_id))) {
             // ورقةٌ قديمةٌ لم تُسدَّد لا دَينَ لها في 2160: يُسدَّد صافيها ويدخل الأثرُ يومَ السداد
             $at = $accrued ? self::post($note, $expense, 'boutique_payable') : null;
             $note->update($decided + ['status' => BoutiqueReturn::REDUCED, 'booked_at' => $at?->toDateString()]);
-            BoutiqueHolds::decided($note->boutique_invoice_line_id);
+            BoutiqueHolds::decided($note->boutique_invoice_line_id, $note->order_item_id);
 
             return;
         }
 
         $at = self::post($note, $expense, 'boutique_receivable');
         $note->update($decided + ['status' => BoutiqueReturn::CLAIM, 'booked_at' => $at->toDateString()]);
-        BoutiqueHolds::decided($note->boutique_invoice_line_id);
+        BoutiqueHolds::decided($note->boutique_invoice_line_id, $note->order_item_id);
     }
 
     /**
@@ -365,7 +366,7 @@ final class BoutiqueReturns
             'decided_by' => auth()->id(),
             'decided_at' => now(),
         ]);
-        BoutiqueHolds::decided($note->boutique_invoice_line_id);
+        BoutiqueHolds::decided($note->boutique_invoice_line_id, $note->order_item_id);
 
         if ($note->condition === BoutiqueReturn::SELLABLE && ($order = Order::find($note->order_id))) {
             self::offShelf($order, (int) $note->product_id, (int) $note->quantity, __('مرتجعٌ تحمّله المتجر — خرج من رفّ البوتيك'));
@@ -727,7 +728,14 @@ final class BoutiqueReturns
                 : BoutiqueMoney::baisa(OrderItem::whereKey($line['item_id'])->value('total') ?? 0)
                     - BoutiqueMoney::baisa(BoutiqueReturn::where('order_item_id', $line['item_id'])->where('source', BoutiqueReturn::CANCEL)->sum('gross'))
                     - BoutiqueMoney::baisa($gross);
-            $net = fn (int $totalB) => BoutiqueMoney::split($totalB, BoutiqueMoney::rate($line['rate']), BoutiqueMoney::rate($line['vat_rate'] ?? 0))['net'];
+            /*
+             * وبندٌ بالسعر المتّفق عليه: حصّتُه من المتّفق عليه × ما بقي من كمّيّته — والبندُ مبلغُه
+             * سعرُه × كمّيّته، فتُقرأ الكمّيّةُ من المبلغ بلا تقريب.
+             */
+            $priceB = BoutiqueMoney::baisa($line['unit_price']);
+            $agreed = ($line['agreed'] ?? null) !== null && $priceB > 0;
+            $net = fn (int $totalB) => BoutiqueMoney::split($totalB, BoutiqueMoney::rate($line['rate']), BoutiqueMoney::rate($line['vat_rate'] ?? 0),
+                $agreed ? intdiv($totalB, $priceB) * BoutiqueMoney::baisa($line['agreed']) : null)['net'];
 
             return Baisa::toMoney($net($after + BoutiqueMoney::baisa($gross)) - $net($after));
         }

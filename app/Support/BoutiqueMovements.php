@@ -419,7 +419,9 @@ final class BoutiqueMovements
     private static function piecePayments(int $businessId, int $boutiqueId)
     {
         $refund = "bs.kind = '".BoutiqueSettlement::REFUND."'";
-        $effect = "CASE WHEN {$refund} THEN ".self::b('bs.components_credit').' ELSE 0 - '.self::b('bs.components_net').' END';
+        // وما سُدّدت قطعُ الورقة دونه لأنّ تحصيلَ طلبه أُلغي لم يخرج: يخرج مع سداد معلّقه
+        $withheld = '(SELECT COALESCE(SUM(wh.withheld_amount), 0) FROM boutique_sheet_holds wh WHERE wh.boutique_settlement_id = bs.id AND wh.boutique_component_due_id IS NOT NULL AND wh.withheld_at IS NOT NULL)';
+        $effect = "CASE WHEN {$refund} THEN ".self::b('bs.components_credit').' ELSE 0 - '.self::b("bs.components_net - {$withheld}").' END';
 
         return DB::table('boutique_settlements as bs')->where('bs.business_id', $businessId)->where('bs.boutique_id', $boutiqueId)
             ->whereNotNull('bs.components_paid_at')
@@ -520,14 +522,17 @@ final class BoutiqueMovements
      */
     private static function holds(int $businessId, int $boutiqueId): array
     {
-        $of = fn () => DB::table('boutique_sheet_holds as h')->join('boutique_invoice_lines as l', 'l.id', '=', 'h.boutique_invoice_line_id')
+        // والمعلّقُ بندُ فاتورة، أو بندُ طلبٍ بيع بالسياسة، أو قطعةٌ فيه
+        $of = fn () => DB::table('boutique_sheet_holds as h')->leftJoin('boutique_invoice_lines as l', 'l.id', '=', 'h.boutique_invoice_line_id')
+            ->leftJoin('order_items as hi', 'hi.id', '=', 'h.order_item_id')->leftJoin('boutique_component_dues as hd', 'hd.id', '=', 'h.boutique_component_due_id')
             ->where('h.business_id', $businessId)->where('h.boutique_id', $boutiqueId);
+        $name = 'COALESCE(l.name, hi.name, hd.product_name)';
         $paid = '(0 - '.self::b('h.paid_amount').')';
 
         return [
-            self::columns($of(), self::HELD, 7, 'h.opened_at', 'h.id', 'h.boutique_settlement_id', 'NULL', 'l.name', 'NULL', self::b('h.amount'), '0', 'h.customer_invoice_id'),
-            self::columns($of()->whereNotNull('h.closed_at'), self::HOLD_CLOSED, 8, 'h.closed_at', 'h.id', 'h.boutique_settlement_id', 'NULL', 'l.name', 'NULL', self::b('h.amount'), '0', 'h.customer_invoice_id'),
-            self::columns($of()->whereNotNull('h.paid_at'), self::HOLD_PAID, 9, 'h.paid_at', 'h.id', 'h.boutique_settlement_id', 'NULL', 'l.name', 'NULL', $paid, $paid, 'h.customer_invoice_id'),
+            self::columns($of(), self::HELD, 7, 'h.opened_at', 'h.id', 'h.boutique_settlement_id', 'NULL', $name, 'NULL', self::b('h.amount'), '0', 'h.customer_invoice_id'),
+            self::columns($of()->whereNotNull('h.closed_at'), self::HOLD_CLOSED, 8, 'h.closed_at', 'h.id', 'h.boutique_settlement_id', 'NULL', $name, 'NULL', self::b('h.amount'), '0', 'h.customer_invoice_id'),
+            self::columns($of()->whereNotNull('h.paid_at'), self::HOLD_PAID, 9, 'h.paid_at', 'h.id', 'h.boutique_settlement_id', 'NULL', $name, 'NULL', $paid, $paid, 'h.customer_invoice_id'),
         ];
     }
 
@@ -677,7 +682,11 @@ final class BoutiqueMovements
     /** نصيبُ البوتيك من مبلغ بندِ طلب، بالبيسات — القاعدةُ الواحدة (`BoutiqueMoney`) */
     private static function net(OrderItem $item, float $total): int
     {
-        return BoutiqueMoney::split(self::baisa($total), BoutiqueMoney::rate($item->boutique_rate), BoutiqueMoney::rate($item->boutique_vat_rate ?? 0))['net'];
+        // وبالسعر المتّفق عليه: من الكمّيّة — والمبلغُ سعرُ البند × كمّيّته
+        $agreed = $item->boutique_agreed_price === null || (float) $item->price <= 0 ? null
+            : BoutiqueMoney::gross(round($total / (float) $item->price), (float) $item->boutique_agreed_price);
+
+        return BoutiqueMoney::split(self::baisa($total), BoutiqueMoney::rate($item->boutique_rate), BoutiqueMoney::rate($item->boutique_vat_rate ?? 0), $agreed)['net'];
     }
 
     /** وبلغة القاعدة */

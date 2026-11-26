@@ -858,6 +858,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     // فواتيرُ عملاءٍ فيها صنفُ بوتيكٍ لم يدخل حسابَه — قراءةٌ للمراجعة (`BoutiqueInvoiceReview`)
     Route::get('/products/boutiques/invoice-review', [BoutiqueInvoiceReviewController::class, 'index'])->name('boutiques.invoiceReview');
     Route::get('/products/boutiques/{id}/movements', [BoutiqueController::class, 'movements'])->whereNumber('id')->name('boutiques.movements');
+    Route::post('/products/boutiques/{id}/agreements', [BoutiqueController::class, 'agree'])->whereNumber('id')->name('boutiques.agreements.store');
     Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
     Route::put('/products/boutiques/{id}', [BoutiqueController::class, 'update'])->name('boutiques.update');
     Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');

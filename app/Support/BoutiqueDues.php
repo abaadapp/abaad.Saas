@@ -483,6 +483,9 @@ class BoutiqueDues
             ->whereNull('boutique_settlement_id')
             ->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL])
             ->whereBetween('period_at', [$from, $to])
+            // وقطعةٌ بيعت بالسياسة تنتظر تحصيلَ طلبها (`BoutiquePolicy`)
+            ->where(fn ($q) => $q->where('waits', false)
+                ->orWhereIn('order_id', Order::where('business_id', $businessId)->whereRaw(BoutiquePolicy::orderCollectedSql())->select('id')))
             ->orderBy('period_at')->orderBy('id')->get();
 
         $credits = self::credits($businessId, $boutiqueId, $to);
@@ -633,13 +636,18 @@ class BoutiqueDues
             }
 
             $at ??= now();
-            $net = round((float) $s->components_net, 3);
+            // وقطعٌ بيعت بالسياسة وأُلغي تحصيلُ طلبها بعد الورقة: موقوفةٌ تبقى دَينًا في 2160 بصفّها (`BoutiqueHolds`)
+            $held = min(BoutiqueHolds::heldPieces((int) $s->id), round((float) $s->components_net, 3));
+            if ($held > 0 && $held >= round((float) $s->components_net, 3)) {
+                throw new SettlementRefused(__('كل قطع الورقة :number معلّقة: أُلغي تحصيل طلباتها. حصّلها من جديد، أو أفرج عنها من شاشة البوتيك بسببٍ مكتوب.', ['number' => $s->number]));
+            }
+            $net = round((float) $s->components_net - $held, 3);
 
             $entry = Ledger::post(
                 (int) $s->business_id,
                 __('سداد مستحقّات مكوّنات — ورقة ').$s->number,
                 array_values(array_filter([
-                    ['account' => 'boutique_payable', 'debit' => (float) $s->components_due],
+                    ['account' => 'boutique_payable', 'debit' => round((float) $s->components_due - $held, 3)],
                     (float) $s->components_credit > 0 ? ['account' => 'boutique_receivable', 'credit' => (float) $s->components_credit] : null,
                     $net > 0 ? ['account' => Books::payingAccount($method), 'credit' => $net] : null,
                 ])),
@@ -650,7 +658,9 @@ class BoutiqueDues
             $row = $net > 0 ? BoutiqueMovements::cash((int) $s->business_id, Transaction::BOUTIQUE_PIECES, $net, $method,
                 __('سداد قطع بوتيك :name — ورقة :number', ['name' => (string) $s->boutique?->name, 'number' => $s->number]), $at, $entry) : null;
 
-            $s->update(['components_paid_at' => $at, 'components_method' => $method, 'transaction_id' => $row?->id]);
+            // وقرأ ما عُلّق منها: بغيره تردّ قاعدةُ البيانات سدادَ قطعٍ تنتظر التحصيل (`boutique_sheet_pieces_holds_are_read`)
+            $s->update(['components_paid_at' => $at, 'components_method' => $method, 'transaction_id' => $row?->id, 'components_read_at' => now()]);
+            BoutiqueHolds::withholdPieces($s);
         });
     }
 
@@ -819,6 +829,8 @@ class BoutiqueDues
             'amount' => round($d['unit_amount'] * $times, 3),
             'kind' => BoutiqueComponentDue::DUE,
             'live_key' => $key,
+            // بيع بالسياسة: ينتظر تحصيلَ طلبه — ويبقى كذلك في عكسه وما يُعاد كتابتُه منه
+            'waits' => $d['waits'] ?? BoutiquePolicy::on((int) $order->business_id),
             'user_id' => auth()->id(),
             'occurred_at' => $order->ordered_at ?? now(),
             'period_at' => $order->ordered_at ?? now(),
@@ -856,6 +868,7 @@ class BoutiqueDues
                 'boutique_id' => $row->boutique_id, 'boutique_name' => $row->boutique_name,
                 'unit_price' => (float) $row->unit_price, 'unit_quantity' => (float) $row->unit_quantity,
                 'unit_amount' => round((float) $row->unit_price * (float) $row->unit_quantity, 3),
+                'waits' => (bool) $row->waits,
             ], $times, $key);
         }
     }
@@ -897,6 +910,7 @@ class BoutiqueDues
             'unit_quantity' => $row->unit_quantity,
             'quantity' => -(float) $row->quantity,
             'amount' => -(float) $row->amount,
+            'waits' => (bool) $row->waits,
             'reverses_id' => $row->id,
             'kind' => $settled ? BoutiqueComponentDue::CREDIT : BoutiqueComponentDue::REVERSAL,
             'reason' => $reason,
@@ -982,6 +996,7 @@ class BoutiqueDues
             'quantity' => $pieces,
             'amount' => round((float) $from->unit_price * $pieces, 3),
             'kind' => BoutiqueComponentDue::DUE,
+            'waits' => (bool) $from->waits,
             'live_key' => $key,
             'user_id' => auth()->id(),
             'occurred_at' => now(),

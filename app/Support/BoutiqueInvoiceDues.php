@@ -107,7 +107,7 @@ final class BoutiqueInvoiceDues
             return;
         }
 
-        $owners = Boutiques::attribute((int) $invoice->business_id, $items->map(fn ($i) => ['product' => $products->get($i->product_id)])->all());
+        $owners = Boutiques::attribute((int) $invoice->business_id, $items->map(fn ($i) => ['product' => $products->get($i->product_id), 'variant' => (int) ($i->details['variant']['id'] ?? 0) ?: null])->all());
         $variants = ProductVariant::where('business_id', $invoice->business_id)
             ->whereIn('id', $items->map(fn ($i) => (int) ($i->details['variant']['id'] ?? 0))->filter()->unique())->pluck('price', 'id');
         $now = now();
@@ -121,7 +121,10 @@ final class BoutiqueInvoiceDues
             $product = $products->get($item->product_id);
             $variant = (int) ($item->details['variant']['id'] ?? 0);
             $rateH = BoutiqueMoney::rate($owner['rate']);
-            $split = BoutiqueMoney::split(BoutiqueMoney::gross($item->quantity, $item->unit_price), $rateH, self::vatInside($item, $rule));
+            // وبالسياسة المقترحة: من السعر المتّفق عليه، والفرقُ على المتجر أو له (`BoutiquePolicy`)
+            $agreed = $owner['agreed'] ?? null;
+            $split = BoutiqueMoney::split(BoutiqueMoney::gross($item->quantity, $item->unit_price), $rateH, self::vatInside($item, $rule),
+                $agreed === null ? null : BoutiqueMoney::gross($item->quantity, $agreed));
 
             $line = BoutiqueInvoiceLine::create([
                 'business_id' => $invoice->business_id,
@@ -145,6 +148,7 @@ final class BoutiqueInvoiceDues
                 'rate' => $rateH / 100,
                 'commission' => Baisa::toMoney($split['commission']),
                 'net' => Baisa::toMoney($split['net']),
+                'agreed_price' => $agreed,
                 'issued_at' => $now,
             ]);
 
@@ -301,15 +305,24 @@ final class BoutiqueInvoiceDues
         $open = fn () => BoutiqueInvoiceLine::where('customer_invoice_id', $invoiceId)
             ->whereNull('boutique_settlement_id')->whereNull('voided_at');
 
-        if (! BoutiqueInvoiceLine::where('customer_invoice_id', $invoiceId)->whereNull('voided_at')->exists()) {
+        $lines = BoutiqueInvoiceLine::where('customer_invoice_id', $invoiceId)->whereNull('voided_at')->exists();
+        // وفاتورةٌ تغطّي طلباتٍ بيعت بالسياسة: ما حملته ورقةٌ منها يُعلَّق ويُفكّ بتحصيلها (`BoutiquePolicy`)
+        $orders = DB::table('customer_invoice_orders as cio')->join('order_items as oi', 'oi.order_id', '=', 'cio.order_id')
+            ->where('cio.customer_invoice_id', $invoiceId)->whereNotNull('oi.boutique_policy')->exists();
+
+        if (! $lines && ! $orders) {
             return;
         }
 
-        DB::transaction(function () use ($invoiceId, $open, $payment) {
+        DB::transaction(function () use ($invoiceId, $open, $payment, $orders) {
             // المتجرُ أوّلًا — ترتيبُ الأقفال الواحد، وهو ما تمسكه الورقةُ قبل أن تقرأ (`Boutiques::write`)
             Business::whereKey(CustomerInvoice::whereKey($invoiceId)->value('business_id'))->lockForUpdate()->first();
 
             $done = self::collected($invoiceId);
+
+            if ($orders) {
+                BoutiqueHolds::syncOrders($invoiceId, $done, $payment);
+            }
 
             $open()->lockForUpdate()->get()->each(function (BoutiqueInvoiceLine $line) use ($done) {
                 if ($done === ($line->collected_at !== null)) {
@@ -414,8 +427,9 @@ final class BoutiqueInvoiceDues
         $rateH = BoutiqueMoney::rate($line->rate);
         // بقاعدة لقطته: ما أُخرج منها من ضريبةٍ يُخرَج ممّا بقي
         $vatH = $line->rule === BoutiqueMoney::BEFORE_VAT && $line->tax_inclusive ? BoutiqueMoney::rate($line->tax_rate) : 0;
-        $before = BoutiqueMoney::split(BoutiqueMoney::gross($left, $line->unit_price), $rateH, $vatH);
-        $after = BoutiqueMoney::split(BoutiqueMoney::gross(round($left - $qty, 3), $line->unit_price), $rateH, $vatH);
+        $agreed = fn (float $q) => $line->agreed_price === null ? null : BoutiqueMoney::gross($q, (float) $line->agreed_price);
+        $before = BoutiqueMoney::split(BoutiqueMoney::gross($left, $line->unit_price), $rateH, $vatH, $agreed($left));
+        $after = BoutiqueMoney::split(BoutiqueMoney::gross(round($left - $qty, 3), $line->unit_price), $rateH, $vatH, $agreed(round($left - $qty, 3)));
         $diff = fn (string $k) => Baisa::toMoney($before[$k] - $after[$k]);
         $settled = $line->boutique_settlement_id !== null;
 

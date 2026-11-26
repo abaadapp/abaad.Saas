@@ -11902,5 +11902,21 @@
     "رُوجعت": "Reviewed",
     "تعليق السداد": "Payment holds",
     "في الشهر :n ورقة صدرت قبل توحيد التقريب، مجموعها يختلف عن جمع بنودها بـ :d. الورقة كما صدرت، والجديدة تطابق بنودها بالبيسة.": "This month :n sheets issued before rounding was unified differ from the sum of their lines by :d. A sheet stays as issued; a new one matches its lines to the baisa.",
-    "ضريبة داخل الأسعار أُخرجت قبل العمولة: :vat — يورّدها المتجر.": "Tax inside the prices taken out before commission: :vat — the shop remits it."
+    "ضريبة داخل الأسعار أُخرجت قبل العمولة: :vat — يورّدها المتجر.": "Tax inside the prices taken out before commission: :vat — the shop remits it.",
+    "قطعة في «:parent»: كم شملها الإشعار، وكم عاد إلى الرف، وكم لن يعود": "A piece in “:parent”: how many the note covers, how many came back to the shelf, how many will not",
+    "قطعة الباقة التي لم تعد، أو لم يُتحقق منها، تبقى لصاحبها كما عند إلغاء طلب. وما عاد منها ينقص مستحقه.": "A bundle piece that did not come back, or was not checked, stays owed to its owner as when an order is cancelled. What came back lowers what is owed.",
+    "قطع بوتيك لم يُتحقق منها": "Boutique pieces not checked yet",
+    "شملها إشعار دائن ولم يُقل أعادت. تبقى لصاحبها حتى يُقال.": "A credit note covered them and nobody said whether they came back. They stay owed until it is said.",
+    "في «:parent» · لم يُتحقق من :n": "In “:parent” · :n not checked",
+    "عادت إلى الرف": "Back on the shelf",
+    "سجّل حالها": "Record their state",
+    "قطعة في «:parent» × :n بثمنها كاملًا": "Piece in “:parent” × :n at its full price",
+    "«:name»: يبقى منها بعد الخصم :left، وللبوتيكات عن قطعها :due. خفّف خصمها :by على الأقلّ أو راجع سعرها.": "“:name”: :left is left of it after the discount, and :due is owed to the boutiques for its pieces. Lower its discount by at least :by or check its price.",
+    "«:name» في «:parent»: ما عاد وما لم يعد أكثرُ من :qty قطعة لم يُسأل عنها.": "“:name” in “:parent”: what came back and what did not is more than the :qty pieces not asked about yet.",
+    "«:name» في «:parent»: لم يُتحقَّق من :qty قطعة فقط.": "“:name” in “:parent”: only :qty pieces are not checked yet.",
+    "تكلفة قطعة بوتيك — فاتورة ": "Boutique piece cost — invoice ",
+    "قطعةٌ ليست من هذه الفاتورة.": "A piece that is not on this invoice.",
+    "قطع البوتيك": "Boutique pieces",
+    "اكتب كم عاد أو كم لن يعود من قطعةٍ واحدةٍ على الأقلّ.": "Write how many came back or will not come back for at least one piece.",
+    "سُجّل حال القطع": "The pieces’ state was recorded"
 }

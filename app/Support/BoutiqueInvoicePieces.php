@@ -12,6 +12,7 @@ use App\Models\CustomerInvoiceItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\RecipeItem;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -383,7 +384,7 @@ final class BoutiqueInvoicePieces
      * تقرؤها تقاريرُ التكلفة (`Demo::cogsByBucket`): بنودُ الطلبات تحمل تكلفةَ قطعها في لقطتها،
      * وفاتورةُ العميل بلا طلب لا بندَ لها هناك — فكان ربحُ التقرير أعلى من ربح الدفتر بثمنها.
      */
-    public static function cost(int $businessId, ?\Illuminate\Support\Carbon $start, ?\Illuminate\Support\Carbon $end, ?int $branchId)
+    public static function cost(int $businessId, ?Carbon $start, ?Carbon $end, ?int $branchId)
     {
         return DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')

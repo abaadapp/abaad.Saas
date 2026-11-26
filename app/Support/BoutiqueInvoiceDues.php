@@ -148,9 +148,8 @@ final class BoutiqueInvoiceDues
                 'rate' => $rateH / 100,
                 'commission' => Baisa::toMoney($split['commission']),
                 'net' => Baisa::toMoney($split['net']),
-                'agreed_price' => $agreed,
                 'issued_at' => $now,
-            ]);
+            ] + ($agreed === null ? [] : ['agreed_price' => $agreed]));
 
             self::accrue($line, $invoice);
         }

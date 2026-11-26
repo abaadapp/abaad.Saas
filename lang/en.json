@@ -11918,5 +11918,17 @@
     "قطعةٌ ليست من هذه الفاتورة.": "A piece that is not on this invoice.",
     "قطع البوتيك": "Boutique pieces",
     "اكتب كم عاد أو كم لن يعود من قطعةٍ واحدةٍ على الأقلّ.": "Write how many came back or will not come back for at least one piece.",
-    "سُجّل حال القطع": "The pieces’ state was recorded"
+    "سُجّل حال القطع": "The pieces’ state was recorded",
+    "كل قطع الورقة :number معلّقة: أُلغي تحصيل طلباتها. حصّلها من جديد، أو أفرج عنها من شاشة البوتيك بسببٍ مكتوب.": "All pieces on sheet :number are held: the collection of their orders was cancelled. Collect it again, or release them from the boutique screen with a written reason.",
+    "هذا الصنف ليس لهذا البوتيك.": "This product does not belong to this boutique.",
+    "السعر المتفق عليه أكبر من صفر.": "The agreed price must be above zero.",
+    "نهاية العرض بعد بدايته.": "The offer ends after it starts.",
+    "السعر المتفق عليه": "Agreed price",
+    "يسري من": "Applies from",
+    "مرجع الاتفاق": "Agreement reference",
+    "سُجّل السعر المتفق عليه": "The agreed price was recorded",
+    "العمولة، والمتبقي للمتجر، وصافي الربح: ما الفرق؟": "Commission, the shop’s remainder and net profit: what is the difference?",
+    "العمولة: ما يأخذه المتجر من بيع صنف البوتيك منفردًا، بنسبة البوتيك من السعر. هي إيراد المتجر من هذا البيع.": "Commission: what the shop takes from selling a boutique product on its own, at the boutique’s rate of the price. It is the shop’s income from that sale.",
+    "المتبقي للمتجر: ما يبقى من منتج المتجر بعد ثمن قطع البوتيك فيه. قبل خصم الفاتورة، وقبل تكلفة الورد والعمالة والإيجار.": "The shop’s remainder: what is left of the shop’s product after the price of the boutique pieces in it. Before the invoice discount, and before the cost of flowers, labour and rent.",
+    "صافي الربح المحاسبي: من تقرير الأرباح والدفتر، بعد كل التكاليف والمصروفات. لا تقوله هذه الشاشة.": "Accounting net profit: from the profit report and the ledger, after all costs and expenses. This screen does not say it."
 }

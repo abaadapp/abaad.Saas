@@ -521,6 +521,16 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                 </section>
             )}
 
+            {/* ثلاثةُ أرقامٍ تُخلط: ما يأخذه المتجر من بيع البوتيك، وما يبقى له من منتجه، وربحُه في الدفتر */}
+            <details className="rounded-lg border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-three-numbers">
+                <summary className="cursor-pointer font-semibold">{t('العمولة، والمتبقي للمتجر، وصافي الربح: ما الفرق؟')}</summary>
+                <ul className="mt-1.5 list-disc space-y-1 ps-5">
+                    <li>{t('العمولة: ما يأخذه المتجر من بيع صنف البوتيك منفردًا، بنسبة البوتيك من السعر. هي إيراد المتجر من هذا البيع.')}</li>
+                    <li>{t('المتبقي للمتجر: ما يبقى من منتج المتجر بعد ثمن قطع البوتيك فيه. قبل خصم الفاتورة، وقبل تكلفة الورد والعمالة والإيجار.')}</li>
+                    <li>{t('صافي الربح المحاسبي: من تقرير الأرباح والدفتر، بعد كل التكاليف والمصروفات. لا تقوله هذه الشاشة.')}</li>
+                </ul>
+            </details>
+
             {returnsShown && (
                 <section>
                     <p className="mb-1.5 text-[12px] font-semibold text-[#4b4b4b]">{t('المرتجعات والأرصدة — منفصلة عن المبيعات')}</p>

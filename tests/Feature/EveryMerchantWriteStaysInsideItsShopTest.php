@@ -109,6 +109,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['البوتيكات', 'delete', 'admin.boutiques.destroy', ['id' => 'boutique']],
                 ['البوتيكات', 'post', 'admin.boutiques.attach', ['id' => 'boutique']],
                 ['البوتيكات', 'post', 'admin.boutiques.settle', ['id' => 'boutique']],
+                ['البوتيكات', 'post', 'admin.boutiques.agreements.store', ['id' => 'boutique']],
                 ['البوتيكات', 'post', 'admin.boutiques.components.pay', ['id' => 'boutique', 'settlement' => 'boutique_settlement'], ['id'], ['method' => 'نقدي']],
                 ['البوتيكات', 'post', 'admin.boutiques.refund', ['id' => 'boutique'], [], ['method' => 'نقدي']],
                 ['البوتيكات', 'post', 'admin.boutiques.returns.review', ['id' => 'boutique'], [], ['note' => 1, 'bearer' => 'shop', 'why' => 'HACKED']],

@@ -4,14 +4,16 @@ namespace Tests\Feature;
 
 use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
+use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiquePriceAgreement;
+use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
 use App\Models\BoutiqueSheetHold;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
-use App\Models\CustomerInvoice;
+use App\Models\CustomerCreditNote;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -30,6 +32,7 @@ use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Ledger;
 use App\Support\OrderCorrection;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -196,9 +199,9 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->on();
         $this->agree();
         $invoice = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->company, [], [['product_id' => $this->ring->id, 'description' => 'خاتم', 'quantity' => 2, 'unit_price' => 10]]));
-        $line = \App\Models\BoutiqueInvoiceLine::sole();
+        $line = BoutiqueInvoiceLine::sole();
         $this->assertSame([20.0, 12.0, 4.8, 19.2], [(float) $line->gross, (float) $line->agreed_price, (float) $line->commission, (float) $line->net]);
-        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'مرتجع', null, items: BoutiqueInvoiceDues::noteItems($invoice, ['i'.$line->customer_invoice_item_id => ['quantity' => 1]]), basis: \App\Models\CustomerCreditNote::RETURN);
+        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'مرتجع', null, items: BoutiqueInvoiceDues::noteItems($invoice, ['i'.$line->customer_invoice_item_id => ['quantity' => 1]]), basis: CustomerCreditNote::RETURN);
         $this->assertSame(9.6, round((float) $line->fresh()->net - (float) $line->fresh()->returned_net, 3));
         CustomerPayments::record($this->shop->id, $this->company, 10, ['method' => 'نقدي'], [$invoice->id => 10]);
         $s = $this->statement();
@@ -215,10 +218,10 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         OrderCorrection::setQuantity($order->fresh(), $item, 2, 'نقص', 'refunded', 'نقدي');
         OrderCorrection::setQuantity($order->fresh(), $item->fresh(), 1, 'نقص', 'refunded', 'نقدي');
         DB::transaction(fn () => OrderCorrection::cancel($order->fresh(), 'أُلغي', null, [$item->id => ['sellable' => 1, 'damaged' => 0]]));
-        foreach (\App\Models\BoutiqueReturn::where('status', \App\Models\BoutiqueReturn::AWAITING)->get() as $n) {
+        foreach (BoutiqueReturn::where('status', BoutiqueReturn::AWAITING)->get() as $n) {
             BoutiqueReturns::receive($n, (float) $n->quantity, 0, 'عادت');
         }
-        $this->assertSame(number_format((float) $sheet->net, 3), number_format((float) \App\Models\BoutiqueReturn::sum('amount'), 3));
+        $this->assertSame(number_format((float) $sheet->net, 3), number_format((float) BoutiqueReturn::sum('amount'), 3));
         $this->assertSame(0.0, $this->payable());
         $this->ties('مرتجعٌ بعد الورقة');
     }
@@ -295,7 +298,7 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
 
         $new = Boutiques::settle($this->shop->fresh(), $this->lama, '2027-02');
         $this->assertSame([(int) $new->id, (int) $new->id], [(int) $item->fresh()->boutique_settlement_id, (int) $due->fresh()->boutique_settlement_id]);
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         DB::table('boutique_settlements')->where('id', $new->id)->update(['components_paid_at' => now()]);
     }
 
@@ -304,8 +307,20 @@ class ABoutiquePolicyIsWrittenAndOffUntilItsDayTest extends TestCase
         $this->on();
         $this->sell($this->ring);
         $sheet = Boutiques::settle($this->shop->fresh(), $this->lama, '2027-02');
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         DB::table('expenses')->where('id', $sheet->expense_id)->update(['status' => Expense::PAID]);
+    }
+
+    public function test_the_check_reads_and_writes_nothing(): void
+    {
+        $count = fn () => [DB::table('businesses')->whereNotNull('boutique_policy_from')->count(), BoutiquePriceAgreement::count(), DB::table('order_items')->count()];
+        $before = $count();
+        $this->artisan('boutiques:policy', ['--json' => true])->assertSuccessful();
+        $this->assertSame($before, $count());
+        $this->on();
+        $this->sell($this->ring, 1, null, credit: true);
+        $this->artisan('boutiques:policy', ['--business' => $this->shop->id])
+            ->expectsOutputToContain('السياسة من 2027-02-01 · بلا سعر متفق عليه: 1 · بيع بها: 1 · ينتظر التحصيل: 1')->assertSuccessful();
     }
 
     /* ═══════════ من يكتب الاتّفاق ═══════════ */

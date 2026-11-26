@@ -111,6 +111,8 @@ class TenantTables
         'boutique_credit_offsets',
         // ومرتجعُ ما بعد الورقة بعد الطلبات والأوراق: يشير إليهما — واستردادُه بعده
         'boutique_returns', 'boutique_return_recoveries',
+        // والسعرُ المتّفق عليه مع البوتيك — بند اتّفاقه (`BoutiquePolicy`)
+        'boutique_price_agreements',
         /*
          * ونيّاتُ الدفع بعد الطلبات: كلُّ نيّةٍ نجحت تشير إلى طلبها.
          *

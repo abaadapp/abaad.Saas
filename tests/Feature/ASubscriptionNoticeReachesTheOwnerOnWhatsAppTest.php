@@ -5,12 +5,15 @@ namespace Tests\Feature;
 use App\Mail\SubscriptionNoticeMail;
 use App\Models\Business;
 use App\Models\Setting;
+use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Support\SubscriptionWhatsApp;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppQuota;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -27,7 +30,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @var array<string, string> القالب ← حاله في حساب أبعاد عند Meta */
+    /** @var array<string, string> «القالب|اللغة» ← حاله في حساب أبعاد عند Meta */
     private array $templates = [];
 
     /** @var list<array{status: int, body: array<string, mixed>}> ردودُ الإرسال بترتيبها، وما بعدها نجاح */
@@ -47,7 +50,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
 
             if (str_ends_with($path, '/9000/message_templates') && $r->method() === 'GET') {
                 return Http::response(['data' => array_map(
-                    fn ($name, $status) => ['name' => $name, 'language' => 'ar', 'status' => $status],
+                    fn ($key, $status) => ['name' => explode('|', $key)[0], 'language' => explode('|', $key)[1], 'status' => $status],
                     array_keys($this->templates), $this->templates,
                 )], 200);
             }
@@ -71,7 +74,9 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->templates = [];
 
         foreach (SubscriptionWhatsApp::TEMPLATES as $t) {
-            $this->templates[$t['name']] = $status;
+            foreach (array_keys($t['bodies']) as $language) {
+                $this->templates[$t['name'].'|'.$language] = $status;
+            }
         }
     }
 
@@ -211,7 +216,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->line();
         $this->shop(7);
         $this->approveAll('PENDING');
-        $this->templates['abaad_subscription_locked'] = 'APPROVED';
+        $this->templates['abaad_subscription_locked|ar'] = 'APPROVED';
 
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
@@ -250,6 +255,45 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
         $this->assertSame([], $this->sends());
+    }
+
+    public function test_the_shops_own_number_is_never_used_even_when_it_is_connected(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        // ‏‏رقمُ التاجر متّصلٌ وأحدثُ من رقم أبعاد — والإنذارُ من أبعاد لا منه
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_BUSINESS, 'business_id' => $shop->id, 'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
+            'phone_number_id' => 'PN-SHOP', 'waba_id' => '9100', 'display_phone_number' => '+968 9988 7766',
+            'access_token' => 'TOKEN-OF-SHOP', 'status' => WhatsAppConnection::ACTIVE, 'connected_at' => now(),
+        ]);
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertCount(1, $this->sends());
+        Http::assertNotSent(fn (HttpRequest $r) => str_contains($r->url(), 'PN-SHOP') || str_contains($r->url(), '/9100/'));
+        Http::assertSent(fn (HttpRequest $r) => str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/PN-ABAAD/messages')
+            && $r->hasHeader('Authorization', 'Bearer TOKEN-OF-ABAAD'));
+    }
+
+    public function test_the_notice_takes_nothing_from_the_shops_message_balance(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        DB::table('whatsapp_usage_periods')->insert([
+            'business_id' => $shop->id, 'period_year' => now()->year, 'period_month' => now()->month,
+            'used' => 3, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $before = WhatsAppQuota::used($shop);
+        $tables = ['whatsapp_messages', 'whatsapp_usage_periods', 'whatsapp_message_packs', 'whatsapp_billing_trials'];
+        $snapshot = fn () => collect($tables)->mapWithKeys(fn ($t) => [$t => DB::table($t)->get()->map(fn ($r) => (array) $r)->all()])->all();
+        $was = $snapshot();
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertCount(1, $this->sends());
+        $this->assertSame($was, $snapshot());
+        $this->assertSame($before, WhatsAppQuota::used($shop->fresh()));
     }
 
     // ————— ٤· مرّةٌ في اليوم —————
@@ -298,7 +342,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->templates = [];
 
         $this->artisan('subscriptions:whatsapp-templates')
-            ->expectsOutputToContain('abaad_subscription_ends_soon: غير موجود')
+            ->expectsOutputToContain('abaad_subscription_ends_soon (en): غير موجود')
             ->assertSuccessful();
 
         Http::assertNotSent(fn (HttpRequest $r) => $r->method() === 'POST');
@@ -307,20 +351,24 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
     public function test_create_submits_only_the_missing_templates_as_arabic_utility(): void
     {
         $this->line();
-        $this->templates = ['abaad_subscription_ends_soon' => 'APPROVED'];
+        $this->templates = ['abaad_subscription_ends_soon|ar' => 'APPROVED', 'abaad_subscription_grace|en' => 'PENDING'];
 
         $this->artisan('subscriptions:whatsapp-templates', ['--create' => true])->assertSuccessful();
 
         $created = Http::recorded(fn (HttpRequest $r) => $r->method() === 'POST' && str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/9000/message_templates'))
             ->map(fn ($pair) => $pair[0]->data())->values();
 
-        $this->assertSame(
-            ['abaad_subscription_ends_today', 'abaad_subscription_grace', 'abaad_subscription_locked'],
-            $created->pluck('name')->all(),
-        );
+        $this->assertSame([
+            'abaad_subscription_ends_soon|en',
+            'abaad_subscription_ends_today|ar', 'abaad_subscription_ends_today|en',
+            'abaad_subscription_grace|ar',
+            'abaad_subscription_locked|ar', 'abaad_subscription_locked|en',
+        ], $created->map(fn ($t) => $t['name'].'|'.$t['language'])->all());
+
+        $bodies = collect(SubscriptionWhatsApp::TEMPLATES)->mapWithKeys(fn ($t) => [$t['name'] => $t['bodies']]);
 
         foreach ($created as $t) {
-            $this->assertSame('ar', $t['language']);
+            $this->assertSame($bodies[$t['name']][$t['language']], $t['components'][0]['text']);
             $this->assertSame('UTILITY', $t['category']);
             $body = $t['components'][0];
             // ‏‏مثالٌ لكلّ متغيّرٍ لا أكثر ولا أقلّ — وإلّا ردّت Meta القالب
@@ -330,10 +378,110 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->assertSame([], $this->sends());
     }
 
-    public function test_no_template_body_starts_or_ends_with_a_variable(): void
+    public function test_no_template_body_starts_or_ends_with_a_variable_and_both_languages_carry_the_same_variables(): void
     {
         foreach (SubscriptionWhatsApp::TEMPLATES as $t) {
-            $this->assertDoesNotMatchRegularExpression('/^\s*\{\{|\}\}\s*$/u', $t['body'], $t['name']);
+            $this->assertSame(['ar', 'en'], array_keys($t['bodies']), $t['name']);
+
+            foreach ($t['bodies'] as $language => $body) {
+                $this->assertDoesNotMatchRegularExpression('/^\s*\{\{|\}\}\s*$/u', $body, $t['name'].' '.$language);
+            }
+
+            preg_match_all('/\{\{\d+\}\}/', $t['bodies']['ar'], $ar);
+            preg_match_all('/\{\{\d+\}\}/', $t['bodies']['en'], $en);
+            $this->assertSame($ar[0], $en[0], $t['name']);
         }
+    }
+
+    // ————— ٦· بلغة صاحب النشاط —————
+
+    private function owner(Business $shop, ?string $locale): void
+    {
+        User::create([
+            'business_id' => $shop->id, 'name' => 'المالك', 'email' => 'owner'.$shop->id.'@abaadapp.om',
+            'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط', 'locale' => $locale,
+        ]);
+    }
+
+    public function test_an_owner_who_chose_english_gets_the_english_template_with_the_english_shop_name(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        $shop->update(['name_en' => 'Roses Shop']);
+        $this->owner($shop, 'en');
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $send = $this->sends()[0];
+        $this->assertSame('en', $send['template']['language']['code']);
+        $this->assertSame(['Roses Shop', $shop->ends_at->format('Y-m-d')], $this->params($send));
+    }
+
+    public function test_the_owners_own_choice_beats_the_shops_setting(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        Setting::create(['business_id' => $shop->id, 'key' => 'locale', 'value' => 'en']);
+        $this->owner($shop, 'ar');
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $send = $this->sends()[0];
+        $this->assertSame('ar', $send['template']['language']['code']);
+        $this->assertSame('متجر الورود', $this->params($send)[0]);
+    }
+
+    public function test_without_an_owner_choice_the_shop_then_the_platform_language_decides(): void
+    {
+        $this->line();
+        Setting::create(['business_id' => null, 'key' => 'locale', 'value' => 'en']);
+        // ‏‏الأوّل ضبط متجرُه العربيّة فتغلب المنصّة؛ والثاني بلا مالكٍ ولا إعداد فتقول المنصّة
+        $first = $this->shop(7);
+        $this->owner($first, null);
+        Setting::create(['business_id' => $first->id, 'key' => 'locale', 'value' => 'ar']);
+        $this->shop(7, phone: '9911 2233');
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $sends = collect($this->sends())->keyBy('to');
+        $this->assertSame('ar', $sends['96899887766']['template']['language']['code']);
+        $this->assertSame('en', $sends['96899112233']['template']['language']['code']);
+        // ‏‏وبلا اسمٍ إنجليزيّ يُكتب الاسمُ كما هو
+        $this->assertSame('متجر الورود', $this->params($sends['96899112233'])[0]);
+    }
+
+    public function test_arabic_is_the_default(): void
+    {
+        $this->line();
+        $this->shop(7);
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertSame('ar', $this->sends()[0]['template']['language']['code']);
+    }
+
+    public function test_an_english_owner_gets_arabic_while_english_is_not_yet_approved(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        $this->owner($shop, 'en');
+        $this->templates['abaad_subscription_ends_soon|en'] = 'PENDING';
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertSame('ar', $this->sends()[0]['template']['language']['code']);
+    }
+
+    public function test_nothing_leaves_when_neither_language_is_approved(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        $this->owner($shop, 'en');
+        $this->templates['abaad_subscription_ends_soon|en'] = 'PENDING';
+        $this->templates['abaad_subscription_ends_soon|ar'] = 'REJECTED';
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertSame([], $this->sends());
     }
 }

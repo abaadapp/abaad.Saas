@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Http\Middleware\SetLocale;
 use App\Models\Business;
+use App\Models\Setting;
 use App\Models\WhatsAppConnection;
 use Illuminate\Support\Facades\Cache;
 
@@ -28,45 +30,70 @@ use Illuminate\Support\Facades\Cache;
  * `WhatsAppConnections::platform` — الرقمُ الذي يعرفه التاجر. وردُّ التاجر
  * يصل إلى من يجيبه بالطريق القائم: رقمُه رقمُ مستخدمٍ عندنا ← الدعم
  * (`SupportWhatsApp::receive`)، وإلّا الصندوقُ المشترك أو العملاءُ المحتملون.
+ *
+ * ═══ وبلغة صاحب النشاط ═══
+ *
+ * عربيّةً أو إنجليزيّة بالسلسلة التي تختار بها الواجهةُ لغتَه (`SetLocale`)
+ * بلا الجلسة: حسابُ المالك، ثمّ إعدادُ المتجر، ثمّ إعدادُ المنصّة، ثمّ
+ * العربيّة. وقالبُ اللغتين اسمٌ واحد عند Meta بلغتين.
  */
 final class SubscriptionWhatsApp
 {
+    /** ‏‏اللغةُ الأولى، وإليها يُرجَع حين لا تُعتمد لغةُ المالك بعد */
     public const LANGUAGE = 'ar';
+
+    public const LANGUAGES = ['ar', 'en'];
 
     public const CATEGORY = 'UTILITY';
 
     /**
-     * المرحلة ← اسمُ القالب ونصُّه.
+     * المرحلة ← اسمُ القالب ونصُّه بكلّ لغة.
      *
      * المراحلُ مراحلُ البريد نفسُها (`SubscriptionNotices::stageFor`). والعددُ
      * لا يُكتب في النصّ بل التاريخ: «خلال ١ يومًا» عربيّةٌ مكسورة، والتاريخُ
-     * لا يحتاج تصريفًا. وقبل الانتهاء بأسبوعٍ وبيومٍ قالبٌ واحد.
+     * لا يحتاج تصريفًا. وكلُّ إنذارٍ قبل الانتهاء قالبٌ واحد.
      *
      * والنصُّ لا يبدأ بمتغيّرٍ ولا ينتهي به — Meta تردّ القالبَ الذي يفعل.
+     * ومتغيّراتُ اللغتين واحدةٌ بترتيبها.
      *
-     * @var array<string, array{name: string, body: string}>
+     * @var array<string, array{name: string, bodies: array<string, string>}>
      */
     public const TEMPLATES = [
         'before' => [
             'name' => 'abaad_subscription_ends_soon',
-            'body' => 'مرحبًا، ينتهي اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}. بياناتك محفوظة، وللتجديد راسلنا على هذا الرقم.',
+            'bodies' => [
+                'ar' => 'مرحبًا، ينتهي اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}. بياناتك محفوظة، وللتجديد راسلنا على هذا الرقم.',
+                'en' => 'Hello, the Abaad subscription for your store {{1}} ends on {{2}}. Your data is safe, and to renew just message us on this number.',
+            ],
         ],
         'today' => [
             'name' => 'abaad_subscription_ends_today',
-            'body' => 'مرحبًا، ينتهي اشتراك متجرك {{1}} في أبعاد اليوم {{2}}، ويبقى النظام يعمل اليوم كاملًا. للتجديد راسلنا على هذا الرقم.',
+            'bodies' => [
+                'ar' => 'مرحبًا، ينتهي اشتراك متجرك {{1}} في أبعاد اليوم {{2}}، ويبقى النظام يعمل اليوم كاملًا. للتجديد راسلنا على هذا الرقم.',
+                'en' => 'Hello, the Abaad subscription for your store {{1}} ends today, {{2}}, and the system keeps working for the whole day. To renew, message us on this number.',
+            ],
         ],
         'grace' => [
             'name' => 'abaad_subscription_grace',
-            'body' => 'مرحبًا، انتهى اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}، ويعمل النظام حتى نهاية يوم {{3}} ثم يتوقف. بياناتك محفوظة، وللتجديد راسلنا على هذا الرقم.',
+            'bodies' => [
+                'ar' => 'مرحبًا، انتهى اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}، ويعمل النظام حتى نهاية يوم {{3}} ثم يتوقف. بياناتك محفوظة، وللتجديد راسلنا على هذا الرقم.',
+                'en' => 'Hello, the Abaad subscription for your store {{1}} ended on {{2}}. The system keeps working until the end of {{3}} and then stops. Your data is safe, and to renew just message us on this number.',
+            ],
         ],
         'locked' => [
             'name' => 'abaad_subscription_locked',
-            'body' => 'مرحبًا، توقف نظام متجرك {{1}} في أبعاد لانتهاء الاشتراك بتاريخ {{2}}. بياناتك محفوظة كما هي ولا يُحذف شيء، وللتجديد راسلنا على هذا الرقم.',
+            'bodies' => [
+                'ar' => 'مرحبًا، توقف نظام متجرك {{1}} في أبعاد لانتهاء الاشتراك بتاريخ {{2}}. بياناتك محفوظة كما هي ولا يُحذف شيء، وللتجديد راسلنا على هذا الرقم.',
+                'en' => 'Hello, the Abaad system for your store {{1}} has stopped because the subscription ended on {{2}}. Your data is kept as it is and nothing is deleted. To renew, message us on this number.',
+            ],
         ],
     ];
 
     /** أمثلةُ المتغيّرات التي تراجعها Meta مع النصّ */
-    private const EXAMPLES = ['متجر الورد', '2026-12-31', '2027-01-07'];
+    private const EXAMPLES = [
+        'ar' => ['متجر الورد', '2026-12-31', '2027-01-07'],
+        'en' => ['Rose Shop', '2026-12-31', '2027-01-07'],
+    ];
 
     /** ‏‏إنذارٌ واحدٌ لكلّ متجرٍ ومرحلةٍ في اليوم — ولو أُعيد الأمرُ بيد */
     private const ONCE_HOURS = 36;
@@ -80,7 +107,7 @@ final class SubscriptionWhatsApp
     }
 
     /**
-     * حالُ قوالب الإنذار في حساب أبعاد — الاسم ← الحال بحروف Meta، أو `null` إن تعذّرت القراءة.
+     * حالُ قوالب الإنذار في حساب أبعاد — «الاسم|اللغة» ← الحال بحروف Meta، أو `null` إن تعذّرت القراءة.
      *
      * @return array<string, string>|null
      */
@@ -102,8 +129,10 @@ final class SubscriptionWhatsApp
         foreach ($read['rows'] as $row) {
             $name = (string) ($row['name'] ?? '');
 
-            if (in_array($name, $mine, true) && self::base((string) ($row['language'] ?? '')) === self::LANGUAGE) {
-                $out[$name] = strtoupper((string) ($row['status'] ?? ''));
+            $language = self::base((string) ($row['language'] ?? ''));
+
+            if (in_array($name, $mine, true) && in_array($language, self::LANGUAGES, true)) {
+                $out[self::key($name, $language)] = strtoupper((string) ($row['status'] ?? ''));
             }
         }
 
@@ -121,27 +150,61 @@ final class SubscriptionWhatsApp
         $out = [];
 
         foreach (self::TEMPLATES as $template) {
-            if (isset($there[$template['name']])) {
-                continue;
+            foreach ($template['bodies'] as $language => $body) {
+                $key = self::key($template['name'], $language);
+
+                if (isset($there[$key])) {
+                    continue;
+                }
+
+                $count = preg_match_all('/\{\{\d+\}\}/', $body);
+                $r = MetaWhatsAppClient::createTemplate($line, [
+                    'name' => $template['name'],
+                    'language' => $language,
+                    'category' => self::CATEGORY,
+                    'parameter_format' => 'POSITIONAL',
+                    'components' => [[
+                        'type' => 'BODY',
+                        'text' => $body,
+                        'example' => ['body_text' => [array_slice(self::EXAMPLES[$language], 0, $count)]],
+                    ]],
+                ]);
+
+                $out[$key] = ['ok' => $r['ok'], 'status' => $r['status'], 'message' => $r['message']];
             }
-
-            $count = preg_match_all('/\{\{\d+\}\}/', $template['body']);
-            $r = MetaWhatsAppClient::createTemplate($line, [
-                'name' => $template['name'],
-                'language' => self::LANGUAGE,
-                'category' => self::CATEGORY,
-                'parameter_format' => 'POSITIONAL',
-                'components' => [[
-                    'type' => 'BODY',
-                    'text' => $template['body'],
-                    'example' => ['body_text' => [array_slice(self::EXAMPLES, 0, $count)]],
-                ]],
-            ]);
-
-            $out[$template['name']] = ['ok' => $r['ok'], 'status' => $r['status'], 'message' => $r['message']];
         }
 
         return $out;
+    }
+
+    /** مفتاحُ قالبٍ بلغته في `statuses` */
+    public static function key(string $name, string $language): string
+    {
+        return $name.'|'.$language;
+    }
+
+    /**
+     * لغةُ صاحب النشاط — بسلسلة `SetLocale` بلا الجلسة.
+     *
+     * حسابُ المالك (`MerchantAccount::owner`) أوّلًا: هو من يقرأ الرسالة،
+     * ولغتُه التي اختارها لنفسه تغلب افتراضَ متجره. ثمّ إعدادُ المتجر، ثمّ
+     * المنصّة، ثمّ العربيّة.
+     */
+    public static function language(Business $business): string
+    {
+        $candidates = [
+            MerchantAccount::owner($business)?->locale,
+            Setting::where('business_id', $business->id)->where('key', 'locale')->value('value'),
+            Tenancy::platform('locale'),
+        ];
+
+        foreach ($candidates as $locale) {
+            if (in_array($locale, SetLocale::SUPPORTED, true) && in_array($locale, self::LANGUAGES, true)) {
+                return $locale;
+            }
+        }
+
+        return self::LANGUAGE;
     }
 
     /**
@@ -157,9 +220,11 @@ final class SubscriptionWhatsApp
      *
      * @return list<string>
      */
-    public static function variables(Business $business, string $stage): array
+    public static function variables(Business $business, string $stage, string $language = self::LANGUAGE): array
     {
-        $vars = [(string) $business->name, (string) $business->ends_at?->format('Y-m-d')];
+        // ‏‏وبالإنجليزيّة اسمُ المتجر الإنجليزيّ إن كُتب
+        $name = $language === 'en' && filled($business->name_en) ? (string) $business->name_en : (string) $business->name;
+        $vars = [$name, (string) $business->ends_at?->format('Y-m-d')];
 
         if ($stage === 'grace') {
             $vars[] = (string) Tenancy::locksAt($business)?->format('Y-m-d');
@@ -191,8 +256,9 @@ final class SubscriptionWhatsApp
         }
 
         $template = self::TEMPLATES[$stage]['name'] ?? null;
+        $language = self::approvedLanguage($template, self::language($business), $statuses);
 
-        if ($template === null || ($statuses[$template] ?? null) !== WhatsAppTemplates::APPROVED) {
+        if ($template === null || $language === null) {
             return 'not_approved';
         }
 
@@ -202,7 +268,7 @@ final class SubscriptionWhatsApp
             return 'already';
         }
 
-        $r = MetaWhatsAppClient::sendTemplate($line, $to, $template, self::LANGUAGE, self::variables($business, $stage));
+        $r = MetaWhatsAppClient::sendTemplate($line, $to, $template, $language, self::variables($business, $stage, $language));
 
         if (! $r['ok']) {
             // ‏‏ما لم يخرج يُعاد عليه في تشغيلٍ يدويّ اليوم نفسَه
@@ -212,6 +278,29 @@ final class SubscriptionWhatsApp
         }
 
         return 'sent';
+    }
+
+    /**
+     * لغةُ المالك إن اعتُمد قالبُها، وإلّا العربيّة إن اعتُمدت — وإلّا لا إرسال.
+     *
+     * إنذارٌ بالعربيّة لمن اختار الإنجليزيّة خيرٌ من إقفالٍ بلا إنذار، والعكسُ
+     * لا يقع: العربيّةُ أوّلُ ما يُعتمد.
+     *
+     * @param  array<string, string>|null  $statuses
+     */
+    private static function approvedLanguage(?string $template, string $wanted, ?array $statuses): ?string
+    {
+        if ($template === null) {
+            return null;
+        }
+
+        foreach (array_unique([$wanted, self::LANGUAGE]) as $language) {
+            if (($statuses[self::key($template, $language)] ?? null) === WhatsAppTemplates::APPROVED) {
+                return $language;
+            }
+        }
+
+        return null;
     }
 
     /** آخرُ أربعة أرقام — ما يُطبع في السجلّ والشاشة بدل الرقم كاملًا */

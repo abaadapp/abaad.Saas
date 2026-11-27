@@ -88,11 +88,19 @@ class WhatsAppBillingController extends Controller
             'hours' => ['required', 'integer', 'min:1', 'max:'.WhatsAppBillingTrials::MAX_HOURS],
             // ‏‏رسومٌ حقيقيّة على بطاقة حساب الاختبار — بموافقةٍ تُكتب لا تُفترض
             'charges_accepted' => ['accepted'],
+            // ‏‏وأرقامُ الاختبار وحدها تصلها رسائلُ التجربة (`WhatsAppBillingTrials::recipient`)
+            'phones' => ['required', 'string', 'max:500'],
         ], ['charges_accepted.accepted' => __('وافق أولًا على الرسوم الفعلية على بطاقة حساب الاختبار.')], [
-            'business_id' => __('المتجر'), 'messages' => __('عدد الرسائل'), 'hours' => __('المدة بالساعات'),
+            'business_id' => __('المتجر'), 'messages' => __('عدد الرسائل'), 'hours' => __('المدة بالساعات'), 'phones' => __('أرقام الاختبار'),
         ]);
 
-        $r = WhatsAppBillingTrials::open(Business::findOrFail($data['business_id']), $request->user(), (int) $data['messages'], (int) $data['hours']);
+        $phones = WhatsAppBillingTrials::phones($data['phones']);
+
+        if (! $phones['ok']) {
+            return $this->refuse('phones', $phones['message']);
+        }
+
+        $r = WhatsAppBillingTrials::open(Business::findOrFail($data['business_id']), $request->user(), (int) $data['messages'], (int) $data['hours'], $phones['phones']);
 
         return $r['ok'] ? $this->said($r['message']) : $this->refuse($r['field'], $r['message']);
     }

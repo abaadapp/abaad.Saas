@@ -37,6 +37,18 @@ final class WhatsAppBillingTrials
 
     public const DEFAULT_HOURS = 72;
 
+    /** ‏‏أرقامُ الاختبار التي تصلها رسائلُ التجربة — رقمٌ واحدٌ على الأقلّ، وخمسةٌ على الأكثر */
+    public const MAX_PHONES = 5;
+
+    /** ‏‏رسالةٌ إلى رقمٍ ليس من أرقام التجربة المفتوحة */
+    public const NOT_A_TEST_NUMBER = 'billing_trial_other_number';
+
+    /** ‏‏متجرٌ تجريبيّ يُرسل من رقمه ولا تجربةَ مفتوحةً عليه */
+    public const DEMO_SENDS_NOTHING = 'demo_shop_sends_nothing';
+
+    /** ‏‏أسبابُ رفضٍ تخصّ المستلم لا الوصلة: لا توقف الرقم، وتُقال بكلمات هذا القفل */
+    public const RECIPIENT_CODES = [self::NOT_A_TEST_NUMBER, self::DEMO_SENDS_NOTHING];
+
     /** ‏‏الفاتورةُ قد تتأخّر عن الرسالة */
     public const PROOF_DAYS = 120;
 
@@ -98,11 +110,74 @@ final class WhatsAppBillingTrials
         return $proven || $counted === 1 ? null : WhatsAppBillingLock::TRIAL_SPENT;
     }
 
+    /**
+     * ‏‏أتصل هذه الرسالةُ هذا الرقم؟ — سببُ المنع، أو `null`.
+     *
+     * يُسأل عند آخر باب (`MetaWhatsAppClient::account`) قبل أن تُعدّ الرسالة: فما رُفض لا يأكل من حدّ التجربة.
+     *
+     *   · وصلةٌ عليها تجربةٌ مفتوحة لا تصل إلّا أرقامَ تلك التجربة — وتجربةٌ بلا أرقام لا تصل أحدًا.
+     *   · ومتجرٌ تجريبيّ لا يُرسل من رقمه إلّا أثناء تجربةٍ مفتوحة على ذلك الرقم: عملاؤه أرقامٌ عشوائيّة
+     *     (`DemoStore`)، ونجاحُ تجربته يُثبت فوترتَه فيفتح رقمَه لهم لولا هذا.
+     */
+    public static function recipient(WhatsAppConnection $c, string $to): ?string
+    {
+        $trial = self::of($c);
+
+        if ($trial !== null) {
+            $phone = WhatsAppPhone::normalize($to);
+
+            return $phone !== null && in_array($phone, $trial->allowed_phones ?? [], true) ? null : self::NOT_A_TEST_NUMBER;
+        }
+
+        $demo = ! blank($c->business_id) && (bool) DB::table('businesses')->where('id', $c->business_id)->value('is_demo');
+
+        return $demo ? self::DEMO_SENDS_NOTHING : null;
+    }
+
+    /**
+     * ‏‏أرقامُ الاختبار كما كتبها مديرُ المنصّة — رقمٌ في كلّ سطر أو بينها فاصلة — بصيغة واتساب.
+     *
+     * @return array{ok: bool, phones: list<string>, message: string}
+     */
+    public static function phones(string $raw): array
+    {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/[\r\n,،;]+/u', $raw) ?: []), fn ($l) => $l !== ''));
+        $phones = [];
+
+        foreach ($lines as $line) {
+            $phone = WhatsAppPhone::normalize($line);
+
+            if ($phone === null) {
+                return ['ok' => false, 'phones' => [], 'message' => __('رقم اختبار لا يصلح لواتساب: :phone', ['phone' => $line])];
+            }
+
+            $phones[$phone] = $phone;
+        }
+
+        if ($phones === []) {
+            return ['ok' => false, 'phones' => [], 'message' => __('اكتب رقم اختبار واحدًا على الأقل — لا تخرج رسالة التجربة إلا إليه.')];
+        }
+
+        if (count($phones) > self::MAX_PHONES) {
+            return ['ok' => false, 'phones' => [], 'message' => __('أرقام الاختبار :max على الأكثر.', ['max' => self::MAX_PHONES])];
+        }
+
+        return ['ok' => true, 'phones' => array_values($phones), 'message' => ''];
+    }
+
     /* ═════════════ مديرُ المنصّة ═════════════ */
 
     /** @return array{ok: bool, field: string, message: string} */
-    public static function open(Business $business, User $by, int $limit, int $hours): array
+    /** @param  list<string>  $phones  أرقامُ الاختبار بصيغة واتساب (`phones`) */
+    public static function open(Business $business, User $by, int $limit, int $hours, array $phones): array
     {
+        // ‏‏تجربةٌ بلا أرقام اختبار لا تُفتح — ولو فاتت الشاشة
+        $phones = array_values(array_unique(array_filter(array_map(fn ($p) => WhatsAppPhone::normalize((string) $p), $phones))));
+
+        if ($phones === [] || count($phones) > self::MAX_PHONES) {
+            return self::no('phones', __('اكتب رقم اختبار واحدًا على الأقل — لا تخرج رسالة التجربة إلا إليه.'));
+        }
+
         if (self::launched()) {
             return self::no('trial', __('نجحت التجربة من قبل — لا حاجة إلى أخرى.'));
         }
@@ -135,7 +210,7 @@ final class WhatsAppBillingTrials
             return self::no('business_id', WhatsAppBillingLock::says((string) ($row->code ?: WhatsAppBillingLock::UNPROVEN))['text']);
         }
 
-        $trial = DB::transaction(function () use ($business, $c, $by, $limit, $hours) {
+        $trial = DB::transaction(function () use ($business, $c, $by, $limit, $hours, $phones) {
             WhatsAppBillingTrial::where('state', WhatsAppBillingTrial::OPEN)->where('expires_at', '<=', now())
                 ->update(['state' => WhatsAppBillingTrial::CLOSED, 'open_slot' => null, 'closed_at' => now(), 'closed_why' => 'expired', 'updated_at' => now()]);
 
@@ -145,6 +220,7 @@ final class WhatsAppBillingTrials
                 'message_limit' => max(1, min(self::MAX_MESSAGES, $limit)), 'messages_used' => 0,
                 'opened_at' => now(), 'expires_at' => now()->addHours(max(1, min(self::MAX_HOURS, $hours))),
                 'opened_by' => $by->id, 'opened_by_name' => mb_substr((string) $by->name, 0, 120),
+                'allowed_phones' => $phones,
             ]));
         });
 
@@ -152,8 +228,8 @@ final class WhatsAppBillingTrials
             return self::no('trial', __('تجربة أخرى مفتوحة الآن — أغلقها أولًا.'));
         }
 
-        WhatsAppBillingLock::event($row, 'trial_opened', null, $by, ['limit' => $trial->message_limit, 'until' => $trial->expires_at->toIso8601String()], $trial->id);
-        Activity::log('settings', 'واتساب — فُتحت تجربة الفوترة لمتجر «'.$business->name.'»: '.$trial->message_limit.' رسالة على الأكثر', [
+        WhatsAppBillingLock::event($row, 'trial_opened', null, $by, ['limit' => $trial->message_limit, 'until' => $trial->expires_at->toIso8601String(), 'numbers' => count($phones)], $trial->id);
+        Activity::log('settings', 'واتساب — فُتحت تجربة الفوترة لمتجر «'.$business->name.'»: '.$trial->message_limit.' رسالة على الأكثر، إلى '.count($phones).' من أرقام الاختبار وحدها', [
             'business_id' => $business->id, 'subject_type' => WhatsAppBillingTrial::class, 'subject_id' => $trial->id,
         ]);
         WhatsAppSender::soon((int) $business->id);
@@ -328,11 +404,13 @@ final class WhatsAppBillingTrials
                 'limit' => $trial->message_limit,
                 'until' => WhatsAppBillingLock::stamp($trial->expires_at),
                 'opened_by' => $trial->opened_by_name,
+                // ‏‏أرقامُ الاختبار التي كتبها مديرُ المنصّة نفسُه — وحدها تصلها رسائلُ التجربة
+                'phones' => array_values($trial->allowed_phones ?? []),
                 'may_pass' => ! $trial->opened_at->copy()->addDays(self::PROOF_DAYS)->isPast(),
                 'messages' => self::messages($trial)->orderByDesc('id')->limit(30)->get()->map(fn (WhatsAppMessagePrice $m) => WhatsAppPrices::line($m))->all(),
             ],
             'kinds' => collect(self::PROOF_KINDS)->map(fn (string $label, string $key) => ['key' => $key, 'label' => __($label)])->values()->all(),
-            'defaults' => ['messages' => self::DEFAULT_MESSAGES, 'hours' => self::DEFAULT_HOURS, 'max_messages' => self::MAX_MESSAGES, 'max_hours' => self::MAX_HOURS],
+            'defaults' => ['messages' => self::DEFAULT_MESSAGES, 'hours' => self::DEFAULT_HOURS, 'max_messages' => self::MAX_MESSAGES, 'max_hours' => self::MAX_HOURS, 'max_phones' => self::MAX_PHONES],
         ];
     }
 

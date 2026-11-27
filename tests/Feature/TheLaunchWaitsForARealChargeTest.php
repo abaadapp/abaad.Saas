@@ -71,7 +71,8 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
     private function openTrial(array $over = [], ?User $as = null)
     {
         return $this->actingAs($as ?? $this->super)->post(route('super-admin.whatsapp.billing-trial.open'), $over + [
-            'business_id' => $this->shop->id, 'messages' => 3, 'hours' => 24, 'charges_accepted' => true,
+            // ‏‏ورقمُ زبون المتجر رقمُ اختبارها — رسائلُها لا تصل غيرَه (`ATrialReachesOnlyItsTestNumbersTest`)
+            'business_id' => $this->shop->id, 'messages' => 3, 'hours' => 24, 'charges_accepted' => true, 'phones' => '91234567',
         ]);
     }
 
@@ -584,9 +585,12 @@ class TheLaunchWaitsForARealChargeTest extends TestCase
             'business_id' => $this->shop->id, 'whatsapp_connection_id' => $this->c()->id, 'name' => 'حملة', 'status' => WhatsAppCampaign::SENDING, 'total' => 3, 'started_at' => now(),
             'message' => ['meta_name' => 'abaad_offer_1', 'language' => 'ar', 'variables' => []], 'audience' => [],
         ]);
-        foreach (['96891110001', '96891110002', '96891110003'] as $phone) {
+        $phones = ['96891110001', '96891110002', '96891110003'];
+        foreach ($phones as $phone) {
             WhatsAppCampaignRecipient::create(['business_id' => $this->shop->id, 'campaign_id' => $campaign->id, 'phone' => $phone, 'status' => WhatsAppCampaignRecipient::PENDING]);
         }
+        // ‏‏وأرقامُ الحملة أرقامُ اختبار التجربة — رسالةُ التجربة لا تصل غيرَها (`ATrialReachesOnlyItsTestNumbersTest`)
+        WhatsAppBillingTrial::all()->each(fn (WhatsAppBillingTrial $t) => $t->update(['allowed_phones' => $phones]));
         $this->assertTrue(WhatsAppCampaignsSwitch::set(WhatsAppCampaignsSwitch::ALL)['ok']);
         $this->travelTo(now()->setTime(12, 0));
         $this->calls = [];

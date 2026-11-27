@@ -225,7 +225,7 @@ class TheDisplayedAmountIsTheCollectableAmountTest extends TestCase
         $this->actingAs($this->owner);
 
         $invoice = $this->issuedWithThirdDigit();
-        $note = CustomerInvoices::creditNote($invoice, 12.894, 0.614, 'إرجاع', $this->owner->id);
+        $note = CustomerInvoices::creditNote($invoice, 12.894, 0.614, 'إرجاع', $this->owner->id, basis: 'return');
 
         $this->assertSame(
             $this->asRead(Money::amount((float) $note->amount, $cur)),

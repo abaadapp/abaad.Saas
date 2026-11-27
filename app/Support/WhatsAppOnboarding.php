@@ -51,6 +51,9 @@ class WhatsAppOnboarding
 
     public const TYPES = [self::CLOUD_API, self::COEXISTENCE];
 
+    /** رقمٌ رُبط ولم يُسجَّل في Cloud API بعد — ينتظر رمزَ التحقّق بخطوتين */
+    public const NEEDS_REGISTRATION = 'needs_registration';
+
     /**
      * أمفتوحٌ مسارُ التعايش على هذا الخادم؟
      *
@@ -62,7 +65,8 @@ class WhatsAppOnboarding
      */
     public static function coexistenceOpen(): bool
     {
-        return (bool) config('whatsapp.coexistence_enabled', false);
+        // ‏‏يُفتح من شاشة مدير المنصّة، وبلا قرارٍ منه ما في إعداد الخادم (`WhatsAppMerchantLink::coexistence`)
+        return WhatsAppMerchantLink::coexistence();
     }
 
     /**
@@ -76,12 +80,21 @@ class WhatsAppOnboarding
      */
     public static function connect(
         Business $business,
-        User $actor,
+        ?User $actor,
         string $code,
         ?string $wabaId = null,
         ?string $phoneNumberId = null,
         string $type = self::CLOUD_API,
     ): array {
+        /*
+         * ‏‏ووصلةُ تطبيق التاجر لا يبدّلها إذنٌ من تطبيق أبعاد — من أيّ بابٍ جاء، وقبل أيّ نداءٍ إلى ميتا.
+         * ولا يُكتب عليها فشلٌ: لم يقع فيها شيء (`WhatsAppOwnApp::onOwnApp`).
+         */
+        if (WhatsAppOwnApp::holds(WhatsAppConnections::forBusiness($business->id))) {
+            return ['ok' => false, 'connection' => null, 'field' => 'code', 'pending' => false, 'webhook' => null,
+                'message' => __('متجرك مربوط بتطبيقك الخاص على Meta — لا يبدّله الربط عبر تطبيق أبعاد. إن أردت الانتقال فافصل التكامل أوّلًا.')];
+        }
+
         $exchange = WhatsAppEmbeddedSignup::exchange($code);
 
         if (! $exchange['ok']) {
@@ -144,7 +157,7 @@ class WhatsAppOnboarding
          * رسائلَه ليصير لا شيء. فيبقى ما كان، ويُقال للتاجر لماذا.
          */
         if ($chosen === null) {
-            if ($existing?->isUsable()) {
+            if ($existing?->isConnected()) {
                 return self::fail($business, 'phone_number_id', __('تمّ التفويض، ولم يُظهر حسابك رقمًا بعد — بقي ربطك الحاليّ كما هو. أعد الربط بعد دقائق.'), [
                     'code' => 'no_number_yet', 'message' => 'kept existing connection',
                 ]);
@@ -196,6 +209,30 @@ class WhatsAppOnboarding
             ]);
         }
 
+        /*
+         * ═══ ورقمٌ جديدٌ على Cloud API يحتاج تسجيلًا ═══
+         *
+         * ميتا تقولها في الرقم نفسِه: `platform_type` = `NOT_APPLICABLE`.
+         * فيُحفظ الربطُ «بانتظار التفعيل» ولا يُرسل، ويكتب التاجرُ رمزَ
+         * التحقّق بخطوتين فيُسجَّل (`register`). ورقمٌ مسجَّلٌ أصلًا — رقمُ
+         * تاجرٍ يعمل على تطبيقه الخاصّ — لا يُسجَّل ثانيةً: لا شيء يمسّ ما
+         * يعمل عنده. ورقمُ التعايش لا يُسجَّل أبدًا (انظر رأس الملفّ).
+         *
+         * ولا يحلّ رقمٌ لم يُفعَّل محلَّ رقمٍ يُرسل اليوم — كما في «لا رقمَ بعد».
+         */
+        $unregistered = $kind['on_app'] === false
+            && ($chosen['platform_type'] ?? null) === WhatsAppEmbeddedSignup::PLATFORM_NOT_APPLICABLE;
+
+        if ($unregistered && $existing?->isConnected() && $existing->phone_number_id !== $numberId) {
+            return self::fail($business, 'phone_number_id', __('الرقم الجديد لم يُفعَّل في واتساب للأعمال بعد — بقي ربطك الحاليّ كما هو. افصله ثمّ أعد الربط لتفعيل الرقم الجديد.'), [
+                'code' => self::NEEDS_REGISTRATION, 'message' => 'kept existing connection',
+            ]);
+        }
+
+        if ($why = self::wouldSilence($business, $existing, $waba, $numberId)) {
+            return self::fail($business, 'phone_number_id', $why, ['code' => WhatsAppBillingLock::UNPROVEN, 'message' => 'kept existing connection']);
+        }
+
         $hook = WhatsAppLinkCheck::subscribe($waba, $token);
 
         /*
@@ -215,8 +252,8 @@ class WhatsAppOnboarding
             'coexistence' => $kind['on_app'] === true,
             'access_token' => $token,
             'token_expires_at' => $check['expires_at'] ?? $exchange['expires_at'],
-            'status' => WhatsAppConnection::ACTIVE,
-            'last_error_code' => null,
+            'status' => $unregistered ? WhatsAppConnection::PENDING : WhatsAppConnection::ACTIVE,
+            'last_error_code' => $unregistered ? self::NEEDS_REGISTRATION : null,
             'last_error_message' => null,
             'last_error_at' => null,
         ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing($numberId, $token)['state'])
@@ -229,11 +266,101 @@ class WhatsAppOnboarding
         // قوالب المحلّ تُهيَّأ بأسمائها الافتراضية — كما في الربط اليدويّ
         WhatsAppTemplates::seedBusinessDefaults($business->id);
 
+        // ‏‏ومتجرُه صريح: من ربط من رابطٍ لا حسابَ له في أبعاد، وسطرُه يبقى في سجلّ المتجر
         Activity::log('settings', 'واتساب — ربط رقم المتجر بالتسجيل المدمج ('
-            .($chosen['display_phone_number'] ?? $numberId).')');
+            .($chosen['display_phone_number'] ?? $numberId).')', ['business_id' => $business->id]);
+
+        /*
+         * ‏‏ورقمٌ بقي في تطبيق واتساب للأعمال: تُطلب جهاتُه ومحادثاتُه السابقة الآن — Meta تقبلها
+         * مرّةً واحدة خلال ٢٤ ساعة من الربط (`WhatsAppCoexistence::start`).
+         */
+        WhatsAppCoexistence::start($connection);
+
+        if ($unregistered) {
+            return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => true, 'webhook' => $hook['state'],
+                'message' => __('تمّ التفويض — بقيت خطوةٌ واحدة: فعّل رقمك برمز التحقّق بخطوتين (ستّة أرقام) أدناه.')];
+        }
+
+        // ‏‏ويُفتح صفُّ جهة رسومه، ولا يُرسل قبل أن تثبت (`WhatsAppBillingLock`)
+        WhatsAppBillingLock::linked($connection);
+
+        // ‏‏ورقمٌ اكتمل ربطُه يصير رقمَ إرسال متجره حين تثبت جاهزيّتُه — بلا يدِ أحد (`WhatsAppSender`)
+        WhatsAppSender::linked($connection, $actor === null ? WhatsAppSender::VIA_CLIENT_LINK : WhatsAppSender::VIA_EMBEDDED, $actor);
 
         return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => false, 'webhook' => $hook['state'],
-            'message' => self::linkedMessage($hook['state'])];
+            'message' => self::withSender($business, self::linkedMessage($hook['state']))];
+    }
+
+    /**
+     * ‏‏أيُسكت هذا الربطُ رقمًا يُرسل اليوم؟ — لا يحلّ حسابٌ لم تثبت جهةُ رسومه محلَّ رقمٍ يعمل.
+     *
+     * فيبقى ما كان ويُقال لماذا. ومن عاد إلى حسابه ورقمه قبل القفل، أو ثبت حسابُه، يمضي.
+     */
+    public static function wouldSilence(Business $business, ?WhatsAppConnection $existing, string $waba, string $phone): ?string
+    {
+        return $existing?->isUsable()
+            && ! WhatsAppBillingLock::staysExempt($existing, $waba, $phone)
+            && ! WhatsAppBillingLock::accountMaySend((int) $business->id, $waba, $phone)
+            ? __('لم تثبت جهة رسوم هذا الحساب بعد — بقي ربطك الحاليّ كما هو لئلا تتوقف رسائلك. راجع أبعاد لإثباتها، أو افصل رقمك الحالي أولًا.')
+            : null;
+    }
+
+    /** أينتظر رقمُ هذه الوصلة تسجيلَه في Cloud API؟ */
+    public static function awaitsRegistration(?WhatsAppConnection $connection): bool
+    {
+        return $connection !== null
+            && $connection->status === WhatsAppConnection::PENDING
+            && $connection->last_error_code === self::NEEDS_REGISTRATION
+            && filled($connection->phone_number_id)
+            && filled($connection->access_token);
+    }
+
+    /**
+     * يُسجّل رقمَ المتجر في Cloud API برمزٍ يكتبه صاحبُه — ثمّ يُرسل منه.
+     *
+     * لا يُنادى إلّا لوصلةٍ قال الربطُ إنّ رقمها ينتظر (`awaitsRegistration`):
+     * فلا يُسجَّل رقمٌ يعمل، ولا رقمُ متجرٍ آخر — الوصلةُ وصلةُ متجر الجلسة.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    public static function register(Business $business, string $pin): array
+    {
+        $connection = WhatsAppConnections::forBusiness($business->id);
+
+        if (! self::awaitsRegistration($connection)) {
+            return ['ok' => false, 'message' => __('لا رقمَ ينتظر التفعيل — أعد الربط من زرّ «ربط واتساب API».')];
+        }
+
+        $done = WhatsAppEmbeddedSignup::register((string) $connection->phone_number_id, (string) $connection->access_token, $pin);
+
+        if (! $done['ok']) {
+            self::log('register_failed', $business->id, ['code' => $done['code'], 'message' => $done['message']]);
+
+            return ['ok' => false, 'message' => $done['code'] === WhatsAppEmbeddedSignup::PIN_MISMATCH
+                ? __('الرمز لا يطابق رمز التحقّق بخطوتين المضبوط لرقمك — اكتب رمزه الحاليّ.')
+                : __('لم تقبل ميتا تفعيل الرقم — لم يتغيّر شيء. أعد المحاولة بعد قليل.')];
+        }
+
+        $connection->update([
+            'status' => WhatsAppConnection::ACTIVE,
+            'last_error_code' => null,
+            'last_error_message' => null,
+            'last_error_at' => null,
+        ]);
+
+        Activity::log('settings', 'واتساب — تفعيل رقم المتجر في Cloud API ('
+            .($connection->display_phone_number ?? $connection->phone_number_id).')', ['business_id' => $business->id]);
+
+        WhatsAppBillingLock::linked($connection->refresh());
+        WhatsAppSender::linked($connection, WhatsAppSender::VIA_REGISTERED, auth()->user());
+
+        return ['ok' => true, 'message' => self::withSender($business, self::linkedMessage((string) $connection->webhook_state))];
+    }
+
+    /** ‏‏ومن بقيت رسائلُه من رقم أبعاد حتى يجهز رقمُه يُقال له */
+    public static function withSender(Business $business, string $message): string
+    {
+        return trim($message.' '.WhatsAppSender::said($business));
     }
 
     /** ما يُقال بعد ربطٍ قُبل — والاستقبالُ لا يُدّعى قبل أن يثبت */
@@ -282,19 +409,23 @@ class WhatsAppOnboarding
      *
      * @param  array<string, mixed>  $attributes
      */
-    private static function save(Business $business, User $actor, array $attributes): WhatsAppConnection
+    private static function save(Business $business, ?User $actor, array $attributes): WhatsAppConnection
     {
         $existing = WhatsAppConnections::forBusiness($business->id);
 
+        // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه (`leave`) — فلا تصير الوصلةُ نصفين
         $attributes = array_merge([
             'owner_type' => WhatsAppMode::OWNER_BUSINESS,
             'business_id' => $business->id,
             'provider' => 'meta_cloud',
             'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
             'connected_at' => now(),
-            'connected_by_user_id' => $actor->id,
+            // ‏‏وبلا مستخدمٍ: رُبط من رابطٍ أرسله فريقُ أبعاد (`WhatsAppClientLinks`)
+            'connected_by_user_id' => $actor?->id,
             'disconnected_at' => null,
-        ], $attributes);
+            // ‏‏وكلُّ ربطٍ مقفلٌ حتى تثبت جهةُ رسومه — إلّا ما كان قبل القفل وعاد إلى حسابه ورقمه
+            'billing_exempt' => WhatsAppBillingLock::staysExempt($existing, (string) ($attributes['waba_id'] ?? ''), (string) ($attributes['phone_number_id'] ?? '')),
+        ], WhatsAppOwnApp::leave($existing), $attributes);
 
         return $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
     }

@@ -322,6 +322,8 @@ final class CustomerInvoiceEdits
                 'quantity' => round((float) $i->quantity, 3),
                 'unit_price' => round((float) $i->unit_price, 3),
                 'discount' => round((float) $i->discount, 3),
+                // وحصّتُه من خصم النقاط — جزءٌ من خصمه، تتبع البندَ في التصحيح (`pointsShareFollows`)
+                'loyalty_discount' => round((float) $i->loyalty_discount, 3),
                 'tax_rate' => round((float) $i->tax_rate, 3),
                 'tax_amount' => round((float) $i->tax_amount, 3),
                 'line_total' => round((float) $i->line_total, 3),
@@ -626,7 +628,17 @@ final class CustomerInvoiceEdits
         $lines = self::draftLines($invoice, $input['items'] ?? null);
         $itemsChanged = $lines['changed'];
 
-        $totals = $itemsChanged ? CustomerInvoices::compute($bid, $lines['compute'], null, Vat::inclusive($bid)) : null;
+        /*
+         * ونقاطُ الولاء المختارة على المسودّة تُحسب من جديد على بنودها الجديدة —
+         * بمنطق الإنشاء نفسِه (`CustomerInvoices::create`): العددُ نفسُه والقيمةُ
+         * نفسُها وإلّا رُدّ التعديل. فلا يُصدَر لاحقًا ما يصرف النقاطَ بلا خصمها.
+         */
+        [$computeLines, $loyaltyRefusal] = self::loyaltyOnDraft($invoice, $customer, $lines['compute'], $itemsChanged || $customerChanged);
+        if ($loyaltyRefusal !== null) {
+            $blockers[] = $loyaltyRefusal;
+        }
+
+        $totals = $itemsChanged && $loyaltyRefusal === null ? CustomerInvoices::compute($bid, $computeLines, null, Vat::inclusive($bid)) : null;
         $newTotal = $totals ? $totals['total'] : round((float) $invoice->total, 3);
         $newTax = $totals ? $totals['tax'] : round((float) $invoice->tax_total, 3);
         $moneyChanged = $totals !== null && (
@@ -665,7 +677,7 @@ final class CustomerInvoiceEdits
             'customer' => $customer,
             'customer_changed' => $customerChanged,
             'totals' => $totals,
-            'compute_lines' => $lines['compute'],
+            'compute_lines' => $computeLines,
             'kept' => $lines['kept'],
             'removed' => $lines['removed'],
             'money' => [
@@ -924,7 +936,7 @@ final class CustomerInvoiceEdits
 
         if ($plan['documents']['credit'] !== null) {
             $c = $plan['documents']['credit'];
-            CustomerInvoices::creditNote($locked, $c['amount'], $c['tax'], $reason, $user->id, CustomerInvoices::NOTE_MANUAL, null, $c['lines'], $plan['basis'], $revision->id);
+            CustomerInvoices::creditNote($locked, $c['amount'], $c['tax'], $reason, $user->id, basis: $plan['basis'], items: $c['lines'], revisionId: $revision->id);
         }
 
         $update = ['revision' => $number];
@@ -990,10 +1002,10 @@ final class CustomerInvoiceEdits
 
                 $next = $was;
                 $next['quantity'] = round((float) $line['quantity'], 3);
-                $next['discount'] = round((float) ($line['discount'] ?? 0), 3);
                 if ($was['addon_id'] === null) {
                     $next['unit_price'] = round((float) $line['unit_price'], 3);
                 }
+                [$next['discount'], $next['loyalty_discount']] = self::pointsShareFollows($was, $next, (float) ($line['discount'] ?? 0));
 
                 if (filled($line['description'] ?? null) && trim((string) $line['description']) !== (string) $was['description']) {
                     $blockers[] = __('وصف البند «:d» من بيانات الفاتورة المطبوعة — لا يتغيّر بعد الإصدار. احذف البند وأضف الصحيح، فيصدر بهما مستندا التصحيح.', ['d' => $was['description']]);
@@ -1053,6 +1065,8 @@ final class CustomerInvoiceEdits
                     'quantity' => round((float) ($new['quantity'] ?? 1), 3),
                     'unit_price' => round((float) ($new['unit_price'] ?? 0), 3),
                     'discount' => round((float) ($new['discount'] ?? 0), 3),
+                    // بندٌ أُضيف بعد الإصدار لا نقاطَ له: لا تُصرف نقاطٌ بعد صدور الفاتورة
+                    'loyalty_discount' => 0.0,
                     'tax_rate' => round((float) ($new['tax_rate'] ?? $rate), 3),
                     'details' => $new['details'] ?? null,
                 ];
@@ -1326,6 +1340,52 @@ final class CustomerInvoiceEdits
     }
 
     /**
+     * نقاطُ الولاء على مسودّةٍ تُعدَّل — تُعاد على بنودها الجديدة بمنطق الإنشاء.
+     *
+     * المسودّةُ لا تصرف شيئًا من الرصيد: يُصرف عند إصدارها، مرّةً واحدة وتحت
+     * قفل العميل (`CustomerInvoices::issue`). لكنّ حصّةَ كلّ بندٍ من الخصم
+     * محفوظةٌ فيه (`loyalty_discount`) — وبنودٌ تُكتب من جديد بلا حصصها تُصدَر
+     * فتصرف النقاطَ بلا خصمها. فيُسأل عرضُ النقاط على البنود الجديدة وعميلِ
+     * الورقة: العددُ المختارُ نفسُه والقيمةُ التي وافق عليها نفسُها، ثمّ يُوزَّع
+     * الخصمُ كما يوزّعه الإنشاء (`withLoyalty`). وما اختلف يُردّ التعديلُ به —
+     * لا يُصحَّح في صمت: من وافق على خصمٍ لا يُكتب له غيرُه.
+     *
+     * @param  array<int, array<string, mixed>>  $lines  بخصمها اليدويّ وحده (`itemLine`)
+     * @return array{0: array<int, array<string, mixed>>, 1: ?string}
+     */
+    private static function loyaltyOnDraft(CustomerInvoice $invoice, Customer $customer, array $lines, bool $asked): array
+    {
+        $points = (int) $invoice->loyalty_points;
+
+        if ($points <= 0 || ! $asked) {
+            return [$lines, null];
+        }
+
+        $bid = (int) $invoice->business_id;
+        $agreed = round((float) $invoice->loyalty_discount, 3);
+        $quote = CustomerInvoices::loyaltyQuote($bid, $customer->fresh() ?? $customer, $lines, $points);
+
+        if ($quote['points'] !== $points || abs($quote['discount'] - $agreed) > 0.0005) {
+            $now = CustomerInvoices::loyaltyQuote($bid, $customer->fresh() ?? $customer, $lines);
+            $currency = Money::of($bid);
+
+            return [$lines, __('المسودّة مكتوبةٌ باستبدال :points نقطة بخصم :agreed، والتعديلُ يغيّر ما يجوز منها: الرصيد الآن :balance نقطة، والمتاح على البنود الجديدة :now_discount مقابل :now_points نقطة. لا يُحفظ التعديل — ألغِ المسودّة وأنشئ فاتورةً جديدة بالنقاط المتاحة.', [
+                'points' => $points,
+                'agreed' => Money::format($agreed, $currency),
+                'balance' => (int) $now['balance'],
+                'now_discount' => Money::format($now['max_discount'], $currency),
+                'now_points' => (int) $now['max_points'],
+            ])];
+        }
+
+        try {
+            return [CustomerInvoices::withLoyalty($lines, $quote['discount']), null];
+        } catch (ValidationException) {
+            return [$lines, __('خصم النقاط على المسودّة أكبر من قيمة بنودها الجديدة — لا يُحفظ التعديل. ألغِ المسودّة وأنشئ فاتورةً جديدة.')];
+        }
+    }
+
+    /**
      * بنودُ المسودّة كما ستُكتب — القائمُ بمعرّفه، والجديدُ من الكتالوج كبند الإنشاء.
      *
      * ═══ والقائمُ لا يمرّ من الكتالوج ثانيةً ═══
@@ -1455,13 +1515,49 @@ final class CustomerInvoiceEdits
             'description' => (string) $item->description,
             'quantity' => round((float) $item->quantity, 3),
             'unit_price' => round((float) $item->unit_price, 3),
-            'discount' => round((float) $item->discount, 3),
+            // خصمُ البند اليدويّ وحده — وحصّتُه من خصم النقاط تُعاد بعد الحساب (`loyaltyOnDraft`)
+            'discount' => round((float) $item->discount - (float) $item->loyalty_discount, 3),
             'tax_rate' => round((float) $item->tax_rate, 3),
             'details' => $item->details,
         ];
     }
 
     /** @param  array<string, mixed>  $a @param  array<string, mixed>  $b */
+    /**
+     * خصمُ البند المصحَّح: يدويُّه كما أُرسل، وحصّتُه من خصم النقاط بنسبة ما بقي منه.
+     *
+     * ═══ لماذا ═══
+     *
+     * النقاطُ صُرفت يوم الإصدار وتوزّع خصمُها على البنود (`loyalty_discount`).
+     * والشاشةُ تُرسل خصمَ البند اليدويَّ وحده. فلو بقيت حصّةُ النقاط كاملةً على
+     * بندٍ نقص، لنقص الإشعارُ الدائن عن نصيب ما رُدّ، ثمّ أعاد
+     * `returnPointsForCredit` نقاطًا بنسبته — فيُخصم للعميل مرّتين: خصمٌ باقٍ
+     * على ما احتفظ به، ونقاطٌ تعود عمّا رُدّ. وبالنسبة يتّفقان: ما رُدّ من البند
+     * يحمل نصيبَه من خصم النقاط، والنقاطُ تعود بنسبة الإشعار من الفاتورة.
+     *
+     * ولا تزيد الحصّةُ أبدًا: بندٌ زاد لا تُصرف له نقاطٌ جديدة — يصدر عن زيادته
+     * إشعارٌ مدينٌ كاملًا.
+     *
+     * @param  array<string, mixed>  $was
+     * @param  array<string, mixed>  $next  بكميّته وسعره الجديدين
+     * @return array{0: float, 1: float} الخصمُ كلُّه، وحصّةُ النقاط منه
+     */
+    private static function pointsShareFollows(array $was, array $next, float $manual): array
+    {
+        $manual = round($manual, 3);
+        $share = round((float) ($was['loyalty_discount'] ?? 0), 3);
+
+        if ($share <= 0) {
+            return [$manual, 0.0];
+        }
+
+        $before = (float) $was['quantity'] * (float) $was['unit_price'] - ((float) $was['discount'] - $share);
+        $after = (float) $next['quantity'] * (float) $next['unit_price'] - $manual;
+        $share = $before > 0 ? min($share, round($share * max(0.0, $after) / $before, 3)) : 0.0;
+
+        return [round($manual + $share, 3), $share];
+    }
+
     private static function lineDiffers(array $a, array $b): bool
     {
         foreach (['quantity', 'unit_price', 'discount', 'tax_rate'] as $k) {
@@ -1550,6 +1646,8 @@ final class CustomerInvoiceEdits
                         'quantity' => $row['quantity'],
                         'unit_price' => $row['unit_price'],
                         'discount' => $row['discount'],
+                        // وحصّتُه من خصم النقاط معه — فيتّفق صفُّ الورقة وبنودُها عند الإصدار
+                        'loyalty_discount' => $row['loyalty_discount'] ?? 0,
                         'tax_rate' => $row['tax_rate'],
                         'tax_amount' => $row['tax_amount'],
                         'line_total' => $row['line_total'],

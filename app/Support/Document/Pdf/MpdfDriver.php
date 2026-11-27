@@ -468,6 +468,16 @@ class MpdfDriver implements Driver
             'mode' => 'utf-8',
             'directionality' => 'rtl',
             'default_font' => self::FONT,
+            /*
+             * ═══ وملفّاتُه المؤقّتة في storage، لا في vendor ═══
+             *
+             * الافتراضيُّ مجلّدٌ داخل vendor/mpdf. ومنذ #205 يملك الكودَ
+             * حسابُ النشر، فلا يكتب فيه www-data — فسقط كلُّ PDF على
+             * الإنتاج بـ«Temporary files directory … is not writable».
+             * وstorage يملكها التطبيق، وmpdf يُنشئ المجلّدَ إن غاب. وتحت
+             * framework/cache لأنّ git يتجاهله هناك، فلا تتّسخ شجرةُ الخادم.
+             */
+            'tempDir' => storage_path('framework/cache/mpdf'),
             'autoScriptToLang' => true,
             /*
              * ولا تبديلَ خطٍّ باللغة: الأسرةُ الواحدة تحمل العربيَّ

@@ -76,6 +76,7 @@ use App\Http\Controllers\Admin\Website\DesignController;
 use App\Http\Controllers\Admin\Website\DomainController;
 use App\Http\Controllers\Admin\Website\EditorController;
 use App\Http\Controllers\Admin\Website\MediaController;
+use App\Http\Controllers\Admin\Website\LegalPagesController;
 use App\Http\Controllers\Admin\Website\SettingsController;
 use App\Http\Controllers\Admin\Website\StorePublishController;
 use App\Http\Controllers\Auth\AccountRecoveryController;
@@ -102,7 +103,11 @@ use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Admin\Finance\PaymentLinkController;
+use App\Http\Controllers\Store\SitemapController;
+use App\Http\Controllers\Admin\RibbonPortalController as RibbonPortalAdminController;
+use App\Http\Controllers\Store\RibbonPortalController;
 use App\Http\Controllers\Store\StorefrontController;
+use App\Http\Controllers\Store\StoreOldCartBridgeController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\AddonController as SubscriptionAddonCatalogController;
 use App\Http\Controllers\SuperAdmin\BillingController;
@@ -118,6 +123,7 @@ use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
 use App\Http\Controllers\SuperAdmin\PlanController;
 use App\Http\Controllers\SuperAdmin\RecoveryController;
+use App\Http\Controllers\SuperAdmin\SectorController;
 use App\Http\Controllers\SuperAdmin\SettingController;
 use App\Http\Controllers\SuperAdmin\SubscriptionController;
 use App\Http\Controllers\SuperAdmin\UserController;
@@ -126,6 +132,8 @@ use App\Http\Controllers\SupportAttachmentController;
 use App\Http\Controllers\WebsiteContactController;
 use App\Http\Controllers\WhatsApp\WebhookController;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RibbonPortalGate;
+use App\Http\Middleware\StoreLivesOnItsSubdomain;
 use App\Support\Permissions;
 use App\Support\Storefront;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -188,6 +196,9 @@ Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('d
  * nginx حيّ لا تقول شيئًا عن قاعدةٍ ساقطة، والمتجر بلا قاعدة متجرٌ ساقط.
  */
 Route::get('/health', HealthController::class)->name('health');
+// ‏مساراتُ واجهةٍ يضمّها المتصفّحُ حين ينتقل إليها بلا تحميل — انظر `config/ziggy.php`
+Route::get('/route-groups/{group}', App\Http\Controllers\RouteGroupController::class)
+    ->where('group', '[a-z]+')->middleware('throttle:60,1,route-groups')->name('routeGroups.show');
 
 /*
  * الموقع المنشور لعارضٍ خارجيّ — بلا مصادقة.
@@ -420,11 +431,24 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/users/{id}/toggle', [UserController::class, 'toggleStatus'])->name('users.toggle');
     Route::delete('/users/{id}', [UserController::class, 'destroy'])->name('users.destroy');
     Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
+    // «دخول كمستخدم» — الحسابُ المختار بصلاحياته كما هي (انظر `ImpersonationController::startUser`)
+    Route::post('/users/{id}/impersonate', [ImpersonationController::class, 'startUser'])->name('users.impersonate');
     Route::get('/users/{id}', [SuperAdminPageController::class, 'usersShow'])->name('users.show');
 
     // الباقات
     Route::post('/plans', [PlanController::class, 'store'])->name('plans.store');
     Route::put('/plans/{id}', [PlanController::class, 'update'])->name('plans.update');
+
+    /*
+     * القطاعات — تصنيفٌ إداريٌّ فوق الباقات والشركات (`Sectors`).
+     *
+     * مدخلٌ يجمع ما هو قائم ولا يكرّره: باقاتُ القطاع تُحفظ ببابَي الباقات أعلاه،
+     * وشركاتُه تُفتح بصفحاتها، وإضافةُ شركةٍ منه نموذجُ الإنشاء نفسُه بقطاعه.
+     */
+    Route::get('/sectors', [SectorController::class, 'index'])->name('sectors.index');
+    Route::post('/sectors', [SectorController::class, 'store'])->name('sectors.store');
+    Route::get('/sectors/{id}', [SectorController::class, 'show'])->whereNumber('id')->name('sectors.show');
+    Route::put('/sectors/{id}', [SectorController::class, 'update'])->whereNumber('id')->name('sectors.update');
 
     /*
      * إضافاتُ الاشتراكات — للمتاجر التي تُسجَّل بعد إطلاقها (`Addons\PricingPolicy`).
@@ -538,6 +562,12 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [SettingController::class, 'testEmail'])->name('settings.testEmail');
     /*
+     * ‏‏ومفتاحُ كتالوج الصندوق على الجهاز — بابٌ وحده لا حقلٌ في النموذج العامّ: يُقيَّد
+     * من بدّله وكان ماذا وصار ماذا، ويسري من الطلب التالي بلا نشرٍ ولا `.env`
+     * (`TillCatalogSwitch`).
+     */
+    Route::post('/pos-catalog', [App\Http\Controllers\SuperAdmin\TillCatalogSwitchController::class, 'update'])->name('pos-catalog.update');
+    /*
      * ولا مفتاحَ لخرائط Google هنا: يربطها كلُّ تاجرٍ بمفتاحه من مشروعه في
      * Google Cloud (`admin.integrations.google.key`). لا مفتاحَ لأبعاد يقع على أحد.
      */
@@ -563,10 +593,54 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     /* رقمُ مبيعات أبعاد — وصلةٌ ثانيةٌ للمنصّة بغرضٍ آخر، وبابُها مستقلّ */
     Route::post('/whatsapp/sales', [WhatsAppController::class, 'connectSales'])->name('whatsapp.sales.connect');
     Route::delete('/whatsapp/sales', [WhatsAppController::class, 'disconnectSales'])->name('whatsapp.sales.disconnect');
+    /*
+     * ‏‏وكيف يربط التجّارُ الجدد واتسابهم (تطبيقُهم أو تطبيقُ أبعاد بضغطة)، ورقمُ إعداد الربط
+     * المدمج — صفّان في القاعدة يُقيَّد تبديلُهما، ويسريان من الطلب التالي (`WhatsAppMerchantLink`).
+     */
+    Route::post('/whatsapp/merchant-link', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'mode'])->name('whatsapp.merchant-link.mode');
+    Route::post('/whatsapp/merchant-link/config', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'configId'])->name('whatsapp.merchant-link.config');
+    // ‏‏وخيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» — يُفتح بعد نقل التجّار إلى تطبيق أبعاد (`WhatsAppMerchantLink::setCoexistence`)
+    Route::post('/whatsapp/merchant-link/coexistence', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'coexistence'])->name('whatsapp.merchant-link.coexistence');
+    // ‏‏ومتاجرُ تجربةٍ تربط عبر تطبيق أبعاد قبل أن يُنقل إليه غيرُها (`WhatsAppMerchantLink::setPilot`)
+    Route::post('/whatsapp/merchant-link/pilot', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'pilot'])->name('whatsapp.merchant-link.pilot');
+    // ‏‏ومفتاحُ اعتماد رقم التاجر رقمًا للإرسال آليًّا (`WhatsAppSender::enabled`)
+    Route::post('/whatsapp/merchant-link/auto-sender', [App\Http\Controllers\SuperAdmin\WhatsAppMerchantLinkController::class, 'autoSender'])->name('whatsapp.merchant-link.auto-sender');
+    // ‏‏وتطبيقُ إنستقرام ولمن يُفتح ربطُه (`InstagramPlatform`)
+    Route::post('/instagram/credentials', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'credentials'])->name('instagram.credentials');
+    Route::post('/instagram/mode', [App\Http\Controllers\SuperAdmin\InstagramPlatformController::class, 'mode'])->name('instagram.mode');
+    // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات: مقفلة، أو لمتاجر تجربة، أو للجميع (`ChannelAutomationsSwitch`)
+    Route::post('/automations/switch', [App\Http\Controllers\SuperAdmin\ChannelAutomationsController::class, 'switch'])->name('automations.switch');
+    // ‏‏ولمن تُفتح حملاتُ واتساب: مقفلة، أو لمتاجر تجربة، أو للجميع (`WhatsAppCampaignsSwitch`)
+    Route::post('/whatsapp-campaigns/switch', [App\Http\Controllers\SuperAdmin\WhatsAppCampaignsController::class, 'switch'])->name('whatsappCampaigns.switch');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
+    // ‏‏«أرسل رابطًا لعميلك» — يربط صاحبُ المتجر رقمَه من الرابط بلا دخول (`WhatsAppClientLinks`)
+    Route::post('/businesses/{id}/whatsapp/client-link', [App\Http\Controllers\SuperAdmin\WhatsAppClientLinkController::class, 'store'])
+        ->middleware('throttle:20,1,whatsapp-client-link')->name('businesses.whatsapp.clientLink.store');
+    Route::delete('/businesses/{id}/whatsapp/client-link', [App\Http\Controllers\SuperAdmin\WhatsAppClientLinkController::class, 'destroy'])->name('businesses.whatsapp.clientLink.destroy');
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
         ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
+    // ومراجعةُ دليلٍ من ميتا على أنّ فوترتها على التاجر — ولا يُرسل ربطُ تطبيقه قبلها (`WhatsAppOwnApp::confirmBilling`)
+    Route::post('/businesses/{id}/whatsapp/billing', [WhatsAppController::class, 'confirmBilling'])->name('businesses.whatsapp.billing');
+    /*
+     * ‏‏وقفلُ الفوترة: مراجعةُ متجرٍ بعينه، وتجربةُ متجرٍ واحد، وإعادةُ القفل (`WhatsAppBillingLock`).
+     * وما يُنادي Meta بحدٍّ باسمه.
+     */
+    Route::post('/businesses/{id}/whatsapp/billing/read', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'read'])
+        ->middleware('throttle:20,1,whatsapp-billing-read')->name('businesses.whatsapp.billing.read');
+    Route::post('/businesses/{id}/whatsapp/billing/reopen', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'reopen'])->name('businesses.whatsapp.billing.reopen');
+    Route::post('/businesses/{id}/whatsapp/billing/retry', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'retry'])
+        ->middleware('throttle:10,10,whatsapp-billing-retry')->name('businesses.whatsapp.billing.retry');
+    Route::post('/businesses/{id}/whatsapp/billing/estimate', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'estimate'])
+        ->middleware('throttle:10,1,whatsapp-billing-estimate')->name('businesses.whatsapp.billing.estimate');
+    Route::post('/whatsapp/billing-trial', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'open'])
+        ->middleware('throttle:10,10,whatsapp-billing-trial')->name('whatsapp.billing-trial.open');
+    Route::delete('/whatsapp/billing-trial/{trial}', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'close'])->whereNumber('trial')->name('whatsapp.billing-trial.close');
+    Route::post('/whatsapp/billing-trial/{trial}/pass', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'pass'])
+        ->whereNumber('trial')->middleware('throttle:10,10,whatsapp-billing-trial')->name('whatsapp.billing-trial.pass');
+    Route::post('/whatsapp/billing-lock/relock', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'relock'])->name('whatsapp.billing-lock.relock');
+    Route::post('/whatsapp/shared-cost', [App\Http\Controllers\SuperAdmin\WhatsAppBillingController::class, 'sharedCost'])
+        ->middleware('throttle:10,1,whatsapp-shared-cost')->name('whatsapp.shared-cost');
     // وإعدادُ الإشعارات في تطبيق أبعاد نفسه — واحدٌ لكلّ المتاجر، وقراءةٌ لا غير
     Route::post('/whatsapp/app-webhook/check', [WhatsAppController::class, 'checkAppWebhook'])
         ->middleware('throttle:10,1,whatsapp-app-webhook-check')->name('whatsapp.app-webhook.check');
@@ -595,6 +669,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/setup', [SetupController::class, 'index'])->name('setup.index');
     Route::post('/setup/confirm', [SetupController::class, 'confirm'])->name('setup.confirm');
     Route::get('/dashboard/stats', [DashboardController::class, 'adminStats'])->name('dashboard.stats');
+    // إغلاقُ تنبيه بيانات العملاء إلى آخر الجلسة — قسمُه `dashboard` من اسمه
+    Route::post('/dashboard/phone-review/dismiss', [DashboardController::class, 'dismissPhoneReview'])->name('dashboard.phoneReview.dismiss');
 
     /*
      * لوحة التجهيز — قسمُها `preparation` يُشتقّ من اسم المسار.
@@ -773,6 +849,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      */
     Route::get('/products/boutiques', [BoutiqueController::class, 'index'])->name('boutiques.index');
     Route::post('/products/boutiques', [BoutiqueController::class, 'store'])->name('boutiques.store');
+    // مبيعاتُ البوتيك وفواتيرُه — قراءةٌ وحدها، بصلاحيّة الشاشة نفسِها (`BoutiqueSales`)
+    Route::get('/products/boutiques/sales', [BoutiqueController::class, 'sales'])->name('boutiques.sales');
+    Route::get('/products/boutiques/sales/summary', [BoutiqueController::class, 'salesSummary'])->name('boutiques.sales.summary');
+    Route::get('/products/boutiques/sales/orders/{order}', [BoutiqueController::class, 'salesOrder'])->whereNumber('order')->name('boutiques.sales.order');
     Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
     Route::put('/products/boutiques/{id}', [BoutiqueController::class, 'update'])->name('boutiques.update');
     Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');
@@ -790,6 +870,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»
     Route::post('/products/{id}/toggle', [ProductController::class, 'toggle'])->name('products.toggle');
     Route::patch('/products/{id}/quick', [ProductController::class, 'quickUpdate'])->name('products.quick');
+    // وحالُه في الموقع — متوفّر أو نفدت الكمية أو مخفيّ — بطلبٍ لا يمسّ المخزون (`WebsiteSoldOut`)
+    Route::patch('/products/{id}/website-status', [ProductController::class, 'websiteStatus'])->name('products.websiteStatus');
     Route::get('/products/{id}/edit', [PageController::class, 'productsEdit'])->name('products.edit');
     Route::put('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
@@ -966,6 +1048,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/customers/import/confirm', [CustomerImportExportController::class, 'confirm'])->name('customers.import.confirm');
     Route::post('/customers/import/cancel', [CustomerImportExportController::class, 'cancel'])->name('customers.import.cancel');
     Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
+    /*
+     * بوابةُ عملاء RIBBON — لمتجر سعود وحده، وسواه 404 (`RibbonPortal\Portal`). قسمُها `customers`
+     * من اسمها، ويُسأل معه من يعمل على البوابة. والحدُّ على ما يوقف دخولًا أو يسمح به.
+     */
+    Route::get('/customers/portal/poster', [RibbonPortalAdminController::class, 'poster'])->name('customers.portal.poster');
+    Route::delete('/customers/{id}/portal', [RibbonPortalAdminController::class, 'stop'])->whereNumber('id')->middleware('throttle:30,1,ribbon-portal-stop')->name('customers.portal.stop');
+    Route::post('/customers/{id}/portal', [RibbonPortalAdminController::class, 'allow'])->whereNumber('id')->middleware('throttle:30,1,ribbon-portal-stop')->name('customers.portal.allow');
+
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     // جولةُ اللغة: زرٌّ في صفّ القائمة لمن سُجّل قبل أن يُسأل
     Route::post('/customers/{id}/language', [CustomerController::class, 'language'])->name('customers.language');
@@ -977,7 +1067,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->defaults('type', 'customer')->name('customers.restore');
     Route::delete('/customers/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'customer')->name('customers.purge');
-    Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
+    /*
+     * تصحيحُ رصيد النقاط — فعلٌ إداريٌّ بسببٍ مكتوب، لا استبدالٌ بخصم.
+     * والاستبدالُ مقابل خصمٍ بابُه الصندوقُ وفاتورةُ العميل وحدهما.
+     */
+    Route::post('/customers/{id}/points-adjust', [CustomerController::class, 'adjustPoints'])->name('customers.points.adjust');
     // وطلبُ دفعةٍ من العميل برابط — من صفحته، بفعل الطلب وحده (`PaymentRequestController`)
     Route::post('/customers/{id}/payment-link', [PaymentRequestController::class, 'forCustomer'])
         ->whereNumber('id')->name('customers.paymentLink');
@@ -1012,6 +1106,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::put('/job-titles/{id}', [JobTitleController::class, 'update'])->name('jobTitles.update');
     Route::delete('/job-titles/{id}', [JobTitleController::class, 'destroy'])->name('jobTitles.destroy');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    // محادثاتُ واتساب لعدّة موظّفين بحفظةٍ واحدة — لصاحب النشاط ومديره المخوَّل (`EmployeeController::inboxAccess`)
+    Route::post('/employees/whatsapp-inbox', [EmployeeController::class, 'inboxAccess'])->name('employees.inboxAccess');
     Route::get('/employees/{id}/edit', [EmployeeController::class, 'edit'])->name('employees.edit');
     Route::put('/employees/{id}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::post('/employees/{id}/toggle', [EmployeeController::class, 'toggleStatus'])->name('employees.toggle');
@@ -1334,7 +1430,25 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
             Route::put('/shop', [SettingsController::class, 'saveStore'])->name('shop.save');
             Route::get('/seo', [SettingsController::class, 'seo'])->name('seo');
             Route::put('/seo', [SettingsController::class, 'saveSeo'])->name('seo.save');
+            // وصفحةُ المتجر البسيطة المنشورة — ولو كان موقعٌ مبنيٌّ قيد الإنشاء (`SettingsController::simpleLive`)
+            Route::get('/seo/store', [SettingsController::class, 'storeSeo'])->name('seo.store');
+            Route::put('/seo/store', [SettingsController::class, 'saveStoreSeo'])->name('seo.store.save');
             Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
+
+            /*
+             * والصفحاتُ القانونيّة — لكلّ متجرٍ بلا أن يُنشئها له أحد.
+             *
+             * سياسةُ الخصوصيّة وتعليماتُ حذف البيانات والشروط: قالبٌ من بياناته
+             * يراجعه ويحفظه مسوّدةً ثمّ ينشره، ويعود إلى ما قبله. وكلُّها بمتجر
+             * الجلسة لا برقمٍ في الرابط — انظر `Store\StoreLegal`.
+             */
+            Route::get('/legal', [LegalPagesController::class, 'index'])->name('legal');
+            Route::put('/legal/facts', [LegalPagesController::class, 'saveFacts'])->name('legal.facts');
+            // و`{kind}` يُفحص في المتحكّم لا في النمط: فيجيب حارسُ الباقة والصلاحيّة أوّلًا
+            Route::put('/legal/{kind}', [LegalPagesController::class, 'saveDraft'])->name('legal.draft');
+            Route::post('/legal/{kind}/publish', [LegalPagesController::class, 'publish'])->name('legal.publish');
+            Route::post('/legal/{kind}/restore', [LegalPagesController::class, 'restore'])->name('legal.restore');
+            Route::post('/legal/{kind}/preview', [LegalPagesController::class, 'preview'])->name('legal.preview');
 
             /*
              * الدومين — بابٌ قائمٌ بذاته لا حقلٌ في شاشة السيو.
@@ -1477,11 +1591,59 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         Route::post('/whatsapp/embedded-signup/callback', [WhatsAppOnboardingController::class, 'callback'])
             ->middleware('throttle:10,1')->name('whatsapp.embedded.callback');
 
+        /* وتفعيلُ رقمٍ جديد برمز التحقّق بخطوتين — خمسُ محاولاتٍ في عشر دقائق لا تكفي من يُخمّن */
+        Route::post('/whatsapp/register', [WhatsAppOnboardingController::class, 'register'])
+            ->middleware('throttle:5,10,whatsapp-register')->name('whatsapp.register');
+
         /* واختبارُ الاتصال نداءٌ إلى ميتا — فلا يُترك بلا حدّ */
         Route::post('/whatsapp/test', [WhatsAppOnboardingController::class, 'test'])
             ->middleware('throttle:20,1')->name('whatsapp.test');
 
+        // ‏‏وجهةُ رسومه: يطلب التحقّق بعد أن يضيف وسيلة دفعه، ويعيد المحاولة بعد أن يصلحها (`WhatsAppBillingLock`)
+        Route::post('/whatsapp/billing/request', [WhatsAppOnboardingController::class, 'billingRequest'])
+            ->middleware('throttle:5,10,whatsapp-billing-request')->name('whatsapp.billing.request');
+        Route::post('/whatsapp/billing/retry', [WhatsAppOnboardingController::class, 'billingRetry'])
+            ->middleware('throttle:5,10,whatsapp-billing-retry')->name('whatsapp.billing.retry');
+
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
+        Route::post('/whatsapp/guided-orders', [WhatsAppOnboardingController::class, 'guidedOrders'])->name('whatsapp.guidedOrders');
+
+        /*
+         * ‏‏وإنستقرام — لمتجرٍ فتحته له المنصّة وحده (`InstagramPlatform`). والرجوعُ من صفحة إنستقرام GET:
+         * Meta تعيد التاجرَ بمتصفّحه وجلستِه إلى هذا العنوان، والختمُ لمرّةٍ واحدة يحرسه (`InstagramLink::connect`).
+         */
+        Route::get('/instagram', [App\Http\Controllers\Admin\InstagramController::class, 'show'])->name('instagram');
+        Route::post('/instagram/connect', [App\Http\Controllers\Admin\InstagramController::class, 'connect'])
+            ->middleware('throttle:10,1,instagram-link')->name('instagram.connect');
+        Route::get('/instagram/callback', [App\Http\Controllers\Admin\InstagramController::class, 'callback'])
+            ->middleware('throttle:10,1,instagram-link')->name('instagram.callback');
+        Route::post('/instagram/disconnect', [App\Http\Controllers\Admin\InstagramController::class, 'disconnect'])->name('instagram.disconnect');
+        // ‏‏وأتمتتُه — لمتجرٍ فُتح له إنستقرامُ والأتمتةُ معًا (`InstagramAutomations::available`)
+        Route::get('/instagram/automations', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'index'])->name('instagram.automations');
+        Route::get('/instagram/automations/posts', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'posts'])
+            ->middleware('throttle:30,1,instagram-automations')->name('instagram.automations.posts');
+        Route::post('/instagram/automations', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'store'])
+            ->middleware('throttle:30,1,instagram-automations')->name('instagram.automations.store');
+        Route::put('/instagram/automations/{automation}', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'update'])
+            ->whereNumber('automation')->middleware('throttle:60,1,instagram-automations')->name('instagram.automations.update');
+        Route::post('/instagram/automations/{automation}/status', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'status'])
+            ->whereNumber('automation')->middleware('throttle:60,1,instagram-automations')->name('instagram.automations.status');
+        Route::delete('/instagram/automations/{automation}', [App\Http\Controllers\Admin\InstagramAutomationsController::class, 'destroy'])
+            ->whereNumber('automation')->name('instagram.automations.destroy');
+
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده (`ChannelAutomationsSwitch`).
+         * وحدُّها باسمها: حدٌّ بلا اسم يشارك عدّادَ كلّ حدٍّ بلا اسمٍ للمستخدم نفسه (حدُّ الحزم خمسٌ في الساعة).
+         */
+        Route::get('/whatsapp/automations', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'index'])->name('whatsapp.automations');
+        Route::post('/whatsapp/automations', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'store'])
+            ->middleware('throttle:30,1,whatsapp-automations')->name('whatsapp.automations.store');
+        Route::put('/whatsapp/automations/{automation}', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'update'])
+            ->whereNumber('automation')->middleware('throttle:60,1,whatsapp-automations')->name('whatsapp.automations.update');
+        Route::post('/whatsapp/automations/{automation}/status', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'status'])
+            ->whereNumber('automation')->middleware('throttle:60,1,whatsapp-automations')->name('whatsapp.automations.status');
+        Route::delete('/whatsapp/automations/{automation}', [App\Http\Controllers\Admin\WhatsAppAutomationsController::class, 'destroy'])
+            ->whereNumber('automation')->name('whatsapp.automations.destroy');
 
         /*
          * طلبُ حزمةِ رسائلَ إضافيّة — والحدُّ خمسٌ في الساعة.
@@ -1516,9 +1678,30 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * ومعرّفُه يُقرأ من الجلسة في المتحكّم لا من العنوان.
      */
     Route::get('/marketing/whatsapp/log', [App\Http\Controllers\Admin\WhatsAppController::class, 'log'])->name('marketing.whatsapp.log');
-    // رسائلُ أقدم في «محادثات واتساب» — 404 لمن لم تُفتح له (`WhatsAppConversations::enabled`)
-    Route::get('/marketing/whatsapp/conversations/{message}/older', [App\Http\Controllers\Admin\WhatsAppController::class, 'olderMessages'])
-        ->whereNumber('message')->name('marketing.whatsapp.conversations.older');
+
+    /*
+     * ‏‏وحملاتُ واتساب — لمتجرٍ فتحتها له المنصّة وحده (`WhatsAppCampaignsSwitch`)، والكتابةُ لصاحب الحساب:
+     * كلُّ رسالةٍ تُحتسب على حسابه عند Meta.
+     */
+    Route::get('/marketing/whatsapp/campaigns', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'index'])->name('marketing.whatsapp.campaigns');
+    Route::post('/marketing/whatsapp/campaigns/preview', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'preview'])
+        ->middleware('throttle:60,1,whatsapp-campaigns-preview')->name('marketing.whatsapp.campaigns.preview');
+    Route::post('/marketing/whatsapp/campaigns', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'store'])
+        ->middleware('throttle:10,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.store');
+    Route::post('/marketing/whatsapp/campaigns/templates', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'storeTemplate'])
+        ->middleware('throttle:10,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.templates.store');
+    Route::post('/marketing/whatsapp/campaigns/templates/sync', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'syncTemplates'])
+        ->middleware('throttle:10,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.templates.sync');
+    Route::delete('/marketing/whatsapp/campaigns/templates/{template}', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'destroyTemplate'])
+        ->whereNumber('template')->name('marketing.whatsapp.campaigns.templates.destroy');
+    Route::post('/marketing/whatsapp/campaigns/optouts', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'optOut'])
+        ->middleware('throttle:30,1,whatsapp-campaigns')->name('marketing.whatsapp.campaigns.optouts.store');
+    Route::post('/marketing/whatsapp/campaigns/{campaign}/pause', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'pause'])
+        ->whereNumber('campaign')->name('marketing.whatsapp.campaigns.pause');
+    Route::post('/marketing/whatsapp/campaigns/{campaign}/resume', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'resume'])
+        ->whereNumber('campaign')->name('marketing.whatsapp.campaigns.resume');
+    Route::post('/marketing/whatsapp/campaigns/{campaign}/cancel', [App\Http\Controllers\Admin\WhatsAppCampaignsController::class, 'cancel'])
+        ->whereNumber('campaign')->name('marketing.whatsapp.campaigns.cancel');
 
     /*
      * «محادثات واتساب» — صندوقُ المتجر مع زبائنه، بفعلٍ لا بقسم.
@@ -1535,6 +1718,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
                 ->whereNumber('chat')->name('older');
             Route::post('/{chat}/reply', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'reply'])
                 ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:30,1,whatsapp-inbox-reply'])->name('reply');
+            // وخارج نافذة ميتا: قالبُ المتابعة المعتمَد وحده — بفعل الردّ نفسِه
+            Route::post('/{chat}/follow-up', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'followUp'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-inbox-follow-up'])->name('followUp');
+            // والطلبُ الآليّ في المحادثة: يتسلّمها موظّف، أو يُنهى — بفعل الردّ نفسِه
+            Route::post('/{chat}/order/take-over', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'takeOverOrder'])
+                ->whereNumber('chat')->middleware('may:'.Permissions::INBOX_REPLY)->name('order.takeOver');
+            Route::post('/{chat}/order/close', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'closeOrder'])
+                ->whereNumber('chat')->middleware('may:'.Permissions::INBOX_REPLY)->name('order.close');
+            // وما لم يصل الزبونَ من رسالتَيه يُعاد: رابطُ الدفع نفسُه، أو تأكيدُ الدفع — بلا فاتورةٍ ولا رابطٍ ثانٍ
+            Route::post('/{chat}/order/resend-link', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'resendOrderLink'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-order-resend'])->name('order.resendLink');
+            Route::post('/{chat}/order/resend-paid', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'resendOrderPaid'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-order-resend'])->name('order.resendPaid');
+            // محادثةُ زبونٍ لم يكتب بعد — تُفتح من رسالةٍ خرجت إليه
+            Route::get('/from/{message}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'open'])
+                ->whereNumber('message')->name('open');
             Route::get('/attachments/{attachment}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'attachment'])
                 ->whereNumber('attachment')->name('attachment');
         });
@@ -2023,6 +2222,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->name('help.attachment');
 
     Route::get('/settings/trash', [TrashController::class, 'index'])->name('settings.trash');
+    // «بوابة العملاء» — لمتجر سعود وحده، ولمن يديرها (`RibbonPortal\Portal::mayManage`)
+    Route::get('/settings/customer-portal', [RibbonPortalAdminController::class, 'settings'])->name('settings.portal.index');
+    Route::post('/settings/customer-portal/staff', [RibbonPortalAdminController::class, 'staff'])->name('settings.portal.staff');
+    Route::delete('/settings/customer-portal/links', [RibbonPortalAdminController::class, 'signOut'])->name('settings.portal.signOut');
+    Route::delete('/settings/customer-portal/links/{link}', [RibbonPortalAdminController::class, 'stopLink'])->whereNumber('link')->name('settings.portal.link');
+    Route::post('/settings/customer-portal/links/{link}', [RibbonPortalAdminController::class, 'allowLink'])->whereNumber('link')->name('settings.portal.allow');
 
     // تنبيهات يعرّفها صاحب النشاط — قواعد على مقاييس النظام، وتذكيرات بموعد
     Route::post('/alerts', [CustomAlertController::class, 'store'])->name('alerts.store');
@@ -2078,6 +2283,9 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
 
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
+    // ‏سجلُّ البيعات بمعرّفاتها — يُسأل قبل أن تُعاد بيعةٌ من الطابور أو يُحكم بردّها (`PosController::outboxStatus`)
+    Route::post('/outbox/status', [PosController::class, 'outboxStatus'])
+        ->middleware('throttle:60,1,pos-outbox-status')->name('outbox.status');
     /*
      * قيدٌ مبسّط من الدرج — مصروفٌ أو دخلٌ أو إيداعٌ بغير بيع.
      *
@@ -2087,7 +2295,11 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::post('/movements', [App\Http\Controllers\Pos\MovementController::class, 'store'])->name('movements.store');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
-    Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
+    // ‏‏GET: الكميّاتُ كلُّها (صندوقٌ بنسخةٍ أقدم). POST: ما تغيّر عمّا يعرفه الصندوق — انظر `TillStock`
+    Route::match(['get', 'post'], '/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');
+    // ‏‏كتالوجُ الصندوق للجهاز — ما تغيّر منذ ما حفظ (`TillCatalog`)
+    Route::post('/catalog-feed', [App\Http\Controllers\Pos\TillCatalogController::class, 'feed'])
+        ->middleware('throttle:60,1,pos-catalog-feed')->name('catalog-feed');
     Route::get('/orders', [App\Http\Controllers\Pos\PageController::class, 'orders'])->name('orders');
     Route::get('/orders/{id}/resume', [PosController::class, 'resume'])->name('orders.resume');
     Route::delete('/orders/{id}', [PosController::class, 'discard'])->name('orders.discard');
@@ -2147,6 +2359,15 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::get('/receipt/{number}/paper', [PosController::class, 'receiptPaper'])->name('receipt.paper');
     Route::get('/customers', [App\Http\Controllers\Pos\PageController::class, 'customers'])->name('customers');
     Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
+    /*
+     * زبائنُ الصندوق خارج صفحته: الجهازُ يحفظهم ويسأل عمّا تغيّر بصماتٍ
+     * (POST لأنّ البصمات تُرسَل في الجسم — ولا يُكتب شيء)، ويسأل عن المختار
+     * منهم حين يُختار. انظر `TillCustomers`.
+     */
+    Route::post('/till-customers/sync', [App\Http\Controllers\Pos\TillCustomerController::class, 'sync'])
+        ->middleware('throttle:60,1,pos-till-customers-sync')->name('tillCustomers.sync');
+    Route::get('/till-customers/{customer}', [App\Http\Controllers\Pos\TillCustomerController::class, 'show'])
+        ->whereNumber('customer')->middleware('throttle:240,1,pos-till-customer')->name('tillCustomers.show');
     // مناسبةٌ جديدة تُضاف من نافذة الدفع نفسها — تُحفظ للمتجر وتظهر في قائمته
     Route::post('/occasions', [PosController::class, 'storeOccasion'])->name('occasions.store');
     /*
@@ -2160,6 +2381,32 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
     Route::get('/settings', [App\Http\Controllers\Pos\PageController::class, 'settings'])->name('settings');
     Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
 });
+
+/*
+ * بوابةُ عملاء RIBBON — `ribbon.abaadapp.om/my` لمتجر سعود وحده (`RibbonPortal\Portal`).
+ *
+ * قبل مسار المتاجر الفرعيّ عمدًا: مضيفُها اسمٌ بعينه وهو أخصّ. ومضيفُها من القائمة
+ * (`storefront.subdomain_businesses`) بلا قاعدة، والمتجرُ والقفلُ يُسألان في `RibbonPortalGate`
+ * لكلّ طلب. ولكلّ بابٍ عدّادُه: الدخولُ أضيقُها، والقراءةُ واسعةٌ — عملاءُ على شبكة المحلّ يخرجون
+ * من عنوانٍ واحد ولكلٍّ نبضتُه كلَّ ثلاثين ثانية، ولا يبلغها من لا جلسةَ له.
+ */
+if (($portalHost = App\Support\RibbonPortal\Portal::host()) !== null) {
+    Route::domain($portalHost)->prefix(App\Support\RibbonPortal\Portal::PATH)->name('my.')->middleware(RibbonPortalGate::class)
+        ->controller(RibbonPortalController::class)->group(function () {
+            Route::get('/', 'index')->middleware('throttle:120,1,ribbon-portal-page')->name('index');
+            Route::post('/session', 'login')->middleware('throttle:10,1,ribbon-portal-login')->name('login');
+            Route::post('/logout', 'logout')->middleware('throttle:20,1,ribbon-portal-logout')->name('logout');
+            Route::get('/data', 'data')->middleware('throttle:240,1,ribbon-portal-data')->name('data');
+            Route::get('/points', 'points')->middleware('throttle:120,1,ribbon-portal-points')->name('points');
+            Route::get('/logo', 'logo')->middleware('throttle:120,1,ribbon-portal-logo')->name('logo');
+
+            Route::middleware('throttle:120,1,ribbon-portal-paper')->where(['kind' => 'order|invoice', 'id' => '[1-9][0-9]{0,9}'])->group(function () {
+                Route::get('/paper/{kind}/{id}', 'paper')->name('paper');
+                Route::get('/paper/{kind}/{id}/sheet', 'sheet')->name('paper.sheet');
+                Route::get('/paper/{kind}/{id}/pdf', 'pdf')->name('paper.pdf');
+            });
+        });
+}
 
 /*
  * متجرُ التاجر — صفحةٌ عامّة يفتحها زبون.
@@ -2191,6 +2438,14 @@ Route::domain('{slug}.'.config('storefront.domain'))
         Route::get('/', [StorefrontController::class, 'show'])
             ->where('slug', Storefront::pattern())
             ->name('store.home');
+
+        // وخريطةُ الموقع على جذره — انظر `Website\Sitemap`
+        Route::get('/sitemap.xml', [SitemapController::class, 'show'])
+            ->where('slug', Storefront::pattern())
+            ->name('store.sitemap');
+        Route::get('/sitemap-{part}.xml', [SitemapController::class, 'part'])
+            ->where(['slug' => Storefront::pattern(), 'part' => '[1-9][0-9]{0,4}'])
+            ->name('store.sitemap.part');
 
         /*
          * وصفحاتُ الموقع الداخليّة — «المتجر» و«من نحن» و«تواصل معنا».
@@ -2252,10 +2507,33 @@ Route::domain('{slug}.'.config('storefront.domain'))
             ->middleware('throttle:20,1')->name('store.giftcard');
     });
 
-Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
-Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
-    ->where('path', Storefront::PATH)->name('store.show.page');
+/*
+ * ومتجرٌ يخدم الخادمُ نطاقَه الفرعيّ يُحوَّل إليه من هذا الباب (302 ثمّ 301،
+ * GET وHEAD وحدهما) — انظر `StoreLivesOnItsSubdomain` و`storefront.subdomain_businesses`.
+ * ومن سواه يمرّ كما كان.
+ */
+Route::middleware(StoreLivesOnItsSubdomain::class)->group(function () {
+    Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+    Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
+    Route::get('/s/{slug}/sitemap-{part}.xml', [SitemapController::class, 'part'])
+        ->where('part', '[1-9][0-9]{0,4}')->name('store.show.sitemap.part');
+    Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
+        ->where('path', Storefront::PATH)->name('store.show.page');
+});
 // والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
+/*
+ * جسرُ السلّة القديمة — صفحةٌ مخفيّةٌ على عنوان النظام يؤطّرها نطاقُ متجرٍ نُقل إليه،
+ * فتقرأ سلّةَ زبونه القديمة وترسلها إليه مرّةً. انظر `Domains::oldCartBridge`.
+ */
+/*
+ * والمعرّفُ رقمٌ بلا صفرٍ في أوّله وعشرُ خاناتٍ على الأكثر — فرقمٌ أطول من سعة
+ * العدد يُردّ 404 لا خطأَ خادم. ولعدّاده اسمُه (`cart-bridge`): بلا اسمٍ يتشارك
+ * العدّادُ مع كلّ مسارٍ محدودٍ بلا اسم على العنوان نفسه، ومنها إتمامُ الطلب
+ * لبقية المتاجر (`/s/{slug}/checkout`، عشرٌ في الدقيقة).
+ */
+Route::get('/storefront/cart-bridge/{business}', StoreOldCartBridgeController::class)
+    ->where('business', '[1-9][0-9]{0,9}')->middleware('throttle:60,1,cart-bridge')->name('store.cart-bridge');
+
 Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])
     ->middleware('throttle:60,1')->name('store.show.quote');
 Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])
@@ -2292,6 +2570,13 @@ Route::domain('{host}')
             ->where('host', Storefront::foreignHost())
             ->name('store.custom');
 
+        Route::get('/sitemap.xml', [SitemapController::class, 'byHost'])
+            ->where('host', Storefront::foreignHost())
+            ->name('store.custom.sitemap');
+        Route::get('/sitemap-{part}.xml', [SitemapController::class, 'byHostPart'])
+            ->where(['host' => Storefront::foreignHost(), 'part' => '[1-9][0-9]{0,4}'])
+            ->name('store.custom.sitemap.part');
+
         // وصفحاتُه الداخليّة معه — القائمةُ واحدةٌ على الطرق الثلاث
         Route::get('/{path}', [StorefrontController::class, 'byHost'])
             ->where(['host' => Storefront::foreignHost(), 'path' => Storefront::PATH])
@@ -2308,6 +2593,15 @@ Route::domain('{host}')
             ->where('host', Storefront::foreignHost())
             ->middleware('throttle:20,1')->name('store.custom.giftcard');
     });
+
+/*
+ * وخريطةُ المنصّة على مضيف أبعاد — فهرسُ خرائط المتاجر المؤهَّلة كلِّها.
+ *
+ * يدلّ عليها `public/robots.txt`. وتقع بعد مجموعتَي النطاق الفرعيّ ونطاق
+ * التاجر عمدًا: لكلٍّ منهما `‎/sitemap.xml‎` مقيَّدٌ بمضيفه، وهذا المطلقُ لا
+ * يبقى له إلّا مضيفُ أبعاد. انظر `Website\Sitemap::platform`.
+ */
+Route::get('/sitemap.xml', [SitemapController::class, 'platform'])->name('sitemap.platform');
 
 /*
  * الورقةُ أونلاين — ما يفتحه من مسح الرمز أسفل إيصاله.
@@ -2371,6 +2665,21 @@ Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
     ->name('documents.sign.pdf');
 
 /*
+ * ‏‏رابطُ ربط واتساب — يرسله فريقُ أبعاد لصاحب المتجر، فيربط رقمَه من صفحةٍ بلا دخول.
+ *
+ * أربعون حرفًا لا تُخمَّن، لمرّةٍ واحدة وثلاثة أيّام. والعنوانُ الذي فيه الرمز يحوّل إلى صفحةٍ بلا رمز:
+ * نافذةُ Meta ترسل عنوانَ الصفحة إليها. انظر `WhatsAppClientLinks`.
+ */
+Route::get('/connect/whatsapp', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'show'])
+    ->middleware('throttle:60,1,client-link-page')->name('clientLink.show');
+Route::post('/connect/whatsapp', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'connect'])
+    ->middleware('throttle:10,1,client-link-connect')->name('clientLink.connect');
+Route::post('/connect/whatsapp/register', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'register'])
+    ->middleware('throttle:5,10,client-link-register')->name('clientLink.register');
+Route::get('/connect/whatsapp/{token}', [App\Http\Controllers\WhatsApp\ClientLinkController::class, 'open'])
+    ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:30,1,client-link-open')->name('clientLink.open');
+
+/*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.
  *
  * خارج مجموعات الحماية كلّها لأنّ من يُنادينا خادمُ ميتا لا متصفّح مستخدم:
@@ -2386,8 +2695,24 @@ Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
 Route::post('/webhooks/paymob', [PaymobController::class, 'callback'])
     ->middleware('throttle:120,1')
     ->name('webhooks.paymob');
+/*
+ * ‏‏وأبوابُ Meta لإنستقرام — الإشعارات وإلغاءُ الإذن وحذفُ البيانات، وصفحةُ حال الحذف لصاحب الحساب.
+ * والكتابةُ منها لا تُقبل إلّا بتوقيعٍ بسرّنا (`InstagramWebhooks`).
+ */
+Route::get('/webhooks/instagram', [App\Http\Controllers\Instagram\WebhookController::class, 'verify'])->name('webhooks.instagram.verify');
+Route::post('/webhooks/instagram', [App\Http\Controllers\Instagram\WebhookController::class, 'handle'])->name('webhooks.instagram');
+Route::post('/webhooks/instagram/deauthorize', [App\Http\Controllers\Instagram\WebhookController::class, 'deauthorize'])
+    ->middleware('throttle:30,1,instagram-meta')->name('webhooks.instagram.deauthorize');
+Route::post('/webhooks/instagram/deletion', [App\Http\Controllers\Instagram\WebhookController::class, 'deletion'])
+    ->middleware('throttle:30,1,instagram-meta')->name('webhooks.instagram.deletion');
+Route::get('/instagram/deletion/{code}', [App\Http\Controllers\Instagram\WebhookController::class, 'status'])
+    ->where('code', '[A-Z0-9]{12}')->middleware('throttle:30,1,instagram-meta')->name('instagram.deletion.status');
+
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'handle'])->name('webhooks.whatsapp');
+// وإشعاراتُ تطبيق التاجر — عنوانٌ لكلّ وصلة، يُتحقَّق منه بسرّ تطبيقها (`WhatsAppOwnApp`)
+Route::get('/webhooks/whatsapp/m/{key}', [WebhookController::class, 'verifyOwn'])->where('key', '[A-Za-z0-9]{32,64}')->name('webhooks.whatsapp.own.verify');
+Route::post('/webhooks/whatsapp/m/{key}', [WebhookController::class, 'handleOwn'])->where('key', '[A-Za-z0-9]{32,64}')->name('webhooks.whatsapp.own');
 
 /*
  * «تواصل معنا» في الموقع التعريفيّ abaadapp.om — بابٌ عامّ إلى CRM المنصّة.

@@ -204,17 +204,19 @@ class TheInvoiceChargesWhatTheShopSettingsSayTest extends TestCase
     {
         $ts = file_get_contents(base_path('resources/js/lib/invoice-totals.ts'));
 
+        // بالبيسات منذ `VatLines`: الخصمُ يُقصَر إلى قيمة البند (والسالبُ صفرٌ في `milli`)،
+        // وضريبةُ البند من المحرّك نفسِه الذي يحسب به الخادمُ والصندوق
         $this->assertStringContainsString(
-            'Math.min(Math.max(0, num(line.discount)), gross)',
+            'const off = offRaw < g ? offRaw : g;',
             $ts,
             'قصُّ الخصم في الشاشة يخالف الخادم',
         );
         $this->assertStringContainsString(
-            'inclusive ? (net * rate) / (100 + rate) : (net * rate) / 100',
+            'taxB += vatLineTax(g - off, num(line.tax_rate), inclusive);',
             $ts,
             'استخراجُ الضريبة في الشاشة يخالف الخادم',
         );
-        $this->assertStringContainsString('inclusive ? gross_sum - tax : gross_sum', $ts);
+        $this->assertStringContainsString('inclusive ? grossB - taxB : grossB', $ts);
 
         // وشاشةُ الإنشاء تنادي الوحدةَ ولا تكتب صيغةً من عندها
         $screen = file_get_contents(resource_path('js/Pages/Admin/CustomerInvoices/Create.tsx'));

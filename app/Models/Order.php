@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\OrderStatus;
+use App\Support\VatLines;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,11 +13,26 @@ class Order extends Model
 {
     protected $guarded = [];
 
+    /**
+     * والبيعةُ الجديدة تُدوَّر ضريبتُها سطرًا سطرًا (`VatLines`).
+     *
+     * من النموذج لا من القاعدة: العمودُ فارغٌ لكلّ بيعةٍ سبقته، وفراغُه يقول
+     * «قاعدتُها القديمة» فتُصحَّح بها (`OrderCorrection::totals`). وكلُّ بابٍ
+     * يكتب طلبًا — الصندوقُ والموقعُ وواتساب — يمرّ من هنا.
+     */
+    protected $attributes = [
+        'vat_rounding' => VatLines::RULE,
+    ];
+
     protected $casts = [
         'document_snapshot' => 'array',
         'subtotal' => 'decimal:3', 'discount' => 'decimal:3', 'tax' => 'decimal:3',
         'delivery_fee' => 'decimal:3', 'total' => 'decimal:3', 'is_held' => 'boolean',
         'coupon_discount' => 'decimal:3',
+        // بيعةٌ وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة — `PosController::reviewRedemption`
+        'loyalty_review' => 'array',
+        // ما اشترته نقاطُ البيعة يومَ بيعت — منه يُقاس ما يعود عند إرجاع بعضها (`TillRedemption`)
+        'loyalty_basis' => 'array',
         'ordered_at' => 'datetime',
         'scheduled_for' => 'datetime',
         'hide_sender' => 'boolean',
@@ -107,6 +123,23 @@ class Order extends Model
     }
 
     /**
+     * كم من خصم البيعة نقاطُ ولاء — ليُطبع سطرًا مستقلًّا بعدده.
+     *
+     * خصمُ الصندوق كوبونٌ ونقاطٌ معًا ولا ثالثَ لهما (`PosController::completeSale`)،
+     * والتصحيحُ يحصر الكوبونَ بالخصم (`OrderCorrection`). فما فوق الكوبون
+     * نقاط — ما دامت البيعةُ استبدلت نقاطًا. ولا يغيّر هذا رقمًا: «الخصم»
+     * و«خصم نقاط الولاء» مجموعُهما خصمُ البيعة كما هو.
+     */
+    public function loyaltyDiscount(): float
+    {
+        if ((int) $this->redeemed_points <= 0) {
+            return 0.0;
+        }
+
+        return round(max(0, (float) $this->discount - (float) $this->coupon_discount), 3);
+    }
+
+    /**
      * أفات موعدُ هذا الطلب وهو حيّ؟
      *
      * والقاعدة هي قاعدةُ مُرشِّح «متأخّر» في `ListFilters::orders` نفسِها:
@@ -145,9 +178,19 @@ class Order extends Model
      */
     public function scopeAwaitingPreparation($query)
     {
+        return $query->toPrepare()->whereNotIn('status', OrderStatus::CLOSED);
+    }
+
+    /**
+     * طلبٌ يُجهَّز — لا سلّةً معلّقة ولا بيعةَ منضدة، أغُلق بعدُ أم لم يُغلق.
+     *
+     * شقُّ `awaitingPreparation` بلا حاله: أبوابُ اللوحة التي تردّ نقلًا
+     * برسالته (طلبٌ سُلّم قبل لحظة) تحتاج أن تجد الطلبَ وقد أُغلق.
+     */
+    public function scopeToPrepare($query)
+    {
         return $query->where('is_held', false)
-            ->where(fn ($w) => $w->whereNotNull('scheduled_for')->orWhereNotNull('fulfillment_type'))
-            ->whereNotIn('status', OrderStatus::CLOSED);
+            ->where(fn ($w) => $w->whereNotNull('scheduled_for')->orWhereNotNull('fulfillment_type'));
     }
 
     /**

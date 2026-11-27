@@ -75,11 +75,12 @@ class MoneyInvariantsTest extends TestCase
         $a = $this->product(3.750);
         $b = $this->product(12.333);
 
+        // والشاشةُ ترسل ما قرأته (`expected_total`): ٠٫٥٦٣ + ٤٫٣١٧ ضريبةً سطرًا سطرًا (`VatLines`)
         foreach ([[], ['discount' => 5]] as $extra) {
             $order = $this->sell([
                 ['id' => $a->id, 'name' => $a->name, 'qty' => 3],
                 ['id' => $b->id, 'name' => $b->name, 'qty' => 7],
-            ], $extra);
+            ], $extra + ['expected_total' => 102.461]);
 
             $sum = round((float) $order->subtotal - (float) $order->discount
                 + (float) $order->tax + (float) $order->delivery_fee, 3);

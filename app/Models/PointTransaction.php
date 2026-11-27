@@ -10,6 +10,12 @@ class PointTransaction extends Model
 {
     protected $guarded = [];
 
+    /**
+     * تصحيحٌ إداريٌّ للرصيد — لا كسبٌ ولا استبدال، ولا مالَ معه.
+     * انظر `CustomerController::adjustPoints`.
+     */
+    public const ADJUST = 'adjust';
+
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }
     // سدادُ فاتورة عميلٍ برابط دفع — انظر `InvoiceLoyalty`

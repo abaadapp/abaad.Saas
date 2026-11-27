@@ -301,14 +301,15 @@ class AWebsiteOrderReachesTheBenchWithoutAnHourTest extends TestCase
 
         $this->actingAs($this->owner);
 
-        // «كل الفروع» — لا فرعَ في الجلسة
-        $this->assertEqualsCanonicalizing([$here->number, $there->number], $this->board());
+        // «كل الفروع» — وهو الأصلُ مهما قالت الجلسة: فرعُها ليس فرعَ اللوحة (`PreparationScope`)
+        foreach ([null, $first, $second->id] as $session) {
+            $this->withSession(['current_branch' => $session]);
+            $this->assertEqualsCanonicalizing([$here->number, $there->number], $this->board());
+        }
 
-        $this->withSession(['current_branch' => $second->id]);
-        $this->assertSame([$there->number], $this->board());
-
-        $this->withSession(['current_branch' => $first]);
-        $this->assertSame([$here->number], $this->board());
+        // والفرعُ يُختار في اللوحة نفسِها
+        $this->assertSame([$there->number], $this->board(['branch' => $second->id]));
+        $this->assertSame([$here->number], $this->board(['branch' => $first]));
     }
 
     /* ═════════ (ط) الترتيب — ولا يسقط ما لا موعدَ له ═════════ */

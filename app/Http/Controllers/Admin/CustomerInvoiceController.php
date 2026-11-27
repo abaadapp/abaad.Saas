@@ -38,6 +38,7 @@ use App\Support\InvoiceAttachments;
 use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
 use App\Support\InvoiceLineDetails;
+use App\Support\Loyalty;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
@@ -48,11 +49,13 @@ use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -337,6 +340,14 @@ class CustomerInvoiceController extends Controller
                     ->get(['id', 'number', 'status'])->map(fn ($r) => ['id' => $r->id, 'number' => $r->number, 'status' => $r->status])->all(),
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
+                // ومنه خصمُ نقاط الولاء — لقطةٌ كُتبت مع الورقة لا تُعاد
+                'loyalty_points' => (int) $invoice->loyalty_points,
+                'loyalty_discount' => (float) $invoice->loyalty_discount,
+                // مسودّةٌ تحمل الخصمَ ولم تُصرف نقاطُها بعد — تُصرف عند الإصدار
+                'loyalty_pending' => (int) $invoice->loyalty_points > 0
+                    && $invoice->status === CustomerInvoice::DRAFT
+                    && CustomerInvoices::pointsSpent($invoice) === 0,
+                'loyalty_returned' => (int) $invoice->loyalty_points > 0 ? CustomerInvoices::pointsReturned($invoice) : 0,
                 'tax_total' => (float) $invoice->tax_total,
                 // ملاحظةُ العميل تُطبع، والداخليّةُ لا تخرج من هذه الشاشة
                 'notes' => $invoice->notes,
@@ -834,6 +845,26 @@ class CustomerInvoiceController extends Controller
      * من أوّل حرف. ومعاينةٌ لا تظهر حتى يكتمل النموذج لا يراها أحدٌ إلّا
      * بعد أن يفرغ من حاجته إليها.
      */
+    /**
+     * ما يُعرض في تنبيه النقاط — أقصى ما يجوز لهذا العميل على هذه البنود.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private static function loyaltyOffer(int $bid, Customer $customer, array $items): array
+    {
+        $quote = CustomerInvoices::loyaltyQuote($bid, $customer, $items);
+
+        return [
+            'eligible' => $quote['eligible'],
+            'reason' => $quote['reason'],
+            'balance' => $quote['balance'],
+            'points' => $quote['max_points'],
+            'discount' => $quote['max_discount'],
+            // وفي طريقة النسبة يُقال كم بالمئة من الفاتورة هذا الخصم — و`null` في المبلغ الثابت
+            'percent' => Loyalty::percentOf(Loyalty::rules($bid), $quote['max_points']),
+        ];
+    }
+
     public function preview(Request $request)
     {
         $bid = $this->bid();
@@ -867,6 +898,8 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'bank_account_id' => ['nullable', 'integer'],
+            // نقاطٌ اختار التاجرُ استبدالَها — تُعاين ولا تُخصم (`CustomerInvoices::draft`)
+            'redeem_points' => ['nullable', 'integer', 'min:0'],
         ] + InvoiceLineDetails::rules() + [
             /*
              * ولغةُ الورقة تُرسَل لتُعاين — ولا تُحفظ من هنا.
@@ -915,6 +948,23 @@ class CustomerInvoiceController extends Controller
         $invoice = CustomerInvoices::draft($bid, $customer, $data, $items);
 
         return response()->json([
+            /*
+             * ═══ وعرضُ النقاط من الخادم لا من الشاشة ═══
+             *
+             * التنبيهُ يقول «رصيده كذا ويستطيع خصمَ كذا»، والرقمُ من الحساب
+             * نفسِه الذي تُكتب به الورقة (`CustomerInvoices::loyaltyQuote`) —
+             * فلا يقرأ التاجرُ مبلغًا ويُكتب غيرُه. والمجاميعُ بعد الخصم من
+             * `compute` نفسِها، بضريبتها على ما بقي.
+             */
+            'loyalty' => $customer !== null ? self::loyaltyOffer($bid, $customer, $items) : null,
+            'totals' => [
+                'subtotal' => (float) $invoice->subtotal,
+                'discount' => (float) $invoice->discount_total,
+                'tax' => (float) $invoice->tax_total,
+                'total' => (float) $invoice->total,
+                'loyalty_points' => (int) $invoice->loyalty_points,
+                'loyalty_discount' => (float) $invoice->loyalty_discount,
+            ],
             'html' => InvoiceBranding::render(
                 $bid,
                 $data['lang'] ?? null,
@@ -1256,6 +1306,16 @@ class CustomerInvoiceController extends Controller
              */
             'payment_link' => ['nullable', 'boolean'],
             'form_token' => ['nullable', 'string', 'max:64'],
+            /*
+             * نقاطُ الولاء التي اختار التاجرُ استبدالَها — تُحسب وتُخصم في
+             * الخادم مع الورقة (`CustomerInvoices::create`)، ولا تُطبَّق إلّا
+             * بطلبه: صفرٌ أو غيابٌ يعني «بدون خصم».
+             *
+             * ومعها قيمتُها كما عرضتها الشاشة — فإن حسب الخادمُ غيرَها رُدّت
+             * الورقةُ ومعها العرضُ الصحيح، ولا تُكتب بخصمٍ لم يُرَ.
+             */
+            'redeem_points' => ['nullable', 'integer', 'min:0'],
+            'redeem_discount' => ['nullable', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
             // منتجٌ أو إضافة — لا الاثنان: إضافةٌ لا تلبس منتجًا وهميًّا
@@ -1558,6 +1618,17 @@ class CustomerInvoiceController extends Controller
          * آجلةً كما يجب، بلا تحصيلٍ مزعوم، وتُعاد المحاولةُ من صفحتها على
          * الفاتورة نفسِها — لا فاتورةٌ ثانية.
          */
+        /*
+         * ولا يُطلب رابطُ دفعٍ لورقةٍ لا باقيَ لها — غطّتها النقاطُ كلُّها. لا
+         * يُفتح طلبٌ عند Paymob بصفر، ويُقال للتاجر لمَ لم يُنشأ رابط.
+         */
+        if ($wantsLink && $invoice->status === CustomerInvoice::ISSUED && $invoice->outstanding() <= 0) {
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                'msg' => __('أُصدرت الفاتورة :n مسدَّدةً بالكامل بنقاط الولاء — لا يُطلب لها رابط دفع.', ['n' => $invoice->number]),
+                'type' => 'success',
+            ]);
+        }
+
         if ($wantsLink) {
             try {
                 [$link] = PaymentLinks::forInvoice($invoice, auth()->id());
@@ -1621,6 +1692,15 @@ class CustomerInvoiceController extends Controller
     {
         $total = round((float) $invoice->total, 3);
         $amount = isset($data['paid_amount']) ? round((float) $data['paid_amount'], 3) : $total;
+
+        /*
+         * وورقةٌ غطّتها النقاطُ كلُّها لا يُقبض عليها شيء: لا إيصالَ بصفر (يردّه
+         * `CustomerPayments::record`)، وهي مسدَّدةٌ بباقيها الصفريّ. ومبلغٌ كُتب
+         * فوق الصفر يُردّ بسطره أدناه كما يُردّ على أيّ ورقة.
+         */
+        if ($total <= 0 && ! isset($data['paid_amount'])) {
+            return;
+        }
 
         if ($amount > $total) {
             throw ValidationException::withMessages([
@@ -1715,8 +1795,11 @@ class CustomerInvoiceController extends Controller
             'reason' => __('سبب الإلغاء'),
         ]);
 
+        // وفاتورةُ متجرٍ آخر ٤٠٤ — لا خطأَ «لم يُعثر» يُلتقط في الـ`catch` ويُعرض للتاجر
+        $invoice = $this->find($id);
+
         try {
-            CustomerInvoices::cancel($this->find($id), $data['reason'], auth()->id());
+            CustomerInvoices::cancel($invoice, $data['reason'], auth()->id());
         } catch (RuntimeException $e) {
             return back()->withErrors(['invoice' => $e->getMessage()]);
         }
@@ -1734,20 +1817,48 @@ class CustomerInvoiceController extends Controller
             // والضريبةُ جزءٌ من المبلغ لا فوقه — وإلّا سقط على ميزان الدفتر برسالةٍ لا تسمّي الحقل
             'tax_amount' => ['nullable', 'numeric', 'min:0', 'lte:amount'],
             'reason' => ['required', 'string', 'max:200'],
+            // سببُ الإشعار — وما يمنعه سببُه تسأله الخدمةُ نفسُها (`ManualInvoiceAdjustments::assertCreditNote`)
+            'basis' => ['required', Rule::in(CustomerCreditNote::BASES)],
+            // رمزُ النموذج: يُرسَل مرّتين فيصدر إشعارٌ واحد
+            'token' => ['required', 'string', 'max:64'],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
         ]);
 
+        $invoice = $this->find($id);
+
+        /*
+         * ونموذجٌ أُرسل مرّتين — ضغطتان أو إعادةُ الطلب — يُصدر إشعارًا واحدًا.
+         *
+         * القفلُ على رمز النموذج يجعل الثاني ينتظر الأوّل، ثمّ يجد إشعارَه
+         * مكتوبًا فيقوله ولا يكتب غيرَه. والرمزُ يُحفظ بعد الإصدار وحده: نموذجٌ
+         * رُدّ لخطأٍ فيه يُصحَّح ويُرسل بالرمز نفسه.
+         */
+        $key = 'credit-note:'.$this->bid().':'.$data['token'];
+        $lock = Cache::lock($key.':lock', 30);
+
         try {
+            $lock->block(10);
+
+            if ($number = Cache::get($key)) {
+                return back()->with('toast', ['msg' => __('أُصدر إشعار الدائن :n', ['n' => $number]), 'type' => 'success']);
+            }
+
             $note = CustomerInvoices::creditNote(
-                $this->find($id),
+                $invoice,
                 (float) $data['amount'],
                 (float) ($data['tax_amount'] ?? 0),
                 $data['reason'],
                 auth()->id(),
+                basis: $data['basis'],
             );
+            Cache::put($key, $note->number, now()->addDay());
+        } catch (LockTimeoutException) {
+            return back()->withErrors(['amount' => __('يُصدر هذا الإشعار الآن — انتظر لحظة ثم أعد فتح الفاتورة.')]);
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);
+        } finally {
+            $lock->release();
         }
 
         return back()->with('toast', [
@@ -1790,7 +1901,8 @@ class CustomerInvoiceController extends Controller
                 'description' => $i->description,
                 'quantity' => (float) $i->quantity,
                 'unit_price' => (float) $i->unit_price,
-                'discount' => (float) $i->discount,
+                // خصمُه اليدويّ وحده — وحصّتُه من خصم النقاط يعيدها الخادمُ عند الحفظ (`CustomerInvoiceEdits::loyaltyOnDraft`)
+                'discount' => round((float) $i->discount - (float) $i->loyalty_discount, 3),
                 'tax_rate' => (float) $i->tax_rate,
                 'line_total' => (float) $i->line_total,
                 'details' => $this->lineDetails($i),
@@ -1804,7 +1916,8 @@ class CustomerInvoiceController extends Controller
                 'description' => $l['description'],
                 'quantity' => (float) $l['quantity'],
                 'unit_price' => (float) $l['unit_price'],
-                'discount' => (float) $l['discount'],
+                // وهنا أيضًا خصمُه اليدويّ وحده — وحصّةُ النقاط تتبع البندَ بنسبته (`CustomerInvoiceEdits::pointsShareFollows`)
+                'discount' => round((float) $l['discount'] - (float) ($l['loyalty_discount'] ?? 0), 3),
                 'tax_rate' => (float) $l['tax_rate'],
                 'line_total' => (float) $l['line_total'],
                 'details' => isset($l['item_id']) && $staff->has($l['item_id']) ? $this->lineDetails($staff->get($l['item_id'])) : [],
@@ -1846,6 +1959,10 @@ class CustomerInvoiceController extends Controller
                 'debited' => $draft ? 0.0 : $invoice->debitedTotal(),
                 'outstanding' => $invoice->outstanding(),
                 'items' => $lines,
+                // ونقاطُ الولاء المختارة على المسودّة — تُعاد على البنود الجديدة عند الحفظ، ولا تُصرف قبل الإصدار
+                'loyalty' => (int) $invoice->loyalty_points > 0
+                    ? ['points' => (int) $invoice->loyalty_points, 'discount' => round((float) $invoice->loyalty_discount, 3)]
+                    : null,
             ],
             'customers' => Customer::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name', 'name_en', 'phone', 'payment_terms_days'])

@@ -339,10 +339,10 @@ class APaymobPaidTaskIsCorrectedFromTheBoardEndToEndTest extends TestCase
             ->post(route('admin.preparation.invoiceDetails', $task->id), $this->form($task, ['recipient_name' => 'من صحار']))
             ->assertNotFound();
 
-        // ولا من لوحة الخوير وهو لا يعمل فيه
+        // ولا بجلسةٍ على فرع الخوير: الفرعُ إسنادٌ لا اختيارُ جلسة، فلا يجدها أصلًا
         $this->actingAs($southOnly->fresh())->withSession(['current_branch' => $this->branch->id])
             ->post(route('admin.preparation.invoiceDetails', $task->id), $this->form($task, ['branch_id' => $this->elsewhere->id]))
-            ->assertSessionHasErrors('preparation.branch_id');
+            ->assertNotFound();
 
         $this->assertSame('مريم البلوشية', $task->fresh()->recipient_name);
         $this->assertSame((int) $this->branch->id, (int) $task->fresh()->branch_id);

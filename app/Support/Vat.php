@@ -147,4 +147,24 @@ class Vat
 
         return $product ? $product->taxRate($default) : $default;
     }
+
+    /**
+     * نسبةُ كلّ صنفٍ في قائمةٍ طويلة — بقاعدة `rateFor` نفسِها، وإعدادُ المتجر يُقرأ مرّةً.
+     *
+     * شاشةُ البيع تعرض أصنافَ المتجر كلَّها، و`rateFor` تسأل الإعداداتِ لكلّ صنفٍ
+     * (الإطفاءُ، ثمّ النسبة، وتاريخُ المتجر حين لا جواب): ألفا صنفٍ أربعةُ آلاف
+     * سؤالٍ لجوابٍ واحد. فيُسأل المتجرُ هنا مرّةً، ويبقى لكلّ صنفٍ نسبتُه الخاصّة.
+     *
+     * @return \Closure(?Product): float
+     */
+    public static function rateForEach(int $businessId): \Closure
+    {
+        if (! self::enabled($businessId)) {
+            return fn (?Product $product): float => 0.0;
+        }
+
+        $default = self::rate($businessId);
+
+        return fn (?Product $product): float => $product ? $product->taxRate($default) : $default;
+    }
 }

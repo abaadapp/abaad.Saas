@@ -20,6 +20,21 @@ class Customer extends Model
 
     protected $guarded = [];
 
+    /**
+     * عدّادُ «أرقامٍ تحتاج مراجعة» يُمحى بكلّ حفظٍ في المتجر (`CustomerPhone`).
+     *
+     * فتصحيحُ رقمٍ يُنقص التنبيهَ لحظتَها، وعميلٌ جديدٌ برقمٍ ناقص (استيرادٌ أو
+     * تكامل) يظهر فيه — بلا انتظار انقضاء مدّة الحفظ.
+     */
+    protected static function booted(): void
+    {
+        $forget = fn (Customer $c) => $c->business_id ? \App\Support\CustomerPhone::forget((int) $c->business_id) : null;
+
+        static::saved($forget);
+        static::deleted($forget);
+        static::restored($forget);
+    }
+
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);

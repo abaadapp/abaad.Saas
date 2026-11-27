@@ -13,12 +13,15 @@ use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Support\Document\Snapshot;
+use Brick\Math\BigInteger;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -189,9 +192,10 @@ final class CustomerInvoices
         $inclusive ??= Vat::inclusive($businessId);
 
         $items = [];
-        $subtotal = 0.0;
-        $discount = 0.0;
-        $tax = 0.0;
+        // بالبيسات الصحيحة — والقاعدةُ قاعدةُ الصندوق نفسُها (`VatLines`)
+        $subtotalB = 0;
+        $discountB = 0;
+        $taxB = 0;
         $sort = 0;
 
         foreach ($lines as $line) {
@@ -203,7 +207,9 @@ final class CustomerInvoices
                 continue;
             }
 
-            $gross = round($qty * $price, 3);
+            // الكمّيّةُ في السعر بالبيسات، مدوَّرةً نصفًا إلى أعلى — كما كانت `round(…, 3)` بلا كسرٍ عائم
+            $grossB = Baisa::halfUp(BigInteger::of(Baisa::of($qty))->multipliedBy(Baisa::of($price)), BigInteger::of(1000))->toInt();
+            $gross = Baisa::toMoney($grossB);
 
             /*
              * ═══ والخصمُ المحتسَب هو المطبَّق، لا المطلوب ═══
@@ -221,8 +227,10 @@ final class CustomerInvoices
              * `subtotal − discount + tax` مساويًا لمجموع البنود دائمًا،
              * وهي الخاصّيّةُ التي تُراجَع بها الورقة.
              */
-            $lineDiscount = round(min(max(0.0, $lineDiscount), $gross), 3);
-            $net = round($gross - $lineDiscount, 3);
+            $lineDiscountB = min(Baisa::of($lineDiscount), $grossB);
+            $lineDiscount = Baisa::toMoney($lineDiscountB);
+            $netB = $grossB - $lineDiscountB;
+            $net = Baisa::toMoney($netB);
             // بندٌ معفًى يُكتب بنسبة صفر — والإعفاء لقطةٌ في السطر لا قاعدةٌ عامّة
             $lineRate = array_key_exists('tax_rate', $line) ? (float) $line['tax_rate'] : $rate;
             /*
@@ -238,13 +246,17 @@ final class CustomerInvoices
              *
              * والصيغةُ صيغةُ الموضعين الآخرين حرفًا بحرف: `net × r ÷ (100+r)`.
              */
-            $lineTax = $inclusive
-                ? round($net * $lineRate / (100 + $lineRate), 3)
-                : round($net * $lineRate / 100, 3);
+            /*
+             * وضريبةُ البند تُدوَّر وحدَها نصفًا إلى أعلى، بالبيسات — `VatLines::lineTax`،
+             * التي يحسب بها الصندوقُ كذلك. فبندٌ بالسعر نفسِه والخصمِ نفسِه تُكتب
+             * ضريبتُه في الصندوق وفي الفاتورة رقمًا واحدًا (PINT-OM: ‏IBR-168-OM).
+             */
+            $lineTaxB = VatLines::lineTax($netB, (float) $lineRate, $inclusive);
+            $lineTax = Baisa::toMoney($lineTaxB);
 
-            $subtotal = round($subtotal + $gross, 3);
-            $discount = round($discount + $lineDiscount, 3);
-            $tax = round($tax + $lineTax, 3);
+            $subtotalB += $grossB;
+            $discountB += $lineDiscountB;
+            $taxB += $lineTaxB;
 
             $items[] = [
                 'product_id' => $line['product_id'] ?? null,
@@ -255,6 +267,8 @@ final class CustomerInvoices
                 'quantity' => $qty,
                 'unit_price' => $price,
                 'discount' => $lineDiscount,
+                // ومنه نصيبُ النقاط — داخلَ الخصم لا فوقه (`withLoyalty`)
+                'loyalty_discount' => round(min(max(0.0, (float) ($line['loyalty_discount'] ?? 0)), $lineDiscount), 3),
                 'tax_rate' => $lineRate,
                 'tax_amount' => $lineTax,
                 /*
@@ -265,7 +279,7 @@ final class CustomerInvoices
                  * ثانيةً تجعل مجموعَ البنود أكبرَ من إجمالي الورقة — وهي
                  * الخاصّيّةُ التي يُراجَع بها ورقٌ رسميّ.
                  */
-                'line_total' => $inclusive ? $net : round($net + $lineTax, 3),
+                'line_total' => $inclusive ? $net : Baisa::toMoney($netB + $lineTaxB),
                 'sort_order' => $sort++,
                 /*
                  * وما لا مالَ فيه يمرّ كما جاء — لقطةُ ما اختير مع البند، ومن
@@ -285,14 +299,14 @@ final class CustomerInvoices
          * `subtotal − discount + tax` مساويًا لمجموع البنود في الحالين —
          * وهي القاعدةُ التي تُراجَع بها الورقة سطرًا سطرًا.
          */
-        $subtotal = $inclusive ? round($subtotal - $tax, 3) : $subtotal;
+        $subtotalB = $inclusive ? $subtotalB - $taxB : $subtotalB;
 
         return [
             'items' => $items,
-            'subtotal' => $subtotal,
-            'discount' => $discount,
-            'tax' => $tax,
-            'total' => round($subtotal - $discount + $tax, 3),
+            'subtotal' => Baisa::toMoney($subtotalB),
+            'discount' => Baisa::toMoney($discountB),
+            'tax' => Baisa::toMoney($taxB),
+            'total' => Baisa::toMoney($subtotalB - $discountB + $taxB),
         ];
     }
 
@@ -382,9 +396,26 @@ final class CustomerInvoices
             throw new RuntimeException(__('هذا العميل ليس من عملاء متجرك.'));
         }
 
+        /*
+         * والمعاينةُ تُرسم بخصم النقاط كما سيُكتب — بالحساب نفسِه، ولا تُخصم
+         * نقطة: لا شيء يُكتب هنا. وما لا يجوز يُعرض بلا خصم، والكتابةُ هي
+         * التي تردّ وتقول لماذا.
+         */
+        $loyalty = ['points' => 0, 'discount' => 0.0];
+        if ($customer !== null && (int) ($data['redeem_points'] ?? 0) > 0) {
+            $quote = self::loyaltyQuote($businessId, $customer, $lines, (int) $data['redeem_points']);
+            if ($quote['points'] > 0) {
+                $loyalty = $quote;
+                $lines = self::withLoyalty($lines, $quote['discount']);
+            }
+        }
+
         $totals = self::compute($businessId, $lines);
 
-        $invoice = new CustomerInvoice(self::attributes($businessId, $customer, $data, $totals));
+        $invoice = new CustomerInvoice(self::attributes($businessId, $customer, $data, $totals) + [
+            'loyalty_points' => $loyalty['points'],
+            'loyalty_discount' => $loyalty['discount'],
+        ]);
 
         /*
          * والبنودُ تُعلَّق بلا حفظ.
@@ -491,17 +522,72 @@ final class CustomerInvoices
 
         self::assertLinesBelong($businessId, $lines);
 
-        $totals = self::compute($businessId, $lines);
+        return DB::transaction(function () use ($businessId, $customer, $data, $lines, $userId) {
+            /*
+             * ═══ ونقاطُ الولاء تُحسب مع الورقة — وتُخصم عند إصدارها ═══
+             *
+             * المسودّةُ تحمل الخصمَ في بنودها ولا تمسّ الرصيد: مسودّةٌ تُهجر لا
+             * تحبس نقاطَ العميل إلى أجلٍ لا ينتهي. والخصمُ من الرصيد يقع في
+             * `issue` — تحت قفل العميل، بشرطٍ في جملة التحديث وبمفتاحٍ فريد،
+             * وبعد إعادة فحص الرصيد والقواعد. وإصدارُ الورقة مع كتابتها (وهو
+             * الغالب) يقع في المعاملة نفسِها.
+             *
+             * والمطلوبُ فوق ما يجوز يُردّ لا يُحصر: الشاشةُ عرضت مبلغًا، وورقةٌ
+             * تُكتب بغيره يقرؤها العميلُ بعد أن وافق على الأوّل.
+             *
+             * ═══ والمقياسُ النقاطُ وقيمتُها معًا — كما في الصندوق ═══
+             *
+             * الشاشةُ ترسل ما وافق عليه التاجر: عددَ النقاط (`redeem_points`)
+             * وقيمتَها (`redeem_discount`). وكان يُقارن العددُ وحده، فقاعدةٌ
+             * غيّرت قيمةَ النقطة بين العرض والحفظ تُكتب بها الورقةُ بخصمٍ غيرِ
+             * الذي رآه — في صمت. فيُقارنان معًا، وما اختلف يُردّ بالعرض الصحيح
+             * الآن ليختار من جديد (`PosController::resolveRedemption` أخوه).
+             * ومن لا يرسل القيمةَ (طلبُ واتساب، والفاتورةُ من طلب) يُقارن عددُه.
+             */
+            $loyalty = ['points' => 0, 'discount' => 0.0];
+            $requested = (int) ($data['redeem_points'] ?? 0);
+            $agreed = isset($data['redeem_discount']) && $data['redeem_discount'] !== ''
+                ? round((float) $data['redeem_discount'], 3)
+                : null;
 
-        return DB::transaction(function () use ($businessId, $customer, $data, $totals, $userId) {
+            if ($requested > 0) {
+                $fresh = $customer->fresh() ?? $customer;
+                $quote = self::loyaltyQuote($businessId, $fresh, $lines, $requested);
+                if ($quote['points'] !== $requested || ($agreed !== null && abs($quote['discount'] - $agreed) > 0.0005)) {
+                    $now = self::loyaltyQuote($businessId, $fresh, $lines);
+                    $currency = Money::of($businessId);
+
+                    throw ValidationException::withMessages([
+                        'redeem_points' => $now['max_points'] > 0
+                            ? __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، والخصم المتاح :discount مقابل :points نقطة. اختر من جديد قبل الحفظ.', [
+                                'balance' => (int) $now['balance'], 'discount' => Money::format($now['max_discount'], $currency), 'points' => $now['max_points'],
+                            ])
+                            : __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط على هذه الفاتورة. احفظها بلا خصم.', [
+                                'balance' => (int) $now['balance'],
+                            ]),
+                    ]);
+                }
+
+                $loyalty = $quote;
+                $lines = self::withLoyalty($lines, $quote['discount']);
+            }
+
+            $totals = self::compute($businessId, $lines);
+
             $invoice = CustomerInvoice::create(
-                self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
+                self::attributes($businessId, $customer, $data, $totals) + [
+                    'created_by' => $userId,
+                    'loyalty_points' => $loyalty['points'],
+                    'loyalty_discount' => $loyalty['discount'],
+                ]
             );
 
+            // والبنودُ بالكاتب نفسِه الذي يكتب به التعديلُ بنودَه الجديدة (`writeItems`)
             self::writeItems($invoice, $totals['items']);
 
+            // ومتجرُ الورقة لا متجرُ الجلسة — فاتورةٌ يكتبها الطلبُ الآليّ لا جلسةَ له (`WhatsAppOrderCheckout`)
             Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
-                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
+                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice', 'business_id' => $businessId,
             ]);
 
             return $invoice->fresh('items');
@@ -580,6 +666,27 @@ final class CustomerInvoices
      *
      * ولا يُصدَر ما صدر: نداءان لا يكتبان قيدين.
      */
+    /**
+     * يقفل المتجرَ ثمّ الورقة، ويردّها كما هي الآن — داخل معاملةٍ قائمة.
+     *
+     * ═══ ترتيبٌ واحد للأقفال: المتجر ← الورقة ← العميل ═══
+     *
+     * الإشعارُ الدائن والتحصيلُ والدفترُ يأخذون المتجرَ أوّلًا (`creditNote`،
+     * `CustomerPayments`، `Ledger::post`)، ثمّ الورقة (كتابةُ الإشعار تطلب صفَّها
+     * بمفتاحها الأجنبيّ)، ثمّ العميل. فإلغاءٌ يقفل الورقةَ ثمّ يطلب المتجرَ
+     * لعكس قيده، وإشعارٌ في اللحظة نفسها يمسك المتجرَ ويطلب الورقة: ينتظر
+     * كلٌّ ما في يد الآخر فتُسقط القاعدةُ أحدَهما (40P01). قِيس، ويحرسه
+     * `TwoHandsOnOneCustomersPointsAtOnceTest`. فالإصدارُ والإلغاءُ يأخذان
+     * المتجرَ أوّلًا كذلك — وأخذُه ثانيةً في المعاملة نفسِها لا يكلّف شيئًا.
+     */
+    private static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
+    {
+        Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+
+        return CustomerInvoice::where('business_id', $invoice->business_id)
+            ->lockForUpdate()->findOrFail($invoice->id);
+    }
+
     public static function issue(CustomerInvoice $invoice, ?int $userId = null): CustomerInvoice
     {
         return DB::transaction(function () use ($invoice, $userId) {
@@ -590,9 +697,10 @@ final class CustomerInvoices
              * «مسودة» كلتاهما خارج المعاملة فتمضيان: قيدان لفاتورةٍ واحدة،
              * وإيرادٌ مضاعف، وذمّتان لدَينٍ واحد. والقفلُ يجعل الثانيةَ تنتظر
              * ثمّ تجدها صادرةً فتخرج بها.
+             *
+             * والمتجرُ قبل الورقة — ترتيبُ الأقفال الواحد (`lockInOrder`).
              */
-            $locked = CustomerInvoice::where('business_id', $invoice->business_id)
-                ->lockForUpdate()->findOrFail($invoice->id);
+            $locked = self::lockInOrder($invoice);
 
             if ($locked->status === CustomerInvoice::CANCELLED) {
                 throw new RuntimeException(__('لا تُصدَر فاتورةٌ ملغاة.'));
@@ -600,9 +708,20 @@ final class CustomerInvoices
             if ($locked->status === CustomerInvoice::ISSUED) {
                 return $locked;
             }
-            if ((float) $locked->total <= 0) {
+            /*
+             * ولا تُصدَر ورقةٌ بلا مبلغ — إلّا ما غطّته نقاطُ العميل كلَّه.
+             *
+             * سقوفُ الاستبدال لصاحب النشاط، فقد يجعلها تغطّي الفاتورةَ كلَّها
+             * كما يبيع الصندوقُ بلا مبلغ. فتُصدَر بصفر: تُصرف نقاطُها هنا مرّةً،
+             * ولا قيدَ لها (`post`)، وتُقرأ مسدَّدةً لأنّ باقيها صفر، ولا يُطلب لها
+             * رابطُ دفع (`PaymentLinks`). وما عداها من صفرٍ يُردّ كما كان.
+             */
+            if ((float) $locked->total <= 0 && ! self::coveredByPoints($locked)) {
                 throw new RuntimeException(__('لا تُصدَر فاتورةٌ بلا مبلغ.'));
             }
+
+            // ونقاطُها تُخصم الآن — مرّةً، وبعد أن يُعاد فحصُ الرصيد والقواعد
+            self::spendPoints($locked);
 
             /*
              * وهنا يُقطع الرقم — لا قبلُ.
@@ -629,8 +748,14 @@ final class CustomerInvoices
             self::post($locked, $userId);
 
             Activity::log('updated', 'أصدر فاتورة عميل '.$locked->number.' بمبلغ '.$locked->total, [
-                'subject_id' => $locked->id, 'subject_type' => 'customer_invoice',
+                'subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => (int) $locked->business_id,
             ]);
+
+            // وما غطّته النقاطُ كلَّه صدر مسدَّدًا — فتظهر مهمّةُ تجهيزه إن طُلبت، بعد تثبيت المعاملة
+            if ((float) $locked->total <= 0) {
+                $invoiceId = (int) $locked->id;
+                DB::afterCommit(fn () => CustomerInvoicePreparations::afterIssuedPaid($invoiceId, $userId));
+            }
 
             return $locked->fresh();
         });
@@ -659,10 +784,36 @@ final class CustomerInvoices
      * (`CustomerInvoiceEdits::apply`) بتاريخ التصحيح الذي اختير. والمصدرُ
      * والمرجعُ واحدٌ في الحالين، فيقرأ `ledgerLines` الأوّلَ وعكسَه والجديد معًا.
      */
-    public static function postEntry(CustomerInvoice $invoice, ?int $userId, ?Carbon $date = null, ?string $description = null): JournalEntry
+    public static function postEntry(CustomerInvoice $invoice, ?int $userId, ?Carbon $date = null, ?string $description = null): ?JournalEntry
     {
         $net = round((float) $invoice->subtotal - (float) $invoice->discount_total, 3);
         $tax = round((float) $invoice->tax_total, 3);
+
+        /*
+         * ═══ وورقةٌ غطّتها النقاطُ كلُّها لا قيدَ لها ═══
+         *
+         * خصمُ النقاط يُنقص الإيرادَ في البنود (لا حسابَ له في الدليل)، فيُقيَّد
+         * ما بقي: ذمّةٌ وإيرادٌ وضريبة. وحين لا يبقى شيء فكلُّها أصفار، والقيدُ
+         * لا يُكتب بسطرٍ واحدٍ صفريّ (`Ledger::post`). وهي قاعدةُ الصندوق في
+         * إيراد بيعةٍ إجماليُّها صفر (`Books::recordSale`) — والصندوقُ يكتب بعدها
+         * تكلفةَ ما خرج من الرفّ إن كانت له تكلفة؛ وفاتورةُ العميل اليدويّة لا
+         * تُخرج مخزونًا ولا تكتب تكلفةً بأيّ مبلغ، فلا يسقط هنا شيءٌ غيرُ الأصفار.
+         * والإلغاءُ لا يجد قيدًا يعكسه فلا يعكس شيئًا، ويعيد النقاطَ وحدها.
+         *
+         * ═══ وما لا قيدَ له يسأل عن الفترة بنفسه ═══
+         *
+         * الفترةُ المقفلة (أو المقدَّمُ إقرارُها) يسألها الدفترُ عند الكتابة
+         * (`Ledger::post` ← `BooksPeriod::assertOpen`). وورقةٌ لا تبلغ الدفتر
+         * لا يسألها أحد: فاتورةٌ بتاريخ شهرٍ مقفل تُصدَر وتصرف نقاطها، وأختُها
+         * بمبلغٍ تُردّ. فيُسأل هنا السؤالُ نفسُه، والردُّ يُرجع صرفَ النقاط مع
+         * المعاملة كلّها.
+         */
+        if (round((float) $invoice->total, 3) <= 0 && $net <= 0 && $tax <= 0) {
+            BooksPeriod::assertOpen((int) $invoice->business_id, Carbon::parse($date ?? $invoice->issued_at));
+
+            // ولا قيدَ يُردّ: ورقةٌ غطّتها النقاطُ كلُّها
+            return null;
+        }
 
         $lines = [['account' => 'receivable', 'debit' => round((float) $invoice->total, 3)]];
 
@@ -750,11 +901,31 @@ final class CustomerInvoices
         if ($invoice->status === CustomerInvoice::CANCELLED) {
             return $invoice;
         }
-        if ($invoice->paidTotal() > 0) {
-            throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
-        }
 
         return DB::transaction(function () use ($invoice, $reason, $userId) {
+            /*
+             * ═══ والحالةُ تُقرأ تحت القفل، لا من النسخة التي في اليد ═══
+             *
+             * النسخةُ قُرئت قبل المعاملة. فمسودّةٌ يُصدرها أحدٌ في اللحظة التي
+             * يُلغيها فيها آخر: الإصدارُ يكتب قيدَه ويُغلق، والإلغاءُ يقرأ
+             * «مسودّة» من يده فلا يعكس شيئًا، ثمّ يكتب «ملغاة» فوق «صادرة».
+             * فاتورةٌ ملغاةٌ وذمّتُها وإيرادُها باقيان في الدفتر. فيُقفل الصفّ
+             * (والإصدارُ يقفله أيضًا) ويُقرأ من جديد، وعليه يُبنى كلُّ ما بعده.
+             * والمتجرُ قبل الورقة (`lockInOrder`).
+             */
+            $invoice = self::lockInOrder($invoice);
+
+            if ($invoice->status === CustomerInvoice::CANCELLED) {
+                return $invoice;
+            }
+            if ($invoice->paidTotal() > 0) {
+                throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
+            }
+            // ولا يُلغى ما قُدّم إقرارُه ولا ما يطلبه رابطٌ ينتظر — يُقرأ تحت القفل كالسداد (`ManualInvoiceAdjustments`)
+            if ($why = ManualInvoiceAdjustments::cancelRefusal($invoice)) {
+                throw new RuntimeException($why);
+            }
+
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
                 // والقائمُ وحده: ورقةٌ عُدّلت لها قيدٌ عُكس وقيدٌ قائم
                 $entry = self::liveEntry($invoice);
@@ -770,6 +941,9 @@ final class CustomerInvoices
                 'cancelled_by' => $userId,
                 'cancellation_reason' => $reason,
             ]);
+
+            // وما صُرف عليها من نقاطٍ يعود إلى صاحبه — كما يعيده إلغاءُ بيعة الصندوق
+            self::returnPoints($invoice);
 
             Activity::log('deleted', 'ألغى فاتورة عميل '.$invoice->number.' — '.$reason, [
                 'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
@@ -793,8 +967,9 @@ final class CustomerInvoices
         ?int $userId = null,
         string $source = self::NOTE_MANUAL,
         ?int $orderId = null,
-        ?array $items = null,
         ?string $basis = null,
+        // بنودُ الإشعار ونسختُه حين يولد من تصحيح الفاتورة (`CustomerInvoiceEdits`) — بالاسم لا بالموضع
+        ?array $items = null,
         ?int $revisionId = null,
     ): CustomerCreditNote {
         $amount = round($amount, 3);
@@ -802,16 +977,36 @@ final class CustomerInvoices
         if ($amount <= 0) {
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
-        // والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — والحالُ من القاعدة لا من نسخةٍ في اليد
-        if (CustomerInvoice::whereKey($invoice->id)->value('status') !== CustomerInvoice::ISSUED) {
-            throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
-        }
-        // وما على الورقة بعد مستندات تصحيحها — لا إجماليُّها كما صدر وحده
-        if ($amount > $invoice->effectiveTotal() + 0.0005) {
-            throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
-        }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $items, $basis, $revisionId) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis, $items, $revisionId) {
+            /*
+             * والحدُّ يُقرأ تحت قفل المتجر، من الورقة كما هي الآن.
+             *
+             * كان يُقرأ قبل المعاملة: إشعاران معًا يقرآن «الباقي» نفسَه فيمرّان،
+             * ومجموعُهما فوق الفاتورة. والقفلُ نفسُه يأخذه الترقيمُ بعد سطرين.
+             *
+             * والإشعارُ اليدويّ لا يتجاوز «الإجماليّ − ما رُدّ» ولو سُدّدت
+             * الورقة: `outstanding` تُحصر عند الصفر، فكان «الباقي + المسدَّد»
+             * يسمح لفاتورةٍ مدفوعةٍ بإشعارٍ كاملٍ بعد إشعارٍ كامل. وإشعارُ
+             * إلغاء الطلب حدُّه كما كان (`onOrderCancelled`) — ولا نقاطَ على
+             * ورقةٍ تجمع طلبات. يحرسه `TwoHandsOnOneCustomersPointsAtOnceTest`.
+             */
+            Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+            $invoice = CustomerInvoice::where('business_id', $invoice->business_id)->findOrFail($invoice->id);
+
+            // والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — والحالُ من الورقة تحت القفل لا من نسخةٍ في اليد
+            if ($invoice->status !== CustomerInvoice::ISSUED) {
+                throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
+            // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه ومبلغُه وضريبتُه (`ManualInvoiceAdjustments`)
+            if ($source === self::NOTE_MANUAL) {
+                ManualInvoiceAdjustments::assertCreditNote($invoice, $amount, round($taxAmount, 3), $basis);
+            } elseif ($amount > round($invoice->outstanding() + $invoice->paidTotal(), 3)) {
+                // وإشعارُ إلغاء الطلب مرآةُ قيدٍ عُكس (`Books::unpostSale`) — حدُّه كما كان (`onOrderCancelled`)
+                throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
             $note = CustomerCreditNote::create([
                 'business_id' => $invoice->business_id,
                 'customer_invoice_id' => $invoice->id,
@@ -822,11 +1017,14 @@ final class CustomerInvoices
                 'reason' => $reason,
                 'source' => $source,
                 'order_id' => $orderId,
-                'items' => $items,
                 'basis' => $basis,
+                'items' => $items,
                 'revision_id' => $revisionId,
                 'created_by' => $userId,
             ]);
+
+            // وما صُرف عليها من نقاطٍ يعود بنسبة ما رُدّ — في المعاملة نفسِها
+            self::returnPointsForCredit($invoice, $note);
 
             /*
              * والقيدُ يتبع المصدر.
@@ -865,7 +1063,8 @@ final class CustomerInvoices
                 $note,
             );
 
-            Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number, [
+            Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number
+                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '').' — '.$reason, [
                 'subject_id' => $note->id, 'subject_type' => 'customer_credit_note',
             ]);
 
@@ -1015,6 +1214,12 @@ final class CustomerInvoices
                     }
                 }
             }
+
+            /*
+             * ولا نقاطَ تُستبدل على ورقةٍ تجمع طلبات: خصمُ كلّ طلبٍ وقع عند
+             * بيعه ورُحّل في دفتره، وخصمٌ ثانٍ هنا ورقةٌ بغير ما في الدفتر.
+             */
+            unset($data['redeem_points']);
 
             $invoice = self::create($businessId, $customer, $data, $lines, $userId);
             $invoice->orders()->attach($orders->pluck('id')->all());
@@ -1166,6 +1371,9 @@ final class CustomerInvoices
          * وإعادةُ الحساب هنا تُنتج ورقةً بمبلغٍ غير الذي رُحّل في الدفتر —
          * فتفترق الذمّةُ التشغيليّة عن رصيد `receivable`.
          */
+        // ولا استبدالَ على ورقة طلبٍ واحد — خصمُه وقع عند بيعه (انظر `consolidate`)
+        unset($data['redeem_points']);
+
         $invoice = self::create((int) $order->business_id, $customer, $data + [
             'branch_id' => $order->branch_id,
             'issued_at' => $order->ordered_at ?? $order->created_at,
@@ -1290,5 +1498,340 @@ final class CustomerInvoices
         $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names], 'ar').')'.$suffix, 255, '');
 
         return [$main];
+    }
+
+    /* ═══════════════════ نقاطُ الولاء على الفاتورة ═══════════════════ */
+
+    /** مفتاحُ حركة الاستبدال — واحدٌ للورقة، وعكسُه بلاحقة */
+    public static function redeemKey(CustomerInvoice $invoice): string
+    {
+        return 'cinv:'.$invoice->id.':redeem';
+    }
+
+    /**
+     * أساسُ الاستبدال من بنود الورقة — كما يقرؤه الصندوق.
+     *
+     * `base` مجموعُ البنود قبل خصومها، و`other` ما خُصم منها — مقابلُ
+     * المجموع الفرعيّ والكوبون في نقطة البيع. فالقاعدةُ واحدة: نسبةٌ من
+     * المجموع، ولا تتجاوز ما بقي بعد خصوم البنود.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array{0: float, 1: float}
+     */
+    public static function loyaltyBase(array $lines): array
+    {
+        $base = 0.0;
+        $other = 0.0;
+
+        foreach ($lines as $line) {
+            $qty = round((float) ($line['quantity'] ?? 1), 3);
+            if ($qty <= 0) {
+                continue;
+            }
+            $gross = round($qty * round((float) ($line['unit_price'] ?? 0), 3), 3);
+            $base = round($base + $gross, 3);
+            $other = round($other + min(max(0.0, round((float) ($line['discount'] ?? 0), 3)), $gross), 3);
+        }
+
+        return [$base, $other];
+    }
+
+    /**
+     * ورقةٌ غطّت نقاطُ العميل إجماليَّها كلَّه — صفرٌ مستحقّ، وهو ما اختاره التاجرُ بسقوفه.
+     *
+     * المالُ هنا كلُّه خصمُ نقاط: البنودُ تحمل حصصَها حتّى صافيها، فلا إيرادَ
+     * ولا ضريبة (`withLoyalty` ثمّ `compute`)، ولا باقيَ يُطلب. وصفرٌ لغير
+     * النقاط (بنودٌ بلا قيمة، خصمٌ يدويٌّ كامل) يبقى مردودًا كما كان.
+     */
+    public static function coveredByPoints(CustomerInvoice $invoice): bool
+    {
+        return (int) $invoice->loyalty_points > 0
+            && (float) $invoice->loyalty_discount > 0
+            && abs(round((float) $invoice->total, 3)) < 0.0005;
+    }
+
+    /**
+     * عرضُ الاستبدال لهذا العميل على هذه البنود — من `Loyalty::quote` وحدَها.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public static function loyaltyQuote(int $businessId, ?Customer $customer, array $lines, ?int $requested = null): array
+    {
+        [$base, $other] = self::loyaltyBase($lines);
+
+        return Loyalty::quote(Loyalty::rules($businessId), $customer?->points, $base, $other, $requested);
+    }
+
+    /**
+     * يوزّع خصمَ النقاط على البنود بنسبة صافيها — ثمّ تحسبها `compute` كما هي.
+     *
+     * ═══ ولمَ في البنود لا في رأس الورقة ═══
+     *
+     * الضريبةُ تُحسب لكلّ بند، والقيدُ يقرأ المجموعَ الفرعيّ والخصمَ
+     * والضريبة، والإشعارُ الدائن يقرأ البنود. فخصمٌ في الرأس وحده يجعل
+     * الضريبةَ تُحسب على ما لم يُدفع، والبنودَ لا تجمع إلى إجماليّها. ونصيبُ
+     * كلّ بندٍ من الخصم يمرّ بالصيغة نفسِها التي يمرّ بها خصمُه اليدويّ —
+     * شاملةً أو غير شاملة — فلا صيغةَ ثانيةً تُكتب للضريبة.
+     *
+     * والتقريبُ لا يضيع: يُقصّ نصيبُ كلّ بندٍ إلى البيسة، ويُعطى الباقي لأكبر
+     * البنود حتى يستوفى — ولا يتجاوز بندٌ صافيه.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    public static function withLoyalty(array $lines, float $discount): array
+    {
+        $discount = round($discount, 3);
+        if ($discount <= 0) {
+            return $lines;
+        }
+
+        $nets = [];
+        foreach ($lines as $i => $line) {
+            $qty = round((float) ($line['quantity'] ?? 1), 3);
+            if ($qty <= 0) {
+                continue;
+            }
+            // صافي البند بالبيسات كما يحسبه `compute` حرفًا — فلا يفترقان على بيسة
+            $grossB = Baisa::halfUp(BigInteger::of(Baisa::of($qty))->multipliedBy(Baisa::of((float) ($line['unit_price'] ?? 0))), BigInteger::of(1000))->toInt();
+            $ownB = min(Baisa::of((float) ($line['discount'] ?? 0)), $grossB);
+            if ($grossB - $ownB > 0) {
+                $nets[$i] = ['own' => $ownB, 'net' => $grossB - $ownB];
+            }
+        }
+
+        /*
+         * ═══ والقسمةُ بالبيسات الصحيحة لا بالكسور العائمة ═══
+         *
+         * الصافي والخصمُ أرقامٌ بثلاث خانات، فيصيران بيساتٍ صحيحة، ونصيبُ كلّ
+         * بندٍ قسمةٌ صحيحة (`d × صافيه ÷ المجموع`) مقصوصة — فلا يقع نصيبٌ على
+         * حدّ البيسة مرّةً فوقه ومرّةً تحته بحسب تمثيل الرقم. وما بقي من القصّ
+         * يذهب إلى أكبر البنود صافيًا كما كان.
+         */
+        $d = Baisa::of($discount);
+        $cents = array_map(fn ($n) => $n['net'], $nets);
+        $sum = array_sum($cents);
+        if ($sum < $d) {
+            throw ValidationException::withMessages([
+                'redeem_points' => __('خصم النقاط أكبر من قيمة البنود.'),
+            ]);
+        }
+
+        // والباقي من القصّ لأكبر البنود صافيًا، ولا يتجاوز بندٌ ما بقي منه —
+        // القسمةُ نفسُها التي يوزَّع بها خصمُ بيعة الصندوق (`Baisa::spread`)
+        $shares = Baisa::spread($d, $cents);
+
+        foreach ($shares as $i => $share) {
+            $lines[$i]['discount'] = Baisa::toMoney($nets[$i]['own'] + $share);
+            $lines[$i]['loyalty_discount'] = $share / 1000.0;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * يخصم من رصيد العميل نقاطَ الورقة — عند إصدارها، مرّةً واحدة.
+     *
+     * يُعاد فحصُ ما وافق عليه التاجرُ حين كتب المسودّة: البرنامجُ عاملٌ
+     * والاستبدالُ مفتوح، والرصيدُ يكفي، والقواعدُ ما زالت تعطي النقاطَ نفسَها
+     * بالقيمة نفسِها على البنود نفسِها. وما لا يصدق يُردّ بسببه، ولا يُعدَّل
+     * مبلغُ الورقة في صمت: من وافق على مبلغٍ لا يُصدَر له غيرُه.
+     *
+     * والخصمُ تحت قفل صفّ العميل وبشرطٍ في جملة التحديث (`Loyalty::spend`)
+     * وبمفتاحٍ فريد — فلا فاتورتان ولا فاتورةٌ وصندوقٌ يصرفان النقاطَ نفسَها.
+     */
+    private static function spendPoints(CustomerInvoice $invoice): void
+    {
+        $points = (int) $invoice->loyalty_points;
+        if ($points <= 0 || self::pointsSpent($invoice) > 0) {
+            return;
+        }
+
+        /*
+         * والمتجرُ قبل العميل — ترتيبُ الأقفال الذي يأخذه الصندوق.
+         *
+         * بيعةُ الصندوق تُمسك صفَّ المتجر من أوّل صفٍّ تكتبه (مفتاحُه الأجنبيّ)،
+         * ثمّ صفَّ العميل حين تكتب طلبَه. والإصدارُ كان يُمسك العميلَ هنا ثمّ
+         * يطلب المتجرَ للترقيم والقيد — فينتظر كلٌّ منهما الآخر، وتُسقط
+         * PostgreSQL البيعةَ بـ deadlock. والقفلُ مأخوذٌ بعد سطورٍ على أيّ حال،
+         * فأخذُه هنا لا يزيد شيئًا. يحرسه `TwoHandsOnOneCustomersPointsAtOnceTest`.
+         */
+        Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+
+        $customer = Customer::where('business_id', $invoice->business_id)
+            ->whereKey($invoice->customer_id)->lockForUpdate()->first();
+
+        if (! $customer) {
+            throw new RuntimeException(__('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
+        }
+
+        $base = 0.0;
+        $other = 0.0;
+        $shares = 0.0;
+        foreach ($invoice->items()->get() as $item) {
+            $gross = round((float) $item->quantity * (float) $item->unit_price, 3);
+            $base = round($base + $gross, 3);
+            $other = round($other + (float) $item->discount - (float) $item->loyalty_discount, 3);
+            $shares = round($shares + (float) $item->loyalty_discount, 3);
+        }
+
+        /*
+         * والبنودُ ما زالت تحمل خصمَ النقاط كما كُتب.
+         *
+         * الخصمُ موزَّعٌ على البنود داخلَ خصمها (`withLoyalty`)، ومنها يُحسب
+         * الإجماليُّ وتُطبع الورقة. وبابٌ يعيد كتابةَ البنود ولا يعرف النقاط
+         * (تعديلُ المسودّات في #195) يُسقط حصّتَها: فيُصرف الرصيدُ على ورقةٍ
+         * إجماليُّها بلا خصمه، أو يُطبع الخصمُ مرّتين. فلا يُصدَر ما لا تتّفق
+         * بنودُه وصفُّه — ولا يُصلَح هنا: من وافق على مبلغٍ لا يُصدَر له غيرُه.
+         */
+        if (abs($shares - (float) $invoice->loyalty_discount) > 0.0005) {
+            throw new RuntimeException(__('تغيّرت بنود المسودّة بعد اختيار النقاط فلم تعد تحمل خصمها — ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
+        }
+
+        $rules = Loyalty::rules((int) $invoice->business_id);
+
+        /*
+         * والردُّ يقول ما صار — لا «تغيّر» وحدها.
+         *
+         * الرصيدُ الآن وأقصى ما يجوز على هذه البنود بقواعد اليوم: فيعرف
+         * التاجرُ بكم يكتب الفاتورةَ الجديدة، ولا يُخمّن. والمسودّةُ لا تُعدَّل
+         * هنا — مبلغُها ما وافق عليه حين كتبها، ولا يُصدَر له غيرُه.
+         */
+        $refuse = function () use ($rules, $customer, $base, $other, $invoice) {
+            $balance = (int) $customer->fresh()?->points;
+            $now = Loyalty::quote($rules, $balance, $base, $other, null);
+
+            return new RuntimeException($now['points'] > 0
+                ? __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن :balance نقطة، والخصم المتاح الآن :discount مقابل :points نقطة. ألغِ المسودّة وأنشئ فاتورةً جديدة.', [
+                    'balance' => $balance, 'discount' => Money::format($now['discount'], Money::of((int) $invoice->business_id)), 'points' => $now['points'],
+                ])
+                : __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط عليها الآن. ألغِ المسودّة وأنشئ فاتورةً جديدة.', [
+                    'balance' => $balance,
+                ]));
+        };
+
+        $quote = Loyalty::quote($rules, (int) $customer->points, $base, $other, $points);
+        if ($quote['points'] !== $points || abs($quote['discount'] - (float) $invoice->loyalty_discount) > 0.0005) {
+            throw $refuse();
+        }
+
+        try {
+            Loyalty::spend($customer, $points, 'استبدال على فاتورة عميل '.($invoice->number ?: '#'.$invoice->id), [
+                'customer_invoice_id' => $invoice->id,
+                'source_key' => self::redeemKey($invoice),
+            ]);
+        } catch (ValidationException) {
+            throw $refuse();
+        }
+    }
+
+    /** كم نقطةً صُرفت فعلًا على الورقة — صفرٌ لمسودّةٍ لم تُصدَر */
+    public static function pointsSpent(CustomerInvoice $invoice): int
+    {
+        return (int) abs((int) PointTransaction::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)
+            ->where('source_key', self::redeemKey($invoice))->value('points'));
+    }
+
+    /** كم نقطةً أُعيدت منها — بإشعاراتٍ دائنة أو بإلغاء */
+    public static function pointsReturned(CustomerInvoice $invoice): int
+    {
+        return (int) PointTransaction::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)
+            ->where('source_key', 'like', self::redeemKey($invoice).':%')->sum('points');
+    }
+
+    /**
+     * سياسةُ الإعادة الواحدة — كم يعود بعد أن رُدّ من الورقة هذا المبلغ.
+     *
+     * ═══ تراكميّةٌ لا لكلّ إشعارٍ وحده ═══
+     *
+     * ما يحقّ للعميل بعد كلّ ردٍّ = `floor(المصروف × مجموعُ ما رُدّ ÷ إجماليّ
+     * الورقة)`، محصورًا بالمصروف. ويُعطى الفرقُ عمّا أُعيد قبلُ. فإشعاران
+     * بنصفين يعيدان كلَّ النقاط — لا نقطةً أقلّ يأكلها التقريبُ مرّتين — ولا
+     * يتجاوز المُعادُ ما صُرف مهما تكرّرت الإشعارات. والإلغاءُ وردُّ الإجماليّ
+     * كلِّه يعيدان الباقي كلَّه.
+     */
+    public static function pointsDueBack(int $spent, float $credited, float $total): int
+    {
+        if ($spent <= 0 || $credited <= 0 || $total <= 0) {
+            return 0;
+        }
+        // بالبيسات الصحيحة: المبلغان بثلاث خانات، والنسبةُ قسمةٌ صحيحة مقصوصة لا كسرٌ عائم
+        $creditedB = (int) round($credited * 1000);
+        $totalB = (int) round($total * 1000);
+        if ($creditedB >= $totalB) {
+            return $spent;
+        }
+
+        return min($spent, BigInteger::of($spent)->multipliedBy($creditedB)->quotient($totalB)->toInt());
+    }
+
+    /**
+     * يعيد بنسبة إشعارٍ دائنٍ صدر الآن — تحت قفل الورقة، مرّةً لكلّ إشعار.
+     */
+    private static function returnPointsForCredit(CustomerInvoice $invoice, CustomerCreditNote $note): void
+    {
+        $locked = CustomerInvoice::where('business_id', $invoice->business_id)->lockForUpdate()->find($invoice->id);
+        if (! $locked || (int) $locked->loyalty_points <= 0) {
+            return;
+        }
+
+        $spent = self::pointsSpent($locked);
+        if ($spent <= 0) {
+            return;
+        }
+
+        $credited = round((float) CustomerCreditNote::where('customer_invoice_id', $locked->id)->sum('amount'), 3);
+        $give = self::pointsDueBack($spent, $credited, (float) $locked->total) - self::pointsReturned($locked);
+
+        self::givePoints($locked, $give, self::redeemKey($locked).':cn:'.$note->id,
+            'إعادة نقاط مستبدلة بنسبة إشعار الدائن '.$note->number.' — فاتورة '.$locked->number);
+    }
+
+    /**
+     * يعيد إلى العميل ما بقي ممّا صُرف على الورقة — عند إلغائها، مرّةً واحدة.
+     *
+     * والباقي = المصروفُ − ما أُعيد بإشعاراتٍ قبله. ومسودّةٌ لم تُصدَر لم
+     * يُصرف عليها شيء، فلا يُعاد شيء.
+     */
+    public static function returnPoints(CustomerInvoice $invoice): void
+    {
+        $spent = self::pointsSpent($invoice);
+        if ($spent <= 0) {
+            return;
+        }
+
+        $label = $invoice->number ?: '#'.$invoice->id;
+
+        self::givePoints($invoice, $spent - self::pointsReturned($invoice), self::redeemKey($invoice).':reverse',
+            'إعادة نقاط مستبدلة — إلغاء فاتورة '.$label);
+    }
+
+    /** حركةُ إعادةٍ واحدة بمفتاحها الفريد — والمفتاحُ يمنع تكرارَها */
+    private static function givePoints(CustomerInvoice $invoice, int $points, string $key, string $note): void
+    {
+        if ($points <= 0 || ! $invoice->customer_id || PointTransaction::where('source_key', $key)->exists()) {
+            return;
+        }
+
+        $customer = Customer::withTrashed()->where('business_id', $invoice->business_id)
+            ->whereKey($invoice->customer_id)->lockForUpdate()->first();
+        if (! $customer) {
+            return;
+        }
+
+        $customer->increment('points', $points);
+
+        PointTransaction::create([
+            'business_id' => (int) $invoice->business_id,
+            'customer_id' => $customer->id,
+            'customer_invoice_id' => $invoice->id,
+            'type' => 'earn',
+            'points' => $points,
+            'balance_after' => (int) $customer->points,
+            'note' => mb_substr($note, 0, 250),
+            'source_key' => $key,
+        ]);
     }
 }

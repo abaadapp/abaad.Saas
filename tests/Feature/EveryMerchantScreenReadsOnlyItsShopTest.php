@@ -41,6 +41,17 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         parent::setUp();
         $this->buildTwoShops();
         $this->markShopB();
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات مفتوحةٌ هنا (`ChannelAutomationsSwitch`): مقفلةً تردّ صفحتُها وأبوابُها ٤٠٤
+         * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
+         */
+        \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        \App\Support\WhatsAppCampaignsSwitch::set(\App\Support\WhatsAppCampaignsSwitch::ALL);
+        /*
+         * ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`): مقفلًا تردّ صفحتُه ٤٠٤ قبل أن يُسأل سؤالُ هذا الاختبار.
+         */
+        \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
+        \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
 
         /*
          * والمتجران فُتحت فيهما روابطُ الدفع (`PaymentLinks::ready`): فتُقرأ «كل
@@ -83,6 +94,11 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
             ['reviews', $b['review'], 'comment', 'REVIEW'],
             ['addons', $b['addon'], 'name', 'ADDON'],
             ['product_variants', $b['variant'], 'name', 'VARIANT'],
+            ['channel_automations', $b['channel_automation'], 'name', 'AUTOMATION'],
+            ['channel_automations', $b['instagram_automation'], 'name', 'IG-AUTOMATION'],
+            ['whatsapp_campaign_templates', $b['campaign_template'], 'title', 'CAMPAIGN-TEMPLATE'],
+            ['whatsapp_campaigns', $b['campaign'], 'name', 'CAMPAIGN'],
+            ['instagram_connections', $b['instagram_connection'], 'username', 'INSTAGRAM'],
         ];
 
         foreach ($marks as [$table, $id, $column, $tag]) {
@@ -222,6 +238,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         // «ورقة تجهيز داخلية» — بحصر اللوحة نفسِه (`PreparationController::sheet`)
         'admin.preparation.sheet' => ['number' => 'order_number'],
         'admin.boutiques.show' => ['id' => 'boutique'],
+        // فاتورةٌ بما لبوتيكاتها فيها — بمتجر الجالس وحده (`BoutiqueSales::invoice`)
+        'admin.boutiques.sales.order' => ['order' => 'order'],
         'admin.seasons.show' => ['id' => 'season'],
         'admin.seasons.products' => ['id' => 'season'],
         'admin.products.show' => ['id' => 'product'],
@@ -239,6 +257,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'pos.receipt.paper' => ['number' => 'order_number'],
         'pos.receipt.pdf' => ['number' => 'order_number'],
         'pos.receipts.show' => ['number' => 'order_number'],
+        // ‏صفُّ عميلٍ يُسأل عنه حين يُختار في الصندوق — `TillCustomers`
+        'pos.tillCustomers.show' => ['customer' => 'customer'],
     ];
 
     /**
@@ -318,7 +338,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.preparation.invoiceTimeline' => 'مثلُه',
         'admin.preparation.invoiceSheet' => 'مثلُه — وحارسُ ورقته `APreparationSheetPrintsWhatTheBenchNeedsTest::test_a_task_sheet_is_closed_while_the_feature_is_off_for_the_shop`',
         'pos.printJobs.pdf' => '{id} ورقةُ طابورٍ تُنزَّل لصندوقها الذي حجزها وحده — `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_a_till_of_another_shop_cannot_download_a_paper`',
-        'admin.marketing.whatsapp.conversations.older' => '{message} رسالةٌ — يُبدأ من المتجر والرقم الحاليّ، وحارسُه `WhatsAppConversationsTest::test_the_same_phone_in_two_shops_stays_two_and_a_foreign_message_id_is_404`',
+        'admin.whatsappInbox.open' => '{message} رسالةٌ صادرة تُطلب داخل متجر الجلسة (`WhatsAppInbox::open`) — وحارسُه `EveryShopWithWhatsAppReadsItsMessagesTest::test_a_message_of_another_shop_opens_no_conversation_and_writes_nothing`',
         'admin.whatsappInbox.older' => '{chat} محادثةٌ تُطلب داخل متجر الجلسة (`WhatsAppInbox::find`) — وحارسُه `AShopReadsAndAnswersItsCustomersOnWhatsAppTest::test_another_shops_chat_message_and_attachment_cannot_be_reached_by_changing_the_url`',
         'admin.whatsappInbox.attachment' => 'مثلُه (`WhatsAppInbox::attachment`)',
     ];

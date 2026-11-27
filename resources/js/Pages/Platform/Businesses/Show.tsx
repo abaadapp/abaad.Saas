@@ -330,7 +330,8 @@ export default function BusinessShow() {
                     </dl>
                 </Card>
 
-                <Card className="p-5">
+                {/* ومرساتُه تفتحها صفحةُ القطاع («الاشتراك») */}
+                <Card className="scroll-mt-20 p-5" id="subscription">
                     <h3 className="mb-4 font-bold text-[#111]">{t('الاشتراك الحالي')}</h3>
                     {subscription ? (
                         <dl className="space-y-3 text-sm">

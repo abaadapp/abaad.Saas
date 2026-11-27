@@ -67,6 +67,8 @@ class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
         $this->app->setLocale('ar');
 
         config([
@@ -95,6 +97,10 @@ class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
         [$this->closed, $this->owner, $this->customer] = $this->shop('Ribbon Test', 'o@abaad.om', '91234567');
         $this->closed->update(['whatsapp_shared_allowed' => false]);
         $this->closed->refresh();
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->closed->id, 'WABA-1');
     }
 
     /* ------------------------------- التهيئة ------------------------------- */

@@ -19,6 +19,7 @@ import { abandonAutoPrint, commitAutoPrint, prepareAutoPrint } from '@/lib/print
 import PrintStatus from '@/Components/PrintStatus';
 import { SHARE_LABEL } from '@/Components/PrintReceiptButton';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
+import { PortalSale } from '@/Components/RibbonPortalSale';
 import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
 
@@ -110,6 +111,8 @@ export default function PaymentDialog({
     const [methodError, setMethodError] = useState(false);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
+    /** ‏لم يحفظها الجهازُ ولم يكتبها الخادم — يبقى السببُ فوق الزرّ لا رسالةً تختفي */
+    const [notSaved, setNotSaved] = useState(false);
     /*
      * تفاصيل طلب الورد — مطويّةٌ افتراضيًّا.
      *
@@ -171,6 +174,7 @@ export default function PaymentDialog({
         if (open) {
             setStep('pay');
             setResult(null);
+            setNotSaved(false);
             setFlowerError(null);
             setMethod('');
             setMethodError(false);
@@ -323,8 +327,27 @@ export default function PaymentDialog({
                 if (overrideReason.trim() !== '') details.credit_override_reason = overrideReason;
             }
 
+            // ما قُبض يُثبَّت الآن — السلّةُ تُحسب من جديد بعد البيعة (`CheckoutResult.total`)
+            const charged = total;
             const res = await onCheckout(method, details);
-            setResult(res);
+            setNotSaved(!!res.notSaved);
+
+            /*
+             * ═══ وبيعةٌ رُدّت لا تُعرض «تمّ الدفع» ═══
+             *
+             * كانت ورقةُ النجاح تُفتح لكلّ ردّ، فيقرأ الكاشيرُ «حُفظ البيع
+             * وسيُرسَل» عن بيعةٍ أسقطها الخادم. يبقى على ورقة الدفع ورسالةُ
+             * السبب أمامه. وعرضُ نقاطٍ تغيّر يُعيده إلى السلّة: هناك الرصيدُ
+             * والخصمُ الجديدان، ويختار من جديد قبل أن يدفع.
+             */
+            if (res.rejected) {
+                if (res.loyaltyChanged) {
+                    onOpenChange(false);
+                }
+                return;
+            }
+
+            setResult({ ...res, total: res.total ?? charged });
             setStep('success');
 
             /*
@@ -695,6 +718,11 @@ export default function PaymentDialog({
 
                     {/* زرّ الدفع خارج المجرى: لا يُمرَّر بعيدًا مهما طال ما فوقه */}
                     <div className="shrink-0 border-t border-gray-100 px-5 pb-5 pt-4">
+                        {notSaved && (
+                            <p role="alert" data-testid="sale-not-saved" className="mb-3 rounded-xl bg-[#fef2f2] px-3 py-2 text-[12px] font-medium text-[#b91c1c]">
+                                {t('لم تُحفظ البيعة: مساحة التخزين في هذا المتصفح لا تتسع لها، ولم يؤكدها الخادم. لا تعدّها مسجّلة — أعد المحاولة حين يعود الاتصال.')}
+                            </p>
+                        )}
                         <Button variant="success" size="lg" className="w-full rounded-full touch:h-14 touch:text-base" disabled={busy} onClick={confirm}>
                             {busy ? '…' : t('تأكيد الدفع')}
                         </Button>
@@ -715,7 +743,7 @@ export default function PaymentDialog({
                             )}
                             <div className="flex justify-between">
                                 <span className="text-gray-500">{t('المبلغ')}</span>
-                                <span className="font-bold text-[#111]">{money(total)}</span>
+                                <span data-testid="paid-total" className="font-bold text-[#111]">{money(result?.total ?? total)}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-500">{t('وسيلة الدفع')}</span>
@@ -806,6 +834,10 @@ export default function PaymentDialog({
                                     {printing.mode === 'share' ? <Share /> : <Printer />}
                                     {printing.mode === 'share' ? t(SHARE_LABEL) : t('طباعة الفاتورة')}
                                 </Button>
+                            )}
+                            {/* رابطُ بوابة العملاء واعتمادُ جهاز العميل — لمتجر RIBBON وحده، ولا يمسّ بيعةً تمّت ولا طباعتَها */}
+                            {result?.synced && result.invoice && result.portal && (
+                                <PortalSale portal={result.portal} className="col-span-2" />
                             )}
                             <Button
                                 className={cn('rounded-full', 'col-span-2')}

@@ -14,6 +14,7 @@ import InvoiceRevisions, { type InvoiceRevision } from './partials/InvoiceRevisi
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { Select } from '@/Components/Field';
 import { CHEQUE } from '@/lib/cheques';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -42,6 +43,10 @@ interface Invoice {
     attention_to: string | null;
     subtotal: number;
     discount_total: number;
+    loyalty_points?: number;
+    loyalty_discount?: number;
+    loyalty_pending?: boolean;
+    loyalty_returned?: number;
     tax_total: number;
     notes: string | null;
     /** لا تُطبع ولا تخرج من هذه الشاشة */
@@ -214,7 +219,7 @@ export default function CustomerInvoiceShow() {
                                     الورقة كلِّها — وورقةٌ سُلّمت لا تُلغى لأنّ
                                     عشرةً منها رُدّت.
                                 */}
-                                {may.credit_note && invoice.outstanding + invoice.paid > 0 && (
+                                {may.credit_note && creditRoom(invoice) > 0 && (
                                     <Button variant="outline" onClick={() => setCrediting((v) => !v)}>
                                         <Undo2 />
                                         {t('إشعار دائن')}
@@ -237,6 +242,20 @@ export default function CustomerInvoiceShow() {
                     </>
                 }
             />
+
+            {/*
+                وإصدارٌ رُدّ يقول لماذا.
+
+                الخادمُ يردّ الإصدارَ بسببه (`CustomerInvoiceController::issue`) —
+                ومنه مسودّةٌ صُرف رصيدُ نقاطها أو تغيّرت قواعدُها، فيُقال الرصيدُ
+                الآن وما يجوز. وكان الردُّ يقع في نموذجٍ لا يقرؤه أحد: يضغط
+                التاجرُ «إصدار» فلا يصدر شيءٌ ولا يُقال شيء.
+            */}
+            {(issue.errors as Record<string, string | undefined>).invoice && (
+                <Card role="alert" data-testid="issue-refused" className="mb-4 border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
+                    {(issue.errors as Record<string, string | undefined>).invoice}
+                </Card>
+            )}
 
             {invoice.status === 'ملغاة' && (
                 <Card className="mb-4 border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
@@ -372,8 +391,28 @@ export default function CustomerInvoiceShow() {
                         {/* و«الباقي» أقوى ما في الكتلة — هو ما يُبحث عنه على فاتورةٍ صادرة */}
                         <dl className="mt-4 ms-auto max-w-xs space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-4 text-[13px]">
                             <Row label={t('المجموع الفرعي')} value={m(invoice.subtotal)} />
-                            {invoice.discount_total > 0 && (
-                                <Row label={t('الخصم')} value={m(invoice.discount_total)} />
+                            {/*
+                                خصمُ البنود وخصمُ النقاط سطران — مجموعُهما خصمُ
+                                الورقة كلُّه، ولا يُعدّ أحدُهما مرّتين.
+                            */}
+                            {invoice.discount_total - (invoice.loyalty_discount ?? 0) > 0.0005 && (
+                                <Row label={t('الخصم')} value={m(invoice.discount_total - (invoice.loyalty_discount ?? 0))} />
+                            )}
+                            {(invoice.loyalty_discount ?? 0) > 0 && (
+                                <Row
+                                    label={`${t('خصم نقاط الولاء')} (${invoice.loyalty_points} ${t('نقطة')})`}
+                                    value={m(invoice.loyalty_discount ?? 0)}
+                                />
+                            )}
+                            {invoice.loyalty_pending && (
+                                <p data-testid="loyalty-pending" className="text-[11px] text-[#be185d]">
+                                    {t('تُخصم النقاط من رصيد العميل عند إصدار الفاتورة.')}
+                                </p>
+                            )}
+                            {(invoice.loyalty_returned ?? 0) > 0 && (
+                                <p data-testid="loyalty-returned" className="text-[11px] text-[#6b7280]">
+                                    {t('أُعيد إلى العميل')} {invoice.loyalty_returned} {t('نقطة')}
+                                </p>
                             )}
                             {invoice.tax_total > 0 && <Row label={t('الضريبة')} value={m(invoice.tax_total)} />}
                             <Row label={t('الإجمالي')} value={m(invoice.total)} strong />
@@ -770,13 +809,21 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
     const m = (v: number) => money(v, context!.currency);
 
     /* ولا يتجاوز الإشعارُ ما بقي من قيمة الورقة بعد إشعاراتٍ سبقته */
-    const cap = round3(invoice.outstanding + invoice.paid);
+    const cap = creditRoom(invoice);
     const share = invoice.total > 0 ? invoice.tax_total / invoice.total : 0;
 
+    /*
+     * وسببُ الإشعار يُختار ولا يُفترض (`CustomerCreditNote::BASES`): تصحيحُ خطأٍ
+     * في فترةٍ قُدّم إقرارُها يردّه الخادم، والإرجاعُ والخصمُ يُصدران بسببهما.
+     * ورمزُ النموذج يجعل الضغطتين إشعارًا واحدًا.
+     */
+    const [token] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
     const form = useForm({
         amount: String(cap),
         tax_amount: String(round3(cap * share)),
         reason: '',
+        basis: '',
+        token,
     });
 
     /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
@@ -811,6 +858,17 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
                 />
                 {form.errors.tax_amount && <p className="text-[12px] text-[#b91c1c]">{form.errors.tax_amount}</p>}
             </label>
+            <div className="text-[13px]" data-testid="credit-note-basis">
+                {t('سبب الإشعار')}
+                <Select
+                    id="credit-note-basis"
+                    value={form.data.basis}
+                    onChange={(e) => form.setData('basis', e.target.value)}
+                    placeholder={t('اختر')}
+                    options={CREDIT_NOTE_BASES.map((b) => ({ value: b.value, label: t(b.label) }))}
+                />
+                {form.errors.basis && <p className="text-[12px] text-[#b91c1c]">{form.errors.basis}</p>}
+            </div>
             <label className="flex-1 text-[13px]">
                 {t('السبب')}
                 <Input
@@ -833,6 +891,26 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
             </Button>
         </Card>
     );
+}
+
+/** أسبابُ الإشعار اليدويّ — كما في `CustomerCreditNote::BASIS_LABELS` */
+const CREDIT_NOTE_BASES = [
+    { value: 'error', label: 'تصحيح خطأ في المبلغ' },
+    { value: 'return', label: 'إرجاع أو إلغاء توريد' },
+    { value: 'discount', label: 'خصم بعد البيع' },
+];
+
+/**
+ * ما يسعه إشعارٌ دائنٌ جديد — حدُّ الخادم نفسُه (`CustomerInvoices::creditNote`).
+ *
+ * «الباقي + المسدَّد» وحده يُبقي فاتورةً مدفوعةً رُدّت كلُّها قابلةً لإشعارٍ
+ * كاملٍ آخر في الشاشة (`outstanding` تُحصر عند الصفر) — والخادمُ يرفضه.
+ * فيُحصر بالإجماليّ ناقصًا ما رُدّ.
+ */
+function creditRoom(invoice: Invoice): number {
+    const credited = invoice.credit_notes.reduce((sum, n) => sum + n.amount, 0);
+
+    return Math.max(0, round3(Math.min(invoice.outstanding + invoice.paid, invoice.total - credited)));
 }
 
 /** ثلاثُ خاناتٍ — كما يُخزَّن المال في هذا النظام */

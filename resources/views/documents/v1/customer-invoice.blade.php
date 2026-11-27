@@ -65,8 +65,22 @@
 
     $totals = [['label' => 'المجموع الفرعي', 'value' => $amount($invoice->subtotal)]];
 
-    if ((float) $invoice->discount_total > 0) {
-        $totals[] = ['label' => 'الخصم', 'value' => '− '.$amount($invoice->discount_total)];
+    /*
+        وخصمُ النقاط سطرٌ مستقلّ بعددها وقيمتها، و«الخصم» فوقه ما سواه —
+        فمجموعُ السطرين خصمُ الورقة كلُّه، ولا يُعدّ أحدُهما مرّتين.
+    */
+    $ownDiscount = round((float) $invoice->discount_total - (float) $invoice->loyalty_discount, 3);
+
+    if ($ownDiscount > 0) {
+        $totals[] = ['label' => 'الخصم', 'value' => '− '.$amount($ownDiscount)];
+    }
+
+    if ((float) $invoice->loyalty_discount > 0) {
+        $totals[] = [
+            'label' => 'خصم نقاط الولاء',
+            'value' => '− '.$amount($invoice->loyalty_discount),
+            'hint' => (int) $invoice->loyalty_points.' '.__('نقطة'),
+        ];
     }
 
     if ((float) $invoice->tax_total > 0) {

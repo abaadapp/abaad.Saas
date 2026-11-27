@@ -189,11 +189,19 @@ class TheSystemIsNotIndexedButShopsAreTest extends TestCase
             'app' => 'internal',
             // متاجرُ التجّار ومواقعُهم — تُفهرَس، أو يطفئها التاجر من إعداداته
             'store/show' => 'public', 'store/ribbon/layout' => 'public', 'site/show' => 'public',
+            // والصفحةُ القانونيّة لمتجرٍ بلا واجهةٍ خاصّة — عامّةٌ تُفهرَس كمتجرها (`Store\StoreLegal`)
+            'store/legal' => 'public',
             // عامّةٌ لكنّها لا تُفهرَس بقرارها هي، من قبل هذا العمل
             'site/maintenance' => 'own-noindex', 'public/paper' => 'own-noindex',
             'public/review' => 'own-noindex', 'public/verify' => 'own-noindex', 'public/sign' => 'own-noindex',
             // وصفحةُ «حدّث الصفحة» لتبويبٍ قديم طلب ملفًّا — داخليّةٌ برأسها هي (`TenantExportGuard`)
             'stale-export' => 'own-noindex',
+            // وجسرُ السلّة القديمة — يُؤطَّر مخفيًّا في نطاق متجرٍ نُقل إليه، ولا يقرؤه أحد (`StoreOldCartBridgeController`)
+            'store/cart-bridge' => 'own-noindex',
+            // وبوابةُ عملاء RIBBON — خاصّةٌ بصاحبها، وورقةُ رمزها تُطبع في المحلّ (`RibbonPortal\\Portal`)
+            'portal/ribbon/layout' => 'own-noindex', 'portal/ribbon/poster' => 'own-noindex',
+            // وحالُ طلب حذف بيانات إنستقرام — تفتحها Meta وصاحبُ الطلب برمزه (`Instagram\WebhookController::status`)
+            'instagram/deletion' => 'own-noindex',
             // ليست صفحاتٍ على الويب: رسائلُ بريد، وصفحةٌ داخل ملفّ تصدير، وفهرسُ أرشيفٍ مضغوط
             'exports/pdf-too-large' => 'not-a-page', 'documents/archive/readme' => 'not-a-page',
         ];

@@ -1,2 +1,5 @@
 User-agent: *
 Disallow:
+
+# Every eligible store sitemap on this host, computed per request (App\Support\Website\Sitemap::platform)
+Sitemap: https://app.abaadapp.om/sitemap.xml

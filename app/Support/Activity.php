@@ -18,6 +18,8 @@ class Activity
         // اسمٍ لها تُعرض في شاشة النشاط بمفتاحها اللاتينيّ
         'shift' => 'clock', 'report' => 'file-text', 'backup' => 'database-backup', 'restore' => 'database',
         'return' => 'undo-2',
+        // طلبُ كتابةٍ جرى أثناء دخول الدعم باسم غيره — انظر `CheckTenantStatus::support`
+        'support' => 'shield-alert',
     ];
 
     private const COLORS = [
@@ -25,7 +27,7 @@ class Activity
         'login' => 'primary', 'logout' => 'gray', 'checkout' => 'success',
         'status' => 'warning', 'settings' => 'primary', 'hold' => 'warning',
         'shift' => 'info', 'report' => 'info', 'backup' => 'primary', 'restore' => 'warning',
-        'return' => 'danger',
+        'return' => 'danger', 'support' => 'warning',
     ];
 
     public static function log(string $action, string $description, array $opts = []): void
@@ -63,8 +65,9 @@ class Activity
 
         ActivityLog::create([
             'business_id' => $opts['business_id'] ?? $u?->business_id,
-            'user_id' => $u?->id,
-            'user_name' => $u?->name ?? 'زائر',
+            // ‏‏وما فعله النظامُ وحده من الجدول يُسمّى باسمه (`by`) — لا «زائر» لم يزر شيئًا ولا من كان داخلًا ساعتَها
+            'user_id' => isset($opts['by']) ? null : $u?->id,
+            'user_name' => $opts['by'] ?? $u?->name ?? 'زائر',
             'impersonator_id' => $impersonator?->id,
             'impersonator_name' => $impersonator?->name,
             'action' => $action,

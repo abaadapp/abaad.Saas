@@ -503,7 +503,7 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
     public function test_manual_credit_notes_set_a_floor_under_the_lines(): void
     {
         $invoice = $this->issued('2025-09-10', 1, 100);
-        CustomerInvoices::creditNote($invoice, 63, 3, 'مرتجع جزئي', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 63, 3, 'مرتجع جزئي', $this->owner->id, basis: CustomerCreditNote::RETURN);
 
         $this->edit($invoice, $this->withLine($invoice, ['unit_price' => 50]))->assertSessionHasErrors('edit'); // 52.5 < 63
         $this->assertSame(1, CustomerCreditNote::count());

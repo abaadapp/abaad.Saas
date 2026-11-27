@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\Setting;
+use App\Models\WhatsAppConnection;
 use App\Support\Addons\Catalog;
 use App\Support\Addons\Entitlements;
 use App\Support\Addons\PricingPolicy;
@@ -65,7 +66,26 @@ class WhatsAppFeature
             return false;
         }
 
-        return ! PricingPolicy::isAddons($business) || Entitlements::has($business, Catalog::OWN_NUMBER);
+        return ! PricingPolicy::isAddons($business) || self::servicePurchased($business);
+    }
+
+    /**
+     * اشترى المتجرُ خدمة واتساب من أبعاد؟ — ضمن باقته أو إضافةً، أيُّهما.
+     *
+     * والخدمةُ اليوم ربطُ رقمه بتطبيقه هو (`WhatsAppOwnApp`). فمن في باقته
+     * «إشعارات واتساب» لا يُطلب منه شراءُ «ربط واتساب برقم المتجر» فوقها، ومن
+     * اشترى الإضافة وحدها لا يُردّ لأنّ باقته لا تسمّي واتساب. شراءٌ واحدٌ يكفي.
+     */
+    public static function servicePurchased(Business $business): bool
+    {
+        return PlanFeatures::allows($business, 'whatsapp')
+            || (PricingPolicy::isAddons($business) && Entitlements::has($business, Catalog::OWN_NUMBER));
+    }
+
+    /** متجرُ سياسة الإضافات لم يشترِ واتساب بعد — لا في باقته ولا إضافةً */
+    public static function needsOwnNumberAddon(Business $business): bool
+    {
+        return PricingPolicy::isAddons($business) && ! self::servicePurchased($business);
     }
 
     /**
@@ -159,7 +179,7 @@ class WhatsAppFeature
             Integration::step(
                 'plan',
                 'باقتك تشمل إشعارات واتساب',
-                PlanFeatures::allows($business, 'whatsapp'),
+                self::servicePurchased($business),
                 fix: PlanFeatures::refusal($business, 'whatsapp'),
                 theirs: true,
             ),
@@ -179,6 +199,8 @@ class WhatsAppFeature
                     /* ومن أُغلق عنه رقمُ أبعاد لا يُدَلّ عليه — ذاك بابٌ لا يُفتح له */
                     $own && ! $ownAllowed && ! self::canUseShared($business) => 'ربطُ رقم المتجر غير مفعّلٍ لحسابك — راجعنا لتفعيله.',
                     $own && ! self::canUseShared($business) => 'اربط رقم متجرك أدناه — تخرج الرسائل منه وحده.',
+                    // لم تُفعَّل إضافتُه بعد — متجرٌ جديدٌ يبدأ على رقمه ولم يُسحب منه شيء
+                    $own && ! $ownAllowed && $business->whatsapp_own_allowed => 'ربطُ رقم متجرك إضافةٌ لم تُفعَّل لحسابك بعد — اطلبها من أبعاد، أو بدّل الإرسال إلى رقم أبعاد أدناه.',
                     // سُحبت الميزة وهو عليها: يُقال ما جرى، ويُدَلّ على المخرج
                     $own && ! $ownAllowed => 'ميزةُ رقم المتجر سُحبت من حسابك — بدّل الإرسال إلى رقم أبعاد أدناه، أو راجعنا لإعادتها.',
                     $own => 'اربط رقم متجرك أدناه — أو بدّل الإرسال إلى رقم أبعاد.',
@@ -187,6 +209,54 @@ class WhatsAppFeature
                 theirs: ! $own,
             ),
         ];
+
+        /*
+         * ═══ وربطُ التاجر بتطبيقه: فوترتُه وإشعاراتُ تطبيقه خطوتان بيده ═══
+         *
+         * «مربوط» لا يقولهما: وصلةٌ لم تثبت فوترتُها لا تُرسل، ووصلةٌ تُرسل ولم
+         * تُضبط إشعاراتُ تطبيقها لا يصلنا منها ما يكتبه الزبائن ولا «وصلت».
+         */
+        $link = $own ? WhatsAppConnections::forBusiness($business->id) : null;
+
+        // ‏‏ووصلةٌ عبر تطبيق أبعاد لا تُرسل قبل أن تثبت جهةُ رسومها — خطوةٌ تُقال لا «انقطع الربط»
+        if (WhatsAppBillingLock::applies($link) && $link->status !== WhatsAppConnection::INACTIVE) {
+            $stop = WhatsAppBillingLock::stop($link);
+
+            $steps[] = Integration::step(
+                'billing',
+                'رسوم ميتا على حسابك أنت',
+                $stop === null,
+                detail: WhatsAppBillingLock::proven($link) && filled(WhatsAppBillingLock::row($link)?->owner_name)
+                    ? __('راجع فريق أبعاد دليلها — تُحتسب على: :owner', ['owner' => WhatsAppBillingLock::row($link)->owner_name]) : null,
+                fix: $stop !== null ? WhatsAppBillingLock::says($stop)['text'] : null,
+                theirs: $stop !== null && WhatsAppBillingLock::says($stop)['who'] === 'abaad',
+            );
+        }
+
+        if (WhatsAppOwnApp::is($link) && $link->status !== WhatsAppConnection::INACTIVE) {
+            // وفوترةٌ رُوجعت ولا يُعرف بأمان حسابُ رسائلها لا تُعدّ تامّة — الرسالةُ لا تخرج
+            $account = WhatsAppOwnApp::sendAccount($link)['problem'];
+
+            $steps[] = Integration::step(
+                'billing',
+                'رسوم ميتا على حسابك أنت',
+                WhatsAppOwnApp::billed($link) && $account === null,
+                detail: WhatsAppOwnApp::billed($link) && filled($link->billing_owner_name)
+                    ? __('راجع فريق أبعاد دليلها — تُحتسب على: :owner', ['owner' => $link->billing_owner_name]) : null,
+                fix: WhatsAppOwnApp::billed($link) && $account !== null
+                    ? WhatsAppOwnApp::say($account)
+                    : 'لم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسائل حسابك تُحتسب عليك — أرسل لفريق أبعاد فاتورة ميتا لهذا الحساب أو صفحة «الفوترة والمدفوعات» تُظهر وسيلة دفعك عليه. ولا يُرسل الربط قبل مراجعته.',
+            );
+
+            $heard = $link->webhook_verified_at !== null || $link->last_webhook_at !== null;
+
+            $steps[] = Integration::step(
+                'webhook',
+                'إشعارات تطبيقك تصل أبعاد',
+                $heard,
+                fix: 'الصق عنوان الإشعارات ورمز التحقّق في لوحة تطبيقك (WhatsApp ‹ Configuration)، واشترك في حقل messages.',
+            );
+        }
 
         /*
          * ═══ وخطوةُ القالب — آخرُ حلقةٍ قبل أن تخرج الرسالة ═══
@@ -238,21 +308,34 @@ class WhatsAppFeature
          * ولا تُضاف إن لم تُجرَّب: متجرٌ لم يُرسل شيئًا بعد لا يُقال له «لا
          * تصل رسائلك» — لم تُرسَل رسالةٌ لتصل.
          */
-        $health = WhatsAppHealth::recent($business->id);
+        $delivery = WhatsAppHealth::delivery($business->id);
 
-        if ($health['attempts'] > 0) {
-            $alert = WhatsAppHealth::alert($business->id);
+        if ($delivery['state'] !== WhatsAppHealth::UNTESTED) {
+            $alert = WhatsAppHealth::alertFor($delivery);
 
+            /*
+             * والمرحلةُ تُطفأ حين لا يصل شيء — لا حين لا يستقبل رقمُ عميل.
+             *
+             * رسالتان لم تصلا عميلًا واحدًا (131026) وكلُّ رقمٍ آخر تصله
+             * رسائلُه: الربطُ يعمل، والعميلُ يُقال في قائمة التسليم تحتها
+             * (`WhatsAppHealth::delivery`). ورسائلُ خرجت ولم يؤكَّد تسليمُ
+             * شيءٍ منها لا تُقال «تصل»: القبولُ عند Meta ليس وصولًا.
+             */
             $steps[] = Integration::step(
                 'delivery',
                 'رسائلك تصل زبائنك',
-                $alert === null,
-                detail: $alert === null
-                    ? __('وصلت :n من :t في آخر يوم.', ['n' => $health['sent'], 't' => $health['attempts']])
-                    : null,
-                fix: $alert['text'] ?? null,
-                /* والعطبُ يُنسب إلى صاحبه: تطبيقٌ محجوبٌ ليس خطأ التاجر */
-                theirs: (bool) ($alert['ours'] ?? false),
+                in_array($delivery['state'], [WhatsAppHealth::OK, WhatsAppHealth::PARTIAL], true),
+                detail: match ($delivery['state']) {
+                    WhatsAppHealth::PARTIAL => __('واتساب يعمل — وصلت :n رسالة، ولم تصل :f رسالة إلى :c عميل. التفاصيل أدناه.', [
+                        'n' => $delivery['delivered'], 'f' => $delivery['failed'], 'c' => $delivery['customers'],
+                    ]),
+                    default => __('تأكّد وصول :n من :t في آخر يوم.', ['n' => $delivery['delivered'], 't' => $delivery['attempts']]),
+                },
+                fix: $delivery['state'] === WhatsAppHealth::UNCONFIRMED
+                    ? __('خرجت :n رسالة ولم يؤكّد واتساب تسليم أيٍّ منها بعد — لا تُعدّ واصلةً قبل تأكيده.', ['n' => $delivery['attempts']])
+                    : ($alert['text'] ?? null),
+                /* والعطبُ يُنسب إلى صاحبه: تطبيقٌ محجوبٌ ليس خطأ التاجر، وتأكيدٌ لم يصل انتظارٌ لا عطب */
+                theirs: $delivery['state'] === WhatsAppHealth::UNCONFIRMED || (bool) ($alert['ours'] ?? false),
             );
         }
 
@@ -320,11 +403,22 @@ class WhatsAppFeature
          * والسبب يُكتب في السجلّ باسمه: «امتنع لأنّ الباقة لا تشمله» يُقرأ
          * ويُرقّى، و«الأتمتة مطفأة» يُبحث عن مفتاحٍ لا وجود له.
          */
-        if (! PlanFeatures::allows($business, 'whatsapp')) {
+        if (! self::servicePurchased($business)) {
             return WhatsAppStatus::SKIP_PLAN;
         }
 
         $mode = self::effectiveMode($business);
+
+        /*
+         * ‏‏والمتجرُ التجريبيّ لا يُرسل من رقم أبعاد المشترك أبدًا.
+         *
+         * عملاؤه أرقامُ جوّالٍ عشوائيّة (`DemoStore`) قد تكون لأناسٍ حقيقيّين، وطلباتُه تتحرّك في العروض.
+         * ومن رقمه هو لا تصل رسالةٌ إلّا رقمَ اختبارٍ في تجربةٍ مفتوحة — يُحرس عند آخر باب
+         * (`WhatsAppBillingTrials::recipient`)، لا هنا: فالبابُ يرى المستلم.
+         */
+        if ($business->is_demo && $mode !== WhatsAppMode::BUSINESS_OWN) {
+            return WhatsAppStatus::SKIP_DEMO;
+        }
 
         if ($mode === WhatsAppMode::BUSINESS_OWN && ! self::canUseOwnNumber($business)) {
             return WhatsAppStatus::SKIP_OWN_NOT_ALLOWED;

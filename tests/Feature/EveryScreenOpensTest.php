@@ -46,7 +46,22 @@ class EveryScreenOpensTest extends TestCase
          * عطب. لكنّ استثناءها من الكنس يتركها بلا حارسٍ يفتحها أصلًا، فيمرّ
          * فيها ٥٠٠ بلا أن يراه أحد. ففتحُها هنا يكنسها حقًّا.
          */
-        $business->update(['boutiques_enabled' => true, 'whatsapp_inbox_enabled' => true]);
+        $business->update(['boutiques_enabled' => true]);
+
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات مفتوحةٌ هنا (`ChannelAutomationsSwitch`): مقفلةً تردّ صفحتُها وأبوابُها ٤٠٤
+         * قبل أن يُسأل سؤالُ هذا الكنس — فتمرّ بلا حارس.
+         */
+        \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        \App\Support\WhatsAppCampaignsSwitch::set(\App\Support\WhatsAppCampaignsSwitch::ALL);
+        /*
+         * ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`): مقفلًا تردّ صفحتُه ٤٠٤ قبل أن يُسأل سؤالُ هذا الاختبار.
+         */
+        \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
+        \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
+
+        // وبوابةُ عملاء RIBBON مفتوحةٌ لهذا المتجر — بمعرّفه ونطاقه (`RibbonPortal\Portal`)
+        config(['storefront.ribbon_customer_portal' => ['business' => (int) $business->id, 'enabled' => true], 'storefront.subdomain_businesses' => [(int) $business->id => 'ribbon']]);
 
         $this->owner = $business->users()->where('role', 'admin')->firstOrFail();
 

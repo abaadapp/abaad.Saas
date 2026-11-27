@@ -21,6 +21,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { money } from '@/lib/format';
 import { invoiceTotals, withAddons } from '@/lib/invoice-totals';
+import { loyaltyReasonText, type LoyaltyReason } from '@/lib/loyalty';
 import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -541,6 +542,76 @@ export default function CustomerInvoiceCreate({
     const [drawing, setDrawing] = useState(true);
 
     /*
+     * ═══ نقاطُ الولاء — عرضٌ من الخادم وجوابٌ من التاجر ═══
+     *
+     * ما يستطيع العميلُ خصمَه يحسبه الخادمُ مع المعاينة (`loyaltyQuote` —
+     * الحسابُ الذي تُكتب به الورقة)، ولا يُطبَّق حتى يُجاب التنبيه:
+     * «استخدام النقاط» أو «بدون خصم». وعميلٌ آخر يُسأل عنه من جديد.
+     */
+    const [loyaltyOffer, setLoyaltyOffer] = useState<LoyaltyOffer | null>(null);
+    const [serverTotals, setServerTotals] = useState<ServerTotals | null>(null);
+    const [redeem, setRedeem] = useState<'ask' | 'use' | 'skip'>('ask');
+    /*
+     * ═══ وما وافق عليه التاجرُ يُحفظ كما رآه ═══
+     *
+     * كان الخصمُ يتبع آخرَ عرضٍ رسمته المعاينة: رصيدٌ صُرف في الصندوق أو
+     * قاعدةٌ غيّرت قيمةَ النقطة، فيتبدّل المبلغُ تحت «استخدام النقاط» ولا
+     * يُسأل أحد. فيُمسك هنا ما وافق عليه (النقاطَ وقيمتَها) ويُرسل كما هو،
+     * والخادمُ يقارن الاثنين بما يحسبه (`CustomerInvoices::create`).
+     *
+     * ═══ وتغيّرُ المبلغ أو الرصيد يُعيد الحسابَ وحده — ويُقال ذلك ═══
+     *
+     * بندٌ أُضيف أو رصيدٌ صُرف في الصندوق: العرضُ الجديد من الخادم يحلّ محلَّ
+     * القديم تحت «استخدام النقاط» — كما يفعل الصندوقُ حين تتبدّل سلّتُه —
+     * ويُكتب تحته أنّه أُعيد، والملخّصُ يُرسم بخصمه الجديد قبل الحفظ. وما لم
+     * يعد مؤهَّلًا يُسقط الاختيارَ ويُقال سببُه: لا خصمَ يُرسل بلا شروطه.
+     */
+    const [agreed, setAgreed] = useState<{ points: number; discount: number } | null>(null);
+    const [redeemNotice, setRedeemNotice] = useState('');
+    const [redeemRecalc, setRedeemRecalc] = useState('');
+    useEffect(() => {
+        setRedeem('ask');
+        setAgreed(null);
+        setRedeemNotice('');
+        setRedeemRecalc('');
+    }, [form.data.customer_id]);
+
+    const chooseRedeem = (choice: 'ask' | 'use' | 'skip') => {
+        setRedeemNotice('');
+        setRedeemRecalc('');
+        setAgreed(choice === 'use' && loyaltyOffer?.eligible ? { points: loyaltyOffer.points, discount: loyaltyOffer.discount } : null);
+        setRedeem(choice === 'use' && !loyaltyOffer?.eligible ? 'ask' : choice);
+    };
+
+    useEffect(() => {
+        if (redeem !== 'use' || agreed === null) return;
+        if (!loyaltyOffer?.eligible || loyaltyOffer.points <= 0) {
+            setRedeem('ask');
+            setAgreed(null);
+            setRedeemRecalc('');
+            setRedeemNotice(t('تغيّر ما يُخصم بالنقاط — راجع العرض واختر من جديد.'));
+            return;
+        }
+        const same = loyaltyOffer.points === agreed.points && Math.abs(loyaltyOffer.discount - agreed.discount) < 0.0005;
+        if (!same) {
+            setAgreed({ points: loyaltyOffer.points, discount: loyaltyOffer.discount });
+            setRedeemRecalc(t('أُعيد احتساب خصم النقاط على المبلغ أو الرصيد الجديد — راجعه قبل الحفظ.'));
+        }
+    }, [loyaltyOffer, redeem, agreed, t]);
+
+    const redeemPoints = redeem === 'use' && agreed !== null ? agreed.points : 0;
+
+    /*
+     * والملخّصُ بعد خصم النقاط من الخادم: النقاطُ تُوزَّع على البنود وتُحسب
+     * ضريبتُها على ما بقي (`CustomerInvoices::withLoyalty`) — وحسابُ الشاشة
+     * لا يعرف ذلك. فما دام الخصمُ مختارًا يُعرض ما حسبه الخادمُ لا ما خمّنته.
+     */
+    const shown: ServerTotals =
+        redeemPoints > 0 && serverTotals && serverTotals.loyalty_points === redeemPoints
+            ? serverTotals
+            : { ...totals, loyalty_points: 0, loyalty_discount: 0 };
+
+    /*
      * وورقةٌ واحدة تُرسم في كلّ لحظة.
      *
      * كلُّ ضغطة حرفٍ في البنود أو الملاحظة تطلب رسمًا، وردودُ الخادم لا تصل
@@ -573,8 +644,9 @@ export default function CustomerInvoiceCreate({
             /* ولغةُ الرسم مع الحمولة: الورقةُ تُبنى في الخادم بها لا تُترجَم هنا */
             lang,
             items: lines,
+            redeem_points: redeemPoints,
         }),
-        [form.data, lines, needsAccount, lang],
+        [form.data, lines, needsAccount, lang, redeemPoints],
     );
 
     const draw = useCallback(async () => {
@@ -597,6 +669,8 @@ export default function CustomerInvoiceCreate({
 
             if (mine === ticket.current) {
                 setHtml(typeof body.html === 'string' ? body.html : '');
+                setLoyaltyOffer(body.loyalty ?? null);
+                setServerTotals(body.totals ?? null);
             }
         } catch {
             /* شبكةٌ انقطعت: تبقى آخر صورةٍ رُسمت، ولا تُمحى الورقة أمام صاحبها */
@@ -652,8 +726,24 @@ export default function CustomerInvoiceCreate({
             payment_reference: credit ? '' : data.payment_reference,
             // والتجهيزُ لمن فُتح له وحده — ومطفأً لا يحمل إلّا مفتاحه
             preparation: preparation ? preparationPayload(data.preparation) : undefined,
+            // ونقاطٌ اختار استبدالَها — صفرٌ ما لم يضغط «استخدام النقاط»
+            redeem_points: redeemPoints,
+            // وقيمتُها كما رآها — فإن حسب الخادمُ غيرَها ردّ الورقةَ ومعها العرضُ الصحيح
+            redeem_discount: redeemPoints > 0 && agreed !== null ? agreed.discount : null,
         }));
-        form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
+        form.post('/admin/customer-invoices', {
+            preserveScroll: true,
+            forceFormData: files.length > 0,
+            onError: (errors) => {
+                // عرضٌ تغيّر: لا خصمَ حتّى يختار من جديد، والعرضُ يُجلب الآن لا بعد ضغطة حرف
+                if ((errors as Record<string, string | undefined>).redeem_points) {
+                    setRedeem('ask');
+                    setAgreed(null);
+                    setRedeemRecalc('');
+                    void draw();
+                }
+            },
+        });
     };
 
     return (
@@ -841,6 +931,15 @@ export default function CustomerInvoiceCreate({
                                     </div>
                                 )}
                             </div>
+
+                            <LoyaltyPrompt
+                                offer={loyaltyOffer}
+                                choice={redeem}
+                                onChoose={chooseRedeem}
+                                error={(form.errors as Record<string, string | undefined>).redeem_points}
+                                notice={redeemNotice}
+                                recalculated={redeemRecalc}
+                            />
 
                             {/* ── تاريخ الإصدار ── */}
                             <div className="space-y-1.5">
@@ -1221,20 +1320,26 @@ export default function CustomerInvoiceCreate({
                         <h2 className="mb-4 text-[15px] font-bold text-[#111]">{t('ملخص الفاتورة')}</h2>
 
                         <dl className="space-y-2 text-[13px]">
-                            <Row label={t('قيمة الأصناف')} value={m(totals.subtotal)} />
+                            <Row label={t('قيمة الأصناف')} value={m(shown.subtotal)} />
                             {/*
                                 و«الخصم» لا «خصم عام»: هو مجموعُ خصومات البنود،
                                 ولا خصمَ على مستوى الفاتورة في النظام. واسمٌ
                                 يَعِد بحقلٍ لا وجود له يجعل من يبحث عنه يظنّ
                                 الشاشةَ ناقصة.
                             */}
-                            <Row label={t('الخصم')} value={m(totals.discount)} />
-                            <Row label={t('الضريبة')} value={m(totals.tax)} />
+                            <Row label={t('الخصم')} value={m(shown.discount - shown.loyalty_discount)} />
+                            {shown.loyalty_discount > 0 && (
+                                <Row
+                                    label={`${t('خصم نقاط الولاء')} (${shown.loyalty_points} ${t('نقطة')})`}
+                                    value={m(shown.loyalty_discount)}
+                                />
+                            )}
+                            <Row label={t('الضريبة')} value={m(shown.tax)} />
                         </dl>
 
                         <div className="mt-3 flex items-center justify-between rounded-[10px] bg-[#f5f3ff] px-3 py-2.5">
                             <span className="text-[14px] font-bold text-[#111]">{t('الإجمالي')}</span>
-                            <span className="text-[16px] font-bold tabular-nums text-[#6d28d9]">{m(totals.total)}</span>
+                            <span className="text-[16px] font-bold tabular-nums text-[#6d28d9]">{m(shown.total)}</span>
                         </div>
                     </Card>
 
@@ -1289,7 +1394,7 @@ export default function CustomerInvoiceCreate({
                                             inputMode="decimal"
                                             value={form.data.paid_amount}
                                             onChange={(e) => form.setData('paid_amount', e.target.value)}
-                                            placeholder={totals.total.toFixed(3)}
+                                            placeholder={shown.total.toFixed(3)}
                                         />
                                         {form.errors.paid_amount ? (
                                             <Err msg={form.errors.paid_amount} />
@@ -1996,6 +2101,127 @@ function addDays(from: string, days: number): string {
     d.setDate(d.getDate() + days);
 
     return d.toISOString().slice(0, 10);
+}
+
+interface LoyaltyOffer {
+    eligible: boolean;
+    reason: LoyaltyReason | null;
+    balance: number;
+    points: number;
+    discount: number;
+    /** كم بالمئة من الفاتورة المؤهّلة — في طريقة النسبة وحدها (`Loyalty::percentOf`) */
+    percent?: number | null;
+}
+
+interface ServerTotals {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    total: number;
+    loyalty_points: number;
+    loyalty_discount: number;
+}
+
+/**
+ * تنبيهُ النقاط تحت العميل — يُسأل ولا يُطبَّق.
+ *
+ * عميلٌ مؤهَّل يُقال رصيدُه وما يستطيع خصمَه من هذه الفاتورة، ومعه زرّان:
+ * «استخدام النقاط» و«بدون خصم». ولا خصمَ قبل الضغط. وعميلٌ برصيدٍ لا يُستبدل
+ * يُقال السببُ — فلا يبحث التاجرُ عن زرٍّ لا يظهر.
+ */
+export function LoyaltyPrompt({
+    offer,
+    choice,
+    onChoose,
+    error,
+    notice,
+    recalculated,
+}: {
+    offer: LoyaltyOffer | null;
+    choice: 'ask' | 'use' | 'skip';
+    onChoose: (c: 'ask' | 'use' | 'skip') => void;
+    error?: string;
+    /** عرضٌ لم يعد مؤهَّلًا بعد «استخدام النقاط» فأُلغي الاختيار — يُقال لماذا عاد السؤال */
+    notice?: string;
+    /** عرضٌ أُعيد حسابُه وبقي الاختيار — يُقال ذلك تحت الخصم الجديد */
+    recalculated?: string;
+}) {
+    const t = useTranslate();
+    const { context } = usePage<PageProps>().props;
+    const m = (v: number) => money(v, context!.currency);
+
+    /*
+     * وردُّ الخادم يُقرأ ولو لم يبقَ ما يُعرض: رصيدٌ صُرف كلُّه في الصندوق
+     * بين العرض والحفظ لا يُخفي السببَ الذي رُدّت به الورقة.
+     */
+    const said = error || notice;
+    if (!offer || offer.balance <= 0) {
+        return said ? (
+            <p data-testid="invoice-loyalty-changed" role="alert" className="text-[12px] text-[#b91c1c] sm:col-span-2">
+                {said}
+            </p>
+        ) : null;
+    }
+
+    if (!offer.eligible) {
+        const why = loyaltyReasonText(offer.reason, t);
+
+        return why || said ? (
+            <div className="sm:col-span-2">
+                {why && (
+                    <p data-testid="invoice-loyalty-reason" className="text-[12px] text-[#6b7280]">
+                        {t('نقاط العميل:')} {offer.balance} — {why}
+                    </p>
+                )}
+                {said && (
+                    <p data-testid="invoice-loyalty-changed" role="alert" className="mt-1 text-[12px] text-[#b91c1c]">
+                        {said}
+                    </p>
+                )}
+            </div>
+        ) : null;
+    }
+
+    return (
+        <div
+            data-testid="invoice-loyalty"
+            role="alert"
+            className="rounded-[10px] border border-[#fbcfe8] bg-[#fdf2f8] p-3 sm:col-span-2"
+        >
+            <p className="text-[13px] font-semibold text-[#be185d]">
+                {t('نقاط العميل:')} {offer.balance} — {t('يستطيع خصم')} {m(offer.discount)}
+                {offer.percent != null && ` (${offer.percent}%)`} {t('مقابل')} {offer.points} {t('نقطة من هذه الفاتورة')}
+            </p>
+
+            {choice === 'ask' ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => onChoose('use')}>
+                        {t('استخدام النقاط')}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => onChoose('skip')}>
+                        {t('بدون خصم')}
+                    </Button>
+                </div>
+            ) : (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-[#be185d]">
+                    <span data-testid="invoice-loyalty-choice">
+                        {choice === 'use' ? t('يُخصم من رصيده عند إصدار الفاتورة') : t('بدون خصم')}
+                    </span>
+                    <button type="button" className="font-medium underline" onClick={() => onChoose(choice === 'use' ? 'skip' : 'use')}>
+                        {choice === 'use' ? t('إلغاء') : t('استخدام النقاط')}
+                    </button>
+                </div>
+            )}
+
+            {choice === 'use' && recalculated && !error && (
+                <p data-testid="invoice-loyalty-recalculated" className="mt-1 text-[12px] text-[#9d174d]">
+                    {recalculated}
+                </p>
+            )}
+
+            {error ? <Err msg={error} /> : notice ? <Err msg={notice} /> : null}
+        </div>
+    );
 }
 
 function Err({ msg }: { msg: string }) {

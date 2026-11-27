@@ -9,12 +9,14 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\ImageVariants;
 use App\Support\ProductImages;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\RibbonShopAtCheckout;
+use Tests\Support\DistinctPhotos;
 use Tests\TestCase;
 
 /**
@@ -71,7 +73,8 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
     /** صورةٌ حقيقيّةٌ يرسمها GD — بأبعادٍ تُعرف بها بعد الحفظ */
     private function photo(string $name, int $w = 300, int $h = 200): UploadedFile
     {
-        return UploadedFile::fake()->image($name, $w, $h);
+        // ‏ولكلّ صورةٍ محتواها — صورتان سوداوان بالأبعاد نفسها صورةٌ واحدة في المتجر
+        return DistinctPhotos::make($name, $w, $h);
     }
 
     /** ما ترسله شاشةُ الإضافة — بالصور التي اختيرت */
@@ -108,9 +111,21 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
         return [$info[0], $info[1]];
     }
 
+    /**
+     * أصولُ الصور وحدها — ونسخُها الأخفّ (`ImageVariants`) تتبعها فلا تُعدّ.
+     *
+     * ونسخةٌ لا أصلَ إلى جوارها يتيمةٌ كملفٍّ لا صفَّ له — فتُردّ هنا.
+     */
     private function filesOnDisk(): array
     {
-        return Storage::disk('public')->allFiles('products');
+        $files = Storage::disk('public')->allFiles('products');
+        $copies = array_filter($files, fn ($f) => ImageVariants::isVariant($f));
+
+        foreach ($copies as $copy) {
+            $this->assertContains(ImageVariants::base($copy), $files, "نسخةٌ بقيت بلا أصل: $copy");
+        }
+
+        return array_values(array_diff($files, $copies));
     }
 
     /* ═══════════ صورةٌ واحدة، وخمسٌ في حفظةٍ واحدة ═══════════ */

@@ -144,6 +144,9 @@
     @if ($doc['totals']['discount'])
         <tr><td class="k">{{ __('الخصم') }}</td><td class="l"><span dir="ltr">{{ $doc['totals']['discount'] }}</span></td></tr>
     @endif
+    @if ($doc['totals']['loyalty'] ?? null)
+        <tr data-loyalty><td class="k">{{ __('خصم نقاط الولاء') }} (<span dir="ltr">{{ $doc['totals']['loyalty']['points'] }}</span> {{ __('نقطة') }})</td><td class="l"><span dir="ltr">{{ $doc['totals']['loyalty']['value'] }}</span></td></tr>
+    @endif
     @if ($doc['totals']['tax'])
         <tr><td class="k">{{ __('الضريبة') }}</td><td class="l"><span dir="ltr">{{ $doc['totals']['tax'] }}</span></td></tr>
     @endif

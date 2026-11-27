@@ -13,17 +13,24 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-    <title>{{ $headline }}</title>
-    <meta name="description" content="{{ Str::limit($about !== '' ? $about : $headline, 155) }}">
+    {{--
+        ورأسُ الصفحة من «الظهور في البحث» — وفراغُه العنوانُ الرئيسيُّ والنبذة
+        كما كانا (`Store\StoreSeo::simple`).
+    --}}
+    <title>{{ $seo['title'] }}</title>
+    <meta name="description" content="{{ $seo['description'] }}">
+    @unless ($seo['index'])
+        <meta name="robots" content="noindex, nofollow">
+    @endunless
 
-    {{-- الأصل هو النطاق الفرعيّ: لا يقرأ محرّكُ البحث نسختين لصفحةٍ واحدة --}}
-    @if ($url)
-        <link rel="canonical" href="{{ $url }}">
+    {{-- والأصلُ ما يخدم الصفحةَ فعلًا: لا يقرأ محرّكُ البحث نسختين لصفحةٍ واحدة --}}
+    @if ($seo['canonical'])
+        <link rel="canonical" href="{{ $seo['canonical'] }}">
     @endif
 
     <meta property="og:type" content="website">
-    <meta property="og:title" content="{{ $headline }}">
-    <meta property="og:description" content="{{ Str::limit($about !== '' ? $about : $headline, 155) }}">
+    <meta property="og:title" content="{{ $seo['title'] }}">
+    <meta property="og:description" content="{{ $seo['description'] }}">
     @if ($logo)
         <meta property="og:image" content="{{ $logo }}">
     @endif
@@ -193,7 +200,8 @@
                 <article class="card" data-cat="{{ $p['category_id'] ?? 'none' }}" data-seasons="{{ $inSeasons }}">
                     <div class="shot">
                         @if ($p['image'])
-                            <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy">
+                            {{-- ‏`sizes` حسابُ `.grid` أعلاه: حاويةٌ 1100 بحشوة 16، وعمودان بينهما 14، فثلاثةٌ من 700، فأربعةٌ من 1000 --}}
+                            <img src="{{ $p['image'] }}" @if ($p['srcset'] ?? null) srcset="{{ $p['srcset'] }}" sizes="(min-width: 1100px) 257px, (min-width: 1000px) calc(25vw - 18px), (min-width: 700px) calc(33.34vw - 20px), calc(50vw - 23px)" @endif alt="{{ $p['name'] }}" loading="lazy">
                         @else
                             <span>🌷</span>
                         @endif
@@ -250,6 +258,10 @@
         @if ($whatsapp)
             · <a href="https://wa.me/{{ $whatsapp }}" target="_blank" rel="noopener">تواصل معنا</a>
         @endif
+        {{-- وروابطُ الصفحات القانونيّة التي نشرها صاحبُ المتجر — ولا شيء لمن لم ينشر --}}
+        @foreach ($legalLinks ?? [] as $legal)
+            · <a href="{{ $legal['href'] }}" data-testid="store-legal-{{ $legal['key'] }}">{{ $legal['label'] }}</a>
+        @endforeach
     </div>
 </footer>
 

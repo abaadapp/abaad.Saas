@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Support\Store\StoreImageUpload;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Setting;
@@ -291,7 +292,8 @@ final class InvoiceBranding
         $old = $business->getRawOriginal('logo');
 
         if ($file !== null) {
-            $business->logo = $file->store('logos', 'public');
+            // ‏مُصغَّرًا بنوعه — يُطبع في الفاتورة والإيصال، فلا يصير WebP
+            $business->logo = StoreImageUpload::storeShrunk($file, 'logos', 1024);
         } elseif ($remove) {
             $business->logo = null;
         } else {

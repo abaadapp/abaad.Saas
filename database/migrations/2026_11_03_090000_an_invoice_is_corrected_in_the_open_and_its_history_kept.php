@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -35,6 +36,11 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
+    {
+        $this->briefly(fn () => $this->change());
+    }
+
+    private function change(): void
     {
         Schema::table('customer_invoices', function (Blueprint $table) {
             if (! Schema::hasColumn('customer_invoices', 'revision')) {
@@ -122,17 +128,23 @@ return new class extends Migration
             throw new RuntimeException('لا يُتراجع: إشعاراتٌ دائنة وُلدت من تصحيح. ارجع بالكود وحده (Revert PR).');
         }
 
+        $this->briefly(fn () => $this->undo());
+    }
+
+    private function undo(): void
+    {
         Schema::dropIfExists('customer_debit_notes');
 
         Schema::table('customer_credit_notes', function (Blueprint $table) {
             if (Schema::hasColumn('customer_credit_notes', 'revision_id')) {
                 $table->dropConstrainedForeignId('revision_id');
             }
-            foreach (['items', 'basis'] as $column) {
-                if (Schema::hasColumn('customer_credit_notes', $column)) {
-                    $table->dropColumn($column);
-                }
-            }
+            /*
+             * و`basis` و`items` لا يُسقطان هنا: السببُ عمودُ #202 المنشور
+             * (`2026_11_05_090000_a_manual_credit_note_says_why_it_was_issued`)
+             * تقرؤه إشعاراتُ الإنتاج، والبنودُ يكتبها إرجاعُ قطع البوتيك أيضًا.
+             * وكلاهما فارغٌ لما لا يخصّه — بقاؤهما لا يضرّ الكودَ القديم.
+             */
         });
 
         Schema::dropIfExists('customer_invoice_revisions');
@@ -145,5 +157,54 @@ return new class extends Migration
                 $table->dropColumn('revision');
             }
         });
+    }
+
+    /*
+     * ═══ والقفلُ لحظةٌ لا انتظار ═══
+     *
+     * إضافةُ عمودٍ فارغٍ أو بقيمةٍ ثابتة لا تعيد كتابةَ صفٍّ في PostgreSQL، لكنّها
+     * تطلب قفلَ الفواتير وإشعاراتها كلِّها لتلك اللحظة — ولو كان تقريرٌ طويلٌ يقرؤها
+     * انتظرَته، وكلُّ بيعةٍ تصل بعدها تنتظر خلفها. فتنتظر القفلَ ثلاثَ ثوانٍ لا أكثر
+     * ثمّ تتراجع وتعيد المحاولة بعد ثانية، خمسَ مرّات؛ وإن لم يُتَح سقطت الهجرة
+     * فيتوقّف النشرُ قبل إعادة تحميل PHP ويبقى الموقعُ على كوده القديم. والمعاملةُ
+     * تجمع التغييرَ كلَّه: يقع كلُّه أو لا شيء.
+     * (كما في `2026_11_11_090000_a_customer_invoice_remembers_the_points_it_spent`.)
+     */
+    public $withinTransaction = false;
+
+    public int $attempts = 5;
+
+    public string $lockTimeout = '3s';
+
+    public float $pause = 1.0;
+
+    private function briefly(callable $change): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            DB::transaction(fn () => $change());
+
+            return;
+        }
+
+        if (! preg_match('/^\d+(ms|s)$/', $this->lockTimeout)) {
+            throw new InvalidArgumentException('lock_timeout: '.$this->lockTimeout);
+        }
+
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                DB::transaction(function () use ($change) {
+                    DB::statement("SET LOCAL lock_timeout = '".$this->lockTimeout."'");
+                    $change();
+                });
+
+                return;
+            } catch (QueryException $e) {
+                // 55P03: لم يُتَح القفلُ في مهلته — وما سواه خطأٌ حقيقيٌّ لا يُعاد
+                if ((string) ($e->errorInfo[0] ?? $e->getCode()) !== '55P03' || $attempt >= $this->attempts) {
+                    throw $e;
+                }
+                usleep((int) ($this->pause * 1_000_000));
+            }
+        }
     }
 };

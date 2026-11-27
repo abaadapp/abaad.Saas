@@ -85,6 +85,22 @@ class Customers
             }
 
             /*
+             * ═══ والرقمُ الجديد يُسأل عن شكله (`CustomerPhone`) ═══
+             *
+             * العُمانيّ ثماني خانات، والدوليّ بمفتاح دولته. ورقمٌ قديمٌ لم
+             * يُغيَّر لا يُسأل: تعديلُ اسم العميل أو عنوانه لا يُمنع برقمٍ
+             * كُتب قبل القاعدة — والتنبيهُ يدلّ عليه حتى يُصحَّح.
+             */
+            $unchanged = $exceptId !== null && (string) Customer::withTrashed()
+                ->where('business_id', $businessId)->whereKey($exceptId)->value('phone') === (string) $value;
+
+            if (! $unchanged && ($why = CustomerPhone::refusal((string) $value)) !== null) {
+                $fail($why);
+
+                return;
+            }
+
+            /*
              * وصفوفُ المتجر تُقرأ لتُقابَل مطبَّعةً — ولا سبيلَ إلى ذلك في
              * `where`: العمود يحمل الرقم كما كُتب، والتطبيع دالّةُ تطبيقٍ لا
              * دالّةُ قاعدة. وهي قراءةُ أعمدةٍ أربعةٍ لعملاء متجرٍ واحد.

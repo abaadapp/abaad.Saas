@@ -76,6 +76,8 @@ interface InvoiceProps {
     debited: number;
     outstanding: number;
     items: ItemRow[];
+    /** نقاطُ الولاء المختارة على المسودّة — يعيد الخادمُ خصمَها على البنود الجديدة عند الحفظ */
+    loyalty?: { points: number; discount: number } | null;
 }
 
 /**
@@ -706,6 +708,26 @@ export default function CustomerInvoiceEdit() {
                             <Row label={t('الضريبة')} value={m(locked ? invoice.tax_total : totals.tax)} />
                             <Row label={correcting ? t('البنود بعد التصحيح') : t('الإجمالي بعد التعديل')} value={m(locked ? invoice.total : totals.total)} strong />
                         </dl>
+                        {/*
+                            وخصمُ النقاط على المسودّة لا يُكتب في البنود هنا: يعيده الخادمُ
+                            بمنطق الإنشاء على البنود الجديدة، أو يردّ التعديلَ إن لم يعد جائزًا.
+                            والإجماليُّ أعلاه قبله — والمعاينةُ تقول ما يُحفظ.
+                        */}
+                        {invoice.loyalty && !correcting && (
+                            <p className="mt-2 text-[12px] text-[#6d28d9]" data-testid="edit-draft-loyalty">
+                                {t('خصم نقاط الولاء')}: {m(invoice.loyalty.discount)} ({invoice.loyalty.points} {t('نقطة')}) — {t('يُعاد حسابه على البنود الجديدة عند الحفظ، ولا تُخصم النقاط قبل إصدار الفاتورة.')}
+                            </p>
+                        )}
+                        {/*
+                            وعلى الصادرة صُرفت النقاط: خصمُ البند هنا يدويُّه وحده، وحصّتُه من
+                            خصم النقاط تتبعه بنسبة ما بقي منه (`pointsShareFollows`) — فلا يُخصم
+                            للعميل مرّتين، ولا تُصرف نقاطٌ لبندٍ زاد أو أُضيف.
+                        */}
+                        {invoice.loyalty && correcting && (
+                            <p className="mt-2 text-[12px] text-[#6d28d9]" data-testid="edit-issued-loyalty">
+                                {t('خصم نقاط الولاء')}: {m(invoice.loyalty.discount)} ({invoice.loyalty.points} {t('نقطة')}) — {t('حصة كل بند منه تتبعه بنسبة ما بقي منه، وتعود النقاط بنسبة الإشعار الدائن. ولا تُصرف نقاط لبند زاد أو أُضيف.')}
+                            </p>
+                        )}
                         {tax_inclusive === null && !locked && correcting && (
                             <p className="mt-2 text-[12px] text-[#b45309]">{t('تعذّر معرفة قاعدة ضريبة هذه الفاتورة من بنودها — تصحيح مالها مردود، ويُصحَّح بإشعار دائن بمبلغه.')}</p>
                         )}

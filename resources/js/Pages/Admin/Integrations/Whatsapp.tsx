@@ -1,5 +1,5 @@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { Gauge, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Bot, Gauge, Megaphone, Save, ScrollText, Smartphone, SlidersHorizontal } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field from '@/Components/Field';
@@ -10,15 +10,21 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
+import WhatsappSender, { type SenderView } from '@/Components/WhatsappSender';
 import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
-import WhatsappAutoReply, { type AutoReplySettings } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
+import WhatsappAutoReply, { type AutoReplySettings, type AutoReplyState } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
+import WhatsappGuidedOrders, { type GuidedOrdersView } from '@/Pages/Admin/Integrations/partials/WhatsappGuidedOrders';
 import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
+import WhatsappDelivery, { type Delivery } from '@/Pages/Admin/Integrations/partials/WhatsappDelivery';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
+import type { OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
 import type { PageProps } from '@/types';
 
 /** ما يُعرض من حال الأتمتة — بلا رمزٍ ولا سرّ (انظر Admin\WhatsAppController::view) */
 export interface Automation {
     readiness: Readiness;
+    /** تسليمُ الرسائل في آخر يوم — مستقلٌّ عن المراحل (`WhatsAppHealth::view`) */
+    delivery?: Delivery;
     global_enabled: boolean;
     enabled: boolean;
     mode: string;
@@ -36,12 +42,26 @@ export interface Automation {
     shared_allowed: boolean;
     /** ما تحتاجه الشاشةُ لتفتح نافذة ميتا — ولا سرَّ فيه */
     embedded: EmbeddedConfig;
+    /** الربطُ بتطبيق التاجر — عنوانُ إشعارات وصلته وفوترتُها (`WhatsAppOwnApp::view`) */
+    own_app?: OwnAppView | null;
+    /** رقمُ الإرسال: يُعتمد وحده أم ينتظر ولماذا، أم تعطّل (`WhatsAppSender::view`) */
+    sender?: SenderView | null;
     /** حالُ الربط بحالاتها الستّ — من الخادم لا تُستنتج هنا */
     link: WhatsappLink;
     /** أيستقبل فعلًا؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
     health: LinkHealth | null;
     auto_reply: AutoReplySettings | null;
+    /** حالُ الردّ كما يقع — بحرّاس الإرسال نفسِها (`WhatsAppAutoReply::state`) */
+    auto_reply_state?: AutoReplyState | null;
+    /** النصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ */
+    auto_reply_defaults?: { ar: string; en: string } | null;
     branches: { id: number; name: string }[];
+    /** الطلباتُ الآليّة — `null` لمتجرٍ لم تأذن له المنصّة (`WhatsAppOrders::view`) */
+    guided_orders?: GuidedOrdersView | null;
+    /** أتمتةُ الردود بالكلمات — `null` لمتجرٍ لم تفتحها له المنصّة (`ChannelAutomationsSwitch`) */
+    keyword_automations?: { published: number; total: number } | null;
+    /** حملاتُ واتساب — لمتجرٍ فتحتها له المنصّة (`WhatsAppCampaignsSwitch`) */
+    campaigns?: boolean;
     may_manage: boolean;
     usage: {
         used: number;
@@ -157,6 +177,8 @@ export default function IntegrationsWhatsapp() {
                     waiting={t('لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه المراحل.')}
                 />
 
+                {automation.delivery && <WhatsappDelivery delivery={automation.delivery} />}
+
                 {/*
                     ═══ «ربط واتساب» أوّلًا — وهي أوّلُ ما يُفعل ═══
 
@@ -171,9 +193,15 @@ export default function IntegrationsWhatsapp() {
                         health={automation.health}
                         config={automation.embedded}
                         mayManage={automation.may_manage}
-                        sharedAllowed={automation.shared_allowed}
+                        // «تخرج رسائلك من رقم أبعاد» تُقال لمن يُرسل منه فعلًا — لا لمن يبدأ على رقمه
+                        sharedAllowed={automation.shared_allowed && automation.effective_mode === 'abaad_shared'}
+                        ownApp={automation.own_app ?? null}
+                        stillShared={automation.sender?.sends_from === 'shared'}
                     />
                 )}
+
+                {/* ‏‏ورقمُ الإرسال — يصير رقمَ المتجر وحده حين يجهز، ويُقال ما بقي ومن يفعله */}
+                {automation.sender && <WhatsappSender sender={automation.sender} audience="merchant" mayManage={automation.may_manage} />}
 
                 {/* الاستهلاك للمشترك وحده: من ربط رقمه يُرسل على حسابه فلا حدَّ عليه منّا */}
                 {automation.usage && (
@@ -253,8 +281,8 @@ export default function IntegrationsWhatsapp() {
                     </SettingsSection>
                 )}
 
-                {/* ربط رقم المتجر — لمن مُنح الميزة وحده */}
-                {automation.own_allowed && (
+                {/* ربط رقم المتجر — لمن مُنح الميزة وحده؛ والربطُ بتطبيق التاجر نموذجُه في البطاقة أعلاه */}
+                {automation.own_allowed && ! automation.own_app?.enabled && (
                     <SettingsSection
                         title="طريقة يدوية (للحالات الخاصة)"
                         description="لمن ربط رقمه قبل اليوم أو لمن لا تُتيح له ميتا الربط بضغطة — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ."
@@ -375,7 +403,53 @@ export default function IntegrationsWhatsapp() {
                         settings={automation.auto_reply}
                         branches={automation.branches}
                         linked={automation.link.state === 'connected'}
+                        state={automation.auto_reply_state ?? null}
+                        defaults={automation.auto_reply_defaults ?? null}
                         mayManage={automation.may_manage}
+                    />
+                )}
+
+                {/* والطلباتُ الآليّة لمن أذنت له المنصّة — بشروطها كلٍّ بحاله */}
+                {automation.guided_orders && (
+                    <WhatsappGuidedOrders view={automation.guided_orders} mayManage={automation.may_manage} />
+                )}
+
+                {/* ‏‏وأتمتةُ الردود بالكلمات — صفحتُها، وكم منها يعمل */}
+                {automation.keyword_automations && (
+                    <SettingsSection
+                        title="أتمتة الردود بالكلمات"
+                        description="يكتب الزبون «السعر» أو «التوصيل» فيصله ردك وحده — بقوالب جاهزة."
+                        icon={Bot}
+                        status={
+                            <span className="text-[12px] text-[#6b7280] tabular-nums" data-testid="keyword-automations-count">
+                                {t(':n تعمل من :total', { n: automation.keyword_automations.published, total: automation.keyword_automations.total })}
+                            </span>
+                        }
+                        action={
+                            <Button asChild variant="outline">
+                                <Link href={route('admin.integrations.whatsapp.automations')}>
+                                    <Bot />
+                                    {t('أتمتة واتساب')}
+                                </Link>
+                            </Button>
+                        }
+                    />
+                )}
+
+                {/* ‏‏وحملاتُ العروض — صفحتُها في التسويق */}
+                {automation.campaigns && (
+                    <SettingsSection
+                        title="حملات واتساب"
+                        description="عرض يصل عملاءك من رقم متجرك — بقالب يعتمده واتساب."
+                        icon={Megaphone}
+                        action={
+                            <Button asChild variant="outline">
+                                <Link href={route('admin.marketing.whatsapp.campaigns')}>
+                                    <Megaphone />
+                                    {t('حملات واتساب')}
+                                </Link>
+                            </Button>
+                        }
                     />
                 )}
 

@@ -17,7 +17,9 @@ use App\Support\ProductImages;
 use App\Support\Sort;
 use App\Support\StockLedger;
 use App\Support\Store\GiftCardProduct;
+use App\Support\Store\WebsiteSoldOut;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -244,6 +246,8 @@ class ProductController extends Controller
             // وأين يُعرض الوصف — غيرُ أين يُباع الصنف (`pos_enabled`/`published`)
             'description_pos_enabled' => ['nullable', 'boolean'],
             'description_web_enabled' => ['nullable', 'boolean'],
+            // و«نفدت الكمية» في الموقع — لمن يرسمها موقعُه (`WebsiteSoldOut`)
+            'website_sold_out' => ['nullable', 'boolean'],
             'category_id' => $this->categoryRule(),
             /*
              * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
@@ -341,6 +345,8 @@ class ProductController extends Controller
         $data['published'] = $request->boolean('published', true);
         // ونقطةُ البيع كالموقع: مفتوحةٌ افتراضًا، ومن أغلقها باعه في متجره على الإنترنت وحده
         $data['pos_enabled'] = $request->boolean('pos_enabled', true);
+        // و«نفدت الكمية» لمن يرسمها موقعُه وحده — وغيرُه يولد متوفّرًا (`WebsiteSoldOut`)
+        $data['website_sold_out'] = WebsiteSoldOut::allowed($this->bid()) && $request->boolean('website_sold_out');
         /*
          * والوصفُ في الموقع كما كان كلُّ وصف، وللكاشير حين يُطلب: لم يظهر
          * وصفٌ في الصندوق قطّ، فلا يظهر لصنفٍ لم يُسأل صاحبُه عنه.
@@ -375,7 +381,14 @@ class ProductController extends Controller
          * وإن سقطت المعاملة مُحيت الملفّاتُ التي حُفظت لها — فلا يبقى على
          * القرص ما لا يشير إليه صفّ.
          */
-        $paths = ProductImages::putAll($files);
+        /*
+         * وصورةٌ في المتجر من قبل لا تُحفظ ثانيةً — يُعاد مسارُها (`ImageFingerprints`)،
+         * و«الأصلُ» بصمةُ كلّ صورةٍ قبل أن يصغّرها المتصفّح بموضعها. وما اختير
+         * مرّتين في الدفعة يُعرض مرّةً واحدة.
+         */
+        $paths = array_values(array_unique(
+            ProductImages::putAll($files, $this->bid(), array_values((array) $request->input('originals', [])), $found)
+        ));
 
         try {
             $product = \DB::transaction(function () use ($data, $paths, $composition) {
@@ -409,6 +422,9 @@ class ProductController extends Controller
             ProductImages::forgetFiles($paths);
 
             throw $e;
+        } finally {
+            // ‏وما أُعيد استعمالُه حُجز حتى تُكتب الصفوف (`ImageFingerprints::claim`) — يُرفع الحجز الآن
+            \App\Support\ImageFingerprints::settle(array_column($found, 'path'));
         }
 
         Activity::log('created', 'أضاف منتجًا: '.$data['name']);
@@ -420,7 +436,12 @@ class ProductController extends Controller
          * والعين ترى الصفّ. أمّا البقاء في نموذجٍ فارغ فيترك الإشعار وحده
          * دليلًا، ولا يُرى المنتج إلا بخطوةٍ أخرى.
          */
-        return redirect()->route('admin.products.index')->with('toast', ['msg' => __('تم إضافة المنتج بنجاح'), 'type' => 'success']);
+        $notice = ProductImages::foundNotice($this->bid(), $found, $product->id);
+
+        return redirect()->route('admin.products.index')->with('toast', [
+            'msg' => $notice === null ? __('تم إضافة المنتج بنجاح') : __('تم إضافة المنتج بنجاح').' '.$notice,
+            'type' => 'success',
+        ]);
     }
 
     public function update(Request $request, $id)
@@ -435,6 +456,8 @@ class ProductController extends Controller
             // وأين يُعرض الوصف — غيرُ أين يُباع الصنف (`pos_enabled`/`published`)
             'description_pos_enabled' => ['nullable', 'boolean'],
             'description_web_enabled' => ['nullable', 'boolean'],
+            // و«نفدت الكمية» في الموقع — لمن يرسمها موقعُه (`WebsiteSoldOut`)
+            'website_sold_out' => ['nullable', 'boolean'],
             'category_id' => $this->categoryRule(),
             /*
              * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
@@ -504,6 +527,11 @@ class ProductController extends Controller
         // ولا تُغلق نقطةُ البيع ولا تُفتح بحفظةٍ لم تُرسلها — صورةٌ أو سعرٌ أو قسمٌ لا يمسّها
         if ($request->has('pos_enabled')) {
             $data['pos_enabled'] = $request->boolean('pos_enabled');
+        }
+        // و«نفدت الكمية» كذلك — ولا تُكتب لمن لا يرسمها موقعُه ولو أُرسلت
+        unset($data['website_sold_out']);
+        if ($request->has('website_sold_out') && WebsiteSoldOut::allowed($this->bid())) {
+            $data['website_sold_out'] = $request->boolean('website_sold_out');
         }
         // ومفتاحا الوصف كذلك — وقناةُ البيع لا تمسّهما ولا يمسّانها
         foreach (['description_pos_enabled', 'description_web_enabled'] as $flag) {
@@ -848,6 +876,38 @@ class ProductController extends Controller
         return __('«:name» في مخزونك منه :qty — وحذفُه يُنقص قيمةَ المخزون بمقداره. عطّله ليختفي من نقطة البيع ويبقى رصيدُه وتاريخه، أو أكّد الحذف.', [
             'name' => $product->name,
             'qty' => $onHand,
+        ]);
+    }
+
+    /**
+     * حالُ الصنف في الموقع — متوفّر، أو نفدت الكمية، أو مخفيّ — بطلبٍ لا يمسّ غيرَها.
+     *
+     * لا يمرّ بحفظ النموذج: ذاك يكتب الكمّيّةَ مطلقةً (انظر `update`)، ومن علّم
+     * باقةً «نفدت» بعد أن باع الكاشير منها كان سيُعيد كمّيّتها. فيُكتب العمودان
+     * وحدهما (`WebsiteSoldOut::columns`)، ويسري في الموقع بلا نشرٍ للتصميم.
+     *
+     * والصنفُ من متجر من سجّل الدخول وإلّا فـ٤٠٤ — قبل التحقّق من المدخلات.
+     */
+    public function websiteStatus(Request $request, $id): JsonResponse
+    {
+        abort_unless(WebsiteSoldOut::allowed($this->bid()), 404);
+
+        $product = Product::where('business_id', $this->bid())->findOrFail($id);
+        $data = $request->validate(['status' => ['required', Rule::in(WebsiteSoldOut::STATUSES)]]);
+
+        $product->update(WebsiteSoldOut::columns($data['status']));
+
+        Activity::log('updated', match ($data['status']) {
+            WebsiteSoldOut::SOLD_OUT => 'علّم «'.$product->name.'» نفدت الكمية في الموقع',
+            WebsiteSoldOut::HIDDEN => 'أخفى «'.$product->name.'» من الموقع',
+            default => 'جعل «'.$product->name.'» متوفّرًا في الموقع',
+        }, ['subject_id' => $product->id, 'subject_type' => 'product']);
+
+        return response()->json([
+            'ok' => true,
+            'status' => WebsiteSoldOut::status($product),
+            'published' => (bool) $product->published,
+            'website_sold_out' => (bool) $product->website_sold_out,
         ]);
     }
 

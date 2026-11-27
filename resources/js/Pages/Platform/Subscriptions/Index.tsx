@@ -22,6 +22,8 @@ interface Subscription {
     id: number;
     business_id: number;
     plan_id: number | null;
+    /** قطاعُ المتجر — والباقاتُ من قطاعه وحده، والخادمُ يردّ غيرَها */
+    sector_id?: number | null;
     business: string;
     plan: string;
     start: string;
@@ -239,7 +241,9 @@ export default function SubscriptionsIndex() {
                             <Select
                                 value={form.data.plan_id}
                                 onChange={(e) => form.setData('plan_id', e.target.value)}
-                                options={planOptions.map((p) => ({ label: p.label, value: String(p.value) }))}
+                                options={planOptions
+                                    .filter((p) => !editing?.sector_id || p.sector_id == null || p.sector_id === editing.sector_id)
+                                    .map((p) => ({ label: p.label, value: String(p.value) }))}
                                 placeholder="اختر الباقة…"
                             />
                             {/*

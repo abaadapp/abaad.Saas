@@ -228,6 +228,45 @@ class Demo
         return Money::format($value, $cur);
     }
 
+    /**
+     * سببُ مراجعة بيعةٍ وصلت بعد انقطاع — جملةً جملة، بالأرقام (`PosController::reviewOffline`).
+     *
+     * والمراجعاتُ الأقدم بلا أسباب تُقرأ كما كانت: «خصمٌ لم تغطّه النقاط».
+     *
+     * @param  array<string, mixed>  $r
+     */
+    private static function offlineReviewHint(array $r): string
+    {
+        $money = fn ($v) => self::money((float) $v);
+        $lines = [];
+
+        foreach ((array) ($r['reasons'] ?? ['not_covered']) as $reason) {
+            $lines[] = match ($reason) {
+                'program_off' => __('برنامج النقاط أو الاستبدال مُطفأ حين وصلت فلم تُصرف نقطة.'),
+                'balance_short' => __('طُلبت :requested نقطة ولم يكفِ رصيد العميل حين وصلت فصُرفت :spent.', [
+                    'requested' => (int) ($r['requested_points'] ?? 0), 'spent' => (int) ($r['spent_points'] ?? 0),
+                ]),
+                'over_cap' => __('خصم النقاط :discount فوق سقف الاستبدال اليوم :cap.', [
+                    'discount' => $money($r['discount'] ?? 0), 'cap' => $money($r['cap'] ?? 0),
+                ]),
+                'amount_mismatch' => __('قُبض عند الصندوق :collected وكُتبت الفاتورة بـ:recorded.', [
+                    'collected' => $money($r['collected'] ?? 0), 'recorded' => $money($r['recorded'] ?? 0),
+                ]),
+                default => __('خصمٌ بقيمة :gap لم تغطّه نقاط العميل بقواعد اليوم.', ['gap' => $money($r['gap'] ?? 0)]),
+            };
+        }
+
+        $lines[] = match ($r['context'] ?? null) {
+            'rules_changed' => __('السبب: الشاشة حسبت بقواعد استبدالٍ تغيّرت قبل أن تصل البيعة.'),
+            'suspected' => __('أرقام الشاشة لا تتّبع حتى القواعد التي قالت إنّها حسبت بها — تحقّق من البيعة مع الكاشير قبل اعتمادها.'),
+            'unverified' => __('لم تُرسل الشاشة قواعدها (أو تغيّرت الأسعار معها) فلا يُعرف سبب الفرق.'),
+            default => '',
+        };
+        $lines[] = __('لم يُغيَّر المبلغ المقبوض ولم يُسجَّل دينٌ على العميل.');
+
+        return implode(' ', array_filter($lines));
+    }
+
     /** المبلغ بعملة العرض المختارة (تحويل تلقائي حسب سعر الصرف) */
     public static function money($value): string
     {
@@ -764,6 +803,8 @@ class Demo
             'id' => $s->id,
             'business_id' => $s->business_id,
             'plan_id' => $s->plan_id,
+            // قطاعُ المتجر — نافذةُ التعديل تعرض باقاتِ قطاعه وحده (`Sectors`)
+            'sector_id' => $s->business?->sector_id,
             'business' => $s->business?->name ?? '—',
             'plan' => $s->plan?->name ?? '—',
             'start' => optional($s->starts_at)->format('Y-m-d') ?? '—',
@@ -832,7 +873,7 @@ class Demo
             // «عبر الدعم» تُلحق بالاسم: السطر الواحد لا يتّسع لشارة
             'text' => $a->user_name
                 .($a->impersonator_name ? ' ('.__('عبر الدعم').')' : '')
-                .' — '.$a->description,
+                .' — '.BoutiqueAccess::activity($a->subject_type, $a->description, $u),
             'time' => optional($a->created_at)?->diffForHumans() ?? '—',
             'icon' => $a->icon,
             'color' => $a->color,
@@ -1270,6 +1311,59 @@ class Demo
      */
     public static function products(?int $branchId = null, ?Request $filter = null): array
     {
+        return self::productRows($branchId, $filter, false);
+    }
+
+    /**
+     * ═══ أصنافُ شاشة الصندوق — ما يقرؤه الصندوقُ وحده ═══
+     *
+     * الصفُّ نفسُه الذي تبنيه `products()` لكلّ واجهة، وبالاستعلامات نفسِها —
+     * ثمّ يُسقط منه ما لا يقرؤه الصندوق (`forTill`). فما بقي فيه هو هو حرفًا:
+     * السعرُ والضريبةُ والمخزونُ والمقاساتُ والإضافاتُ وأهليّةُ البيع. والقائمةُ
+     * المشتركة (المشتريات، وما يبحث بالمعرّف) كما كانت.
+     *
+     * @param  int|null  $branchId  الفرعُ الذي يُخصم منه البيع
+     */
+    /**
+     * @param  (\Closure(\Illuminate\Database\Eloquent\Builder): mixed)|null  $only  ‏بعضُ الأصناف لا كلُّها — يُضيّق
+     *         استعلامَ الأصناف (ومقاساتِها معه)، ولا يغيّر شيئًا في صفّ ما بقي. لمزامنة الكتالوج
+     *         على الجهاز (`TillCatalog`): ما تغيّر يُبنى وحده، بالدالّة نفسِها.
+     */
+    public static function tillProducts(?int $branchId, ?\Closure $only = null): array
+    {
+        return self::productRows($branchId, null, true, $only);
+    }
+
+    /**
+     * ‏يُسقط من صفّ الصنف ما لا يقرؤه الصندوق — ولا يغيّر قيمةً فيما يبقى.
+     *
+     * - `published` و`description_web_enabled`: للموقع. والصندوقُ يقرأ أهليّتَه
+     *   من `active` و`pos_enabled`، ونصَّ وصفه من `pos_description` (و`null`
+     *   حين لم يُفتح له — `ProductDescription::atPos`)، فلا يحتاج مفتاحَيهما.
+     * - `description_pos_enabled`: قرارُه في `pos_description` نفسِه.
+     * - `cat_label`: لا يقرؤه الصندوق؛ أقسامُه من `posCategories` وترشيحُه بـ`cat`.
+     * - `label` حين يساوي `name` حرفًا بحرف — والصندوقُ يقرأ غائبَه `name`
+     *   (`lib/till-products.ts`). لا يُستنتج من قاعدة عرض: يُسقط حيث هو هو فقط.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    public static function forTill(array $row): array
+    {
+        unset($row['published'], $row['cat_label'], $row['description_pos_enabled'], $row['description_web_enabled']);
+        if (array_key_exists('label', $row) && $row['label'] === $row['name']) {
+            unset($row['label']);
+        }
+
+        return $row;
+    }
+
+    /**
+     * @param  bool  $till  لشاشة الصندوق (`tillProducts`) — يُسقط ما لا تقرؤه
+     * @param  (\Closure(\Illuminate\Database\Eloquent\Builder): mixed)|null  $only  ‏بعضُ الأصناف (`tillProducts`)
+     */
+    private static function productRows(?int $branchId, ?Request $filter, bool $till, ?\Closure $only = null): array
+    {
         $available = Stock::availabilityResolver(self::bid(), $branchId);
 
         /*
@@ -1279,7 +1373,14 @@ class Demo
          * ستُطلق أربعمئة استعلامٍ قبل أن تُرسم.
          */
         $variants = ProductVariant::where('business_id', self::bid())
-            ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
+            ->where('active', true)
+            // ‏‏ومقاساتُ الأصناف المطلوبة وحدها حين يُطلب بعضُها — والكلُّ كما كان
+            ->when($only !== null, function ($q) use ($only) {
+                $owners = Product::where('business_id', self::bid());
+                $only($owners);
+                $q->whereIn('product_id', $owners->select('id'));
+            })
+            ->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
         $addonMap = ProductAddons::map(self::bid());
         $allAddons = Addon::where('business_id', self::bid())->orderBy('id')->get();
         $recipeOwners = RecipeItem::where('business_id', self::bid())->distinct()->pluck('product_id')
@@ -1292,23 +1393,32 @@ class Demo
             ListFilters::products($query, $filter);
         }
 
-        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners) {
+        if ($only) {
+            $only($query);
+        }
+
+        // ‏وإعدادُ الضريبة يُقرأ مرّةً للقائمة كلِّها — لا لكلّ صنف (`Vat::rateForEach`)
+        $taxOf = Vat::rateForEach(self::bid());
+
+        return $query->get()->map(function ($p) use ($branchId, $available, $variants, $addonMap, $allAddons, $recipeOwners, $taxOf, $till) {
             $qty = $branchId ? $available($p->id, (int) $p->quantity) : (int) $p->quantity;
 
-            return [
+            $row = [
                 'id' => $p->id,
                 'name' => $p->name,
                 'name_en' => $p->name_en,
                 'label' => self::ln($p->name, $p->name_en),
                 'cat' => $p->category?->name ?? '—',
                 // والقسمُ للعرض بلغة الشاشة — `cat` يبقى كما حُفظ لمطابقة النموذج
-                'cat_label' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—',
+                'cat_label' => $till ? null : ($p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—'),
                 'price' => (float) $p->price,
                 'cost' => (float) $p->cost,
                 'qty' => $qty,
                 'sku' => $p->sku,
                 'barcode' => $p->barcode,
                 'image' => $p->image,
+                // ‏ومصغّرتُها لشبكة الصندوق — بطاقةٌ بعرض مئتين على هاتف الكاشير طوال اليوم
+                'thumb' => ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB),
                 'stock_status' => $p->stockStatusAt($qty),
                 /* ومن لا يُعدّ على رفٍّ تقوله الشاشةُ فلا تكتب له «المتوفر: ٠» */
                 'tracks_stock' => $p->tracksStock(),
@@ -1334,7 +1444,7 @@ class Demo
                  * يحتسب الخادم خمسة — ونسبةٌ تُقرأ هنا وتُحتسب هناك لا يجوز
                  * أن تُشتقّ بقاعدتين.
                  */
-                'tax' => Vat::rateFor($p, self::bid()),
+                'tax' => $taxOf($p),
                 /*
                  * المقاسات — الفعّالة منها وحدها.
                  *
@@ -1348,6 +1458,8 @@ class Demo
                     'label' => self::ln($v->name, $v->name_en),
                     'price' => (float) $v->price,
                     'sku' => $v->sku,
+                    // ‏وباركودُه — يمسحه الصندوقُ فيُضيف المقاسَ نفسَه (والموقوفُ لا يُرسل أصلًا)
+                    'barcode' => $v->barcode,
                 ])->values()->all(),
                 /*
                  * معرّفات الإضافات المسموحة — قائمةٌ صريحة لا «فراغٌ يعني الكلّ».
@@ -1367,6 +1479,23 @@ class Demo
                 'has_recipe' => isset($recipeOwners[$p->id]),
                 'discount' => (float) $p->discount,
             ];
+
+            /*
+             * ‏وسعرُ البيع للصندوق — بعد خصم الصنف، من الدالّة التي يبيع بها الخادم.
+             *
+             * كان الصندوقُ يبيع بـ`price` والخادمُ بـ`sellingPrice()`: صنفٌ بـ12.276
+             * عليه 15% تقول شاشتُه 12.890 والفاتورةُ 10.957. بالاتّصال يردّ الخادمُ
+             * البيعة، وبلا اتّصالٍ يُقبض أكثرُ ممّا يُكتب. ولا يُعاد الحسابُ في
+             * المتصفّح: تقريبٌ بقاعدتين يفترق ببيسة. والمقاسُ لا يُخصم عند الخادم
+             * (`SaleLines`)، فيبقى بسعره؛ و`price` يبقى السعرَ قبل الخصم لمن يقرؤه
+             * (الطلبُ المخصَّص يقترح سعرَه من أسعار الموادّ كما كان). ويُرسل للمخصوم
+             * وحده — وغيابُه «سعرُ البيع هو `price`» (`fromTill`).
+             */
+            if ($till && $p->discountRate() > 0) {
+                $row['sale_price'] = $p->sellingPrice();
+            }
+
+            return $till ? self::forTill($row) : $row;
         })->all();
     }
 
@@ -3371,7 +3500,7 @@ class Demo
     {
         return ActivityLog::where('user_id', $userId)->latest('id')->limit($limit)->get()
             ->map(fn ($a) => [
-                'text' => $a->description,
+                'text' => BoutiqueAccess::activity($a->subject_type, $a->description, auth()->user()),
                 'time' => optional($a->created_at)?->diffForHumans() ?? '—',
                 'icon' => $a->icon,
                 'color' => $a->color,
@@ -3831,10 +3960,16 @@ class Demo
         $period->bound(
             CustomerInvoice::where('business_id', $bid)->where('status', CustomerInvoice::ISSUED)
                 // «يدويّة» = رحّلت قيدَها بنفسها (`CustomerInvoices::post`) — لا ما بقي بلا طلبٍ مربوط
-                ->whereExists(fn ($q) => $q->selectRaw('1')->from('journal_entries')
+                ->where(fn ($q) => $q->whereExists(fn ($q) => $q->selectRaw('1')->from('journal_entries')
                     ->whereColumn('journal_entries.sourceable_id', 'customer_invoices.id')
                     ->where('journal_entries.sourceable_type', CustomerInvoice::class)
-                    ->where('journal_entries.source', CustomerInvoices::SOURCE)),
+                    ->where('journal_entries.source', CustomerInvoices::SOURCE))
+                    /*
+                     * أو غطّتها نقاطُ العميل كلُّها: إجماليُّها صفرٌ فلا قيدَ لها، وهي
+                     * شراءٌ يُعدّ كما تُعدّ بيعةُ الصندوق الصفريّة. والفاتورةُ من طلبٍ
+                     * لا تحمل نقاطًا (`fromOrder` يُسقطها)، فلا تُعدّ مرّتين.
+                     */
+                    ->orWhere(fn ($q) => $q->where('loyalty_points', '>', 0)->where('total', '<=', 0))),
             'issued_at',
             date: true,
         )->get(['id', 'customer_id', 'customer_name', 'total'])
@@ -4357,6 +4492,54 @@ class Demo
                 ]);
             }
 
+            /*
+             * ‏‏ومتجرٌ ربط رقمَه من رابطٍ أرسله الفريق — من أرسله ينتظر الخبر (`WhatsAppClientLinks`).
+             */
+            /*
+             * ‏‏ورقمُ متجرٍ صار رقمَ إرساله وحده، أو رُبط وما زال ينتظر، أو تعطّل وهو يُرسل منه
+             * (`WhatsAppSender`) — لا تُنقل رسائلُه إلى رقم أبعاد، فيعرف الفريقُ قبل أن يسأل التاجر.
+             */
+            $senders = WhatsAppSender::bell($limit, null, ['merchant', 'abaad']);
+            foreach ($senders['broken'] as $b) {
+                $add('wa-sender-down-'.$b['connection']->id, [
+                    'text' => __('رسائل واتساب «:shop» لا تخرج: :why', [
+                        'shop' => $b['business']->name, 'why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text'],
+                    ]),
+                    'time' => $b['problem']['since'] ?? __('الآن'),
+                    'icon' => 'message-circle', 'color' => 'danger',
+                    'url' => route('super-admin.businesses.show', $b['business']->id),
+                ]);
+            }
+            foreach ($senders['waiting'] as $r) {
+                $add('wa-sender-wait-'.$r->id, [
+                    'text' => __('رقم واتساب «:shop» مربوط ولم يصر رقم إرساله بعد: :why', [
+                        'shop' => $r->business?->name ?? '—', 'why' => WhatsAppSender::waitingFor($r)['text'],
+                    ]),
+                    'time' => optional($r->created_at)->diffForHumans(),
+                    'icon' => 'message-circle', 'color' => 'warning',
+                    'url' => route('super-admin.businesses.show', $r->business_id),
+                ]);
+            }
+            foreach ($senders['adopted'] as $r) {
+                $add('wa-sender-on-'.$r->id, [
+                    'text' => __('رسائل «:shop» تخرج من رقمه :phone — اعتُمد تلقائيًّا', ['shop' => $r->business?->name ?? '—', 'phone' => $r->phone ?: '—']),
+                    'time' => optional($r->adopted_at)->diffForHumans(),
+                    'icon' => 'message-circle', 'color' => 'success',
+                    'url' => route('super-admin.businesses.show', $r->business_id),
+                ]);
+            }
+
+            foreach (WhatsAppClientLinks::recent($limit) as $l) {
+                $add('wa-client-link-'.$l->id, [
+                    'text' => __('ربط «:shop» رقم واتساب :phone من الرابط الذي أُرسل له', [
+                        'shop' => $l->business?->name ?? '—', 'phone' => $l->connected_phone ?: '—',
+                    ]),
+                    'time' => optional($l->connected_at)->diffForHumans(),
+                    'icon' => 'message-circle', 'color' => 'success',
+                    'url' => route('super-admin.businesses.show', $l->business_id),
+                ]);
+            }
+
             $subs = Subscription::with('business')
                 ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
                 ->whereDate('ends_at', '<=', now()->addDays(30))
@@ -4417,11 +4600,13 @@ class Demo
          */
         $googleSettings = MarketingSettings::group($bid, 'google');
 
-        if (($googleSettings['gbp_alerts_enabled'] ?? '1') === '1') {
+        /* ولا يصل مديرَ المنصّة وهو داخلٌ باسم التاجر، والمقيَّدُ بفرعٍ يُنبَّه بفرعه */
+        if (($googleSettings['gbp_alerts_enabled'] ?? '1') === '1' && ! session()->has('impersonator_id')) {
             $threshold = (int) ($googleSettings['gbp_low_rating'] ?? 2);
 
             $fresh = GoogleBusinessReview::live()
-                ->whereIn('branch_id', Branch::where('business_id', $bid)->pluck('id'))
+                ->whereIn('branch_id', CostsAndLosses::allowedBranches($bid, auth()->user())
+                    ?? Branch::where('business_id', $bid)->pluck('id'))
                 ->where('first_seen_at', '>=', now()->subDays(14))
                 ->with('branch:id,name')
                 ->orderByDesc('reviewed_at')
@@ -4461,17 +4646,54 @@ class Demo
          * والنصُّ يفرّق بين ما يُصلحه وما ننتظره نحن: «راجع أرقام زبائنك»
          * لتاجرٍ تطبيقُنا محجوب لومٌ في غير محلّه، ويجعله يلاحق ما لا يملك.
          */
-        $waAlert = WhatsAppHealth::alert($bid);
+        $waDelivery = WhatsAppHealth::delivery($bid);
+        $waAlert = WhatsAppHealth::alertFor($waDelivery);
 
-        if ($waAlert !== null) {
+        /*
+         * وعميلٌ لا يستقبل رقمُه والربطُ يعمل يُقال تنبيهًا لا عطبًا: يعرفه
+         * التاجر ليتّصل بزبونه، ولا يظنّ واتساب انقطع.
+         */
+        /*
+         * ‏‏ورقمُ المتجر نفسُه متعطّل؟ يُقال بسببه وما يُصلحه — لا «رسائل لم تصل» فوقه بسببٍ آخر
+         * (`WhatsAppSender`). ولا تخرج رسائلُه من رقم أبعاد بدلًا منه.
+         */
+        $waSender = WhatsAppSender::bell($limit, $bid, ['merchant']);
+
+        foreach ($waSender['broken'] as $b) {
+            $add('wa-sender-down-'.$b['connection']->id, [
+                'text' => __('رسائل واتساب متجرك لا تخرج: :why', ['why' => WhatsAppSender::say($b['problem']['code'], $b['problem']['params'])['text']]),
+                'time' => $b['problem']['since'] ?? __('الآن'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'danger',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
+        }
+
+        foreach ($waSender['waiting'] as $r) {
+            $add('wa-sender-wait-'.$r->id, [
+                'text' => __('رقمك مربوط ولم يصر رقم إرسال متجرك بعد: :why', ['why' => WhatsAppSender::waitingFor($r)['text']]),
+                'time' => optional($r->created_at)->format('Y-m-d H:i'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'warning',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
+        }
+
+        if ($waSender['broken'] === [] && ($waAlert !== null || $waDelivery['state'] === WhatsAppHealth::PARTIAL)) {
             $add('wa-delivery', [
-                'text' => $waAlert['ours']
-                    ? __('لم تصل :n رسالة واتساب إلى زبائنك — العطب عندنا ونعالجه', ['n' => $waAlert['count']])
-                    : __('لم تصل :n رسالة واتساب إلى زبائنك — راجع أرقامهم', ['n' => $waAlert['count']]),
+                'text' => match (true) {
+                    $waAlert === null => __('لم تصل :n رسالة واتساب إلى :c عميل — واتساب يعمل، فتحقّق من أرقامهم', [
+                        'n' => $waDelivery['failed'], 'c' => $waDelivery['customers'],
+                    ]),
+                    $waAlert['ours'] => __('لم تصل :n رسالة واتساب إلى زبائنك — العطب عندنا ونعالجه', ['n' => $waAlert['count']]),
+                    default => __('لم تصل :n رسالة واتساب إلى زبائنك — راجع أرقامهم', ['n' => $waAlert['count']]),
+                },
                 'time' => __('آخر يوم'),
                 'section' => 'marketing',
                 'icon' => 'message-circle',
-                'color' => 'danger',
+                'color' => $waAlert === null ? 'warning' : 'danger',
                 /*
                  * ويقود إلى الصفوف نفسِها لا إلى شاشة الربط.
                  *
@@ -4822,6 +5044,37 @@ class Demo
         }
 
         /*
+         * ═══ وبيعةٌ وصلت بعد انقطاع وخصمُ نقاطها يحتاج مراجعة ═══
+         *
+         * اكتملت عند الصندوق بخصم نقاط، ثمّ وجدت حين وصلت رصيدًا لا يغطّيه —
+         * صُرف في صندوقٍ آخر، أو تغيّرت القواعد، أو أُطفئ البرنامج. فلم تُردّ
+         * ولم يُغيَّر مبلغُها، وصُرف من الرصيد ما وُجد فيه لا أكثر. والقرارُ
+         * لصاحب المحلّ: يقبل الفرقَ أو يتحدّث إلى الزبون.
+         */
+        $reviews = Order::where('business_id', $bid)
+            ->whereNotNull('loyalty_review')
+            // وبيعةٌ أُلغيت عادت نقاطُها المصروفة وانتهت مسألتُها (`OrderCorrection::reverseLoyalty`)
+            ->where('status', '!=', OrderStatus::CANCELLED)
+            ->orderByDesc('id')->limit($limit)->get(['id', 'number', 'loyalty_review', 'ordered_at', 'created_at']);
+
+        foreach ($reviews as $o) {
+            $r = (array) $o->loyalty_review;
+            $suspected = ($r['context'] ?? null) === 'suspected';
+
+            $add('loyalty-review-'.$o->id, [
+                'text' => $suspected
+                    ? __('بيعة :number وصلت بعد انقطاع وأرقامُ خصمها لا تتّبع أيَّ قواعد — لا تُعتمد قبل التحقّق', ['number' => $o->number])
+                    : __('بيعة :number وصلت بعد انقطاع وفيها مخالفةٌ ماليّة تحتاج مراجعة', ['number' => $o->number]),
+                'hint' => self::offlineReviewHint($r),
+                'time' => optional($o->ordered_at ?? $o->created_at)->format('Y-m-d H:i'),
+                'section' => 'orders',
+                'icon' => 'star',
+                'color' => $suspected ? 'danger' : 'warning',
+                'url' => route('admin.orders.show', $o->number),
+            ]);
+        }
+
+        /*
          * ═══ ورابطُ دفعٍ دُفع ═══
          *
          * العميلُ يدفع من هاتفه، وإشعارُ Paymob يسجّل التحصيلَ ويُقفل الفاتورة
@@ -4862,6 +5115,34 @@ class Demo
                 'url' => $toInvoice
                     ? route('admin.customerInvoices.show', $link->customer_invoice_id)
                     : route('admin.finance.paymentLinks'),
+            ]);
+        }
+
+        /*
+         * ‏‏ورقمٌ رُبط بالمتجر من رابطٍ أرسله فريقُ أبعاد — من ربطه لم يدخل الحساب، فيُقال لصاحبه
+         * ليعرفه، أو ليفصله إن لم يكن منه (`WhatsAppClientLinks`).
+         */
+        foreach ($waSender['adopted'] as $r) {
+            $add('wa-sender-on-'.$r->id, [
+                'text' => __('رسائل متجرك تخرج الآن من رقمك :phone', ['phone' => $r->phone ?: '—']),
+                'time' => optional($r->adopted_at)->format('Y-m-d H:i'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'success',
+                'url' => route('admin.integrations.whatsapp'),
+            ]);
+        }
+
+        foreach (WhatsAppClientLinks::recent($limit, $bid) as $l) {
+            $add('wa-client-link-'.$l->id, [
+                'text' => __('رُبط رقم واتساب :phone بمتجرك من رابطٍ أرسله فريق أبعاد — إن لم يكن منك فافصله وراسلنا', [
+                    'phone' => $l->connected_phone ?: '—',
+                ]),
+                'time' => optional($l->connected_at)->format('Y-m-d H:i'),
+                'section' => 'integrations',
+                'icon' => 'message-circle',
+                'color' => 'info',
+                'url' => route('admin.integrations.whatsapp'),
             ]);
         }
 

@@ -305,6 +305,17 @@ class CustomerImportExportController extends Controller
                 }
             }
 
+            /*
+             * ورقمُ العميل الجديد يُسأل كما يُسأل في كلّ باب (`CustomerPhone`).
+             *
+             * والصفُّ الذي يحدّث عميلًا قائمًا لا يُسأل: طابقه برقمه، فرقمُه
+             * هو المحفوظ — ورقمٌ قديمٌ لم يتغيّر لا يمنع تحديثَ بقيّة بياناته.
+             */
+            if ($status === 'new' && $phone !== '' && ($why = \App\Support\CustomerPhone::refusal($phone)) !== null) {
+                $status = 'invalid';
+                $note = $why.' '.__('— يُتجاهل');
+            }
+
             if ($np !== '') {
                 $seen[$np] = true;
             }

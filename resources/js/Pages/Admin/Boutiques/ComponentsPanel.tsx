@@ -62,13 +62,15 @@ const MOVE_LABEL: Record<BoutiqueLedger['movements'][number]['type'], string> = 
     refund: 'استردادٌ نقديّ من البوتيك',
 };
 
-export default function ComponentsPanel({ boutiqueId, part, payable, ledger, settlement, currency }: {
+export default function ComponentsPanel({ boutiqueId, part, payable, ledger, settlement, currency, canPay = true }: {
     boutiqueId: number;
     part: ComponentsPart;
     payable: number;
     ledger: BoutiqueLedger;
     settlement: SettlementComponents | null;
     currency: Currency;
+    /** السدادُ والاسترداد — بإذنه لا بالقراءة (والخادمُ يردّ) */
+    canPay?: boolean;
 }) {
     const t = useTranslate();
     const { errors } = usePage<PageProps>().props as unknown as { errors?: Record<string, string> };
@@ -148,7 +150,7 @@ export default function ComponentsPanel({ boutiqueId, part, payable, ledger, set
                     </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-end gap-3">
+                {canPay && <div className="mt-4 flex flex-wrap items-end gap-3">
                     <div className="w-40">
                         <Select value={method} onChange={(e) => setMethod(e.target.value)} aria-label={t('طريقة الدفع')}
                             options={METHODS.map((x) => ({ label: x, value: x }))} />
@@ -172,7 +174,7 @@ export default function ComponentsPanel({ boutiqueId, part, payable, ledger, set
                             </Button>
                         </>
                     )}
-                </div>
+                </div>}
                 {errors?.refund && <p className="mt-2 text-[12px] text-[#b91c1c]">{errors.refund}</p>}
             </Card>
 

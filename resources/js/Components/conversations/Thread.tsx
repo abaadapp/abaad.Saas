@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect, useRef } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowLeft, Check, CheckCheck, Download, FileText, Lock, PanelRightOpen } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { fileSize } from '@/lib/format';
@@ -194,6 +194,15 @@ function Ticks({ status, label }: { status: DeliveryMark; label?: string | null 
     );
 }
 
+/** اتّجاهُ نصٍّ من أوّل حرفٍ قويٍّ فيه — عربيٌّ أم لاتينيّ — أو لا شيء لأرقامٍ ورموز */
+export function textDirection(text: string | null | undefined): 'rtl' | 'ltr' | null {
+    const first = (text ?? '').match(/[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]|[A-Za-z\u00C0-\u024F]/);
+
+    if (!first) return null;
+
+    return /[A-Za-z\u00C0-\u024F]/.test(first[0]) ? 'ltr' : 'rtl';
+}
+
 /**
  * الفقاعة — كما في واتساب ويب.
  *
@@ -247,14 +256,33 @@ export function MessageBubble({
     /* مكانُ الوقت والعلامة في آخر السطر — يُحجز فلا يقع النصُّ تحته */
     const reserve = (time?.length ?? 0) * 6.5 + (mark ? 22 : 0) + 10;
 
+    /*
+     * ═══ ونصٌّ بغير اتّجاه الصفحة ═══
+     *
+     * الحجزُ يقع في آخر السطر الأخير بحسب اتّجاه **النصّ**، والوقتُ في
+     * زاوية الفقاعة بحسب اتّجاه **الصفحة**. فرسالةٌ إنجليزيّةٌ في صفحةٍ
+     * عربيّة يُحجز لها يمينًا ويقع وقتُها يسارًا — فوق أوّل كلماتها. فإن
+     * خالف النصُّ الفقاعةَ أخذ الوقتُ سطرًا تحته ولا حجز.
+     */
+    const own = textDirection(body);
+    const box = useRef<HTMLDivElement>(null);
+    const [crossed, setCrossed] = useState(false);
+
+    useLayoutEffect(() => {
+        const el = box.current;
+        setCrossed(!!own && !!el && own !== getComputedStyle(el).direction);
+    }, [own]);
+
     void avatar;
 
     return (
         <div className={cn('flex', out ? 'justify-end' : 'justify-start', first && 'pt-1.5')}>
             <div className={cn('flex max-w-[85%] flex-col sm:max-w-[65%]', out ? 'items-end' : 'items-start', hasFiles && 'sm:max-w-[360px]')}>
                 <div
+                    ref={box}
                     className={cn(
                         'relative w-fit max-w-full rounded-[7.5px] px-[9px] pb-[7px] pt-[6px] text-[14.2px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]',
+                        crossed && (time || mark) && 'pb-[22px]',
                         internal
                             ? 'border border-dashed border-[var(--cv-note-border,#f59e0b)] bg-[var(--cv-note,#fffbeb)] text-[var(--cv-note-ink,#111b21)]'
                             : out
@@ -298,9 +326,9 @@ export function MessageBubble({
                     )}
 
                     {body && (
-                        <p className="whitespace-pre-wrap break-words leading-[19px]" dir="auto">
+                        <p className="whitespace-pre-wrap break-words leading-[19px]" dir={own ?? 'auto'}>
                             {body}
-                            <span aria-hidden="true" className="inline-block align-middle" style={{ width: reserve }} />
+                            {!crossed && <span aria-hidden="true" className="inline-block align-middle" style={{ width: reserve }} />}
                         </p>
                     )}
 

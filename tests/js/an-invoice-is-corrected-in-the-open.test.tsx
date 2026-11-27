@@ -279,6 +279,38 @@ describe('تعديلُ المسودّة', () => {
     });
 });
 
+describe('خصمُ نقاط الولاء في التعديل والتصحيح', () => {
+    const loyalty = { points: 1000, discount: 10 };
+
+    it('المسودّةُ تقول إنّه يُعاد على البنود الجديدة ولا تُصرف النقاط قبل الإصدار', () => {
+        reset({ invoice: invoice({ status: 'مسودة', number: null, kind: 'draft', paid: 0, state: 'مسودة', loyalty }), tax_rates: null });
+        render(<CustomerInvoiceEdit />);
+
+        expect(screen.getByTestId('edit-draft-loyalty')).toHaveTextContent('1000');
+        expect(screen.getByTestId('edit-draft-loyalty')).toHaveTextContent('لا تُخصم النقاط قبل إصدار الفاتورة');
+        expect(screen.queryByTestId('edit-issued-loyalty')).toBeNull();
+    });
+
+    it('والصادرةُ تقول إنّ حصّة كلّ بندٍ تتبعه، ولا تُصرف نقاطٌ لبندٍ زاد', () => {
+        reset({ invoice: invoice({ kind: 'issued', paid: 0, state: 'غير مدفوعة', loyalty }) });
+        render(<CustomerInvoiceEdit />);
+
+        const note = screen.getByTestId('edit-issued-loyalty');
+        expect(note).toHaveTextContent('1000');
+        expect(note).toHaveTextContent('تعود النقاط بنسبة الإشعار الدائن');
+        expect(note).toHaveTextContent('لا تُصرف نقاط لبند زاد أو أُضيف');
+        expect(screen.queryByTestId('edit-draft-loyalty')).toBeNull();
+    });
+
+    it('وفاتورةٌ بلا نقاط لا تقول شيئًا', () => {
+        reset({ invoice: invoice({ kind: 'issued', paid: 0, state: 'غير مدفوعة', loyalty: null }) });
+        render(<CustomerInvoiceEdit />);
+
+        expect(screen.queryByTestId('edit-issued-loyalty')).toBeNull();
+        expect(screen.queryByTestId('edit-draft-loyalty')).toBeNull();
+    });
+});
+
 describe('صفحةُ الفاتورة', () => {
     const shown = {
         id: 3, number: 'CINV-000003', customer: 'وزارة الثقافة', customer_id: 7, status: 'صادرة', state: 'غير مدفوعة',

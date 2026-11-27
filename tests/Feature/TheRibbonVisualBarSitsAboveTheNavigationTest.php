@@ -9,6 +9,7 @@ use App\Models\Currency;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\ImageVariants;
 use App\Support\MarketingSettings;
 use App\Support\Store\PageEditor;
 use App\Support\Store\StoreCollections;
@@ -378,7 +379,8 @@ class TheRibbonVisualBarSitsAboveTheNavigationTest extends TestCase
 
         $this->wear([$this->card(['type' => 'shop', 'value' => ''], ['image' => $url])]);
 
-        $this->assertStringContainsString('<img src="'.e($url).'" alt=""', $this->page());
+        // ‏بمصغّرتها التي صُنعت مع الرفع — والبطاقةُ تحفظ الرابطَ الذي ردّه
+        $this->assertStringContainsString('<img src="'.e(ImageVariants::link($url, ImageVariants::THUMB)).'" alt=""', $this->page());
     }
 
     public function test_a_card_may_open_a_collection_saved_in_the_same_request(): void

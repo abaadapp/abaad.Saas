@@ -15,8 +15,10 @@ use App\Support\AddonStock;
 use App\Support\Books;
 use App\Support\BoutiqueDues;
 use App\Support\CouponLimits;
+use App\Support\CustomerPhone;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
+use App\Support\ImageVariants;
 use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\NotesAndEdits;
@@ -261,10 +263,17 @@ final class WebCheckout
      * تُقرأ في صفحة السلّة وصفحة إتمام الطلب معًا، وتُعاد قراءتُها عند
      * الإتمام تحت قفل. والخطأُ يُقال بندًا بندًا كما يقوله الصندوق.
      *
+     * ═══ و«نفدت الكمية» اليدويّة للموقع وحده ═══
+     *
+     * محادثةُ واتساب تسعّر من هنا (`WhatsAppOrderCheckout::quote`) فتمرّ
+     * `fromWhatsApp: true` — ويبقى عليها ما سواه كلُّه: المنشور، والرفّ،
+     * والإضافات. والقناةُ وسيطٌ يكتبه المنادي لا حقلٌ في الحمولة: لا يبلغه
+     * متصفّح، وكلُّ بابٍ للموقع ينادي بلا هذا الوسيط فيبقى ممنوعًا.
+     *
      * @param  array<string, mixed>  $payload  حمولةُ المتصفّح كما وصلت — لا يُوثَق بشكلها
      * @return array{lines: list<array>, subtotal: float, discount: float, delivery: float, tax: float, total: float, coupon: ?string, promo_error: ?string, free_over: ?float}
      */
-    public static function quote(Business $business, array $payload, bool $lock = false, bool $settling = false): array
+    public static function quote(Business $business, array $payload, bool $lock = false, bool $settling = false, bool $fromWhatsApp = false): array
     {
         $bid = (int) $business->id;
         $items = self::items($payload['items'] ?? []);
@@ -281,7 +290,7 @@ final class WebCheckout
          * كما لا يردّه إغلاقُ الاستقبال (`accepts`). والرفُّ يُفحص كما كان.
          */
         $lines = $sale->priceItems($items, $lock, $settling ? SaleLines::SETTLING : SaleLines::WEBSITE);
-        self::assertPublished($bid, $lines, $settling);
+        self::assertPublished($bid, $lines, $settling, $fromWhatsApp);
 
         /*
          * ═══ وإضافةٌ نفد رفُّها تُقال قبل صفحة البنك ═══
@@ -379,7 +388,8 @@ final class WebCheckout
                 'name_en' => $l['product']->name_en,
                 'variant' => $l['variant']?->name,
                 'variant_en' => $l['variant']?->name_en,
-                'image' => $l['product']->image,
+                // ‏المصغّرةُ — السلّةُ ترسمها بعرض ثمانٍ وثمانين
+                'image' => ImageVariants::url((string) $l['product']->getRawOriginal('image'), ImageVariants::THUMB),
                 'price' => (float) $l['price'],
                 'qty' => (int) $l['qty'],
                 // إجماليُّ البند بإضافاته — هو ما يدخل المجموعَ الفرعيّ فوقه
@@ -1094,10 +1104,11 @@ final class WebCheckout
 
     /**
      * ما لا يُعرض للزبون لا يُباع له: `published` شرطُ الموقع فوق شرط الصندوق.
+     * وما علّمه صاحبُه «نفدت الكمية» يُعرض ولا يُباع (`website_sold_out`).
      *
      * إلّا دفعةً قُبضت (`$settling`): عُرض حين فُتح دفعُها — انظر `quote`.
      */
-    private static function assertPublished(int $bid, array $lines, bool $settling = false): void
+    private static function assertPublished(int $bid, array $lines, bool $settling = false, bool $fromWhatsApp = false): void
     {
         $ids = collect($lines)->map(fn ($l) => $l['product']?->id)->filter()->unique()->values();
         $shown = $settling
@@ -1107,6 +1118,25 @@ final class WebCheckout
 
         if ($hidden->isNotEmpty() || collect($lines)->contains(fn ($l) => ! $l['product'])) {
             throw ValidationException::withMessages(['items' => __('صنفٌ في سلّتك لم يعد متاحًا — أزله وأعد المحاولة.')]);
+        }
+
+        /*
+         * و«نفدت الكمية» بيد التاجر — يُرى الصنفُ ولا يُطلب (`WebsiteSoldOut`).
+         *
+         * من سلّةٍ قديمة، أو بطلبٍ يتجاوز الصفحة، أو قبل صفحة البنك: كلُّها
+         * تمرّ من هنا. ودفعةٌ قُبضت لا تُردّ به — كالمخفيّ فوقه سواء.
+         *
+         * وطلبُ واتساب لا يُردّ به: العلَمُ قرارُ الموقع، والمحادثةُ تبيع
+         * بقواعدها كما كانت — انظر `quote`.
+         */
+        if (! $settling && ! $fromWhatsApp && WebsiteSoldOut::allowed($bid)) {
+            $out = Product::where('business_id', $bid)->whereIn('id', $ids)->where('website_sold_out', true)->pluck('id')->all();
+
+            foreach ($lines as $l) {
+                if (in_array((int) $l['product']->id, $out, true)) {
+                    throw ValidationException::withMessages(['items' => __('«:name» نفدت كميته — أزله من سلّتك ثمّ أكمل الطلب.', ['name' => $l['name']])]);
+                }
+            }
         }
 
         /* وما نفد من الرفّ يُقال هنا قبل الإتمام — بقاعدة الموقع نفسِها */
@@ -1292,10 +1322,19 @@ final class WebCheckout
          * يحرس. وقد نجا من الطفرات لأنّه لا يحرس شيئًا: عُطِّل فلم يتغيّر
          * شيء. فالحارسُ واحد، والقواعدُ أقربُ إلى ما يُقرأ.
          */
+        /*
+         * والنمطُ يردّ ما دون ثماني خاناتٍ قبل أن تُسأل القاعدةُ المشتركة — فكان
+         * رقمٌ عُمانيٌّ من سبعٍ يُقال له «غير صحيح» بلا سبب. فإن كان للقاعدة
+         * سببٌ قيل هو (`CustomerPhone::refusal`)، وإلّا بقي النصُّ العامّ.
+         */
+        $phoneWhy = $settling === null && is_string($payload['phone'] ?? null)
+            ? CustomerPhone::refusal($payload['phone'])
+            : null;
+
         $v = validator($payload, $rules, [
             'name.required' => __('اكتب اسمك.'),
             'phone.required' => __('اكتب رقم هاتفك.'),
-            'phone.regex' => __('رقم الهاتف غير صحيح.'),
+            'phone.regex' => $phoneWhy ?? __('رقم الهاتف غير صحيح.'),
             'date.required' => __('اختر موعد التسليم.'),
             'date.after_or_equal' => __('الموعد لا يكون في الماضي.'),
             'pay.in' => __('اختر وسيلة الدفع.'),
@@ -1319,6 +1358,10 @@ final class WebCheckout
              */
             if ($settling === null && ! $v->errors()->has('phone') && ! WhatsAppPhone::isValid((string) $payload['phone'])) {
                 $v->errors()->add('phone', __('رقم الهاتف غير صحيح.'));
+            }
+            // والرقمُ العُمانيّ ثماني خانات، والدوليّ بمفتاح دولته — القاعدةُ نفسُها في كلّ باب (`CustomerPhone`)
+            elseif ($settling === null && ! $v->errors()->has('phone') && ($why = CustomerPhone::refusal((string) $payload['phone'])) !== null) {
+                $v->errors()->add('phone', $why);
             }
 
             /*

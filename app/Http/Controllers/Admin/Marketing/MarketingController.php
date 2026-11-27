@@ -700,7 +700,17 @@ class MarketingController extends Controller
             ]);
         }
 
-        if ($slug !== null && Business::where('site_slug', $slug)->whereKeyNot($business->id)->exists()) {
+        /*
+         * ولا يتّخذ متجرٌ اسمَ نطاقٍ ثُبّت لغيره (`Domains::reservedFor`) — ولو
+         * تركه صاحبُه: `ribbon.abaadapp.om` لـRIBBON أبدًا، وروابطُه القديمة له.
+         */
+        // ويُسأل عند تغيير العنوان وحده: من يحفظ إعداداته بعنوانه الذي يحمله لا يُردّ
+        $reserved = $slug === null || $slug === $business->site_slug ? null : Domains::reservedFor($slug);
+
+        if ($slug !== null && (
+            Business::where('site_slug', $slug)->whereKeyNot($business->id)->exists()
+            || ($reserved !== null && $reserved !== (int) $business->id)
+        )) {
             throw ValidationException::withMessages([
                 'site_slug' => __('هذا العنوان محجوز لمتجرٍ آخر — اختر غيره.'),
             ]);
@@ -740,7 +750,15 @@ class MarketingController extends Controller
         $site = MarketingSettings::group($this->bid(), 'website');
         $configures = $slug !== $business->site_slug
             || $published !== (($site['store_on'] ?? '') === '1')
-            || ($request->exists('store_theme') && (string) $request->input('store_theme') !== (string) ($site['store_theme'] ?? ''));
+            || ($request->exists('store_theme') && (string) $request->input('store_theme') !== (string) ($site['store_theme'] ?? ''))
+            /*
+             * و«الظهور في البحث» ضبطٌ كذلك: شاشتُه تحت `WEBSITE_CONFIGURE`
+             * وبابُها `admin.website.seo.save`. ومن أرسله إلى هنا بيده لا يتخطّى
+             * حارسَها — إخفاءُ متجرٍ من غوغل ليس كتابةَ ساعات توصيل.
+             */
+            || collect(StoreSeo::KEYS)->contains(fn (string $key) => array_key_exists($key, $data)
+                && ($key === 'store_seo_index' ? ($request->boolean($key) ? '1' : '0') : (string) ($data[$key] ?? ''))
+                    !== (string) ($site[$key] ?? ''));
 
         abort_if($configures && ! $request->user()?->may(Permissions::WEBSITE_CONFIGURE), 403);
 
@@ -777,6 +795,17 @@ class MarketingController extends Controller
             );
         }
         unset($data[StoreTerms::TEXT], $data[StoreTerms::TEXT_EN]);
+
+        /*
+         * ═══ والبحثُ يسري بالحفظ ومن بابه الواحد ═══
+         *
+         * خرج من عقد المسوّدة (`StoreContent::RETIRED`)، ويُكتب بـ`StoreSeo::save`
+         * — حيًّا مع وقت حفظه، ويُسقط ما بقي منه في مسوّدةٍ قديمة. فتبويبٌ
+         * قديمٌ ما زال يرسله إلى هنا يحفظه كما تحفظه شاشتُه.
+         */
+        $seo = array_intersect_key($data, array_flip(StoreSeo::KEYS));
+        $data = array_diff_key($data, $seo);
+        StoreSeo::save($this->bid(), $seo);
 
         /*
          * ═══ ما يُنشر يذهب إلى المسوّدة، وما يسري فورًا يُكتب حيًّا ═══
@@ -945,11 +974,17 @@ class MarketingController extends Controller
         ]);
 
         // في مجلّد النشاط لا في مجلّدٍ عامّ — فنسخُ متجرٍ أو حذفُه يعرف ما يخصّه
-        $saved = StoreImageUpload::store($this->bid(), $request->file('image'));
+        // ‏و`original` بصمةُ أصلها قبل أن يصغّره المتصفّح — تلميحٌ تُطابَق به صورُ هذا المتجر وحده
+        $saved = StoreImageUpload::store($this->bid(), $request->file('image'), $request->input('original'));
 
         // والمحرّرُ يرفع بطلبٍ وحده (`fetch`) لا بزيارة — فلا يقطع حفظًا جاريًا ولا يقطعه حفظ
         if ($request->expectsJson()) {
-            return response()->json(['url' => $saved['url'], 'meta' => ['w' => $saved['w'], 'h' => $saved['h']]]);
+            return response()->json([
+                'url' => $saved['url'],
+                'meta' => ['w' => $saved['w'], 'h' => $saved['h']],
+                // ‏وصورةٌ في موقعه من قبل: رابطُها هي، ولم يُحفظ ملفٌّ ثانٍ — تقولها الشاشة
+                'found' => $saved['found'] ?? null,
+            ]);
         }
 
         return back()
@@ -1049,6 +1084,28 @@ class MarketingController extends Controller
 
     public function saveLoyalty(Request $request)
     {
+        /*
+         * وقيمةُ النقاط يحدّدها التاجر — وما لم يُرسَل منها يبقى كما حُفظ.
+         *
+         * تبويبٌ قديمٌ مفتوح لا يعرف الحقولَ الجديدة: لو صارت مطلوبةً لرُدّ
+         * حفظُه برسالةٍ عن حقولٍ لا يراها. فتُقرأ القيمةُ المحفوظة لما غاب،
+         * وبها يُقاس سقفُ الاكتساب.
+         */
+        $current = Loyalty::rules($this->bid());
+        $points = (int) ($request->input('loyalty_redeem_points') ?: $current['points']);
+        $value = (float) ($request->input('loyalty_redeem_value') ?: $current['value']);
+        $byPercent = ($request->input('loyalty_redeem_mode') ?? $current['mode']) === Loyalty::PERCENT;
+
+        /*
+         * وفي طريقة النسبة لا قيمةَ ثابتةً للنقطة يُقاس بها الاكتساب: قيمتُها
+         * تتبع الفاتورة التي تُصرف عليها. فيبقى السقفُ الذي كان قبل أن تصير
+         * القيمةُ إعدادًا (مئةُ نقطةٍ بوحدة: ٩٩٫٩)، ويحمي المتجرَ سقفُ الاستبدال
+         * (`loyalty_redeem_max_pct`) — لا قيمةٌ مخفيّةٌ في حقلٍ لا يراه.
+         */
+        $maxRate = $byPercent
+            ? Loyalty::maxEarnRate()
+            : Loyalty::maxEarnRate(max(1, $points), max(0.001, $value));
+
         $data = $request->validate([
             'loyalty_enabled' => ['nullable', 'boolean'],
             /*
@@ -1057,26 +1114,51 @@ class MarketingController extends Controller
              * كان السقف ألفًا، والاستبدال مئةُ نقطةٍ للريال: فمنحُ ألف نقطةٍ
              * لكلّ ريالٍ يعيد إلى الزبون عشرة ريالاتٍ عن كلّ ريالٍ يدفعه.
              * وهذا ليس سخاءً يُترك لصاحبه — هو حلقةٌ لا تُغلق: يشتري بنقاطٍ
-             * يكسب منها نقاطًا أكثر.
+             * يكسب منها نقاطًا. والسقفُ يتبع قيمةَ النقاط التي اختارها.
              */
-            'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:'.Loyalty::maxEarnRate()],
+            'loyalty_earn_rate' => ['required', 'numeric', 'min:0', 'max:'.$maxRate],
+            // الاستبدالُ مقبضٌ مستقلّ: يُطفأ وتبقى النقاطُ تُكتسب وتتراكم
+            'loyalty_redeem_enabled' => ['sometimes', 'boolean'],
+            /*
+             * وطريقةُ الاستبدال: مبلغٌ ثابتٌ لكلّ عددٍ من النقاط، أو نسبةٌ من الفاتورة
+             * المؤهّلة. وتبويبٌ أقدم لا يرسلها فتبقى كما حُفظت — ومن لم يحفظ شيئًا
+             * يبقى على المبلغ الثابت (`Loyalty::DEFAULTS`).
+             */
+            'loyalty_redeem_mode' => ['sometimes', 'required', 'in:'.Loyalty::FIXED.','.Loyalty::PERCENT],
+            // كم نقطةً تساوي كم من عملة المتجر — عددٌ صحيحٌ وقيمةٌ موجبة
+            'loyalty_redeem_points' => ['sometimes', 'required', 'integer', 'min:1', 'max:1000000'],
+            'loyalty_redeem_value' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:100000'],
+            // نسبةٌ من الفاتورة لكلّ `loyalty_redeem_points` نقطة — لا تتجاوز الفاتورةَ كلَّها
+            'loyalty_redeem_percent' => ['sometimes', 'required', 'numeric', 'gt:0', 'max:100'],
+            // ما دونه من فاتورةٍ لا يُستبدل عليه — صفرٌ يعني كلَّ فاتورة
+            'loyalty_redeem_min_invoice' => ['sometimes', 'required', 'numeric', 'min:0', 'max:10000000'],
             /*
              * سقف الاستبدال نسبةٌ من الفاتورة لا أكثر من مئة.
              *
              * تجاوزُها يجعل النقاط تُغطّي الفاتورة كلّها وزيادة، فيخرج البيع
              * بمبلغٍ سالب.
              */
-            'loyalty_redeem_max_pct' => ['required', 'integer', 'min:0', 'max:100'],
+            'loyalty_redeem_max_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            /*
+             * والسقفان اختياريّان: صاحبُ النشاط يحدّد سياستَه، ولا تفرض المنصّةُ
+             * سقفًا. فراغُ الحقل يُحفظ «بلا حدّ» (`Loyalty::rules`)، وحقلٌ لا يُرسله
+             * تبويبٌ أقدم يبقى كما حُفظ. ومبلغٌ صفريٌّ لا يُكتب: من لا يريد
+             * الاستبدالَ يطفئه بمقبضه، لا بسقفٍ يُخفي التنبيهَ بلا سبب.
+             */
+            'loyalty_redeem_max_amount' => ['nullable', 'numeric', 'gt:0', 'max:10000000'],
             'loyalty_redeem_min' => ['required', 'integer', 'min:0'],
         ], [
-            'loyalty_earn_rate.max' => __(
-                'كلّ :unit نقطة تساوي وحدةَ عملةٍ عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
-                [
-                    'unit' => Loyalty::POINTS_PER_UNIT,
-                    'rate' => (string) $request->input('loyalty_earn_rate'),
-                    'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate')),
-                ],
-            ),
+            'loyalty_earn_rate.max' => $byPercent
+                ? __('أقصى ما يُمنح :max نقطة لكل وحدة شراء.', ['max' => $maxRate])
+                : __(
+                    'كلّ :unit نقطة تساوي :value عند الاستبدال، فمنحُ :rate نقطةً لكل وحدةٍ يعيد للزبون :pct٪ من فاتورته.',
+                    [
+                        'unit' => $points,
+                        'value' => rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.'),
+                        'rate' => (string) $request->input('loyalty_earn_rate'),
+                        'pct' => Loyalty::cashbackPercent((float) $request->input('loyalty_earn_rate'), max(1, $points), $value),
+                    ],
+                ),
         ]);
 
         MarketingSettings::save($this->bid(), 'loyalty', $data);

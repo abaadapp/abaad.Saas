@@ -143,6 +143,9 @@ class SubscriptionController extends Controller
          */
         $target = $subscription->plan_id ? Plan::find($subscription->plan_id) : null;
 
+        // والباقةُ من قطاع المتجر — والرمي داخل المعاملة يُرجع الدورةَ كما كانت (`Sectors`)
+        \App\Support\Sectors::assertPlanFits($business->sector_id, $target?->id);
+
         if ($target && (int) $target->id !== (int) $business->plan_id && $over = PlanLimits::exceededBy($business, $target)) {
             throw ValidationException::withMessages([
                 'plan_id' => __('المتجر يتجاوز باقة «:plan»: :over. أنقص الزائد قبل التنزيل.', [
@@ -195,6 +198,8 @@ class SubscriptionController extends Controller
                 'max_branches' => $p->max_branches,
                 'max_employees' => $p->max_employees,
                 'max_products' => $p->max_products,
+                // قطاعُ الباقة — تُعرض في نماذج الشركة من قطاعها وحده (`Sectors`)
+                'sector_id' => $p->sector_id,
             ])
             ->all();
     }

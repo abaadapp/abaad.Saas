@@ -35,9 +35,20 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
     {
         parent::setUp();
         $this->buildTwoShops();
+        // وبوابةُ عملاء RIBBON للمتجر A — معرّفُه ونطاقُه (`RibbonPortal\Portal`)
+        config(['storefront.ribbon_customer_portal' => ['business' => (int) $this->a->id, 'enabled' => true], 'storefront.subdomain_businesses' => [(int) $this->a->id => 'ribbon']]);
         // ومستحقّاتُ مكوّنات البوتيك مفتوحةٌ للمتجرين: بلاها تُردّ أبوابُها بـ404 قبل أن يُسأل عن الملكيّة
         \Illuminate\Support\Facades\DB::table('businesses')->whereIn('id', [$this->a->id, $this->b->id])
-            ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true, 'whatsapp_inbox_enabled' => true]);
+            ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true]);
+        /*
+         * ‏‏وأتمتةُ الردود بالكلمات مفتوحةٌ هنا (`ChannelAutomationsSwitch`): مقفلةً تردّ صفحتُها وأبوابُها ٤٠٤
+         * قبل أن يُسأل سؤالُ هذا الاختبار — فتمرّ بلا حارس.
+         */
+        \App\Support\ChannelAutomationsSwitch::set(\App\Support\ChannelAutomationsSwitch::ALL);
+        \App\Support\WhatsAppCampaignsSwitch::set(\App\Support\WhatsAppCampaignsSwitch::ALL);
+        // ‏‏وإنستقرام مفتوحٌ هنا (`InstagramPlatform`) — أبوابُ أتمتته تردّ ٤٠٤ بلا مفتاحه
+        \App\Support\InstagramPlatform::setCredentials('1234567890', 'test-instagram-secret');
+        \App\Support\InstagramPlatform::setMode(\App\Support\InstagramPlatform::ALL);
     }
 
     /**
@@ -54,6 +65,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
             'catalog' => [
                 ['المنتجات', 'put', 'admin.products.update', ['id' => 'product']],
                 ['المنتجات', 'patch', 'admin.products.quick', ['id' => 'product']],
+                ['المنتجات', 'patch', 'admin.products.websiteStatus', ['id' => 'product']],
                 ['المنتجات', 'post', 'admin.products.toggle', ['id' => 'product']],
                 ['المنتجات', 'post', 'admin.products.duplicate', ['id' => 'product']],
                 ['المنتجات', 'delete', 'admin.products.destroy', ['id' => 'product']],
@@ -118,9 +130,15 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['العملاء', 'post', 'admin.customers.internal', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.language', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.note', ['id' => 'customer']],
-                ['العملاء', 'post', 'admin.customers.redeem', ['id' => 'customer']],
+                // وتصحيحُ رصيد النقاط — لعميلٍ من المتجر نفسِه وحده (`CustomerController::adjustPoints`)
+                ['العملاء', 'post', 'admin.customers.points.adjust', ['id' => 'customer']],
                 // وطلبُ دفعةٍ برابط — لعميلٍ من المتجر نفسِه وحده (`PaymentRequestController`)
                 ['العملاء', 'post', 'admin.customers.paymentLink', ['id' => 'customer']],
+                // وبوابةُ عملاء RIBBON — مفتوحةٌ هنا للمتجر A: مغلقةً تردّ أبوابُها ٤٠٤ قبل أن يُسأل لمن العميل
+                ['بوابة العملاء', 'delete', 'admin.customers.portal.stop', ['id' => 'customer']],
+                ['بوابة العملاء', 'post', 'admin.customers.portal.allow', ['id' => 'customer']],
+                ['بوابة العملاء', 'delete', 'admin.settings.portal.link', ['link' => 'portal_link']],
+                ['بوابة العملاء', 'post', 'admin.settings.portal.allow', ['link' => 'portal_link']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.save', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.default', ['id' => 'customer', 'addressId' => 'address'], ['id']],
                 ['عناوين العميل', 'delete', 'admin.customers.addresses.delete', ['id' => 'customer', 'addressId' => 'address'], ['id']],
@@ -252,6 +270,21 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['Google Business', 'post', 'admin.integrations.googleBusiness.branch.link', ['branch' => 'branch']],
                 ['Google Business', 'post', 'admin.integrations.googleBusiness.branch.sync', ['branch' => 'branch']],
                 ['محادثات واتساب', 'post', 'admin.whatsappInbox.reply', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.followUp', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.takeOver', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.close', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendLink', ['chat' => 'whatsapp_chat']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.order.resendPaid', ['chat' => 'whatsapp_chat']],
+                ['أتمتة واتساب', 'put', 'admin.integrations.whatsapp.automations.update', ['automation' => 'channel_automation']],
+                ['أتمتة واتساب', 'post', 'admin.integrations.whatsapp.automations.status', ['automation' => 'channel_automation'], [], ['status' => 'paused']],
+                ['أتمتة واتساب', 'delete', 'admin.integrations.whatsapp.automations.destroy', ['automation' => 'channel_automation']],
+                ['قوالب العروض', 'delete', 'admin.marketing.whatsapp.campaigns.templates.destroy', ['template' => 'campaign_template']],
+                ['حملات واتساب', 'post', 'admin.marketing.whatsapp.campaigns.pause', ['campaign' => 'campaign']],
+                ['حملات واتساب', 'post', 'admin.marketing.whatsapp.campaigns.resume', ['campaign' => 'campaign']],
+                ['حملات واتساب', 'post', 'admin.marketing.whatsapp.campaigns.cancel', ['campaign' => 'campaign']],
+                ['أتمتة إنستقرام', 'put', 'admin.integrations.instagram.automations.update', ['automation' => 'instagram_automation']],
+                ['أتمتة إنستقرام', 'post', 'admin.integrations.instagram.automations.status', ['automation' => 'instagram_automation'], [], ['status' => 'paused']],
+                ['أتمتة إنستقرام', 'delete', 'admin.integrations.instagram.automations.destroy', ['automation' => 'instagram_automation']],
             ],
             'website' => [
                 ['صفحات الموقع', 'put', 'admin.website.pages.update', ['id' => 'page']],
@@ -422,6 +455,10 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
         'admin.preparation.invoiceDetails' => 'مثلُه — مهمّةٌ ظهرت في لوحة متجر الجلسة وفرعه، وحارسُها `DeliveryDetailsAreCorrectedOnTheBoardTest::test_another_shops_task_is_not_found`',
         'pos.printJobs.ack' => '{id} ورقةُ طابورٍ يحجزها صندوقٌ — لا يكتب عليها إلّا صندوقُها ومتجرُها (`PrintJobs::acknowledge`)، وحارسُها `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_two_tills_never_share_one_paper`',
         'admin.subscription.addons.renews' => '{id} استحقاقُ إضافةٍ يُقرأ بمتجر الجلسة (`SubscriptionAddonController::renews`) — وحارسُها `TheOwnerAloneBuysAddonsForHisOwnShopTest::test_a_shop_never_reaches_another_shops_addons_requests_or_invoices`',
+        'admin.website.legal.draft' => '{kind} نوعُ صفحةٍ قانونيّة من قائمةٍ ثابتة (`StoreLegal::KINDS`) لا صفّ — والكتابةُ بمتجر الجلسة، وحارسُها `EveryStoreGetsItsLegalPagesWithoutCodeTest::test_one_store_never_shows_another_stores_pages_or_data`',
+        'admin.website.legal.publish' => 'مثلُه',
+        'admin.website.legal.restore' => 'مثلُه',
+        'admin.website.legal.preview' => 'مثلُه — ولا يكتب شيئًا',
         'pos.printJobs.confirm' => '{id} ورقةٌ فتح صندوقٌ حوارَها — لا يجيب عنها إلّا صندوقُها ومتجرُها (`PrintJobs::confirmPrinted`·`notPrinted`)، وحارسُها `AnOpenedPrintDialogIsNotAPrintedPaperTest::test_only_the_till_that_opened_the_dialog_answers_for_it`',
     ];
 

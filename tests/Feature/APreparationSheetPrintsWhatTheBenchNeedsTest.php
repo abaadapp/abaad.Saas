@@ -310,9 +310,14 @@ class APreparationSheetPrintsWhatTheBenchNeedsTest extends TestCase
         $this->actingAs($this->user('admin', null, $this->other))
             ->get(route('admin.preparation.sheet', $order->number))->assertNotFound();
 
+        // والفرعُ إسنادٌ لا جلسة: من قُيِّد بصحار لا يطبع ورقةَ القرم ولو اختارت جلستُه القرم
         $elsewhere = Branch::create(['business_id' => $this->shop->id, 'name' => 'فرع صحار']);
-        $this->actingAs($this->owner)->withSession(['current_branch' => $elsewhere->id])
+        $sohar = $this->user('inventory', ['preparation']);
+        $sohar->branches()->sync([$elsewhere->id]);
+        $this->actingAs($sohar)->withSession(['current_branch' => $this->branch->id])
             ->get(route('admin.preparation.sheet', $order->number))->assertNotFound();
+        $this->actingAs($this->owner)->withSession(['current_branch' => $elsewhere->id])
+            ->get(route('admin.preparation.sheet', $order->number))->assertOk();
     }
 
     public function test_a_closed_order_is_off_the_board_and_off_the_sheet(): void
@@ -336,9 +341,9 @@ class APreparationSheetPrintsWhatTheBenchNeedsTest extends TestCase
             'recipient_name' => 'مكتب الاستقبال', 'internal_notes' => 'شريط بلون الوزارة',
         ], $this->owner->id);
         CustomerPayments::record($this->shop->id, $customer, (float) $invoice->total, ['method' => 'نقدي', 'occurred_at' => '2026-10-20'], [$invoice->id => (float) $invoice->total]);
-        [$task] = CustomerInvoicePreparations::activate($invoice->id, CustomerInvoicePreparations::FROM_HAND);
 
-        return $task;
+        // وسدادُها الكامل أظهرها — تُقرأ ولا تُفعَّل ثانية
+        return $invoice->preparation()->firstOrFail();
     }
 
     public function test_a_customer_invoice_task_prints_its_sheet_by_its_task_id_with_blank_boxes(): void

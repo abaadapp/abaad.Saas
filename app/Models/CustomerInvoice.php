@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * فاتورةُ عميل — التزامٌ ماليٌّ عليه، لا حالةُ سدادٍ في طلب.
@@ -32,6 +33,26 @@ class CustomerInvoice extends Model
         'issued_by_at' => 'datetime',
         'cancelled_at' => 'datetime',
     ];
+
+    /**
+     * مسودّةٌ عليها نقاطُ ولاءٍ لا يتبدّل عميلُها.
+     *
+     * النقاطُ اختيرت من رصيد عميلها وبقواعد يومها، وتُصرف منه عند الإصدار
+     * (`CustomerInvoices::spendPoints`). وعميلٌ يتبدّل تحتها يجعل الإصدارَ
+     * يصرف من رصيد غيره خصمًا لم يُعرض عليه. ولا بابَ اليوم يبدّله — وهذا
+     * حارسٌ لكلّ بابٍ يأتي (تعديلُ المسودّات في #195): من أراد عميلًا آخر
+     * ألغى المسودّةَ وكتب جديدة، فيُسأل عن نقاط العميل الصحيح.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (self $invoice) {
+            if ($invoice->getOriginal('status') === self::DRAFT
+                && (int) $invoice->getOriginal('loyalty_points') > 0
+                && $invoice->isDirty('customer_id')) {
+                throw new RuntimeException(__('على المسودّة نقاطُ ولاءٍ اختيرت من رصيد عميلها — لا يُغيَّر عميلُها. ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
+            }
+        });
+    }
 
     public function business(): BelongsTo
     {
@@ -290,6 +311,31 @@ class CustomerInvoice extends Model
     public function effectiveTotal(): float
     {
         return round((float) $this->total + $this->debitedTotal() - $this->creditedTotal(), 3);
+    }
+
+    /**
+     * مبلغُها الباقي بعد إشعاراتها — ما يجوز أن يردّه إشعارٌ دائنٌ يدويٌّ بعدُ.
+     *
+     * من إجماليّها لا من باقيها على العميل: فاتورةٌ سُدّدت كلُّها باقيها صفر،
+     * وكان الحدُّ «الباقي + المسدَّد» يبقى مئةً بعد كلّ إشعار — فثلاثةُ
+     * إشعاراتٍ بستّين على فاتورةٍ بمئة تصير للعميل مئةً وثمانين.
+     *
+     * والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — كما في `outstanding`.
+     */
+    public function amountLeft(): float
+    {
+        if ($this->status !== self::ISSUED) {
+            return 0.0;
+        }
+
+        // والإشعارُ المدينُ زاد الورقةَ بعد صدورها (`CustomerInvoiceEdits`) — فما زاده يُردّ كما يُردّ أصلُها
+        return round(max(0.0, $this->effectiveTotal()), 3);
+    }
+
+    /** ضريبتُها الباقية بعد إشعاراتها — ومعها ضريبةُ ما زادته الإشعاراتُ المدينة */
+    public function taxLeft(): float
+    {
+        return round(max(0.0, (float) $this->tax_total + (float) $this->debitNotes()->sum('tax_amount') - (float) $this->creditNotes()->sum('tax_amount')), 3);
     }
 
     /**

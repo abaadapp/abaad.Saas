@@ -113,6 +113,12 @@ class PdfController extends Controller
         $bid = TenantExportGuard::businessId();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
+        return self::salePdf($bid, $order);
+    }
+
+    /** فاتورةُ البيع ملفًّا — يطبعها الموظّفُ هنا ويفتحها عميلُها في بوّابته (`RibbonPortal\Paper`) */
+    public static function salePdf(int $bid, Order $order): Response
+    {
         ['html' => $html, 'paper' => $paper] = self::saleHtml($bid, $order);
 
         return Pdf::sheet(
@@ -597,11 +603,17 @@ class PdfController extends Controller
         $invoice = CustomerInvoice::where('business_id', $bid)->whereKey($id)
             ->with('items')->firstOrFail();
 
-        $html = self::customerInvoiceHtml($bid, $invoice);
+        $pdf = self::customerInvoicePdf($bid, $invoice);
 
         Activity::log('report', 'صدّر فاتورة عميل: '.$invoice->number, ['subject_id' => $invoice->id]);
 
-        return $this->pdf($html, 'customer-invoice-'.$invoice->number);
+        return $pdf;
+    }
+
+    /** وورقةُ فاتورة العميل ملفًّا — للبابين كذلك */
+    public static function customerInvoicePdf(int $bid, CustomerInvoice $invoice): Response
+    {
+        return Pdf::a4(self::customerInvoiceHtml($bid, $invoice), 'customer-invoice-'.$invoice->number);
     }
 
     /**

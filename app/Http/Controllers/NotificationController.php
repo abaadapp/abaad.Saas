@@ -6,6 +6,7 @@ use App\Models\DismissedNotification;
 use App\Models\NotificationState;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\BoutiqueAccess;
 use App\Support\Contention;
 use App\Support\Demo;
 use App\Support\Notifications;
@@ -30,9 +31,18 @@ class NotificationController extends Controller
     {
         $bid = auth()->user()->business_id ?? Demo::bid();
 
-        $latest = Order::where('business_id', $bid)->sold()
-            ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
-            ->orderByDesc('id')->first();
+        /*
+         * وآخرُ طلبٍ برقمه وزبونه وإجماليه — لا يصل من لا يقرأ المبيعات في متجرٍ يُؤوي بوتيكات.
+         *
+         * هذا البابُ من هيكل اللوحة (`Permissions::SHELL`) يُفتح لكلّ من دخلها،
+         * فكان يُسلّم صاحبَ بوتيكٍ أُعطي «المنتجات» إجماليَّ كلّ بيعةٍ في المتجر
+         * مع كلّ استطلاع. والقاعدةُ قاعدةُ لوحة التحكم نفسُها (`User::allows`)،
+         * ومتجرٌ لا يؤوي بوتيكًا لا يتغيّر عليه شيء.
+         */
+        $latest = BoutiqueAccess::hidesSales(auth()->user(), auth()->user()->business) ? null
+            : Order::where('business_id', $bid)->sold()
+                ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
+                ->orderByDesc('id')->first();
 
         // بناءٌ واحدٌ للصفوف والعدّاد — انظر `Demo::notificationFeed`
         $feed = Demo::notificationFeed();

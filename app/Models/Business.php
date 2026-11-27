@@ -25,9 +25,13 @@ class Business extends Model
         // أتُجهَّز فواتيرُ العملاء بعد سدادها؟ — يفتحه مديرُ المنصّة (`CustomerInvoicePreparations::on`)
         'customer_invoice_preparation_enabled' => 'boolean',
         'customer_invoice_preparation_enabled_at' => 'datetime',
-        // أتُقرأ رسائلُ واتساب محادثاتٍ؟ — مغلقٌ افتراضًا (`WhatsAppConversations::enabled`)
+        /*
+         * عمودان لم يعودا يُقرآن — بقيا كما هما فلا يُمسّ صفُّ متجر.
+         *
+         * كانا يفتحان «محادثات واتساب» وصندوقَها لمتجرٍ بعينه. وصار الصندوقُ
+         * لكلّ متجرٍ يملك واتساب (`WhatsAppInbox::available`).
+         */
         'whatsapp_conversations_enabled' => 'boolean',
-        // أيُفتح صندوقُ محادثات واتساب؟ — يفتحه فريقُ أبعاد (`WhatsAppInbox::available`)
         'whatsapp_inbox_enabled' => 'boolean',
         // أيُرسل من رقم أبعاد المشترك؟ — يُغلقه مديرُ المنصّة (`WhatsAppFeature::canUseShared`)
         'whatsapp_shared_allowed' => 'boolean',
@@ -202,12 +206,35 @@ class Business extends Model
      */
     protected static function booted(): void
     {
+        /*
+         * ═══ والقطاعُ كذلك: كلُّ شركةٍ لها قطاع، وباقتُها من قطاعها ═══
+         *
+         * ما لم يُذكر قطاعُه يأخذه من باقته، وإلّا التجاريّ — فالتسجيلُ الذاتيّ
+         * وكلُّ بابٍ لا يعرف القطاعات يبقى كما هو (`Sectors::forNew`).
+         *
+         * وباقةٌ من قطاعٍ آخر لا تُحفظ على الصفّ من أيّ باب: كلُّ بابٍ يسأل
+         * قبلها ويردّ تحت حقله (`Sectors::assertPlanFits`)، وهذا هو الحارسُ
+         * الأخير لبابٍ نُسي — الترقيةُ عند السداد أو غيرُها.
+         */
+        static::saving(function (Business $business) {
+            if (($business->isDirty('plan_id') || $business->isDirty('sector_id'))
+                && ! \App\Support\Sectors::fits($business->sector_id, $business->plan_id)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['plan_id' => \App\Support\Sectors::refusal()]);
+            }
+        });
+
         static::creating(function (Business $business) {
             if (blank($business->pricing_policy)) {
                 $business->pricing_policy = \App\Support\Addons\PricingPolicy::forNewMerchant();
             }
+
+            if (blank($business->sector_id)) {
+                $business->sector_id = \App\Support\Sectors::forNew($business->plan_id);
+            }
         });
     }
+
+    public function sector(): BelongsTo { return $this->belongsTo(Sector::class); }
 
     public function boutiques(): HasMany { return $this->hasMany(Boutique::class); }
     public function plan(): BelongsTo { return $this->belongsTo(Plan::class); }

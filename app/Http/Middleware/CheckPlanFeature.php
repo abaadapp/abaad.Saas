@@ -115,6 +115,8 @@ class CheckPlanFeature
          */
         'admin.integrations.index' => 'integrations',
         'admin.integrations.google*' => 'integrations',
+        // وربطُ إنستقرام مع التطبيقات نفسِها: بطاقتُه في صفحتها، ولا باقةَ خاصّةً به بعد (`InstagramLink::available` مفتاحُه فوقها)
+        'admin.integrations.instagram*' => 'integrations',
         // وربطُ واتساب وإعدادُه — بقدرة واتساب، كإشعاراته وسجلّه
         'admin.integrations.whatsapp*' => 'whatsapp',
         /*

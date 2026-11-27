@@ -14,6 +14,12 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
+import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
+import InstagramPlatformCard, { type InstagramPlatformState } from '@/Pages/Platform/Settings/partials/InstagramPlatformCard';
+import ChannelAutomationsSwitch, { type ChannelAutomationsState } from '@/Pages/Platform/Settings/partials/ChannelAutomationsSwitch';
+import WhatsappCampaignsSwitch, { type WhatsappCampaignsState } from '@/Pages/Platform/Settings/partials/WhatsappCampaignsSwitch';
+import WhatsAppSharedCost, { type SharedCost } from '@/Pages/Platform/Settings/partials/WhatsAppSharedCost';
+import WhatsAppMerchantLinkSwitch, { type WhatsAppLinkState } from './partials/WhatsAppMerchantLinkSwitch';
 
 type Settings = Record<string, string>;
 
@@ -112,15 +118,25 @@ const TABS = [
     { key: 'taxes', label: 'الضريبة الافتراضية' },
     { key: 'mail', label: 'البريد' },
     { key: 'whatsapp', label: 'واتساب' },
+    { key: 'instagram', label: 'إنستقرام' },
     { key: 'google', label: 'خرائط Google' },
     { key: 'ai', label: 'المساعد الذكي' },
     { key: 'archive', label: 'أرشفة البيانات' },
+    { key: 'pos', label: 'نقطة البيع' },
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, whatsappSharedCost, channelAutomations, whatsappCampaigns, instagram } =
         usePage<PageProps<{
             settings: Settings;
+            /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
+            posCatalog?: PosCatalogState;
+            /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
+            whatsappLink?: WhatsAppLinkState;
+            whatsappSharedCost?: SharedCost;
+            channelAutomations?: ChannelAutomationsState;
+            whatsappCampaigns?: WhatsappCampaignsState;
+            instagram?: InstagramPlatformState;
             mail?: MailStatus;
             plans: SelectOption[];
             whatsapp?: SharedConnection | null;
@@ -147,6 +163,7 @@ export default function PlatformSettings() {
                 gbpConfigured?: boolean;
                 gbpConnected?: number;
                 gbpErrors?: number;
+                gbpBlocked?: number;
             };
         }>>().props;
     const t = useTranslate();
@@ -335,6 +352,15 @@ export default function PlatformSettings() {
                 </div>
             )}
 
+            {/*
+                ‏‏وطريقُ ربط واتساب للتجّار الجدد خارج النموذج وفوقه — هو أوّل قرارٍ في التبويب: بابُه `super-admin.whatsapp.merchant-link.*`،
+                يُقيَّد فيه من بدّله وكان ماذا وصار ماذا (`WhatsAppMerchantLink`).
+            */}
+            {tab === 'whatsapp' && whatsappLink && <WhatsAppMerchantLinkSwitch state={whatsappLink} locale={locale} />}
+            {tab === 'whatsapp' && whatsappSharedCost && <WhatsAppSharedCost cost={whatsappSharedCost} />}
+            {tab === 'whatsapp' && channelAutomations && <ChannelAutomationsSwitch state={channelAutomations} />}
+            {tab === 'whatsapp' && whatsappCampaigns && <WhatsappCampaignsSwitch state={whatsappCampaigns} />}
+            {tab === 'instagram' && instagram && <InstagramPlatformCard state={instagram} />}
             <form onSubmit={submit}>
                 {tab === 'general' && (
                     <Card className="p-6">
@@ -1110,6 +1136,11 @@ export default function PlatformSettings() {
                                             : t('عميل OAuth للمنصة غير مهيّأ — اضبط GOOGLE_BUSINESS_CLIENT_ID وGOOGLE_BUSINESS_CLIENT_SECRET وGOOGLE_BUSINESS_REDIRECT على الخادم.')}
                                     </li>
                                     <li>{t(':n متجرًا ربط حسابه في Google.', { n: googleHealth.gbpConnected ?? 0 })}</li>
+                                    {(googleHealth.gbpBlocked ?? 0) > 0 && (
+                                        <li className="font-medium text-[#b91c1c]">
+                                            {t('Google لم تعتمد واجهات Business Profile لمشروع أبعاد — :n متجرًا ينتظر.', { n: googleHealth.gbpBlocked ?? 0 })}
+                                        </li>
+                                    )}
                                     {(googleHealth.gbpErrors ?? 0) > 0 && (
                                         <li className="text-[#b45309]">
                                             {t(':n متجرًا آخر سحبٍ له تعثّر.', { n: googleHealth.gbpErrors ?? 0 })}
@@ -1128,6 +1159,12 @@ export default function PlatformSettings() {
                 وتبويب «عامة» فيه «اللغة الافتراضية» وهي شيء آخر: لغة المنصة
                 لمن لم يختر بعد، لا لغة من يقرأ هذه الشاشة الآن.
             */}
+            {/*
+                ‏‏ومفتاحُ كتالوج الصندوق خارج النموذج أيضًا: له بابُه (`super-admin.pos-catalog.update`)،
+                يُقيَّد فيه من بدّله وكان ماذا وصار ماذا — لا حقلٌ يُحفظ مع غيره.
+            */}
+            {tab === 'pos' && posCatalog && <PosCatalogSwitch state={posCatalog} locale={locale} />}
+
             {tab === 'language' && (
                 <Card className="p-6">
                     <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('لغة واجهتك')}</h3>

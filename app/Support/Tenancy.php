@@ -167,6 +167,38 @@ class Tenancy
         return (string) self::platform('maintenance_mode', '0') === '1';
     }
 
+    /**
+     * لماذا تكون جلسةُ الدعم داخل هذا الحساب للعرض وحده — أو null.
+     *
+     * الدعمُ يدخل المتجرَ المعطَّل ومنتهي الاشتراك ليرى ما يشكو منه صاحبه
+     * (`CheckTenantStatus`). لكنّ الرؤيةَ غيرُ العمل: صاحبُه لا يبيع ولا
+     * يحفظ شيئًا فيه، فلا يفعل ذلك أحدٌ باسمه — لا بيعٌ في متجرٍ أُوقف، ولا
+     * عملٌ في اشتراكٍ لم يُسدَّد. فكلُّ ما يمنع صاحبَ الحساب يجعل الدعمَ
+     * فيه قارئًا لا كاتبًا. والصيانةُ كذلك: القاعدةُ تُهاجَر تحتها.
+     *
+     * وقاعدةٌ واحدة: الحارسُ يقرؤها قبل كلّ طلب كتابة، والشريطُ الأحمر يقرؤها
+     * ليقول ذلك قبل أن يُضغط زرٌّ ويُردّ.
+     */
+    public static function supportViewOnly(?User $user): ?string
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        if (self::maintenance()) {
+            return __('النظام في وضع الصيانة');
+        }
+
+        return match (self::blockReason($user)) {
+            self::USER_SUSPENDED => __('الحساب موقوف'),
+            self::USER_REMOVED => __('الحساب محذوف'),
+            self::BUSINESS_DISABLED => __('المتجر معطَّل'),
+            self::SUBSCRIPTION_EXPIRED => __('اشتراك المتجر منتهٍ'),
+            self::AWAITING_PAYMENT => __('اشتراك المتجر بانتظار السداد'),
+            default => null,
+        };
+    }
+
     /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ مهلتِه (`graceDaysFor`) */
     public static function locksAt(?Business $business): ?Carbon
     {

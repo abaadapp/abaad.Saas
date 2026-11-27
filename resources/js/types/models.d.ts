@@ -6,6 +6,8 @@ export interface ProductVariantOption {
     label: string;
     price: number;
     sku: string | null;
+    /** ‏باركودُ المقاس — يُمسح فيُضاف المقاسُ نفسُه (فريدٌ بين مقاسات المتجر) */
+    barcode?: string | null;
 }
 
 export interface Product {
@@ -23,10 +25,14 @@ export interface Product {
     sku: string;
     barcode: string;
     image: string | null;
+    /** مصغّرةُ شبكة الصندوق — تغيب حيث لا تُرسل، فتُرسم `image` */
+    thumb?: string;
     stock_status: string;
     active: boolean;
     /** يُعرض في المتجر على الإنترنت — و`active` فوقه: الموقوفُ لا يُباع في أيّ قناة */
     published?: boolean;
+    /** «نفدت الكمية» في الموقع — يُعرض بشارته ولا يُطلب (`WebsiteSoldOut`) */
+    website_sold_out?: boolean;
     /** يُباع في نقطة البيع — نظيرُ `published` للصندوق، وغائبُه يُقرأ «نعم» */
     pos_enabled?: boolean;
     /** أين يُعرض الوصف — مستقلّان عن قناتَي البيع. انظر `ProductDescription` */
@@ -93,6 +99,9 @@ export interface Customer {
     points: number;
     /** لغةُ رسائل واتساب — `null` لمن سُجّل قبل أن تُسأل */
     language?: string | null;
+    /** حالةُ الرقم في المراجعة (`CustomerPhone::status`) — `null` لرقمٍ صالح */
+    phone_status?: 'missing' | 'incomplete' | 'invalid' | 'country' | null;
+    contact_phone?: string | null;
     /** الميلاد: اليومُ والشهرُ معًا، والسنةُ إن عُرفت — لا تُخترع */
     birth_day?: number | null;
     birth_month?: number | null;

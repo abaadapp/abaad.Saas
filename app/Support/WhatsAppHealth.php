@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\User;
+use App\Models\WhatsAppChatMessage;
 use App\Models\WhatsAppMessage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -46,39 +48,202 @@ final class WhatsAppHealth
      */
     private const OURS = ['0', '1', '2', '3', '10', '200', '299', '131031', '133010', '131042'];
 
-    /** آخرُ ما جرى للإرسال في هذه النافذة */
-    public static function recent(int $businessId): array
-    {
-        $since = now()->subHours(self::WINDOW_HOURS);
+    /** خمسُ حالاتٍ للتسليم — لا «يعمل» و«لا يعمل» وحدهما */
+    public const UNTESTED = 'untested';
 
+    public const UNCONFIRMED = 'unconfirmed';
+
+    public const OK = 'ok';
+
+    public const PARTIAL = 'partial';
+
+    public const FAILING = 'failing';
+
+    /**
+     * ما يُثبت الوصول: واتساب قالت «سُلّمت» أو «قُرئت».
+     *
+     * و«قُبلت» أو «أُرسلت» وعدٌ لا وصول: الرسالتان اللتان لم تصلا زبونَ
+     * RIBBON قبلتهما Meta وأعطتهما معرّفًا، ثمّ ردّتهما بعد ثانية.
+     */
+    public const ARRIVED = [WhatsAppStatus::DELIVERED, WhatsAppStatus::READ];
+
+    /** وكم عميلًا تُعرض تفاصيلُه — والباقي في سجلّ الرسائل */
+    public const SHOWN_CUSTOMERS = 10;
+
+    /**
+     * حالُ تسليم الإشعارات في النافذة — ومن لم تصله رسالتُه.
+     *
+     * ═══ لماذا لا يكفي «فشلٌ واحد = لا يصل» ═══
+     *
+     * كانت رسالتان لم تصلا رقمَ زبونٍ واحد (131026) تُطفئان مرحلة «رسائلك
+     * تصل» عند RIBBON، وكلُّ رقمٍ آخر تصله رسائلُه. فقرأ التاجر 7/8 وعلامةً
+     * حمراء على ربطٍ سليم، وراح يبحث عن عطبٍ في الربط وهو في رقم زبون.
+     *
+     * فيُفرَّق بين ما يقول عن **الربط** وما يقول عن **عميل**:
+     *
+     *   · لم يصل شيءٌ أصلًا، أو انقطع الوصول بعطبٍ عند أبعاد ولم يعد ← `FAILING`
+     *     وهي وحدها تُطفئ المرحلة.
+     *   · وصل كثيرٌ ولم يصل بعضُ العملاء ← `PARTIAL`: الربطُ يعمل، ويُقال
+     *     مَن لم تصله رسالتُه ولماذا.
+     *   · وصل كلُّ شيء، أو وصلت العميلَ رسالةٌ بعد التي فشلت ← `OK`.
+     *   · خرجت ولم يؤكَّد تسليمُ شيء ← `UNCONFIRMED`: لا يُقال «يصل».
+     *   · لم يخرج شيء (أو ينتظر في طابورنا) ← `UNTESTED`: لا يُقال «يصل» ولا «لا يصل».
+     *
+     * والترتيبُ بالوقت ثمّ بالمعرّف، لا بترتيب القاعدة: إشعارُ فشلٍ قد يصل
+     * من Meta بعد رسالةٍ أحدث منه.
+     *
+     * @return array<string, mixed>
+     */
+    public static function delivery(int $businessId): array
+    {
         $rows = WhatsAppMessage::where('business_id', $businessId)
             ->where('direction', 'outbound')
-            ->where('created_at', '>=', $since)
-            ->orderByDesc('id')
-            ->get(['status', 'error_code', 'error_message', 'failed_at', 'sent_at', 'created_at']);
+            ->where('created_at', '>=', now()->subHours(self::WINDOW_HOURS))
+            /*
+             * وما لم يبلغ Meta لم يُجرَّب تسليمُه: حدثٌ مطفأ، حصّةٌ نفدت، أو رسالةٌ
+             * تنتظر في طابورنا (ولو أعادتها الشبكة). المحاولةُ ما خرج أو رُدّ.
+             */
+            ->whereIn('status', [WhatsAppStatus::SENT, ...self::ARRIVED, WhatsAppStatus::FAILED])
+            ->orderBy('id')
+            ->get(['id', 'event_type', 'template_name', 'recipient_phone', 'status', 'error_code', 'error_message',
+                'sent_at', 'delivered_at', 'read_at', 'failed_at', 'created_at']);
 
-        $failed = $rows->where('status', 'failed');
-        $last = $failed->first();
+        $arrived = $rows->filter(fn ($r) => in_array($r->status, self::ARRIVED, true));
+        $failed = $rows->where('status', WhatsAppStatus::FAILED)
+            ->sortBy(fn ($r) => [self::at($r)->getTimestamp(), (int) $r->id])->values();
+        $last = $failed->last();
+
+        // ونجح شيءٌ لأيّ عميلٍ بعد آخر فشل؟ — فالعطبُ الذي يصيب الربط عبر
+        $recovered = $last !== null
+            && $arrived->contains(fn ($r) => self::at($r)->gt(self::at($last)));
+
+        /*
+         * ومن لم تصله رسالتُه: عميلٌ آخرُ ما جرى له فشل.
+         *
+         * ورسالتان لعميلٍ واحد عميلٌ واحد لا عطبان، وعميلٌ وصلته رسالةٌ بعد
+         * التي فشلت لم يعد ينتظر شيئًا.
+         */
+        // والمفتاحُ نصٌّ صراحةً: `groupBy` يقلب الرقمَ مفتاحًا عدديًّا فلا يطابقه نصٌّ
+        $groups = $failed->groupBy(fn ($r) => 'p'.self::digits($r->recipient_phone))
+            ->filter(fn ($list, $key) => ! $arrived->contains(fn ($r) => 'p'.self::digits($r->recipient_phone) === $key
+                && self::at($r)->gt(self::at($list->last()))))
+            ->sortByDesc(fn ($list) => [self::at($list->last())->getTimestamp(), (int) $list->last()->id]);
+
+        $state = match (true) {
+            $rows->isEmpty() => self::UNTESTED,
+            $failed->isEmpty() && $arrived->isEmpty() => self::UNCONFIRMED,
+            $failed->isNotEmpty() && ($arrived->isEmpty() || ! $recovered && self::isOurs($last->error_code)) => self::FAILING,
+            $groups->isNotEmpty() => self::PARTIAL,
+            default => self::OK,
+        };
+
+        return [
+            'state' => $state,
+            'window_hours' => self::WINDOW_HOURS,
+            'attempts' => $rows->count(),
+            'delivered' => $arrived->count(),
+            'failed' => $failed->count(),
+            // خرجت إلى Meta ولم يُؤكَّد تسليمُها بعد
+            'pending' => $rows->where('status', WhatsAppStatus::SENT)->count(),
+            'customers' => $groups->count(),
+            'last_error' => $last?->error_message,
+            'last_error_code' => $last?->error_code,
+            'last_failed_at' => $last ? self::at($last)->toDateTimeString() : null,
+            'failures' => $groups->take(self::SHOWN_CUSTOMERS)->map(function ($list) {
+                $m = $list->last();
+
+                return [
+                    'phone' => self::mask($m->recipient_phone),
+                    'count' => $list->count(),
+                    'event' => WhatsAppEvent::label((string) $m->event_type),
+                    'template' => $m->template_name,
+                    'sent_at' => $m->sent_at ? Carbon::parse($m->sent_at)->format('Y-m-d H:i') : null,
+                    'failed_at' => self::at($m)->format('Y-m-d H:i'),
+                    'code' => $m->error_code,
+                    'error' => $m->error_message,
+                    'explain' => self::explain($m->error_code),
+                    'ours' => self::isOurs($m->error_code),
+                    'status_label' => WhatsAppStatus::label(WhatsAppStatus::FAILED),
+                ];
+            })->values()->all(),
+        ];
+    }
+
+    /**
+     * ردودُ الموظّفين من المحادثات — عدٌّ مستقلٌّ عن الإشعارات.
+     *
+     * لا تدخل حالَ التسليم: ردٌّ وصل يقول إنّ الردّ يصل، لا إنّ إشعار الطلب
+     * يصل. ولا يُعدّ «حُفظ» وصولًا: الوصولُ ما أكّدته واتساب.
+     *
+     * @return array{attempts:int, delivered:int, failed:int}
+     */
+    public static function replies(int $businessId): array
+    {
+        $rows = WhatsAppChatMessage::where('business_id', $businessId)
+            ->where('direction', WhatsAppChatMessage::OUT)
+            ->where('created_at', '>=', now()->subHours(self::WINDOW_HOURS))
+            ->pluck('status');
 
         return [
             'attempts' => $rows->count(),
-            'failed' => $failed->count(),
-            'sent' => $rows->whereIn('status', ['sent', 'delivered', 'read'])->count(),
-            'last_error' => $last?->error_message,
-            'last_error_code' => $last?->error_code,
-            'last_failed_at' => $last?->failed_at ? Carbon::parse($last->failed_at)->toDateTimeString() : null,
-            /*
-             * وهل نجح شيءٌ **بعد** آخر فشل.
-             *
-             * فشلٌ قديمٌ تلاه نجاحٌ عطبٌ عبر، وعرضُه إنذارًا قائمًا يجعل
-             * التاجر يلاحق ما أُصلح — ثمّ يتوقّف عن قراءة الإنذارات.
-             */
-            'recovered' => $last !== null && $rows
-                ->whereIn('status', ['sent', 'delivered', 'read'])
-                ->filter(fn ($r) => $last->failed_at !== null
-                    && Carbon::parse($r->sent_at ?? $r->created_at)->gt(Carbon::parse($last->failed_at)))
-                ->isNotEmpty(),
+            'delivered' => $rows->filter(fn ($s) => in_array($s, self::ARRIVED, true))->count(),
+            'failed' => $rows->filter(fn ($s) => $s === WhatsAppStatus::FAILED)->count(),
         ];
+    }
+
+    /**
+     * ما تعرضه شاشةُ واتساب لمن يفتحها.
+     *
+     * والأرقامُ محجوبةٌ دائمًا هنا، وعدُّ الردود لمن يرى المحادثات وحده،
+     * ورابطُ السجلّ لمن يفتح قسمه.
+     *
+     * @return array<string, mixed>
+     */
+    public static function view(int $businessId, ?User $user): array
+    {
+        return self::delivery($businessId) + [
+            'replies' => WhatsAppInbox::canView($user) ? self::replies($businessId) : null,
+            'log_url' => $user?->allows('marketing') ? route('admin.marketing.whatsapp.log', ['filter' => 'failed']) : null,
+        ];
+    }
+
+    /**
+     * رمزُ Meta بكلامٍ يُفهم — أو لا شيء، فيُعرض نصُّها كما وصل.
+     *
+     * ولا يُجزم بسببٍ لا تقوله Meta: 131026 تعني أنّ الرقم لا يستقبل، ولا
+     * تقول لماذا.
+     */
+    public static function explain(?string $code): ?string
+    {
+        return match (true) {
+            $code === null => null,
+            trim($code) === '131026' => __('تعذّر تسليم الرسالة إلى هذا الرقم. قد يكون الرقم لا يستخدم واتساب أو لا يستطيع استقبال الرسائل حاليًا. تحقّق من الرقم أو تواصل مع العميل بطريقة أخرى.'),
+            self::isOurs($code) => __('عطبٌ في ربط واتساب لدى أبعاد لا في رقم العميل — ونحن نعالجه.'),
+            default => null,
+        };
+    }
+
+    /** «968•••••968» — يُعرف به العميل ولا يُقرأ رقمُه */
+    public static function mask(?string $phone): string
+    {
+        $d = self::digits($phone);
+
+        return strlen($d) < 7 ? '•••' : substr($d, 0, 3).str_repeat('•', strlen($d) - 6).substr($d, -3);
+    }
+
+    private static function digits(?string $phone): string
+    {
+        return (string) preg_replace('/\D/', '', (string) $phone);
+    }
+
+    /** متى انتهى أمرُ الرسالة — فشلُها، أو وصولُها، أو خروجُها */
+    private static function at(WhatsAppMessage $m): Carbon
+    {
+        return Carbon::parse(match (true) {
+            $m->status === WhatsAppStatus::FAILED => $m->failed_at ?? $m->created_at,
+            in_array($m->status, self::ARRIVED, true) => $m->delivered_at ?? $m->read_at ?? $m->sent_at ?? $m->created_at,
+            default => $m->sent_at ?? $m->created_at,
+        });
     }
 
     /** أعلى أبعادَ إصلاحُه أم على التاجر؟ */
@@ -88,33 +253,38 @@ final class WhatsAppHealth
     }
 
     /**
-     * إنذارُ الإرسال — أو لا شيء.
+     * إنذارُ الربط — أو لا شيء.
+     *
+     * لا يُنذر إلّا حين لا يصل شيء: عميلٌ لا يستقبل رقمُه يُقال في قائمة
+     * التسليم، لا جرسَ عطبٍ في الربط.
      *
      * @return array{level:string, text:string, ours:bool, count:int}|null
      */
     public static function alert(int $businessId): ?array
     {
-        $r = self::recent($businessId);
+        return self::alertFor(self::delivery($businessId));
+    }
 
-        if ($r['failed'] === 0 || $r['recovered']) {
+    /** @param  array<string, mixed>  $d  من `delivery()` */
+    public static function alertFor(array $d): ?array
+    {
+        if ($d['state'] !== self::FAILING) {
             return null;
         }
 
-        $ours = self::isOurs($r['last_error_code']);
+        $ours = self::isOurs($d['last_error_code']);
+        $e = Str::limit((string) ($d['last_error'] ?? '—'), 90);
 
         return [
             'level' => 'danger',
             'ours' => $ours,
-            'count' => $r['failed'],
-            'text' => $ours
-                ? __('لم تصل :n رسالة إلى زبائنك — العطب عند أبعاد لا عندك، ونحن نعالجه. (:e)', [
-                    'n' => $r['failed'],
-                    'e' => Str::limit((string) ($r['last_error'] ?? '—'), 90),
-                ])
-                : __('لم تصل :n رسالة إلى زبائنك — راجع أرقام الزبائن. (:e)', [
-                    'n' => $r['failed'],
-                    'e' => Str::limit((string) ($r['last_error'] ?? '—'), 90),
-                ]),
+            'count' => $d['failed'],
+            // و«لم تصل أيٌّ» لا تُقال إلّا حين لم يُؤكَّد وصولُ شيء
+            'text' => match (true) {
+                $ours => __('لم تصل :n رسالة إلى زبائنك — العطب عند أبعاد لا عندك، ونحن نعالجه. (:e)', ['n' => $d['failed'], 'e' => $e]),
+                $d['delivered'] === 0 => __('لم تصل أيٌّ من :n رسالة إلى زبائنك — قد يكون الربط بواتساب قائمًا والتسليمُ لا ينجح. راجع أرقام الزبائن. (:e)', ['n' => $d['failed'], 'e' => $e]),
+                default => __('لم تصل :n رسالة إلى زبائنك — راجع أرقام الزبائن. (:e)', ['n' => $d['failed'], 'e' => $e]),
+            },
         ];
     }
 

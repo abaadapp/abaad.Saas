@@ -18,6 +18,7 @@ use App\Support\ProductDescription;
 use App\Support\ProductName;
 use App\Support\SaleLines;
 use App\Support\FlowerOrder;
+use App\Support\ImageVariants;
 use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\PaymentMethods;
@@ -52,15 +53,18 @@ use App\Support\Store\CardIdentityUnconfirmed;
 use App\Support\Store\DeliverySchedule;
 use App\Support\Store\OrderWindow;
 use App\Support\Store\ShopClock;
+use App\Support\Store\StoreLegal;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\TermsChanged;
 use App\Support\Store\WebCheckout;
+use App\Support\Store\WebsiteSoldOut;
 use App\Support\Storefront;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Shelf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -157,6 +161,31 @@ class RibbonController extends Controller
             'paying' => $this->paying($business, (string) $second, $ctx),
             StoreCustomPages::PATH => $this->render('store.ribbon.page', $this->customPageData($business, $custom, $ctx, $lang, $base)),
         };
+    }
+
+    /**
+     * صفحةٌ قانونيّة — بترويسة المتجر وتذييله وألوانه، لا بقالبٍ آخر.
+     *
+     * يناديها `StorefrontController` قبل `page`: روابطُها (`StoreLegal::PATHS`)
+     * لكلّ متجرٍ على الطرق الثلاث، لا مساراتٌ من مسارات هذه الواجهة. وما لم
+     * ينشره صاحبُه «غير موجود» — لا قالبٌ لم يراجعه.
+     */
+    public function legal(Business $business, string $kind, string $base): Response
+    {
+        $lang = $this->lang();
+        $bid = (int) $business->id;
+        $published = StoreLegal::published($bid, $kind);
+
+        abort_if($published === null, 404);
+
+        $ctx = $this->context($business, $base, $lang, StoreLegal::PATHS[$kind]);
+
+        return $this->render('store.ribbon.legal', $ctx + [
+            'legalTitle' => StoreLegal::title($kind, $lang),
+            'legalBlocks' => StoreLegal::blocks(StoreLegal::bodyFor($published, $lang)),
+            'legalUpdated' => $published['at']?->timezone(config('app.timezone'))->format('Y/m/d'),
+            'legalVersion' => $published['version'],
+        ]);
     }
 
     /**
@@ -279,7 +308,17 @@ class RibbonController extends Controller
         try {
             $q = WebCheckout::quote($business, $request->all());
         } catch (ValidationException $e) {
-            return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
+            /*
+             * وما نفدت كمّيّتُه في السلّة يُسمّى بمعرّفه — فتعرض السلّةُ زرًّا يُزيله.
+             *
+             * السلّةُ لا ترسم بنودَها حين يُردّ التسعير، فكان الزبونُ يُقال له
+             * «أزله» ولا يجد ما يضغطه.
+             */
+            return response()->json([
+                'ok' => false,
+                'errors' => $e->errors(),
+                'sold_out' => WebsiteSoldOut::inCart((int) $business->id, $request->input('items')),
+            ], 422);
         }
 
         return response()->json(['ok' => true] + $this->publicQuote($business, $q));
@@ -426,14 +465,27 @@ class RibbonController extends Controller
         // عملةٌ واحدةٌ للرفّ كلِّه — انظر `card`
         $currency = Storefront::currency($business);
 
+        /*
+         * وبطاقاتُ «تسوّق حسب الفئة» بلا ما أخفاه صاحبُه — هنا وحدها.
+         *
+         * فالرفُّ ومرشِّحُه وروابطُ التذييل تقرأ `categories` كما هي:
+         * القسمُ المخفيُّ بطاقتُه يبقى يُختار وتُباع أصنافُه.
+         *
+         * وصورةُ البطاقة بأحجامها كلِّها: بطاقةٌ بعرض ١٦١ على شاشة 3x تحتاج
+         * ٤٨٣ بكسلًا، ومصغّرةُ الصورة الطوليّة عرضُها ٣٦٠ — فيختار المتصفّحُ
+         * بعرضها في شبكتها ونسبتها وطريقة عرضها (`StoreMedia::cardSizes`).
+         */
+        $cats = $this->categories($bid, $lang, $shown)->reject(fn ($c) => $c['hidden'])->values();
+        $fit = StoreMedia::fit(MarketingSettings::group($bid, 'website')['store_catalog_fit'] ?? null);
+        $cats = $cats->map(function ($c) use ($bid, $fit, $cats) {
+            $c['srcset'] = ImageVariants::srcset($c['image']);
+            $c['sizes'] = $c['srcset'] === null ? null : StoreMedia::cardSizes($cats->count(), StoreMedia::size($bid, (string) $c['image']), $fit);
+
+            return $c;
+        });
+
         return [
-            /*
-             * وبطاقاتُ «تسوّق حسب الفئة» بلا ما أخفاه صاحبُه — هنا وحدها.
-             *
-             * فالرفُّ ومرشِّحُه وروابطُ التذييل تقرأ `categories` كما هي:
-             * القسمُ المخفيُّ بطاقتُه يبقى يُختار وتُباع أصنافُه.
-             */
-            'categories' => $this->categories($bid, $lang, $shown)->reject(fn ($c) => $c['hidden'])->values(),
+            'categories' => $cats,
             'best' => $best->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             'new' => $new->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             /*
@@ -630,7 +682,13 @@ class RibbonController extends Controller
         ])->find($id);
         abort_if($p === null, 404);
 
-        $available = Shelf::availability($bid, [$p->id])[$p->id] ?? false;
+        /*
+         * ويُطلب ما على رفّه — وما لم يعلّمه صاحبُه «نفدت الكمية».
+         *
+         * فالعلَمُ يُغلق ولا يفتح: «متوفّر» لا يتجاوز رفًّا فارغًا، و«نفدت»
+         * تُغلق رفًّا عامرًا. والصفحةُ تبقى بصورتها وسعرها ووصفها.
+         */
+        $available = (Shelf::availability($bid, [$p->id])[$p->id] ?? false) && ! WebsiteSoldOut::of($p);
         $currency = Storefront::currency($business);
         $giftCard = GiftCardProduct::is($bid, $p);
 
@@ -640,7 +698,8 @@ class RibbonController extends Controller
              * يريده يرى الباقةَ لا واجهةَ المحلّ. وتُطلَق مطلقةً لأنّ واتساب
              * يقرؤها من خادمه لا من متصفّح القارئ.
              */
-            'ogImage' => $p->image ? (str_starts_with((string) $p->image, 'http') ? $p->image : url($p->image)) : null,
+            // ‏والمعاينةُ على الأصل كما كانت: يقرؤها واتساب وفيسبوك لا صفحاتُنا
+            'ogImage' => ($raw = (string) $p->getRawOriginal('image')) !== '' ? (str_starts_with($raw, 'http') ? $raw : url(Storage::url($raw))) : null,
             'product' => $this->card($p, $lang, $business, $currency) + [
                 /*
                  * بلغة الصفحة، وحيث اختار صاحبُه — والمطفأُ فراغٌ فلا يُرسم سطرُه
@@ -699,7 +758,8 @@ class RibbonController extends Controller
             'addons' => $available && ! $giftCard ? $this->addons($bid, $p, $lang, $currency) : [],
             // وصفحةُ الكرت نصُّه وحده — لا إضافاتٌ تُقترح معه
             'upsells' => $available && ! $giftCard
-                ? RibbonUpsells::for($bid, $p, $this->shown($bid))
+                // وما نفدت كمّيّتُه لا يُقترح إضافةً بضغطة — يُرى في رفّه ولا يُدفع إليه
+                ? RibbonUpsells::for($bid, $p, $this->shown($bid)->when(WebsiteSoldOut::allowed($bid), fn ($q) => $q->where('website_sold_out', false)))
                     ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + [
                         'sizes' => $this->sizes($u, $lang, $currency),
                         // وكرتُ الهدية إضافةً تُفتح له خانةُ نصّه — الحكمُ نفسُه الذي يسعّره
@@ -1026,6 +1086,8 @@ class RibbonController extends Controller
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
             'nav' => $nav,
+            // وروابطُ الصفحات القانونيّة المنشورة — في التذييل، ولا شيء لمن لم ينشر (`StoreLegal::links`)
+            'legalLinks' => StoreLegal::links($bid, $base, $lang),
             /*
              * والتذييلُ كما رتّبه صاحبُه — أعمدتُه وعناوينُها وما يظهر فيها،
              * من القائمة والفئات والمجموعات نفسِها. والفراغُ التذييلُ القائم.
@@ -1200,11 +1262,17 @@ class RibbonController extends Controller
             // والقاعدةُ نفسُها التي يُسمّى بها القسمُ في المرشّح — فلا يفترق اسماه
             'category' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, $lang) : null,
             'category_id' => $p->category_id,
-            'image' => $p->image,
+            // ‏المصغّرةُ للبطاقة — والصورةُ بحجمها في صفحة الصنف
+            'image' => ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB),
+            // ‏وأحجامُها كلُّها من الأصل لا من رابط المصغّرة: بطاقةٌ بعرض الهاتف على شاشة 3x
+            // تحتاج ألفَ بكسل، والمصغّرةُ ستُّمئة — فيختار المتصفّحُ بعرض البطاقة (`_card`)
+            'srcset' => ImageVariants::srcset($p->getRawOriginal('image')),
             'price' => $price,
             'price_text' => Money::format($price, $currency),
             'from' => $prices->count() > 1 && $prices->min() !== $prices->max(),
             'tint' => self::TINTS[$p->id % count(self::TINTS)],
+            // و«نفدت الكمية» بيد صاحبه — يبقى في القائمة بشارته (`WebsiteSoldOut`)
+            'sold_out' => WebsiteSoldOut::of($p),
         ];
     }
 

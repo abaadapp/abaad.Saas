@@ -126,7 +126,8 @@ final class ThemePublisher
             }
 
             $site->update([
-                'draft' => array_merge(StoreContent::only((array) $site->draft), $clean),
+                // وما خرج من العقد يبقى محمولًا كما كان — انظر `StoreContent::RETIRED`
+                'draft' => array_merge(StoreContent::retired((array) $site->draft), StoreContent::only((array) $site->draft), $clean),
                 'draft_revision' => (int) $site->draft_revision + 1,
                 'draft_saved_at' => now(),
                 'draft_saved_by' => $userId,
@@ -261,7 +262,14 @@ final class ThemePublisher
             }
 
             $site->update([
-                'draft' => [],
+                /*
+                 * والمسوّدةُ تفرغ ممّا يُنشر وحدَه.
+                 *
+                 * عنوانُ بحثٍ حُفظ قبل أن يصير البحثُ يسري بالحفظ ليس
+                 * «تعديلًا غير منشور» يُتراجَع عنه — لا يُنشر أصلًا بعد اليوم.
+                 * وصاحبُه يقرّر فيه من شاشة البحث (`StoreSeo::pending`).
+                 */
+                'draft' => StoreContent::retired((array) $site->draft),
                 'draft_revision' => (int) $site->draft_revision + 1,
                 'draft_saved_at' => now(),
                 'draft_saved_by' => $userId,

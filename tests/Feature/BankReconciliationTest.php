@@ -161,7 +161,13 @@ class BankReconciliationTest extends TestCase
             'opening_date' => now()->startOfMonth()->toDateString(),
         ]);
 
-        $this->sale('bank', 500, now()->subMonth());
+        /*
+         * واليومُ الذي قبل الافتتاح — لا «قبل شهر».
+         *
+         * `now()->subMonth()` في ٣١ أكتوبر تصير «٣١ سبتمبر» فتفيض إلى ١ أكتوبر:
+         * يومَ الافتتاح نفسَه، فيُحسب البيعُ بحقّ ويسقط الاختبار آخرَ الشهر.
+         */
+        $this->sale('bank', 500, now()->startOfMonth()->subDay());
 
         $statement = Demo::bankStatement();
         $this->assertSame(1000.0, $statement['closing'], 'حُسب ما قبل التاريخ مرّتين');

@@ -53,6 +53,8 @@ class MetasSecretsNeverReachAUrlALogOrAScreenTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
         $this->app->setLocale('ar');
 
         config([
@@ -70,13 +72,15 @@ class MetasSecretsNeverReachAUrlALogOrAScreenTest extends TestCase
         $this->shop = Business::create([
             'name' => 'محل الورد', 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true,
-            'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN, 'whatsapp_inbox_enabled' => true,
+            'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
         ]);
         Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
         $this->owner = User::create([
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'owner@secrets.om',
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function meta(HttpRequest $r)

@@ -11,19 +11,23 @@ use App\Support\Demo;
 use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppConnections;
-use App\Support\WhatsAppConversations;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppHealth;
+use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppLog;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOnboarding;
+use App\Support\WhatsAppOwnApp;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
+use App\Support\WhatsAppSender;
 use App\Support\WhatsAppStatus;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\Request;
@@ -71,6 +75,11 @@ class WhatsAppController extends Controller
              * «جاهز» ويمتنع المُرسِل.
              */
             'readiness' => WhatsAppFeature::readiness($business),
+            /*
+             * وما جرى للتسليم في آخر يوم — مَن لم تصله رسالتُه ولماذا، بأرقامٍ
+             * محجوبة. مستقلٌّ عن المراحل: عميلٌ لا يستقبل رقمُه ليس عطبًا في الربط.
+             */
+            'delivery' => WhatsAppHealth::view($business->id, auth()->user()),
             'global_enabled' => WhatsAppFeature::globallyEnabled(),
             'enabled' => (bool) $business->whatsapp_enabled,
             'mode' => $business->whatsapp_mode,
@@ -94,18 +103,7 @@ class WhatsAppController extends Controller
              * و`configured` تُطفئ الزرّ حين ينقص إعدادٌ على الخادم: زرٌّ
              * يفتح نافذةً تفشل عند ميتا أسوأ من زرٍّ لا يظهر.
              */
-            'embedded' => [
-                'configured' => WhatsAppEmbeddedSignup::configured(),
-                'app_id' => (string) config('whatsapp.app_id'),
-                'config_id' => (string) config('whatsapp.config_id'),
-                'graph_version' => (string) config('whatsapp.api_version'),
-                'feature_type' => (string) config('whatsapp.feature_type'),
-                'session_info_version' => (string) config('whatsapp.session_info_version'),
-                // نسخةُ التسجيل المدمج إن كُتبت — وبلا نسخةٍ تخدمها ميتا بـv4
-                'version' => config('whatsapp.es_version'),
-                // والتعايشُ يُعرض اختيارًا مطفأً بسببه ما لم يُفتح على الخادم
-                'coexistence_open' => WhatsAppOnboarding::coexistenceOpen(),
-            ],
+            'embedded' => WhatsAppEmbeddedSignup::publicConfig(),
 
             /* حالُ الربط بحالاتها الستّ — تُحسب في الخادم ولا تُستنتج في الشاشة */
             'link' => WhatsAppLink::view($own),
@@ -113,11 +111,37 @@ class WhatsAppController extends Controller
             /* وأيستقبل؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
             'health' => $own ? WhatsAppLinkHealth::view($own) : null,
 
+            /*
+             * والربطُ بتطبيق التاجر: عنوانُ إشعارات وصلته ورمزُ تحقّقها وحالُ فوترتها
+             * (`WhatsAppOwnApp::view`) — ورمزُ التحقّق لصاحب الحساب وحده.
+             */
+            'own_app' => WhatsAppOwnApp::view($own, \App\Support\Permissions::isOwner(auth()->user()), (int) $business->id),
+
+            /* ‏‏ورقمُ الإرسال: يُعتمد آليًّا أم ينتظر ولماذا، أم تعطّل (`WhatsAppSender`) */
+            'sender' => $ownAllowed ? WhatsAppSender::view($business) : null,
+
             /* والردُّ التلقائيّ: ما حُفظ، وفروعُ المتجر التي يُختار منها */
             'auto_reply' => $ownAllowed ? WhatsAppAutoReply::settings($business->id) : null,
+            // وحالُه كما يقع: يعمل، أو بانتظار ربطٍ أو فوترة، أو متوقف — لا المقبضُ وحده
+            'auto_reply_state' => $ownAllowed ? WhatsAppAutoReply::state($business) : null,
+            // ‏‏وأتمتةُ الردود بالكلمات — لمتجرٍ فتحتها له المنصّة وحده، وكم منها يعمل
+            'keyword_automations' => \App\Support\ChannelAutomations::available($business) ? [
+                'published' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('channel', \App\Support\ChannelAutomations::WHATSAPP)->where('status', \App\Models\ChannelAutomation::PUBLISHED)->count(),
+                'total' => \App\Models\ChannelAutomation::where('business_id', $business->id)->where('channel', \App\Support\ChannelAutomations::WHATSAPP)->count(),
+            ] : null,
+            // ‏‏وحملاتُ واتساب — لمتجرٍ فتحتها له المنصّة وحده
+            'campaigns' => \App\Support\WhatsAppCampaigns::available($business),
+            // والنصُّ العامّ باسم هذا المتجر — يُردّ به ما لم يُكتب نصّ
+            'auto_reply_defaults' => $ownAllowed ? [
+                'ar' => WhatsAppAutoReply::defaultText($business->id, 'ar'),
+                'en' => WhatsAppAutoReply::defaultText($business->id, 'en'),
+            ] : null,
             'branches' => $ownAllowed
                 ? Branch::where('business_id', $business->id)->orderBy('name')->get(['id', 'name'])->all()
                 : [],
+
+            /* والطلباتُ الآليّة: لمن أذنت له المنصّة وحده — مفتاحُها وشروطُها كلٌّ بحاله */
+            'guided_orders' => \App\Support\WhatsAppOrders::view($business),
 
             /* ومن يملك الربط: صاحبُ الحساب أو مديره — والشاشةُ تقوله ولا تُخفي الزرّ بلا سبب */
             'may_manage' => (bool) auth()->user()?->isAdmin(),
@@ -152,16 +176,6 @@ class WhatsAppController extends Controller
         $business = $this->business();
 
         /*
-         * ومن فُتحت له «محادثات واتساب» يقرأ الدفترَ نفسَه محادثاتٍ.
-         *
-         * المسارُ واسمُه كما هما: الروابطُ القديمة تصل. ومن لم تُفتح له لا
-         * يتغيّر عليه حرفٌ ممّا تحت هذا السطر.
-         */
-        if (WhatsAppConversations::enabled($business)) {
-            return $this->conversations($request, $business);
-        }
-
-        /*
          * والمرشِّحُ يُقاس بقائمة الحِزَم لا يُصدَّق كما وصل.
          *
          * `?filter=<script>` لا يصل إلى استعلام، و`?filter=nonsense` لا
@@ -173,94 +187,42 @@ class WhatsAppController extends Controller
             $filter = 'all';
         }
 
+        // ومرشِّحُ الرقم كذلك — من قائمته وحدها
+        $source = (string) $request->query('source', 'all');
+
+        if (! array_key_exists($source, WhatsAppLog::SOURCES)) {
+            $source = 'all';
+        }
+
+        // ومرشِّحُ النوع: الإشعاراتُ أو ردودُ الموظّفين أو كلاهما
+        $kind = (string) $request->query('kind', 'all');
+
+        if (! in_array($kind, WhatsAppLog::KINDS, true)) {
+            $kind = 'all';
+        }
+
         /* و`%` تُنزع من نصّ البحث: من كتبها وحدها رأى كلَّ شيءٍ — انظر `Search::term` */
         $q = Search::term($request);
 
-        $page = WhatsAppLog::page($business->id, $filter === 'all' ? null : $filter, $q);
+        // ومن يرى صندوقَ المحادثات يفتح من الصفّ محادثةَ زبونه — والصندوقُ يحرس نفسَه ثانيةً
+        $opens = WhatsAppInbox::canView($request->user());
+
+        $page = WhatsAppLog::page($business->id, $filter === 'all' ? null : $filter, $q, $source === 'all' ? null : $source, $opens, $kind === 'all' ? null : $kind);
 
         return Inertia::render('Admin/Marketing/WhatsappLog', [
             /* حالُ الربط أوّلًا: دفترٌ فارغٌ لمن لم يربط ليس عطبًا، وقولُه يمنع البحث عن عطب */
             'readiness' => WhatsAppFeature::readiness($business),
+            /* وربطٌ انقطع لا يُخفي ما خرج قبله — البابُ لمن لا دفترَ له أصلًا */
+            'hasHistory' => WhatsAppLog::hasHistory($business->id),
             'rows' => $page->items(),
             'pagination' => Pagination::meta($page),
             'summary' => WhatsAppLog::summary($business->id),
             'summaryDays' => WhatsAppLog::SUMMARY_DAYS,
             'buckets' => WhatsAppLog::filters(),
-            'params' => ['filter' => $filter, 'q' => $q],
+            'sources' => WhatsAppLog::sources(),
+            'kinds' => WhatsAppLog::kinds(),
+            'params' => ['filter' => $filter, 'source' => $source, 'kind' => $kind, 'q' => $q],
         ]);
-    }
-
-    /**
-     * «محادثات واتساب» — ما أرسله النظامُ من رقم المحلّ، محادثاتٍ برقم الزبون.
-     *
-     * قراءةٌ محضة: لا حقلَ كتابةٍ ولا زرَّ إرسال. والمحادثةُ المختارة تُسمّى
-     * بمعرّف رسالةٍ فيها (`c`) لا برقم الزبون — فلا يحمل العنوانُ رقمًا، ولا
-     * يُفتح بمعرّفٍ من متجرٍ آخر شيء (`anchor` تردّ 404).
-     */
-    private function conversations(Request $request, Business $business): Response
-    {
-        $own = WhatsAppConversations::ownNumber($business);
-        $q = Search::term($request);
-
-        if (! $own) {
-            return Inertia::render('Admin/Marketing/WhatsappConversations', [
-                'connected' => false,
-                'number' => null,
-                'conversations' => [],
-                'pagination' => null,
-                'params' => ['q' => $q, 'c' => null],
-                'thread' => null,
-            ]);
-        }
-
-        $page = WhatsAppConversations::page($business, $own, $q);
-
-        $thread = null;
-        $c = $request->query('c');
-
-        if (is_string($c) && $c !== '') {
-            $anchor = ctype_digit($c) ? WhatsAppConversations::anchor($business, $own, (int) $c) : null;
-            abort_if($anchor === null, 404);
-
-            $thread = WhatsAppConversations::contact($business, $own, (string) $anchor->recipient_phone)
-                + ['key' => (int) $anchor->id]
-                + WhatsAppConversations::thread($business, $own, (string) $anchor->recipient_phone);
-        }
-
-        return Inertia::render('Admin/Marketing/WhatsappConversations', [
-            'connected' => true,
-            // الرقمُ المعروض وحده — لا وصلةٌ ولا معرّفٌ ولا رمز
-            'number' => $own->display_phone_number,
-            'conversations' => $page->items(),
-            'pagination' => Pagination::meta($page),
-            'params' => ['q' => $q, 'c' => $thread ? (string) $thread['key'] : null],
-            'thread' => $thread,
-        ]);
-    }
-
-    /**
-     * رسائلُ أقدم في محادثة — خمسون قبل `before`.
-     *
-     * ومحروسٌ في الخادم لا في الشاشة: نشاطٌ لم تُفتح له الميزة، أو لم يربط
-     * رقمه، أو رسالةٌ ليست في نطاقه — 404 كأنّ الباب لا وجود له.
-     */
-    public function olderMessages(Request $request, int $message)
-    {
-        $business = $this->business();
-        abort_unless(WhatsAppConversations::enabled($business), 404);
-
-        $own = WhatsAppConversations::ownNumber($business);
-        abort_if($own === null, 404);
-
-        $anchor = WhatsAppConversations::anchor($business, $own, $message);
-        abort_if($anchor === null, 404);
-
-        $before = $request->query('before');
-
-        return response()->json(WhatsAppConversations::thread(
-            $business, $own, (string) $anchor->recipient_phone,
-            is_string($before) && ctype_digit($before) ? (int) $before : null,
-        ));
     }
 
     /**
@@ -295,13 +257,31 @@ class WhatsAppController extends Controller
 
             $own = WhatsAppConnections::forBusiness($business->id);
 
-            if (! $own || ! $own->isUsable()) {
+            if (! $own || ! $own->isConnected()) {
                 return back()->withErrors(['mode' => __('اربط رقم متجرك أولًا — لا وصلة صالحة بعد.')]);
+            }
+
+            // ‏‏ورقمٌ لم تثبت جهةُ رسومه لا يُختار — ويُقال ما بقي
+            if (($stop = WhatsAppBillingLock::stop($own)) !== null) {
+                return back()->withErrors(['mode' => WhatsAppBillingLock::says($stop)['text']]);
+            }
+
+            if (! $own->isUsable()) {
+                return back()->withErrors(['mode' => __('اربط رقم متجرك أولًا — لا وصلة صالحة بعد.')]);
+            }
+
+            // ولا يُحوَّل قبل أن تثبت جاهزيّتُه آليًّا، أو يُراجَع دليلُ الفوترة ويُعرف حسابُ الرسائل — ويبقى إرسالُه كما هو
+            if (! WhatsAppSender::mayOwn($own)) {
+                return back()->withErrors(['mode' => WhatsAppSender::checking((int) $business->id)
+                    ? __('رقمك قيد التحقّق — يصير رقم إرسال متجرك تلقائيًّا حين تكتمل مراحله، ويبقى إرسالك كما هو حتى ذلك.')
+                    : __('لا يُحوَّل الإرسال إلى رقم متجرك قبل أن يُراجَع دليل فوترته ويُعرف حساب رسائله — ويبقى إرسالك كما هو حتى ذلك.')]);
             }
         }
 
         $from = $business->whatsapp_mode;
         $business->update(['whatsapp_mode' => $data['mode']]);
+        // ‏‏وما اختاره بيده لا يُبدَّل عليه آليًّا
+        WhatsAppSender::chosen((int) $business->id, $data['mode']);
 
         Activity::log('settings', 'واتساب — بدّل وضع الإرسال: '
             .WhatsAppMode::label($from).' ← '.WhatsAppMode::label($data['mode']));
@@ -359,6 +339,37 @@ class WhatsAppController extends Controller
             return back()->withErrors(['access_token' => __('ربط رقم المتجر ميزة غير مفعّلة لحسابك — راجع أبعاد.')]);
         }
 
+        /*
+         * ═══ والتاجرُ يربط بتطبيقه هو — الطريقُ الافتراضيّ (`WhatsAppOwnApp`) ═══
+         *
+         * تطبيقُه وحسابُه ورقمُه ورمزُه ووسيلةُ دفعه عند ميتا. ولا يُقبل هنا رمزٌ من
+         * تطبيق أبعاد. وهو تفويضٌ باسم النشاط يُرسل برقمه ويقرأ رسائل زبائنه —
+         * فلصاحب الحساب وحده، كالتسجيل المدمج.
+         */
+        if (WhatsAppOwnApp::onOwnApp((int) $business->id)) {
+            if (! \App\Support\Permissions::isOwner($request->user())) {
+                return back()->withErrors(['app_id' => __('ربط واتساب لصاحب الحساب وحده.')]);
+            }
+
+            $data = $request->validate([
+                'app_id' => ['required', 'string', 'regex:/^[0-9]{5,25}$/'],
+                'app_secret' => ['nullable', 'string', 'min:16', 'max:200'],
+                'waba_id' => ['required', 'string', 'regex:/^[0-9]{5,25}$/'],
+                'phone_number_id' => ['required', 'string', 'regex:/^[0-9]{5,25}$/'],
+                'access_token' => ['nullable', 'string', 'min:20', 'max:1000'],
+                // والتاجرُ يُقرّ أنّ رسوم ميتا ووسيلةَ دفعها عليه — لا على أبعاد
+                'billing_ack' => ['accepted'],
+            ]);
+
+            $result = WhatsAppOwnApp::link($business, $request->user(), $data);
+
+            if (! $result['ok']) {
+                return back()->withErrors([(string) $result['field'] => $result['message']]);
+            }
+
+            return back()->with('toast', ['msg' => $result['message'], 'type' => $result['pending'] ? 'info' : 'success']);
+        }
+
         $data = $request->validate([
             'phone_number_id' => ['required', 'string', 'max:100'],
             'waba_id' => ['nullable', 'string', 'max:100'],
@@ -404,6 +415,13 @@ class WhatsAppController extends Controller
             return back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say($kind['problem'])]);
         }
 
+        // ‏‏ولا يحلّ حسابٌ لم تثبت جهةُ رسومه محلَّ رقمٍ يُرسل اليوم — كالربط بضغطة
+        if ($why = WhatsAppOnboarding::wouldSilence($business, $existing, (string) $check['waba'], (string) $data['phone_number_id'])) {
+            WhatsAppLinkCheck::log('manual_link_refused', $business->id, ['code' => WhatsAppBillingLock::UNPROVEN, 'message' => null]);
+
+            return back()->withErrors(['phone_number_id' => $why]);
+        }
+
         $hook = WhatsAppLinkCheck::subscribe((string) $check['waba'], $token);
 
         // ولا يُحفظ على اشتراكٍ لم يُقرأ، ولا تُستبدل وصلةٌ تُرسل بوصلةٍ لم يثبت اشتراكُها
@@ -430,8 +448,12 @@ class WhatsAppController extends Controller
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
+            // ‏‏ومقفلٌ حتى تثبت جهةُ رسومه (`WhatsAppBillingLock`)
+            'billing_exempt' => WhatsAppBillingLock::staysExempt($existing, (string) $check['waba'], (string) $data['phone_number_id']),
         ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state'])
-          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : []);
+          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? WhatsAppLinkHealth::UNHEARD : [])
+          // ‏‏ومن فصل تطبيقه يُنزع من صفّه ما يخصّ تطبيقه — فلا تصير الوصلةُ نصفين
+          + WhatsAppOwnApp::leave($existing);
 
         $connection = $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
 
@@ -440,8 +462,12 @@ class WhatsAppController extends Controller
 
         Activity::log('settings', 'واتساب — ربط رقم المتجر ('.($attributes['display_phone_number'] ?? $data['phone_number_id']).')');
 
+        WhatsAppBillingLock::linked($connection->refresh());
+        // ‏‏ويُعتمد رقمَ إرسالٍ حين تثبت جاهزيّتُه — كالربط بضغطة
+        WhatsAppSender::linked($connection, WhatsAppSender::VIA_MANUAL, $request->user());
+
         return back()->with('toast', [
-            'msg' => WhatsAppOnboarding::linkedMessage($hook['state']),
+            'msg' => WhatsAppOnboarding::withSender($business, WhatsAppOnboarding::linkedMessage($hook['state'])),
             'type' => $hook['state'] === WhatsAppLinkCheck::SUBSCRIBED ? 'success' : 'warning',
         ]);
     }
@@ -464,13 +490,19 @@ class WhatsAppController extends Controller
             ]);
         }
 
-        // ومن أُغلق عنه رقمُ أبعاد يبقى على رقمه غيرَ مربوط — لا يُرجَع إليه
-        if ($business->whatsapp_mode === WhatsAppMode::BUSINESS_OWN && WhatsAppFeature::canUseShared($business)) {
-            $business->update(['whatsapp_mode' => WhatsAppMode::ABAAD_SHARED]);
-        }
-
+        /*
+         * والفصلُ لا يُرجعه إلى رقم أبعاد — يبقى على رقمه غيرَ مربوط.
+         *
+         * كان يُبدَّل إلى `abaad_shared` هنا، فتخرج رسائلُ زبائنه بعد الفصل من
+         * رقمٍ لم يختره، ويردّ الزبونُ على رقمٍ لا يعرفه المحلّ. فصار الرقمُ
+         * المشترك اختيارًا يُضغط (`mode`) لا نتيجةً لفصل.
+         *
+         * والفصلُ محلّيٌّ كما كان: لا `deregister` ولا حذفَ عند ميتا — الرقمُ
+         * وحسابُ الأعمال يبقيان ملكَ صاحبهما، ويُربطان من جديد متى شاء.
+         */
+        WhatsAppSender::unlinked((int) $business->id);
         Activity::log('settings', 'واتساب — فصل رقم المتجر');
 
-        return back()->with('toast', ['msg' => __('فُصل رقم المتجر'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('فُصل رقم المتجر — لا تخرج رسائل واتساب حتى تربطه من جديد أو تختار رقم أبعاد.'), 'type' => 'success']);
     }
 }

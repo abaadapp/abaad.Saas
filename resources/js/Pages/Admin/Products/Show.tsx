@@ -27,7 +27,8 @@ import type { Movement, Product } from '@/types/models';
 interface Props {
     product: Product;
     stats: Stat[];
-    movements: Movement[];
+    /** `null` لمن يفتح المنتجاتِ وحدها في متجرٍ يؤوي بوتيكات — لا يقرأ ما بيع */
+    movements: Movement[] | null;
     thumbs: string[];
     description: string;
     descriptionEn?: string;
@@ -146,47 +147,49 @@ export default function ProductShow() {
                 ))}
             </div>
 
-            <div>
-                <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-bold text-[#111]">{t('حركة المخزون')}</h3>
+            {movements !== null && (
+                <div>
+                    <div className="mb-3 flex items-center justify-between">
+                        <h3 className="font-bold text-[#111]">{t('حركة المخزون')}</h3>
+                    </div>
+                    <Card className="overflow-hidden">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="hover:bg-transparent">
+                                    {['نوع الحركة', 'الكمية', 'الموظف', 'التاريخ'].map((h) => (
+                                        <TableHead key={h}>{t(h)}</TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {movements.length === 0 ? (
+                                    <TableEmpty colSpan={4}>{t('لا توجد حركات لهذا المنتج بعد')}</TableEmpty>
+                                ) : (
+                                    movements.map((mv, i) => (
+                                        <TableRow key={i}>
+                                            <TableCell className="font-medium text-[#111]">{t(mv.type)}</TableCell>
+                                            <TableCell>
+                                                <span
+                                                    className={cn(
+                                                        'font-medium tabular-nums',
+                                                        String(mv.qty).startsWith('+')
+                                                            ? 'text-[#047857]'
+                                                            : 'text-[#b91c1c]',
+                                                    )}
+                                                >
+                                                    {mv.qty}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-[#4b4b4b]">{mv.employee}</TableCell>
+                                            <TableCell className="text-[#6b7280]">{mv.date}</TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </Card>
                 </div>
-                <Card className="overflow-hidden">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="hover:bg-transparent">
-                                {['نوع الحركة', 'الكمية', 'الموظف', 'التاريخ'].map((h) => (
-                                    <TableHead key={h}>{t(h)}</TableHead>
-                                ))}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {movements.length === 0 ? (
-                                <TableEmpty colSpan={4}>{t('لا توجد حركات لهذا المنتج بعد')}</TableEmpty>
-                            ) : (
-                                movements.map((mv, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell className="font-medium text-[#111]">{t(mv.type)}</TableCell>
-                                        <TableCell>
-                                            <span
-                                                className={cn(
-                                                    'font-medium tabular-nums',
-                                                    String(mv.qty).startsWith('+')
-                                                        ? 'text-[#047857]'
-                                                        : 'text-[#b91c1c]',
-                                                )}
-                                            >
-                                                {mv.qty}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-[#4b4b4b]">{mv.employee}</TableCell>
-                                        <TableCell className="text-[#6b7280]">{mv.date}</TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </Card>
-            </div>
+            )}
         </AdminLayout>
     );
 }

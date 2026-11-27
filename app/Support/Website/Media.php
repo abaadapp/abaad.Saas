@@ -2,6 +2,7 @@
 
 namespace App\Support\Website;
 
+use App\Support\ImageVariants;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -48,6 +49,27 @@ class Media
     }
 
     /**
+     * نسخةُ العرض لصورةٍ رفعها التاجر — إن صُنعت، وإلّا الصورةُ كما حُفظت.
+     *
+     * صورُ الأقسام تُحفظ مسارًا أو رابطًا بنطاق أبعاد، وتُرسم بعرض الشاشة —
+     * في `<img>` وفي خلفيّة CSS معًا. فنسختُها WebP بأبعادها نفسها
+     * (`ImageVariants::link`): التصميمُ كما هو والملفُّ أخفّ. والرابطُ
+     * الخارجيّ والمضمَّن يمرّان كما هما.
+     */
+    private static function lighter(string $value): string
+    {
+        $value = trim($value);
+
+        if ($value === '' || str_starts_with($value, 'data:')) {
+            return $value;
+        }
+
+        return str_contains($value, '://') || str_starts_with($value, '/')
+            ? ImageVariants::link($value, ImageVariants::DISPLAY)
+            : ImageVariants::url($value, ImageVariants::DISPLAY);
+    }
+
+    /**
      * مفاتيح الصور في نوعٍ من الأقسام — من وصف الحقول لا من قائمةٍ مكتوبة.
      *
      * قائمةٌ مكتوبة بيدها تُنسى يوم يُضاف قسمٌ فيه صورة، فتخرج صورتُه
@@ -89,7 +111,7 @@ class Media
 
         foreach ($fields['flat'] as $key) {
             if (isset($data[$key])) {
-                $data[$key] = self::url((string) $data[$key]) ?? '';
+                $data[$key] = self::url(self::lighter((string) $data[$key])) ?? '';
             }
         }
 
@@ -101,7 +123,7 @@ class Media
             $data[$key] = array_map(function ($row) use ($subs) {
                 foreach ($subs as $sub) {
                     if (is_array($row) && isset($row[$sub])) {
-                        $row[$sub] = self::url((string) $row[$sub]) ?? '';
+                        $row[$sub] = self::url(self::lighter((string) $row[$sub])) ?? '';
                     }
                 }
 

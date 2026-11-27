@@ -163,7 +163,7 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
         $partial = $this->invoice([[$this->silver]]);
         CustomerPayments::record($this->shop->id, $this->company, 5.0, ['method' => 'نقدي'], [$partial->id => 5.0]);
         $credited = $this->invoice([[$this->silver]]);
-        CustomerInvoices::creditNote($credited, 12.0, 0.0, 'رُدّت');
+        CustomerInvoices::creditNote($credited, 12.0, 0.0, 'رُدّت', basis: 'return');
         $whatsapp = $this->invoice([[$this->silver]], issue: false);
         $whatsapp->forceFill(['form_token' => WhatsAppOrderCheckout::FORM_TOKEN.'9'])->save();
         CustomerInvoices::issue($whatsapp);
@@ -372,7 +372,7 @@ class WhatAnInvoiceOwesNoBoutiqueIsReadForReviewTest extends TestCase
         $issued([[$this->silver]], '2027-01-10 10:00:00');
         // محاصَرةٌ محصَّلةٌ وعليها إشعارُ دائن
         $credited = $issued([[$this->silver, 2]], '2027-01-11 10:00:00');
-        CustomerInvoices::creditNote($credited, 12.0, 0.0, 'خصم');
+        CustomerInvoices::creditNote($credited, 12.0, 0.0, 'خصم', basis: 'discount');
         CustomerPayments::record((int) $this->shop->id, $this->company, 12.0, ['method' => 'نقدي'], [$credited->id => 12.0]);
         $this->soldOn('2027-01-20', $this->silver, 25);
         // النسبةُ تغيّرت بين ما قبلها وما بعدها

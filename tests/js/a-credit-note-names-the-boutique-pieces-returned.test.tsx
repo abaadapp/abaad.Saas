@@ -8,8 +8,8 @@ import { pageProps } from './setup';
  *
  * ═══ ما يُحرس ═══
  *
- *   - فاتورةٌ بلا بوتيك: النموذجُ كما كان، ولا يُرسَل معه سببٌ ولا قطع.
- *   - «رُدّت بضاعة» تفتح القطع، و«خصم» لا تفتحها وتقول إنّه على المتجر.
+ *   - فاتورةٌ بلا بوتيك: سببٌ ورمزُ نموذجٍ كأيّ إشعار، ولا قطع.
+ *   - «إرجاع» يفتح القطع، و«خصم» أو «تصحيح خطأ» لا يفتحها ويقول إنّه على المتجر — سببٌ واحدٌ للفاتورة كلّها.
  *   - حالُ القطعة (سليمة/تالفة) لما حملته ورقةٌ وحده.
  *   - المبلغُ يُقترح من ثمن ما رُدّ ما لم يُكتب بيد.
  *   - حصصُ البوتيكات بطاقةٌ لمن وصلته، وتجاوزُ الخصم يُقال.
@@ -44,6 +44,25 @@ vi.mock('@inertiajs/react', async () => {
         Head: () => null,
         Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
         useForm,
+    };
+});
+
+vi.mock('@/Components/Field', async () => {
+    const actual = await vi.importActual<Record<string, unknown>>('@/Components/Field');
+
+    return {
+        ...actual,
+        Select: ({ id, options, value, onChange }: {
+            id?: string;
+            options: { label: string; value: string | number }[];
+            value?: string | number | null;
+            onChange?: (e: { target: { value: string; name: string } }) => void;
+        }) => (
+            <select data-testid={id ? `${id}-input` : undefined} value={value ?? ''} onChange={(e) => onChange?.({ target: { value: e.target.value, name: '' } })}>
+                <option value="" />
+                {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+        ),
     };
 });
 
@@ -82,18 +101,19 @@ function mount(over: Record<string, unknown> = {}) {
 }
 
 const openNote = () => fireEvent.click(screen.getAllByRole('button').find((b) => /إشعار دائن/.test(b.textContent ?? ''))!);
+const choose = (value: string) => fireEvent.change(screen.getByTestId('credit-note-basis-input'), { target: { value } });
 const save = () => fireEvent.click(screen.getByRole('button', { name: 'حفظ الإشعار' }));
 
 beforeEach(() => { sent.length = 0; });
 afterEach(() => cleanup());
 
 describe('إشعارُ الدائن وقطعُ البوتيك', () => {
-    it('فاتورةٌ بلا بوتيك: النموذجُ كما كان ولا يُرسَل معه سببٌ ولا قطع', () => {
+    it('فاتورةٌ بلا بوتيك: سببٌ ورمزُ نموذجٍ كأيّ إشعار، ولا قطع', () => {
         mount();
         openNote();
         expect(screen.queryByTestId('credit-boutique')).toBeNull();
         save();
-        expect(Object.keys(sent[0].data).sort()).toEqual(['amount', 'reason', 'tax_amount']);
+        expect(Object.keys(sent[0].data).sort()).toEqual(['amount', 'basis', 'reason', 'tax_amount', 'token']);
     });
 
     it('يُسأل لماذا الإشعار، والخصمُ لا يفتح القطع ويقول إنّه على المتجر', () => {
@@ -101,19 +121,19 @@ describe('إشعارُ الدائن وقطعُ البوتيك', () => {
         openNote();
         const box = screen.getByTestId('credit-boutique');
         expect(screen.queryAllByTestId('credit-piece')).toHaveLength(0);
-        fireEvent.click(within(box).getByLabelText('خصم أو تسوية سعر بلا مرتجع'));
+        choose('discount');
         // والجوابُ يمحو رسالةَ السؤال — لا تبقى فوق ما اختير
         expect(cleared).toContain('basis');
         expect(screen.queryAllByTestId('credit-piece')).toHaveLength(0);
-        expect(box.textContent).toContain('الخصم على المتجر');
+        expect(box.textContent).toContain('الخصم وتصحيح الخطأ على المتجر');
         save();
-        expect(sent[0].data.basis).toBe('price');
+        expect(sent[0].data.basis).toBe('discount');
     });
 
-    it('«رُدّت بضاعة» تفتح القطع، وحالُ القطعة لما حملته ورقةٌ وحده، والمبلغُ يُقترح من ثمنها', () => {
+    it('«إرجاع» يفتح القطع، وحالُ القطعة لما حملته ورقةٌ وحده، والمبلغُ يُقترح من ثمنها', () => {
         mount({ boutiquePieces: pieces });
         openNote();
-        fireEvent.click(screen.getByLabelText('رُدّت بضاعة'));
+        choose('return');
         const rows = screen.getAllByTestId('credit-piece');
         expect(rows).toHaveLength(2);
         expect(within(rows[0]).queryByLabelText('عاد سليمًا')).toBeNull();
@@ -130,7 +150,7 @@ describe('إشعارُ الدائن وقطعُ البوتيك', () => {
     it('والمبلغُ المكتوب بيدٍ لا يُبدَّل', () => {
         mount({ boutiquePieces: pieces });
         openNote();
-        fireEvent.click(screen.getByLabelText('رُدّت بضاعة'));
+        choose('return');
         fireEvent.change(screen.getByLabelText(/^المبلغ/), { target: { value: '5' } });
         fireEvent.change(screen.getByLabelText('رُدّ من قطعة فضّة'), { target: { value: '2' } });
         save();

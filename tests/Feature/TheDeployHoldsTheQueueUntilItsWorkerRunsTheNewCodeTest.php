@@ -91,7 +91,8 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         // sudo -n يُرفض لأمرٍ لم تُثبَّت قاعدتُه بعد — كما يردّ على الخادم. SUDOERS_OLD: قاعدةُ main
         // (لا إيقاف ولا إطلاق)، SUDOERS_HALF: نصفُ تركيب (الإيقافُ بلا الإطلاق). و-l يسأل ولا يُجري
         $sudo = 'u=root; list=0; while [ $# -gt 0 ]; do case "$1" in -n) shift;; -l) list=1; shift;; -u) u="$2"; shift 2;; *) break;; esac; done; '
-            .'refused=0; if [ "${SUDOERS_OLD:-}" = 1 ]; then case "$*" in *"queue:pause"*|*"queue:resume"*) refused=1;; esac; fi; '
+            .'refused=0; if [ "${SUDOERS_OLD:-}" = 1 ]; then case "$*" in *"queue:pause"*|*"queue:resume"*|*"abaad:deploy-state"*) refused=1;; esac; fi; '
+            .'if [ "${SUDOERS_R14:-}" = 1 ]; then case "$*" in *"abaad:deploy-state"*) refused=1;; esac; fi; '
             .'if [ "${SUDOERS_HALF:-}" = 1 ]; then case "$*" in *"queue:resume"*) refused=1;; esac; fi; '
             .'if [ $list = 1 ]; then echo "sudo-l[$u] $* refused=$refused" >> "$ROOT/sudo-l.log"; exit $refused; fi; '
             .'if [ $refused = 1 ]; then echo "sudo: a password is required" >&2; exit 1; fi; '
@@ -100,14 +101,22 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         $migrate = 'n=$(cat "$ROOT/migrate.count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$ROOT/migrate.count"; '
             .'if [ "${FAIL_MIGRATE:-}" = 1 ]; then printf "\n INFO Running migrations.\n\n '.self::B.' .. 0.08ms FAIL\n\n  SQLSTATE[23505]: duplicate\n"; exit 1; fi; '
             .'if [ "$n" -le "${LOCKED:-0}" ]; then printf "\n INFO Running migrations.\n\n '.self::B.' .. 3001ms FAIL\n\n   Illuminate\\\\Database\\\\QueryException\n\n  SQLSTATE[55P03]: Lock not available: 7 ERROR:  canceling statement due to lock timeout\n"; exit 1; fi; '
-            .'printf "\n INFO Running migrations.\n\n '.self::B.' .. 2.34ms DONE\n"';
+            .'touch "$ROOT/migrated"; printf "\n INFO Running migrations.\n\n '.self::B.' .. 2.34ms DONE\n"';
+        // abaad:deploy-state كما يجيب التطبيق: مهمّةٌ تجري BUSY_FOR سؤالًا، ثمّ لا شيء — والهجرةُ B
+        // لم تجرِ ما دام ملفُّها على القرص ولم يُهاجَر. STATE_FAIL: التطبيقُ لا يجيب
+        $state = 'n=$(cat "$ROOT/state.count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$ROOT/state.count"; '
+            .'[ "${STATE_FAIL:-}" = 1 ] && { echo "running: ?"; exit 1; }; '
+            .'p=0; [ -e "$APP_DIR/database/migrations/'.self::B.'.php" ] && [ ! -e "$ROOT/migrated" ] && p=1; '
+            .'if [ "$n" -le "${BUSY_FOR:-0}" ]; then echo "running: 1"; echo "job: #7 whatsapp App\\Jobs\\SendWhatsAppMessage · 41s · attempt 1"; fi; '
+            .'[ "$n" -le "${BUSY_FOR:-0}" ] || echo "running: 0"; echo "abandoned: 0"; echo "pending-migrations: $p"; '
+            .'[ $p = 1 ] && echo "migration: '.self::B.'"; [ "$n" -le "${BUSY_FOR:-0}" ] && exit 3; exit 0';
         $stubs = [
             'sudo' => $sudo,
             'composer' => $log.'; [ "${FAIL_COMPOSER:-}" = 1 ] && exit 1; true',
             // BLOCK_BUILD: البناءُ ينتظر إشارةً — نشرٌ جارٍ يُمسك القفل، فيُجرَّب فوقه نشرٌ ثانٍ
             // AGE_HOLD: البناءُ طال عشرين دقيقة — فملفُّ الإيقاف قديمٌ حين يسقط النشرُ بعده
             'npm' => $log.'; case "$*" in *"run build"*) if [ "${AGE_HOLD:-}" = 1 ] && [ -e "$APP_DIR/.deploy-hold" ]; then perl -e \'utime time-1200, time-1200, $ARGV[0]\' "$APP_DIR/.deploy-hold"; fi; if [ "${BLOCK_BUILD:-}" = 1 ]; then touch "$ROOT/building"; while [ ! -e "$ROOT/go" ]; do /bin/sleep 0.1; done; fi; [ "${FAIL_BUILD:-}" = 1 ] && exit 0; for a in "$@"; do [ "$p" = "--outDir" ] && { mkdir -p "$a"; touch "$a/manifest.json"; }; p="$a"; done;; esac',
-            'php' => $log.'; case "$*" in *"migrate --force"*) '.$migrate.';; *"queue:restart"*) [ "${FAIL_RESTART:-}" = 1 ] && exit 1;; esac; true',
+            'php' => $log.'; case "$*" in *"migrate --force"*) '.$migrate.';; *"abaad:deploy-state"*) '.$state.';; *"queue:restart"*) [ "${FAIL_RESTART:-}" = 1 ] && exit 1;; esac; true',
             'systemctl' => $log.'; [ "${FAIL_RELOAD:-}" = 1 ] && exit 1; true',
             'curl' => $log.'; printf "%s" "${HEALTH_CODE:-200}"',
             // النومُ يُسجَّل ولا يُنتظر
@@ -118,7 +127,7 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         // flock من util-linux على الخادم وفي CI. وماك بلا util-linux: بديلٌ يقفل الوصفَ الموروث
         // نفسَه بـflock(2) كما يفعل الأصل — قفلٌ حقيقيٌّ من النواة، لا تظاهر
         if (trim((string) shell_exec('command -v flock')) === '') {
-            $stubs['flock'] = '[ "$1" = "-n" ] && shift; exec perl -MFcntl=:flock -e \'open(my $l, ">&=", $ARGV[0]) or exit 2; flock($l, LOCK_EX | LOCK_NB) or exit 1\' "$1"';
+            $stubs['flock'] = 'w=0; case "$1" in -n) shift;; -w) w="$2"; shift 2;; esac; exec perl -MFcntl=:flock -MTime::HiRes=sleep,time -e \'open(my $l, ">&=", $ARGV[0]) or exit 2; my $until = time + $ARGV[1]; until (flock($l, LOCK_EX | LOCK_NB)) { exit 1 if time >= $until; sleep 0.1 } exit 0\' "$1" "$w"';
         }
         foreach ($stubs as $name => $body) {
             file_put_contents($this->root.'/bin/'.$name, "#!/usr/bin/env bash\n".$body."\n");
@@ -508,8 +517,9 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
             $rollbackNote = file_get_contents($this->root.'/state/ROLLBACK.txt');
             $hold = is_file($this->holdFile()) ? (string) file_get_contents($this->holdFile()) : '';
 
-            $second = $this->deploy(['CALLS' => $this->root.'/calls-2.log']);
-            $back = $this->script('scripts/rollback-code.sh', [$this->from], ['CALLS' => $this->root.'/calls-3.log']);
+            // يُنتظر القفلُ ثانيةً لا خمسًا — ثمّ يُردّ: نشرٌ جارٍ حقًّا يمسكه أطولَ منها
+            $second = $this->deploy(['CALLS' => $this->root.'/calls-2.log', 'DEPLOY_LOCK_WAIT' => '1']);
+            $back = $this->script('scripts/rollback-code.sh', [$this->from], ['CALLS' => $this->root.'/calls-3.log', 'DEPLOY_LOCK_WAIT' => '1']);
         } finally {
             touch($this->root.'/go');
             $out = (string) preg_replace('/\e\[[0-9;]*m/', '', stream_get_contents($pipes[1]).stream_get_contents($pipes[2]));
@@ -566,19 +576,177 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         $this->assertSame('held', $this->holdAt($run['calls'], 'git pull'));
     }
 
-    /* ═══ ٩ · المهمّةُ الجارية تُمهَل قبل أن يتبدّل الكود ═══ */
+    /* ═══ ٩ · المهمّةُ الجارية تُنتظر حتى تنتهي قبل أن يتبدّل الكود — لا ثوانيَ معدودة ═══ */
 
-    public function test_after_pausing_the_deploy_waits_for_the_running_job_before_the_code_changes(): void
+    /** نداءاتُ «أتجري مهمّة؟» قبل أن يتبدّل شيءٌ على القرص */
+    private function asksBefore(array $calls, string $needle): array
+    {
+        $until = $this->first($calls, $needle);
+
+        return array_values(array_filter($this->where($calls, $this->wwwData('abaad:deploy-state')), fn ($i) => $until === -1 || $i < $until));
+    }
+
+    /** ما نامه السكربتُ بين موضعين: «sleep 2»، لا السطرُ كلُّه */
+    private function sleepsBetween(array $calls, int $after, int $before): array
+    {
+        return array_values(array_map(
+            fn ($i) => explode(' fd9', $calls[$i])[0],
+            array_filter($this->where($calls, 'sleep '), fn ($i) => $i > $after && ($before === -1 || $i < $before))
+        ));
+    }
+
+    public function test_after_pausing_the_deploy_waits_until_no_job_runs_before_the_code_changes(): void
     {
         $this->server();
 
-        $run = $this->deploy(['QUEUE_DRAIN_WAIT' => '7']);
+        // مهمّةٌ تجري ثلاثةَ أسئلة (ستّ ثوانٍ هنا، وقد تكون دقائق): لا تُقطع، ولا يتبدّل الكودُ تحتها
+        $run = $this->deploy(['BUSY_FOR' => '3', 'QUEUE_IDLE_POLL' => '2']);
 
         $this->assertSame(0, $run['rc'], $run['out']);
         $calls = $run['calls'];
-        $drain = $this->first($calls, 'sleep 7');
-        $this->assertGreaterThan($this->last($calls, 'queue:pause'), $drain, 'الإمهالُ قبل الإيقاف');
-        $this->assertLessThan($this->first($calls, 'git fetch'), $drain, 'الإمهالُ بعد أن تبدّل الكود');
+        $asks = $this->asksBefore($calls, 'git fetch');
+        $this->assertCount(4, $asks, "لم يُسأل التطبيقُ حتى انتهت المهمّة:\n".implode("\n", $calls));
+        $this->assertGreaterThan($this->last($calls, 'queue:pause'), $asks[0], 'سُئل قبل أن يقف الطابور');
+        // وبين كلّ سؤالٍ وما بعده نومُ الاستطلاع — لا إمهالٌ ثابت
+        $this->assertSame(['sleep 2', 'sleep 2', 'sleep 2'], $this->sleepsBetween($calls, $this->last($calls, 'queue:pause'), $this->first($calls, 'git fetch')));
+        $this->assertStringContainsString('App\Jobs\SendWhatsAppMessage', $run['out'], 'لم تُسمَّ المهمّةُ المنتظَرة');
+        $this->assertStringContainsString('لا مهمّةَ تجري على الطابور (انتُظرت 6 ثانية)', $run['out']);
+    }
+
+    public function test_a_job_still_running_at_the_limit_stops_the_deploy_before_it_touches_the_code(): void
+    {
+        $this->server();
+
+        $run = $this->deploy(['BUSY_FOR' => '999', 'QUEUE_IDLE_TIMEOUT' => '6', 'QUEUE_IDLE_POLL' => '2']);
+
+        $this->assertNotSame(0, $run['rc'], 'مضى النشرُ ومهمّةٌ تجري');
+        foreach (['git fetch', 'git pull', 'composer install', 'run build', 'migrate --force', 'config:cache', 'systemctl reload', 'queue:restart'] as $never) {
+            $this->assertSame([], $this->where($run['calls'], $never), "لمس النشرُ الكودَ ومهمّةٌ تجري: $never");
+        }
+        $this->assertSame($this->from, $this->git('rev-parse --short HEAD', $this->root.'/app'));
+        foreach (['queue:resume whatsapp', 'queue:resume default'] as $cmd) {
+            $this->assertCount(1, $this->where($run['calls'], $this->wwwData($cmd)), "بقي الطابورُ موقوفًا: $cmd");
+        }
+        $this->assertFileDoesNotExist($this->holdFile(), 'بقيت المهامُّ موقوفةً والكودُ لم يتغيّر');
+        $this->assertStringContainsString('ما زالت مهمّةٌ تجري على الطابور بعد 6 ثانية', $run['out']);
+        $this->assertStringContainsString('  #7 whatsapp App\Jobs\SendWhatsAppMessage', $run['out'], 'لم تُسمَّ المهمّة');
+        // وحالُ الخادم: الكودُ كما كان، والطابورُ أُطلق، والمهامُّ تجري
+        $block = $this->block($run['out']);
+        foreach (['سقط عند: انتظار المهمّة الجارية قبل تبديل الكود', 'الكود على القرص: '.$this->from.' (كان '.$this->from.')',
+            'الطابور: أُطلق كما كان', 'المهامّ المجدولة: تجري'] as $says) {
+            $this->assertStringContainsString($says, $block);
+        }
+    }
+
+    public function test_without_the_state_rule_the_deploy_waits_the_fixed_time_as_before_and_says_so(): void
+    {
+        $this->server();
+
+        // sudoers الجولة ١٤: أسطرُ الطابور الأربعة بلا سؤال الحال
+        $run = $this->deploy(['SUDOERS_R14' => '1', 'QUEUE_DRAIN_WAIT' => '7']);
+
+        $this->assertSame(0, $run['rc'], $run['out']);
+        $calls = $run['calls'];
+        $this->assertSame(['sleep 7'], $this->sleepsBetween($calls, $this->last($calls, 'queue:pause'), $this->first($calls, 'git fetch')));
+        $this->assertSame([], $this->where($calls, $this->wwwData('abaad:deploy-state')), 'سُئل التطبيقُ بقاعدةٍ لم تُثبَّت');
+        $this->assertStringContainsString('قاعدةُ abaad:deploy-state غيرُ مثبّتة', $run['out']);
+        $this->assertStringContainsString('::warning::', $run['out']);
+    }
+
+    public function test_when_the_app_cannot_say_the_deploy_waits_the_fixed_time(): void
+    {
+        $this->server();
+
+        $run = $this->deploy(['STATE_FAIL' => '1', 'QUEUE_DRAIN_WAIT' => '7']);
+
+        $this->assertSame(0, $run['rc'], $run['out']);
+        $calls = $run['calls'];
+        $this->assertSame(['sleep 7'], $this->sleepsBetween($calls, $this->last($calls, 'queue:pause'), $this->first($calls, 'git fetch')));
+        $this->assertStringContainsString('تعذّر سؤالُ التطبيق عن المهامّ الجارية', $run['out']);
+    }
+
+    /* ═══ ٩ب · حالُ الخادم بعد السقوط: تُقال، وتبقى على الخادم، ويطويها النشرُ الذي يُكمل ═══ */
+
+    /** ما بين علامتَي حال الخادم في الخرج */
+    private function block(string $out): string
+    {
+        $start = strpos($out, '=== حال الخادم بعد سقوط النشر ===');
+        $this->assertNotFalse($start, "لم تُطبع حالُ الخادم:\n".$out);
+        $end = strpos($out, '=== نهاية حال الخادم ===', $start);
+        $this->assertNotFalse($end);
+
+        return substr($out, $start, $end - $start + strlen('=== نهاية حال الخادم ==='));
+    }
+
+    public function test_a_failed_deploy_says_the_state_of_the_server_and_the_safe_steps_and_keeps_them_there(): void
+    {
+        foreach ([
+            'migrate' => [['FAIL_MIGRATE' => '1'], [
+                'سقط عند: الهجرات', 'الويب: على ما حُمّل قبل النشر',
+                'هجراتٌ جرت في هذا النشر: لا شيء', 'هجراتٌ لم تجرِ: 1 (من القاعدة)', self::B,
+                'الطابور: أُطلق كما كان', 'المهامّ المجدولة: موقوفة',
+            ]],
+            'reload' => [['FAIL_RELOAD' => '1'], [
+                'سقط عند: الذاكرة المؤقتة', 'هجراتٌ جرت في هذا النشر: '.self::B, 'هجراتٌ لم تجرِ: 0 (من القاعدة)',
+                'المهامّ المجدولة: تجري',
+            ]],
+            // قبل تثبيت قاعدة السؤال: تُقدَّر الهجراتُ من git، ويُقال إنّها تقدير
+            'no state rule' => [['FAIL_MIGRATE' => '1', 'SUDOERS_R14' => '1'], [
+                'هجراتٌ لم تجرِ: '.self::B.' (تقديرٌ من git', 'المهامّ المجدولة: موقوفة',
+            ]],
+        ] as $case => [$env, $says]) {
+            $this->server();
+
+            $run = $this->deploy($env);
+
+            $this->assertNotSame(0, $run['rc'], "$case: نجح النشر");
+            $this->assertStringContainsString('::error title=سقط النشر::', $run['out'], "$case: لم يُعلَن السقوطُ في Deploy Main");
+            $block = $this->block($run['out']);
+            foreach ($says as $line) {
+                $this->assertStringContainsString($line, $block, "$case: $line");
+            }
+            $this->assertStringContainsString('الكود على القرص: '.$this->to.' (كان '.$this->from.')', $block, $case);
+            $this->assertStringContainsString('scripts/rollback-code.sh '.$this->from, $block, "$case: لا خطوةَ رجوعٍ آمنة");
+            $this->assertStringContainsString('أعِد تشغيلَ Deploy Main', $block, $case);
+            // وتبقى على الخادم بعد أن يُطوى السجلّ
+            $this->assertSame(trim($block), trim((string) file_get_contents($this->root.'/state/DEPLOY-FAILED.txt')), "$case: لم تُكتب على الخادم كما قيلت");
+
+            exec('rm -rf '.escapeshellarg($this->root));
+            $this->root = '';
+        }
+    }
+
+    public function test_the_next_deploy_that_completes_resolves_the_failure_and_keeps_its_record(): void
+    {
+        $this->server();
+        $this->assertNotSame(0, $this->deploy(['FAIL_MIGRATE' => '1'])['rc']);
+        $record = (string) file_get_contents($this->root.'/state/DEPLOY-FAILED.txt');
+        $this->assertNotSame('', $record);
+
+        $run = $this->deploy(['CALLS' => $this->root.'/calls-2.log']);
+
+        $this->assertSame(0, $run['rc'], $run['out']);
+        $this->assertFileDoesNotExist($this->root.'/state/DEPLOY-FAILED.txt');
+        $resolved = glob($this->root.'/state/DEPLOY-FAILED.resolved-*.txt');
+        $this->assertCount(1, $resolved, 'مُحي أثرُ السقوط');
+        $this->assertSame($record, file_get_contents($resolved[0]));
+        $this->assertStringContainsString('نشرٌ سابقٌ سقط وأكمله هذا النشر', $run['out']);
+    }
+
+    public function test_the_apps_brief_look_at_the_lock_never_refuses_a_deploy(): void
+    {
+        $this->server();
+        touch($this->root.'/state/deploy.lock');
+        // كما يسأل التطبيقُ (`DeployState::deployRunning`): قفلٌ مشتركٌ يُمسك لحظةً ثمّ يُفلت — هنا ثانيةً ونصفًا
+        $probe = proc_open(['perl', '-MFcntl=:flock', '-MTime::HiRes=sleep', '-e',
+            '$|=1; open(my $l, "<", $ARGV[0]) or exit 2; flock($l, LOCK_SH) or exit 3; print "held\n"; sleep 1.5;', $this->root.'/state/deploy.lock'],
+            [1 => ['pipe', 'w']], $pipes);
+        $this->assertSame("held\n", fgets($pipes[1]));
+
+        $run = $this->deploy(['DEPLOY_LOCK_WAIT' => '5']);
+        proc_close($probe);
+
+        $this->assertSame(0, $run['rc'], "ردّ سؤالُ التطبيق نشرًا:\n".$run['out']);
     }
 
     /* ═══ ١٠ · الرجوعُ بالكود: يقف ويُطلق مثلَه، ويُطلق دائمًا (لا يغيّر القاعدة) ═══ */
@@ -607,6 +775,34 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         }
     }
 
+    public function test_the_code_rollback_waits_for_the_running_job_and_stops_before_the_reset_at_the_limit(): void
+    {
+        foreach (['waits' => ['BUSY_FOR' => '2'], 'limit' => ['BUSY_FOR' => '999', 'QUEUE_IDLE_TIMEOUT' => '4']] as $case => $env) {
+            $this->server();
+            $app = $this->root.'/app';
+            file_put_contents($app.'/app.txt', "b\n");
+            $this->git('commit -qam b2', $app);
+
+            $run = $this->script('scripts/rollback-code.sh', [$this->from], $env);
+
+            $calls = $run['calls'];
+            if ($case === 'waits') {
+                $this->assertSame(0, $run['rc'], $run['out']);
+                $this->assertCount(3, $this->asksBefore($calls, 'git reset --hard'), 'لم يُنتظر حتى انتهت المهمّة');
+                $this->assertGreaterThan($this->last($calls, 'queue:pause'), $this->asksBefore($calls, 'git reset --hard')[0]);
+            } else {
+                $this->assertNotSame(0, $run['rc'], 'مضى الرجوعُ ومهمّةٌ تجري');
+                $this->assertSame([], $this->where($calls, 'git reset --hard'), 'تبدّل الكودُ ومهمّةٌ تجري');
+                $this->assertCount(1, $this->where($calls, $this->wwwData('queue:resume whatsapp')));
+                $this->assertFileDoesNotExist($this->holdFile());
+                $this->assertStringContainsString('App\Jobs\SendWhatsAppMessage', $run['out']);
+            }
+
+            exec('rm -rf '.escapeshellarg($this->root));
+            $this->root = '';
+        }
+    }
+
     public function test_the_code_rollback_never_pauses_a_queue_it_cannot_resume(): void
     {
         $this->server();
@@ -626,6 +822,8 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
     public function test_every_command_the_scripts_ask_sudo_about_is_one_they_run_and_is_pinned(): void
     {
         $sudoers = (string) file_get_contents(base_path('deploy/abaad-deploy.sudoers'));
+        // سؤالُ الحال مثبَّتٌ بلا وسيطٍ بعده: sudo يطابق السطرَ كما كُتب، فلا يُمرَّر خيار
+        $this->assertMatchesRegularExpression('/^\s*\/usr\/bin\/php \/var\/www\/abaad\/artisan abaad\\\\:deploy-state, \\\\$/m', $sudoers, 'abaad:deploy-state غيرُ مثبَّتٍ بلا وسائط');
         foreach (['scripts/deploy.sh', 'scripts/rollback-code.sh'] as $script) {
             $code = (string) file_get_contents(base_path($script));
             preg_match_all('/\bmay ((?:queue:\w+) \w+)/', $code, $m);
@@ -634,6 +832,9 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
                 $this->assertMatchesRegularExpression('/^\s*art '.preg_quote($args, '/').'\b/m', $code, "$script يسأل عن $args ولا يُجريه");
                 $this->assertStringContainsString('/usr/bin/php /var/www/abaad/artisan '.str_replace(':', '\\:', $args), $sudoers, "بلا قاعدة: $args");
             }
+            // وسؤالُ الحال: يُسأل عنه قبل أن يُجرى، ويُجرى بلا وسائط
+            $this->assertMatchesRegularExpression('/\bmay abaad:deploy-state &&/', $code, "$script لا يسأل sudo عن abaad:deploy-state");
+            $this->assertMatchesRegularExpression('/^\s*art abaad:deploy-state > "\$STATE_OUT"/m', $code, "$script لا يجري abaad:deploy-state");
         }
     }
 }

@@ -83,8 +83,10 @@ cd "$APP_DIR"
 if [[ "$DRY_RUN" != "1" ]]; then
     mkdir -p "$STATE_DIR"
     command -v flock > /dev/null || die "flock غير موجود (util-linux) — لا يُرجَع بلا قفلٍ يمنع نشرًا فوقه"
+    # ثوانٍ لا لحظة — كـdeploy.sh: سؤالُ التطبيق المشترك (`DeployState::deployRunning`) يُفلت في الحال
+    DEPLOY_LOCK_WAIT="${DEPLOY_LOCK_WAIT:-5}"
     exec 9>> "$STATE_DIR/deploy.lock"
-    flock -n 9 || die "نشرٌ أو رجوعٌ آخر يجري الآن على $APP_DIR — لم يُلمس شيء. انتظره ثمّ أعِد.
+    flock -w "$DEPLOY_LOCK_WAIT" 9 || die "نشرٌ أو رجوعٌ آخر يجري الآن على $APP_DIR — لم يُلمس شيء. انتظره ثمّ أعِد.
     $(cat "$STATE_DIR/deploy.lock.who" 2>/dev/null || true)"
     git()      { command git "$@" 9>&-; }
     composer() { command composer "$@" 9>&-; }
@@ -125,7 +127,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     printf '  ١. git reset --hard %s   (الكود: %s → %s)\n' "$TO" "$FROM" "$TO"
     printf '  ٢. composer install --no-dev --no-scripts ثمّ package:discover بحساب %s\n' "$APP_USER"
     printf '  ٣. بناء الواجهة في public/build.new ثمّ تبديلها بالحيّة\n'
-    printf '  ٠. قفلُ النشر، وإيقافُ المهامّ المجدولة (.deploy-hold)، وqueue:pause لطابورَي واتساب والافتراضيّ إن أباحته sudoers — لا يُسحب جديد، والجاريةُ تُكمل\n'
+    printf '  ٠. قفلُ النشر، وإيقافُ المهامّ المجدولة (.deploy-hold)، وqueue:pause لطابورَي واتساب والافتراضيّ إن أباحته sudoers — لا يُسحب جديد، ويُنتظر حتى تنتهي الجارية\n'
     printf '  ٤. config:cache · route:cache · view:cache (بحساب %s) · إعادة تحميل php-fpm · queue:restart ثمّ queue:resume\n' "$APP_USER"
     printf '  ٥. فحص %s\n' "$HEALTH_URL"
     printf 'والقاعدةُ لا تُمسّ: لا استعادةَ نسخة، ولا هجرة، ولا رجوعَ هجرة.\n'
@@ -139,7 +141,13 @@ fi
 # ---------------------------------------------------------------------------
 QUEUE_RESTART_WAIT="${QUEUE_RESTART_WAIT:-10}"
 QUEUE_DRAIN_WAIT="${QUEUE_DRAIN_WAIT:-15}"
-QUEUE_LOG="$STATE_DIR/queue-rollback-$(date +%Y%m%d-%H%M%S).log"
+# ويُنتظر العاملُ حتى لا تبقى مهمّةٌ تجري — كـdeploy.sh (`abaad:deploy-state`)، حتى QUEUE_IDLE_TIMEOUT
+QUEUE_IDLE_TIMEOUT="${QUEUE_IDLE_TIMEOUT:-600}"
+QUEUE_IDLE_POLL="${QUEUE_IDLE_POLL:-2}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+STATE_OUT="$STATE_DIR/state-rollback-$STAMP.txt"
+( umask 077; : > "$STATE_OUT" )
+QUEUE_LOG="$STATE_DIR/queue-rollback-$STAMP.log"
 ( umask 077; : > "$QUEUE_LOG" )
 PAUSED_WHATSAPP=0
 PAUSED_DEFAULT=0
@@ -148,6 +156,44 @@ CURRENT_STEP="إيقاف الطابور"
 
 # أتبيح قاعدةُ sudo هذا الأمرَ؟ — كـdeploy.sh: يُسأل ولا يُجرى، فلا يُوقف طابورٌ لا يُطلق
 may() { sudo -n -u "$APP_USER" -l "$PHP_BIN" "$APP_DIR/artisan" "$@" > /dev/null 2>&1; }
+
+# وسؤالُ التطبيق عن المهامّ الجارية — قراءةٌ لا كتابة، كـdeploy.sh
+STATE_OK=0
+may abaad:deploy-state && STATE_OK=1
+
+# ينتظر حتى لا تبقى مهمّةٌ تجري على الطابورين — أو يقف قبل أن يلمس الكود. كـdeploy.sh حرفًا
+wait_for_idle() {
+    local waited=0 rc
+    CURRENT_STEP="انتظار المهمّة الجارية قبل تبديل الكود"
+    while :; do
+        rc=0
+        art abaad:deploy-state > "$STATE_OUT" 2>&1 || rc=$?
+        case "$rc" in
+            0)
+                ok "لا مهمّةَ تجري على الطابور (انتُظرت ${waited} ثانية) — يتبدّل الكودُ والعاملُ لا يحمل شيئًا"
+                return 0
+                ;;
+            3)
+                if (( waited >= QUEUE_IDLE_TIMEOUT )); then
+                    die "ما زالت مهمّةٌ تجري على الطابور بعد ${waited} ثانية — وقف الرجوعُ قبل أن يلمس الكود، ويُطلق الطابورُ كما كان:
+$(grep '^job: ' "$STATE_OUT" | sed 's/^job: /  /' || true)
+أعِد الرجوعَ بعد أن تنتهي، أو ارفع QUEUE_IDLE_TIMEOUT."
+                fi
+                if (( waited == 0 )); then
+                    printf '  مهمّةٌ تجري — ينتظرها الرجوعُ قبل أن يتبدّل الكود (حتى %s ثانية):\n' "$QUEUE_IDLE_TIMEOUT"
+                    grep '^job: ' "$STATE_OUT" | sed 's/^job: /    /' || true
+                fi
+                sleep "$QUEUE_IDLE_POLL"
+                waited=$(( waited + QUEUE_IDLE_POLL ))
+                ;;
+            *)
+                printf '  \033[33m!\033[0m تعذّر سؤالُ التطبيق عن المهامّ الجارية (انظر %s) — أُمهلت المهمّةُ الجارية %s ثانيةً كما كان\n' "$STATE_OUT" "$QUEUE_DRAIN_WAIT"
+                sleep "$QUEUE_DRAIN_WAIT"
+                return 0
+                ;;
+        esac
+    done
+}
 
 # والمهامُّ المجدولة تقف ما دام الكودُ يتبدّل — كـdeploy.sh (`App\Support\DeployHold`).
 # والرجوعُ لا يغيّر القاعدة (يرفض ما بينه وبين الهدف من هجرات)، فتُطلق المهامّ في آخره
@@ -186,7 +232,7 @@ on_exit() {
         if rm -f "$HOLD_FILE"; then
             printf '  أُطلقت المهامّ المجدولة\n' >&2
         else
-            printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف (أو نصفَ ساعة)\033[0m\n' "$HOLD_FILE" >&2
+            printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف (أو حتى يجد التطبيقُ بعد نصف ساعة الكودَ على قاعدته)\033[0m\n' "$HOLD_FILE" >&2
         fi
     fi
     # والنسخةُ التي يجري منها السكربت تحذف نفسَها — كما كان فخُّها يفعل
@@ -206,8 +252,13 @@ if may queue:pause whatsapp && may queue:pause default && may queue:resume whats
     art queue:pause default >> "$QUEUE_LOG" 2>&1 && PAUSED_DEFAULT=1 || true
     if (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )); then
         ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يُعاد العامل"
-        sleep "$QUEUE_DRAIN_WAIT"
-        ok "أُمهلت المهمّةُ الجارية ${QUEUE_DRAIN_WAIT} ثانيةً تُكمل فيها"
+        if (( STATE_OK == 1 )); then
+            wait_for_idle
+        else
+            printf '  \033[33m!\033[0m قاعدةُ abaad:deploy-state غيرُ مثبّتة في sudoers — لا يُعرف أانتهت المهمّةُ الجارية: أُمهلت %s ثانيةً كما كان\n' "$QUEUE_DRAIN_WAIT"
+            sleep "$QUEUE_DRAIN_WAIT"
+            ok "أُمهلت المهمّةُ الجارية ${QUEUE_DRAIN_WAIT} ثانيةً تُكمل فيها"
+        fi
     else
         release_queue || true
         PAUSED_WHATSAPP=0
@@ -277,6 +328,12 @@ CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$HEALTH_URL" || ec
 [[ "$CODE" == "200" ]] || die "الموقع يردّ $CODE بعد الرجوع إلى $TO. لا تستعِد القاعدة؛ انظر سجلَّ storage/logs، أو عُد إلى $FROM:
     bash $APP_DIR/scripts/rollback-code.sh $FROM"
 ok "$HEALTH_URL → 200"
+
+# وسقوطُ نشرٍ قبلَه حلّه هذا الرجوع: يُنقل ولا يُحذف — يبقى أثرُه
+if [[ -e "$STATE_DIR/DEPLOY-FAILED.txt" ]]; then
+    mv "$STATE_DIR/DEPLOY-FAILED.txt" "$STATE_DIR/DEPLOY-FAILED.resolved-by-rollback-$STAMP.txt"
+    ok "نشرٌ سابقٌ سقط وحلّه هذا الرجوع (DEPLOY-FAILED.resolved-by-rollback-$STAMP.txt)"
+fi
 
 printf '\n\033[1mرجع الكود: %s → %s — والقاعدة كما هي.\033[0m\n' "$FROM" "$TO"
 printf '\033[33mالآن أرجِع main نفسَه (Revert PR)، وإلّا أعاد النشرُ التالي %s.\033[0m\n' "$FROM"

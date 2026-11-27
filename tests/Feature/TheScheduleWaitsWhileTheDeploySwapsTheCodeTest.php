@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Support\DeployHold;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithConsoleEvents;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
@@ -25,15 +27,24 @@ use Tests\TestCase;
  *   - `scripts/deploy.sh` يكتب `.deploy-hold` في جذر الشجرة (يملكها) قبل السحب،
  *     ويحذفه بعد الهجرات والذاكرة وإعادة تحميل PHP، أو عند السقوط.
  *   - والتطبيقُ (`DeployHold`) يتخطّى بوجوده كلَّ مهمّةٍ حان وقتها، ويسجّل اسمها.
- *   - وملفٌّ أقدمُ من نصف ساعة تركه نشرٌ قُتل لا يوقف المهامّ: يُتجاهل ويُسجَّل خطأً.
+ *   - وملفٌّ أقدمُ من نصف ساعة لا يُطلقها الوقتُ وحده: تبقى موقوفةً ما دامت على القرص
+ *     هجراتٌ لم تجرِ، أو نشرٌ يجري، أو تعذّر السؤال. وإلّا فقد تركه نشرٌ قُتل والكودُ على
+ *     قاعدته: يُتجاهل ويُسجَّل خطأً — فلا يترك المنصّةَ بلا مهامّ.
  *   - ولا sudo فيه ولا تعديلَ لـcron: يعمل من أوّل نشرٍ بعد هذا الطلب.
  */
 class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
 {
     // أحداثُ الأوامر تصل التطبيقَ في الإنتاج عبر أحداث Symfony، وفي الاختبار بهذه السمة وحدها
+    use RefreshDatabase;
     use WithConsoleEvents;
 
     private string $hold = '';
+
+    /** مجلّدُ هجرةٍ على «القرص» لم تجرِ — يُسجَّل للمُهاجِر كما تُسجَّل مجلّداتُ الحزم */
+    private string $pendingDir = '';
+
+    /** قفلُ نشرٍ يجري — يمسكه الاختبارُ كما يمسكه السكربت */
+    private $lock = null;
 
     protected function setUp(): void
     {
@@ -46,6 +57,13 @@ class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
     {
         if ($this->hold !== '' && is_file($this->hold)) {
             unlink($this->hold);
+        }
+        if (is_resource($this->lock)) {
+            flock($this->lock, LOCK_UN);
+            fclose($this->lock);
+        }
+        if ($this->pendingDir !== '' && is_dir($this->pendingDir)) {
+            exec('rm -rf '.escapeshellarg($this->pendingDir));
         }
         parent::tearDown();
     }
@@ -90,7 +108,18 @@ class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
         $this->assertCount(1, $ran);
     }
 
-    public function test_a_hold_left_by_a_killed_deploy_never_stops_the_schedule_for_good(): void
+    /** هجرةٌ على القرص لم تجرِ على القاعدة — كما يتركها نشرٌ سقط بعد السحب وقبل الهجرات */
+    private function migrationOnDiskNotRun(): string
+    {
+        $this->pendingDir = sys_get_temp_dir().'/abaad-pending-migrations-'.bin2hex(random_bytes(4));
+        mkdir($this->pendingDir);
+        file_put_contents($this->pendingDir.'/2099_01_01_000000_left_by_a_failed_deploy.php', "<?php\n\nreturn new class extends Illuminate\\Database\\Migrations\\Migration {};\n");
+        app('migrator')->path($this->pendingDir);
+
+        return '2099_01_01_000000_left_by_a_failed_deploy';
+    }
+
+    public function test_a_hold_left_by_a_killed_deploy_never_stops_the_schedule_for_good_once_the_code_runs_on_its_database(): void
     {
         Log::spy();
         $ran = $this->oneTask();
@@ -98,8 +127,55 @@ class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
 
         $this->artisan('schedule:run')->assertSuccessful();
 
-        $this->assertCount(1, $ran, 'ملفٌّ قديمٌ تركه نشرٌ قُتل أوقف المهامّ');
+        $this->assertCount(1, $ran, 'ملفٌّ قديمٌ تركه نشرٌ قُتل أوقف المهامّ والكودُ على قاعدته');
         Log::shouldHaveReceived('error')->withArgs(fn ($message) => str_contains($message, 'stale'))->atLeast()->once();
+    }
+
+    public function test_time_alone_never_frees_the_schedule_while_the_code_on_disk_waits_for_unrun_migrations(): void
+    {
+        Log::spy();
+        $ran = $this->oneTask();
+        $pending = $this->migrationOnDiskNotRun();
+        // ساعتان بعد نشرٍ سقط بعد السحب وقبل الهجرات — لا نصفُ ساعة
+        $this->holdSince(DeployHold::STALE_AFTER * 4);
+
+        $this->artisan('schedule:run')->assertSuccessful();
+
+        $this->assertCount(0, $ran, 'أطلق الوقتُ وحده المهامَّ على كودٍ ينتظر هجراتٍ لم تجرِ');
+        Log::shouldHaveReceived('error')->withArgs(
+            fn ($message, $context = []) => str_contains($message, 'migrations that have not run') && in_array($pending, (array) ($context['pending_migrations'] ?? []), true)
+        )->once();
+    }
+
+    public function test_a_deploy_still_running_keeps_an_old_hold(): void
+    {
+        $ran = $this->oneTask();
+        $lockFile = sys_get_temp_dir().'/abaad-deploy-lock-'.bin2hex(random_bytes(4));
+        config(['app.deploy_lock_file' => $lockFile]);
+        $this->lock = fopen($lockFile, 'c');
+        $this->assertTrue(flock($this->lock, LOCK_EX | LOCK_NB));
+        $this->holdSince(DeployHold::STALE_AFTER + 60);
+
+        $this->artisan('schedule:run')->assertSuccessful();
+        $this->assertCount(0, $ran, 'أُطلقت المهامّ ونشرٌ يمسك قفلَه');
+
+        // ويُفلت القفلُ بانتهاء النشر — فيجد التطبيقُ الكودَ على قاعدته (والتشغيلُ الموقوف أخذ جدولًا فارغًا، فيُعاد)
+        flock($this->lock, LOCK_UN);
+        $after = $this->oneTask();
+        $this->artisan('schedule:run')->assertSuccessful();
+        $this->assertCount(1, $after);
+        unlink($lockFile);
+    }
+
+    public function test_an_old_hold_stays_when_the_database_cannot_say_what_ran(): void
+    {
+        $ran = $this->oneTask();
+        $this->holdSince(DeployHold::STALE_AFTER + 60);
+        Schema::drop('migrations');
+
+        $this->artisan('schedule:run')->assertSuccessful();
+
+        $this->assertCount(0, $ran, 'افتُرض التوافقُ والقاعدةُ لا تجيب');
     }
 
     public function test_a_hold_just_under_the_limit_still_holds(): void

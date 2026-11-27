@@ -95,6 +95,13 @@ return [
     'deploy_hold_file' => base_path('.deploy-hold'),
 
     /*
+    | قفلُ النشر (`flock`) — يمسكه scripts/deploy.sh وrollback-code.sh ما داما يجريان،
+    | في مجلّد حالة النشر (STATE_DIR). يسأله App\Support\DeployState بقفلٍ مشتركٍ لا
+    | ينتظر: أيجري نشرٌ الآن؟ فلا تُطلق المهامُّ المجدولة تحت نشرٍ جارٍ.
+    */
+    'deploy_lock_file' => '/var/log/abaad-deploy/deploy.lock',
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------

@@ -113,7 +113,7 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         // flock من util-linux على الخادم وفي CI. وماك بلا util-linux: بديلٌ يقفل الوصفَ الموروث
         // نفسَه بـflock(2) كما يفعل الأصل (السكربتُ يرفض النشرَ بلا قفل)
         if (trim((string) shell_exec('command -v flock')) === '') {
-            $stubs['flock'] = '[ "$1" = "-n" ] && shift; exec perl -MFcntl=:flock -e \'open(my $l, ">&=", $ARGV[0]) or exit 2; flock($l, LOCK_EX | LOCK_NB) or exit 1\' "$1"';
+            $stubs['flock'] = 'w=0; case "$1" in -n) shift;; -w) w="$2"; shift 2;; esac; exec perl -MFcntl=:flock -MTime::HiRes=sleep,time -e \'open(my $l, ">&=", $ARGV[0]) or exit 2; my $until = time + $ARGV[1]; until (flock($l, LOCK_EX | LOCK_NB)) { exit 1 if time >= $until; sleep 0.1 } exit 0\' "$1" "$w"';
         }
         foreach ($stubs as $name => $body) {
             file_put_contents($this->root.'/bin/'.$name, "#!/usr/bin/env bash\n".$body."\n");

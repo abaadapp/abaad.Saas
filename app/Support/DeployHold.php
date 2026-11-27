@@ -30,10 +30,18 @@ use Illuminate\Support\Facades\Log;
  * ويقرؤه www-data حتمًا (يقرأ منه الكود). فلا sudo فيه، ولا تعديلَ لـcron،
  * ولا يعتمد على قاعدةٍ أو ذاكرةٍ قد تكون في منتصف التبديل.
  *
- * ═══ ولا يوقف المهامَّ أبدًا ═══
+ * ═══ ولا يُطلقها الوقتُ وحده ═══
  *
- * نشرٌ قُتل قبل أن يحذف الملفَّ لا يترك المنصّةَ بلا مهامّ: ملفٌّ أقدمُ من نصف
- * ساعة يُتجاهل، ويُسجَّل خطأً في كلّ تشغيل حتى يُحذف. والنشرُ العاديّ دقائق.
+ * ملفٌّ أحدثُ من نصف ساعة يُمسك دائمًا: النشرُ العاديّ دقائق. وما بعدها لا يُطلق
+ * المهامَّ لمجرّد أنّ الوقت مرّ — يُسأل التطبيقُ عن حاله (`DeployState`):
+ *
+ *   - **كودٌ على القرص ينتظر هجراتٍ لم تجرِ** (نشرٌ سقط بعد السحب وقبل الهجرات):
+ *     تبقى موقوفة، ويُسجَّل خطأً في كلّ تشغيلٍ باسم الهجرات، حتى يكتمل نشرٌ أو
+ *     يُرجَع بالكود. تشغيلُها الآن يُجري الكودَ الجديد على القاعدة القديمة.
+ *   - **نشرٌ أو رجوعٌ ما زال يجري** (قفلُه ممسوك): تبقى موقوفة.
+ *   - **وإن تعذّر السؤال** (القاعدةُ لا تردّ): تبقى موقوفة — لا يُفترض التوافق.
+ *   - **وإلّا** فالكودُ على القرص يجري على قاعدته، والملفُّ تركه نشرٌ قُتل: يُتجاهل،
+ *     ويُسجَّل خطأً حتى يُحذف. فلا يترك المنصّةَ بلا مهامّ ملفٌّ نسيه نشرٌ مات.
  *
  * ═══ ونشرُ هذا الطلب نفسه ═══
  *
@@ -46,20 +54,22 @@ final class DeployHold
     /** اسمُ الملفّ في جذر الشجرة — السكربتان يكتبانه بالاسم نفسه (حارسٌ في الاختبار) */
     public const FILE = '.deploy-hold';
 
-    /** ملفٌّ أقدمُ من هذا (ثوانٍ) تركه نشرٌ قُتل — يُتجاهل */
+    /** ملفٌّ أحدثُ من هذا (ثوانٍ) يُمسك دائمًا. وما أقدمُ منه يُسأل عنه التطبيق: أيجري كودُ القرص على قاعدته؟ */
     public const STALE_AFTER = 1800;
 
-    /** خطأُ الملفّ القديم يُسجَّل مرّةً في كلّ تشغيل، لا مرّةً لكلّ مهمّة */
-    private static bool $staleLogged = false;
+    /** جوابُ الملفّ القديم يُحسب ويُسجَّل مرّةً في كلّ تشغيل، لا مرّةً لكلّ مهمّة */
+    private static ?bool $staleVerdict = null;
 
     public static function register(): void
     {
-        self::$staleLogged = false;
+        self::$staleVerdict = null;
 
         Event::listen(CommandStarting::class, function (CommandStarting $starting) {
             if ($starting->command !== 'schedule:run') {
                 return;
             }
+            // كلُّ تشغيلٍ يسأل من جديد: ما كان قبل دقيقةٍ قد تغيّر
+            self::$staleVerdict = null;
             $schedule = app(Schedule::class);
 
             // النشرُ قائمٌ والتشغيلُ يبدأ: يأخذ `schedule:run` جدولًا فارغًا — فلا تجري
@@ -102,7 +112,7 @@ final class DeployHold
         return (string) (config('app.deploy_hold_file') ?: base_path(self::FILE));
     }
 
-    /** أيمسك النشرُ المهامَّ الآن؟ — وملفٌّ أقدمُ من نصف ساعة لا يمسك، ويُقال ذلك */
+    /** أيمسك النشرُ المهامَّ الآن؟ — ملفٌّ حديثٌ يُمسك، والقديمُ يُمسك ما دام الكودُ لا يجري على قاعدته */
     public static function holds(): bool
     {
         $age = self::age();
@@ -110,19 +120,35 @@ final class DeployHold
             return false;
         }
 
-        if ($age > self::STALE_AFTER) {
-            if (! self::$staleLogged) {
-                self::$staleLogged = true;
-                Log::error('Scheduled tasks ran despite a stale deploy hold — a deploy left '.self::FILE.' behind; delete it once no deploy is running', [
-                    'hold' => self::describe(),
-                    'age_seconds' => $age,
-                ]);
-            }
-
-            return false;
+        if ($age <= self::STALE_AFTER) {
+            return true;
         }
 
-        return true;
+        return self::$staleVerdict ??= self::staleHolds($age);
+    }
+
+    /** ملفٌّ أقدمُ من نصف ساعة: يُمسك إن كان الكودُ ينتظر هجراتٍ أو نشرٌ يجري أو لم يُعرف — ويُقال ذلك */
+    private static function staleHolds(int $age): bool
+    {
+        $running = DeployState::deployRunning();
+        $pending = DeployState::pendingMigrations();
+        $context = ['hold' => self::describe(), 'age_seconds' => $age, 'pending_migrations' => $pending, 'deploy_running' => $running];
+
+        if ($running === true) {
+            Log::warning('Scheduled tasks stay held: a deploy or a code rollback is still running', $context);
+
+            return true;
+        }
+
+        if ($pending === null || $pending !== []) {
+            Log::error('Scheduled tasks stay held: the code on disk waits for migrations that have not run — finish the deploy (re-run Deploy Main) or roll the code back (scripts/rollback-code.sh). '.self::FILE.' is not released by time alone', $context);
+
+            return true;
+        }
+
+        Log::error('Scheduled tasks ran despite a stale deploy hold — a deploy left '.self::FILE.' behind and the code on disk runs on its database; delete it once no deploy is running', $context);
+
+        return false;
     }
 
     /** عمرُ الملفّ بالثواني، أو null إن لم يكن */

@@ -52,8 +52,9 @@ class TheGateDeploysOnlyWhatItCheckedTest extends TestCase
         $this->assertGreaterThanOrEqual(4, count($steps), 'خطواتُ النشر لم تُقرأ');
 
         foreach ($steps as [$all, $name, $body]) {
+            // والشرطُ SKIP وحده، أو بعد دالّة حالٍ بـ&& (ملخّصُ السقوط يجري بعد خطوةٍ سقطت) — لا بـ||
             $this->assertMatchesRegularExpression(
-                "/^        if: env\\.SKIP != '1'\$/m", $body,
+                "/^        if: (?:(?:failure|always)\\(\\) && )?env\\.SKIP != '1'\$/m", $body,
                 "الخطوة «{$name}» تعمل ولو اختلف الرأسُ عمّا فُحص",
             );
         }
@@ -62,5 +63,13 @@ class TheGateDeploysOnlyWhatItCheckedTest extends TestCase
         $this->assertContains('تهيئة مفتاح النشر', $names);
         $this->assertContains('النشر', $names);
         $this->assertContains('الوسم', $names);
+        // وإن سقط شيء: حالُ الخادم في ملخّص التشغيل — من العلامتين اللتين يطبعهما deploy.sh
+        $this->assertContains('حال الخادم بعد السقوط', $names);
+        $deploy = (string) file_get_contents(base_path('scripts/deploy.sh'));
+        foreach (['=== حال الخادم بعد سقوط النشر ===', '=== نهاية حال الخادم ==='] as $marker) {
+            $this->assertStringContainsString($marker, $yml, "ملخّصُ السقوط لا يقرأ العلامة: $marker");
+            $this->assertStringContainsString("printf '".$marker."\\n'", $deploy, "deploy.sh لا يطبع العلامة: $marker");
+        }
+        $this->assertStringContainsString('GITHUB_STEP_SUMMARY', $yml);
     }
 }

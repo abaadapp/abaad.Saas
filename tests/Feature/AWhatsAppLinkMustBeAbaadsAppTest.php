@@ -55,6 +55,8 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
         $this->app->setLocale('ar');
 
         config([
@@ -73,6 +75,10 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'owner@link.om',
             'password' => bcrypt('password12345'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
+        // ‏‏ورسومُه على حسابه — ثبتت، وما قبل ثبوتها يحرسه `AbaadNeverPaysForAShopsMessagesTest`
+        $this->billedToTheShop((int) $this->shop->id, 'WABA-1', 'WABA-N');
     }
 
     private function shop(string $name): Business
@@ -81,7 +87,6 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
             'name' => $name, 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true,
             // «جاهز» تطلب صندوقَ المحادثات مفتوحًا — فما يصل يُحفظ ويُعرض (`WhatsAppLinkHealth::READY`)
-            'whatsapp_inbox_enabled' => true,
         ]);
         Branch::create(['business_id' => $b->id, 'name' => 'الرئيسي']);
 
@@ -380,6 +385,12 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
         config(['whatsapp.coexistence_enabled' => true]);
         $this->signup(['type' => 'coexistence'])->assertSessionHasNoErrors();
         $this->assertTrue($this->link()->coexistence);
+
+        // ‏‏وتُطلب جهاتُه ومحادثاتُه السابقة فور الربط — Meta تقبلها خلال ٢٤ ساعة منه وحدها (`WhatsAppCoexistence::start`).
+        // ‏‏والنداءُ هنا يُمنع (لا ردَّ مُعَدًّا له) فيُقيَّد خطؤه — وهو دليلُ أنّه خرج.
+        $sync = (array) ($this->link()->metadata['coexistence_sync'] ?? []);
+        $this->assertNotEmpty($sync['started_at'] ?? null);
+        $this->assertStringContainsString('smb_app_data', (string) ($sync['smb_app_state_sync']['error'] ?? ''));
     }
 
     public function test_the_manual_form_never_links_a_business_app_number(): void
@@ -495,13 +506,15 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
 
     /* ═════════════ ٧ · ما لا يتغيّر ═════════════ */
 
-    public function test_linking_never_turns_on_the_auto_reply(): void
+    /** والربطُ لا يكتب رأيًا عن صاحب المتجر في الردّ التلقائيّ — يبقى على افتراضه */
+    public function test_linking_writes_no_auto_reply_preference(): void
     {
         Http::fake($this->abaadAppMeta());
 
         $this->paste()->assertSessionHasNoErrors();
 
-        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['enabled']);
+        $this->assertFalse(WhatsAppAutoReply::settings($this->shop->id)['explicit']);
+        $this->assertFalse(\App\Models\Setting::where('business_id', $this->shop->id)->where('key', WhatsAppAutoReply::ENABLED)->exists());
     }
 
     /** الوصلاتُ القائمة لا تُفحص ولا تُمسّ بالترحيل: كلُّ أعمدة الفحص فارغة */

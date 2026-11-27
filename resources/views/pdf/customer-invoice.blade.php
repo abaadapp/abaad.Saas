@@ -148,8 +148,16 @@
 
     <table class="grid">
         <tr><td>{{ __('المجموع الفرعي') }}</td><td>{{ number_format((float) $invoice->subtotal, 3) }}</td></tr>
-        @if ((float) $invoice->discount_total > 0)
-            <tr><td>{{ __('الخصم') }}</td><td>{{ number_format((float) $invoice->discount_total, 3) }}</td></tr>
+        {{--
+            وخصمُ النقاط سطرٌ مستقلّ بعددها وقيمتها، و«الخصم» فوقه ما سواه —
+            فمجموعُ السطرين خصمُ الورقة كلُّه، ولا يُعدّ أحدُهما مرّتين.
+        --}}
+        @php($ownDiscount = round((float) $invoice->discount_total - (float) $invoice->loyalty_discount, 3))
+        @if ($ownDiscount > 0)
+            <tr><td>{{ __('الخصم') }}</td><td>{{ number_format($ownDiscount, 3) }}</td></tr>
+        @endif
+        @if ((float) $invoice->loyalty_discount > 0)
+            <tr data-loyalty><td>{{ __('خصم نقاط الولاء') }} ({{ (int) $invoice->loyalty_points }} {{ __('نقطة') }})</td><td>{{ number_format((float) $invoice->loyalty_discount, 3) }}</td></tr>
         @endif
         @if ((float) $invoice->tax_total > 0)
             <tr><td>{{ __('الضريبة') }}</td><td>{{ number_format((float) $invoice->tax_total, 3) }}</td></tr>

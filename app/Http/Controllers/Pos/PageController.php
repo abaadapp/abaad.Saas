@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Models\Branch;
 use App\Models\CustomOrderTemplate;
 use App\Models\Order;
@@ -14,11 +15,14 @@ use App\Support\Demo;
 use App\Support\NotesAndEdits;
 use App\Support\Seasons;
 use App\Support\FlowerOrder;
-use App\Support\PlanFeatures;
+use App\Support\Loyalty;
 use App\Support\PosAddonsLayout;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\TillActivation;
+use App\Support\TillCatalog;
+use App\Support\TillCatalogSwitch;
+use App\Support\TillStock;
 use App\Support\ReceiptVisibility;
 use App\Support\Vat;
 use Illuminate\Http\RedirectResponse;
@@ -46,12 +50,11 @@ class PageController extends Controller
              * تشمله باقتُه: يعِد الكاشيرُ زبونَه بنقاطٍ يردّها الخادم — انظر
              * `PosController::loyaltyOn`. والوعدُ المكسور عند الصندوق أسوأ من
              * ميزةٍ لا تُعرض أصلًا.
+             *
+             * والأرقامُ كلُّها من `Loyalty::rules` — البابِ الذي يحسب به الخادمُ
+             * عند الدفع. فمرآةُ الشاشة (`lib/loyalty.ts`) تحسب بالأرقام نفسِها.
              */
-            'loyaltyEnabled' => ($s['loyalty_enabled'] ?? '1') !== '0'
-                && PlanFeatures::allows(auth()->user()?->business, 'loyalty'),
-            'redeemMaxPct' => (float) ($s['loyalty_redeem_max_pct'] ?? 50),
-            'earnRate' => (float) ($s['loyalty_earn_rate'] ?? 5),
-            'redeemMin' => (float) ($s['loyalty_redeem_min'] ?? 100),
+            ...Loyalty::tillSettings(Demo::bid()),
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
             'paymentMethods' => PaymentMethods::enabled($s),
@@ -97,7 +100,13 @@ class PageController extends Controller
          *
          * ولا يُطبَّق على متجرٍ بلا فروع: لا فرع يُختار، ولا سبب للحجز.
          */
-        if (! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
+        /*
+         * وجلسةُ الدعم لا تُفعّل جهازًا ولا تُحال إلى شاشة التفعيل: المتصفّحُ
+         * متصفّحُ مدير المنصّة، والفتحُ هنا كان يكتب صندوقًا في المتجر ويربط
+         * المتصفّحَ به سنتين — فيُردّ عند الدخول التالي إلى متجرٍ آخر. والفرعُ
+         * فرعُ المستخدم المختار (`BindPosBranch`).
+         */
+        if (! PosTerminal::supporting() && ! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
             /*
              * ═══ ومتجرُ الفرع الواحد يُربط وحدَه ═══
              *
@@ -146,14 +155,46 @@ class PageController extends Controller
             return redirect()->route('pos.setup');
         }
 
+        /*
+         * ‏‏والأصنافُ على الجهاز (`TillCatalogSwitch::on`): لا تُحمل مع الصفحة.
+         *
+         * يقرؤها الجهازُ ممّا حفظه ويسأل عمّا تغيّر (`pos.catalog-feed` — `TillCatalog`)،
+         * وجهازٌ بلا نسخةٍ يأخذها كلَّها مرّة. وتبقى هنا لمن يطلبها بعينها (`optional`):
+         * إن تعذّر الكتالوجُ وليس في الجهاز شيء عادت الصفحةُ إليها كما كانت.
+         * وكميّاتُها تأتي مع الصفحة (`stock`) — لا تُعرض كميّةٌ من يومِ حُفظ الكتالوج.
+         *
+         * والمفتاحُ بيد مدير المنصّة ويُقرأ في كلّ فتح: مطفأً، أو لا يُقرأ، تحمل الصفحةُ
+         * الأصنافَ كلَّها كما كانت قبل v6.600.
+         */
+        $onDevice = TillCatalogSwitch::on();
+        $stockScope = TillStock::scope((int) Demo::bid(), Demo::activeBranchId());
+
         return Inertia::render('Pos/Index', [
-            // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
-            'products' => Demo::products(Demo::activeBranchId()),
+            // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة — وما يقرؤه الصندوقُ وحده (`Demo::tillProducts`)
+            'products' => $onDevice
+                ? Inertia::optional(fn () => Demo::tillProducts(Demo::activeBranchId()))
+                : Demo::tillProducts(Demo::activeBranchId()),
+            'catalog' => $onDevice
+                ? ['scope' => TillCatalog::scope((int) Demo::bid(), Demo::activeBranchId(), app()->getLocale())]
+                : null,
+            'stock' => $onDevice
+                ? TillStock::answer(TillStock::rows((int) Demo::bid(), Demo::activeBranchId()), [], $stockScope) + ['updated_at' => now()->format('H:i:s')]
+                : null,
             'categories' => Demo::posCategories(),
             /* المواسمُ الجارية — مرشِّحٌ فوق ما حُمّل، لا يُضيف صنفًا ولا يُجيز بيعَه */
             'seasons' => Seasons::forPos(Demo::bid()),
-            // ومع كلّ زبونٍ ما يُقال عنه للكاشير — بالإعدادات، وبلا ملاحظةٍ أُطفئت
-            'customers' => $this->customersWithContext(),
+            /*
+             * والزبائنُ لا يُرسَلون مع الصفحة: يحفظهم الجهازُ ويُزامِنهم بما تغيّر
+             * (`pos.tillCustomers.sync` — `TillCustomers`). وهذا متجرُ نسختهم:
+             * نسخةٌ في الجهاز لمتجرٍ غيره تُمحى قبل أن تُقرأ.
+             */
+            'customersScope' => Demo::bid(),
+            /*
+             * ‏‏ومتجرُ كميّاتها وفرعُها — يُعيده الصندوقُ مع سؤاله عن المخزون، فإن
+             * بُدّل الفرعُ أو المتجر في تبويبٍ آخر قيل له ولم تُعرض عليه كميّاتُ غيره
+             * (`PosController::stockFeed`). ولا يُقرأ به شيء: الجلسةُ هي ما يُقرأ.
+             */
+            'stockScope' => $stockScope,
             'addons' => Demo::addons(),
             /*
              * وكيف تُعرض — شريطًا (الافتراض) أم قسمًا كاملًا. صفٌّ واحد،
@@ -357,8 +398,16 @@ class PageController extends Controller
 
     public function customers(): Response
     {
+        /*
+         * أعمدةُ الشاشة وحدها (`Pos/Customers.tsx`): الاسمُ والهاتفُ والبريدُ
+         * للبحث، والطلباتُ والإنفاقُ وآخرُ فاتورةٍ والنقاطُ والإشاراتُ للجدول.
+         * والعنوانُ والرقمُ الضريبيُّ والفرعُ واللغةُ وتاريخُ آخرِ شراءٍ لا تقرؤها —
+         * تبقى لملفّ العميل في اللوحة.
+         */
+        $shown = array_flip(['id', 'name', 'name_en', 'label', 'phone', 'email', 'orders', 'total_spent', 'last_invoice', 'last_invoice_total', 'points', 'context']);
+
         return Inertia::render('Pos/Customers', [
-            'customers' => $this->customersWithContext(),
+            'customers' => array_map(fn (array $row) => array_intersect_key($row, $shown), $this->customersWithContext()),
         ]);
     }
 
@@ -381,6 +430,17 @@ class PageController extends Controller
      */
     public function lock(Request $request): RedirectResponse
     {
+        /*
+         * وقفلُ الشاشة في جلسة الدعم عودةٌ إلى لوحة المنصّة، لا خروجٌ من كلّ شيء.
+         *
+         * القفلُ تبديلُ كاشيرٍ على صندوقه: يُنهي الجلسةَ ويقف على شاشة الدخول.
+         * وفي جلسة الدعم تلك الجلسةُ جلسةُ مدير المنصّة نفسِه — فكان يُخرج منها
+         * ويُطلب منه بريدُه وكلمتُه. فيُعاد إلى حسابه كما يُعيده زرُّ الشريط.
+         */
+        if ($request->session()->has('impersonator_id')) {
+            return app(ImpersonationController::class)->stop($request);
+        }
+
         Activity::log('logout', 'قفل شاشة نقطة البيع');
         PosCashier::forget();
 
@@ -401,12 +461,20 @@ class PageController extends Controller
     private function customersWithContext(): array
     {
         $settings = CustomerFlags::settings(Demo::bid());
-        $models = \App\Models\Customer::where('business_id', Demo::bid())->get()->keyBy('id');
+        $flags = ['notes', 'alert_type', 'alert_reason', 'birth_day', 'birth_month', 'birth_year'];
 
-        return array_map(function (array $row) use ($settings, $models) {
-            $model = $models->get($row['id']);
-            unset($row['notes'], $row['alert_type'], $row['alert_reason'], $row['birth_day'], $row['birth_month'], $row['birth_year']);
-            $row['context'] = $model ? CustomerFlags::context($model, $settings) : ['alert' => null, 'birthday_in' => null, 'note' => null];
+        /*
+         * والسياقُ من الصفّ نفسِه — لا من قراءةٍ ثانيةٍ للعملاء كلِّهم.
+         *
+         * كانت تُحمَّل نماذجُ العملاء كلُّها بكلّ أعمدتها لتُقرأ منها ستّةُ حقول
+         * يحملها صفُّ `Demo::customers` أصلًا — فمتجرٌ بخمسة آلاف عميلٍ يُقرأ مرّتين
+         * عند كلّ فتحٍ للصندوق. والحقولُ الستّة بلا تحويلٍ في النموذج، فما يُقرأ من
+         * الصفّ هو ما كان يُقرأ من القاعدة.
+         */
+        return array_map(function (array $row) use ($settings, $flags) {
+            $model = (new \App\Models\Customer)->forceFill(array_intersect_key($row, array_flip($flags)));
+            $row = array_diff_key($row, array_flip($flags));
+            $row['context'] = CustomerFlags::context($model, $settings);
 
             return $row;
         }, Demo::customers());

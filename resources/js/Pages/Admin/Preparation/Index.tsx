@@ -40,7 +40,8 @@ const NO_COUNTS = { all: 0, overdue: 0, today: 0, tomorrow: 0 };
 const NO_TYPE_COUNTS = { all: 0, delivery: 0, pickup: 0 };
 
 /** ما تُجلب وحدها عند الاستطلاع — لا الصفحةُ كلُّها */
-const LIVE_PROPS = ['orders', 'counts', 'typeCounts', 'columnCounts', 'truncated', 'fetchedAt'];
+// والفرعُ وما يُرشَّح به معها: من غُيّر إسنادُه ولوحتُه مفتوحةٌ يُقال له ما تعرضه الآن
+const LIVE_PROPS = ['orders', 'counts', 'typeCounts', 'columnCounts', 'truncated', 'fetchedAt', 'filters', 'branches', 'limited', 'unassigned'];
 
 /** أسماءُ الأعمدة — مفاتيحُها من `PreparationController::COLUMNS` */
 const COLUMN_LABELS: Record<string, string> = {
@@ -93,6 +94,10 @@ export default function PreparationIndex() {
     const columns = page.columns ?? {};
     const columnCounts = page.columnCounts ?? {};
     const truncated = page.truncated ?? null;
+    const branches = page.branches ?? [];
+    const limited = page.limited ?? null;
+    const unassigned = page.unassigned ?? 0;
+    const branch = branches.find((b) => b.id === filters.branch) ?? null;
 
     const [view, setView] = useState(() => remembered('prep.view', 'cards'));
     const [sound, setSound] = useState(() => remembered('prep.sound', '0') === '1');
@@ -142,7 +147,8 @@ export default function PreparationIndex() {
 
     // والجديدُ يُعرف بهويّة البطاقة المصنَّفة — طلبٌ ومهمّةُ فاتورةٍ لا يتصادمان (`idOf`)
     const numbers = useMemo(() => orders.map(idOf), [orders]);
-    const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound);
+    // وما كشفه ترشيحٌ أو «عرض المزيد» ليس وصولًا — المفتاحُ مرشّحاتُ العرض كلُّها
+    const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound, JSON.stringify(filters));
 
     // ومهمّةٌ عُدّلت من جهازٍ آخر لا تُشارَك أوراقُها المجهَّزةُ هنا بما كانت عليه
     useChangedPapersForgotten(orders);
@@ -167,16 +173,21 @@ export default function PreparationIndex() {
         { key: 'pickup', label: 'استلام من المحل', icon: Store, count: typeCounts.pickup },
     ];
 
-    // المرشّحان يُحفظان معًا: تبديل النافذة لا يُسقط التنفيذ المختار
-    const go = (next: { when?: string | null; type?: string | null }) => {
+    // المرشّحاتُ تُحفظ معًا: تبديل النافذة لا يُسقط التنفيذ ولا الفرعَ المختارين
+    const go = (next: { when?: string | null; type?: string | null; branch?: number | null; show?: number | null; from?: number | null }) => {
         const when = next.when !== undefined ? next.when : filters.when;
         const type = next.type !== undefined ? next.type : filters.type;
+        const at = next.branch !== undefined ? next.branch : filters.branch;
 
         router.get(
             route('admin.preparation.index'),
             {
                 ...(when && when !== 'all' ? { when } : {}),
                 ...(type && type !== 'all' ? { type } : {}),
+                ...(at ? { branch: at } : {}),
+                // و«عرض المزيد» لما يُعرض الآن وحده — ترشيحٌ جديدٌ يبدأ من سقفه
+                ...(next.show ? { show: next.show } : {}),
+                ...(next.from ? { from: next.from } : {}),
             },
             { preserveState: true, preserveScroll: true },
         );
@@ -474,6 +485,62 @@ export default function PreparationIndex() {
             </div>
 
             {/*
+              * والفرعُ يُختار هنا ويُرى هنا — لا في جلسةٍ لا يذكرها أحد.
+              *
+              * كانت اللوحةُ تُقصّ بفرعٍ حُفظ في الجلسة: طلبٌ لا يراه من يقف
+              * أمامها ويراه زميلُه، ولا كلمةَ تقول لماذا. فالأصلُ كلُّ فروعه،
+              * وما اختاره يُكتب فوق البطاقات ويُلغى بضغطة.
+              */}
+            {branches.length > 1 && (
+                <div data-testid="prep-branches" role="group" aria-label={t('الفرع')} className="mb-4 flex flex-wrap items-center gap-1">
+                    {[{ id: null as number | null, name: t('كل الفروع') }, ...branches].map((b) => {
+                        const active = (branch?.id ?? null) === b.id;
+
+                        return (
+                            <Button
+                                key={b.id ?? 'all'}
+                                type="button"
+                                size="sm"
+                                variant={active ? 'primary' : 'ghost'}
+                                className="rounded-full"
+                                aria-pressed={active}
+                                onClick={() => go({ branch: b.id })}
+                            >
+                                <span dir="auto">{b.name}</span>
+                            </Button>
+                        );
+                    })}
+                </div>
+            )}
+
+            {branch && (
+                <Card data-testid="prep-branch-filter" className="mb-4 flex flex-wrap items-center gap-2 border-[#bfdbfe] bg-[#eff6ff] p-4 text-sm text-[#1e40af]">
+                    <Store className="size-4 shrink-0" />
+                    <span>{t('تُعرض طلبات فرع «:name» وحده', { name: branch.name })}</span>
+                    <Button type="button" size="sm" variant="outline" className="ms-auto rounded-full" onClick={() => go({ branch: null })}>
+                        {t('عرض كل الفروع')}
+                    </Button>
+                </Card>
+            )}
+
+            {/* ومن قُيِّد بفروعٍ يُقال له: لوحةٌ ناقصةٌ بلا سببٍ تُقرأ عطبًا */}
+            {limited && (
+                <p data-testid="prep-limited" className="mb-4 text-[12px] text-[#6b7280]">
+                    {limited.length > 0
+                        ? t('تعرض لوحتك طلبات فروعك: :names', { names: limited.join('، ') })
+                        : t('لست مُسنَدًا إلى فرع قائم — راجع مديرك ليُسندك إلى فرع.')}
+                </p>
+            )}
+
+            {/* وما لا فرعَ له لا يبلغ من قُيِّد بفروع — فيُقال عددُه لمن يراه، لئلّا ينتظر أحدًا لا يراه */}
+            {unassigned > 0 && (
+                <p data-testid="prep-unassigned" className="mb-4 flex items-center gap-1.5 text-[12px] text-[#92400e]">
+                    <AlertTriangle className="size-3.5 shrink-0" />
+                    {t('على اللوحة :n بلا فرع — لا تظهر للموظفين المقيَّدين بفروع', { n: unassigned })}
+                </p>
+            )}
+
+            {/*
               * ما لم يُعرض يُقال عددُه.
               *
               * اللوحة تُرسم حتى سقفها ثم تنتهي؛ وكانت تنتهي صامتة — فيقرأ من
@@ -484,10 +551,34 @@ export default function PreparationIndex() {
                 <Card className="mb-4 flex items-center gap-2 border-[#fde68a] bg-[#fffbeb] p-4 text-sm text-[#92400e]">
                     <AlertTriangle className="size-4 shrink-0" />
                     <span>
-                        {t('تُعرض :shown من :total طلبًا. ضيّق بالتبويبات أو بنوع التنفيذ لرؤية الباقي.', {
-                            shown: truncated.shown,
-                            total: truncated.total,
-                        })}
+                        {truncated.from || truncated.next
+                            ? t('تُعرض البطاقات :a–:b من :total بترتيب مواعيدها', {
+                                  a: (truncated.from ?? 0) + 1,
+                                  b: (truncated.from ?? 0) + truncated.shown,
+                                  total: truncated.total,
+                              })
+                            : t('تُعرض :shown من :total طلبًا. ضيّق بالتبويبات أو بنوع التنفيذ لرؤية الباقي.', {
+                                  shown: truncated.shown,
+                                  total: truncated.total,
+                              })}
+                    </span>
+                    {/* «عرض المزيد» حتّى السقف، ثمّ نوافذُ بطوله — فلا بطاقةَ لا تُبلغ */}
+                    <span className="ms-auto flex items-center gap-1">
+                        {truncated.more && (
+                            <Button type="button" size="sm" variant="outline" className="rounded-full" data-testid="prep-more" onClick={() => go({ show: truncated.more })}>
+                                {t('عرض المزيد')}
+                            </Button>
+                        )}
+                        {truncated.prev !== null && truncated.prev !== undefined && (
+                            <Button type="button" size="sm" variant="outline" className="rounded-full" data-testid="prep-prev" onClick={() => go({ show: filters.show, from: truncated.prev })}>
+                                {t('السابق')}
+                            </Button>
+                        )}
+                        {truncated.next && (
+                            <Button type="button" size="sm" variant="outline" className="rounded-full" data-testid="prep-next" onClick={() => go({ show: filters.show, from: truncated.next })}>
+                                {t('التالي')}
+                            </Button>
+                        )}
                     </span>
                 </Card>
             )}
@@ -499,7 +590,9 @@ export default function PreparationIndex() {
                         ? t('لا طلبات توصيل تنتظر التجهيز')
                         : filters.type === 'pickup'
                           ? t('لا طلبات استلام تنتظر التجهيز')
-                          : t('لا طلبات تنتظر التجهيز')}
+                          : branch
+                            ? t('لا طلبات تنتظر التجهيز في هذا الفرع')
+                            : t('لا طلبات تنتظر التجهيز')}
                 </Card>
             ) : view === 'columns' ? (
                 /*

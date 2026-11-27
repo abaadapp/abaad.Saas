@@ -408,7 +408,8 @@ class OrderDetailController extends Controller
     {
         abort_unless(auth()->user()?->may(Permissions::PREPARATION_CANCEL), 403);
         $order = Order::where('business_id', $this->bid())->where('number', $number)->firstOrFail();
-        abort_unless(BoutiqueDues::active((int) $order->business_id), 404);
+        // قطعُ طلبٍ سُجّل مستحقُّها تُحسم ولو أُطفئ الحسابُ بعده
+        abort_unless(BoutiqueDues::reachableFor($order), 404);
 
         $data = $request->validate([
             'action' => ['required', Rule::in(['returned', 'lost'])],

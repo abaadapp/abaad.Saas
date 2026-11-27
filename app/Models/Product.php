@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Support\ImageVariants;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Storage;
 
 class Product extends Model
 {
@@ -20,7 +20,7 @@ class Product extends Model
      * و`published` معه لا بدونه: تركُه عددًا يجعل `$product->published` تردّ 1
      * حيث تردّ أختُها true — فيخرج في JSON عددًا إلى واجهةٍ تنتظر منطقيًّا.
      */
-    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'pos_enabled' => 'boolean', 'tracks_stock' => 'boolean', 'description_web_enabled' => 'boolean', 'description_pos_enabled' => 'boolean'];
+    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'website_sold_out' => 'boolean', 'pos_enabled' => 'boolean', 'tracks_stock' => 'boolean', 'description_web_enabled' => 'boolean', 'description_pos_enabled' => 'boolean'];
 
     /** حالةُ صنفٍ لا يُعدّ على رفّ — لا «متوفر» ولا «نفد» */
     public const UNTRACKED = 'غير مرتبط بالمخزون';
@@ -255,10 +255,7 @@ class Product extends Model
             return '';
         }
 
-        if (str_starts_with($value, 'http')) {
-            return $value;
-        }
-
-        return Storage::url($value);
+        // ‏ونسخةُ العرض إن صُنعت لصورةٍ قديمة — والعمودُ يبقى على الأصل
+        return ImageVariants::url($value, ImageVariants::DISPLAY);
     }
 }

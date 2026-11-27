@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import ProductForm from './partials/ProductForm';
+import ProductForm, { type WebsiteStatus } from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { BoutiqueLinks, CompositionData } from './partials/addons';
@@ -10,7 +10,7 @@ import type { Category } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
 
 export default function ProductCreate() {
-    const { categories, composition, boutiques, addonsDisplay, addonBoutiqueLinks, galleryMax, galleryLimits, context } =
+    const { categories, composition, boutiques, addonsDisplay, addonBoutiqueLinks, galleryMax, galleryLimits, websiteStatus, context } =
         usePage<
             PageProps<{
                 categories: Category[];
@@ -21,6 +21,8 @@ export default function ProductCreate() {
                 /** سقفُ الصور وحدودُ الرفع — تُختار الصورُ مع المنتج. انظر `ProductImages` */
                 galleryMax?: number;
                 galleryLimits?: UploadLimits;
+                /** حالُه في الموقع بثلاثٍ — `null` لمن لا يرسم موقعُه «نفدت الكمية». انظر `WebsiteSoldOut` */
+                websiteStatus?: WebsiteStatus | null;
             }>
         >().props;
     const t = useTranslate();
@@ -41,6 +43,7 @@ export default function ProductCreate() {
                 addonBoutiqueLinks={addonBoutiqueLinks}
                 galleryMax={galleryMax}
                 galleryLimits={galleryLimits}
+                websiteStatus={websiteStatus}
             />
         </AdminLayout>
     );

@@ -54,7 +54,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
     });
 
     /** ولا سطرَ خصمٍ قبل أن يُضغط الزرّ — النقاط تُستبدَل باختيار */
-    it('لا تخصم قبل أن يُضغط «استخدم النقاط»', async () => {
+    it('لا تخصم قبل أن يُضغط «استخدام النقاط»', async () => {
         draw();
         await open();
 
@@ -72,7 +72,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
         draw();
         await open();
 
-        fireEvent.click(screen.getByRole('button', { name: 'استخدم النقاط' }));
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
 
         const line = screen.getByTestId('redeem-line');
 
@@ -93,7 +93,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
         });
         await open();
 
-        fireEvent.click(screen.getByRole('button', { name: 'استخدم النقاط' }));
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
 
         const line = screen.getByTestId('redeem-line');
 
@@ -106,7 +106,7 @@ describe('بطاقةُ نقاط الولاء في الصندوق', () => {
         draw();
         await open();
 
-        fireEvent.click(screen.getByRole('button', { name: 'استخدم النقاط' }));
+        fireEvent.click(screen.getByRole('button', { name: 'استخدام النقاط' }));
         expect(screen.getByTestId('redeem-line')).toBeInTheDocument();
 
         // و«إلغاء» غيرُ وحيدةٍ في الشاشة — فيُضغط زرُّ البطاقة نفسِه
@@ -198,6 +198,52 @@ describe('ورقةُ النجاح بعد البيع', () => {
         expect(box).toHaveTextContent(/الرصيد المتبقي:\s*500/);
         expect(box).not.toHaveTextContent(/مستبدَلة/);
         expect(box).not.toHaveTextContent(/مكتسبة/);
+    });
+
+    /**
+     * ═══ والمبلغُ ما قُبض — لا إجماليُّ السلّة بعد أن تُحسب من جديد ═══
+     *
+     * بعد البيعة يُصحَّح رصيدُ العميل من الردّ، فيسقط استحقاقُ الاستبدال
+     * ويعود إجماليُّ السلّة الحيُّ بلا خصم. وكانت الورقةُ تقرؤه: «المبلغ
+     * ١٠٥» على بيعةٍ قُبض فيها ٩٤٫٥ — فيُطالَب الزبونُ بما لا يدين به.
+     */
+    it('تقول المبلغَ الذي كتبه الخادم', async () => {
+        await paid({ points: 94, redeemed: 1000, balance: 94, total: 9.45 });
+
+        expect(await screen.findByTestId('paid-total')).toHaveTextContent('9.45');
+    });
+
+    it('وبيعةٌ في الطابور تقول ما قُبض لحظةَ التأكيد ولو تغيّرت السلّة بعدها', async () => {
+        Object.assign(pageProps, {
+            translations: {},
+            context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 }, peripherals: [] },
+        });
+        const { default: PaymentDialog } = await import('@/Pages/Pos/partials/PaymentDialog');
+        const user = userEvent.setup();
+        const dialog = (total: number) => (
+            <PaymentDialog
+                open
+                onOpenChange={() => {}}
+                total={total}
+                displayTotal={total}
+                customer="مريم"
+                money={(v) => String(v)}
+                fmt={(v) => String(v)}
+                onCheckout={(async () => ({ synced: false, invoice: null, points: 0, redeemed: 0, balance: null, total: null, rejected: false })) as never}
+                onNewOrder={() => {}}
+                methods={['نقدي']}
+            />
+        );
+
+        const { rerender } = render(dialog(94.5));
+        await user.click(screen.getByRole('button', { name: /نقدي/ }));
+        await user.click(screen.getByRole('button', { name: /تأكيد الدفع/ }));
+        await screen.findByTestId('paid-total');
+
+        rerender(dialog(105));
+
+        expect(screen.getByTestId('paid-total')).toHaveTextContent('94.5');
+        expect(screen.getByTestId('paid-total')).not.toHaveTextContent('105');
     });
 });
 

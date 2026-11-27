@@ -56,15 +56,24 @@ export function ConversationShell({
     list,
     thread,
     details,
+    detailsHidden = false,
 }: {
     pane: Pane;
     list: ReactNode;
     thread: ReactNode;
     details: ReactNode;
+    /**
+     * أخفى القارئُ التفاصيلَ على الشاشة العريضة — فيتّسع الخيط، ولا تظهر إلّا
+     * حين تُطلب (`pane === 'details'`). وعلى ما دونها لا يتبدّل شيء.
+     */
+    detailsHidden?: boolean;
 }) {
     return (
         <div
-            className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-[6px] border border-[var(--cv-border,#e9edef)] bg-[var(--cv-panel,#fff)] shadow-[0_1px_3px_rgba(11,20,26,0.08)] lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)_340px]"
+            className={cn(
+                'grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-[6px] border border-[var(--cv-border,#e9edef)] bg-[var(--cv-panel,#fff)] shadow-[0_1px_3px_rgba(11,20,26,0.08)] lg:grid-cols-[360px_minmax(0,1fr)]',
+                detailsHidden && pane !== 'details' ? 'xl:grid-cols-[380px_minmax(0,1fr)]' : 'xl:grid-cols-[380px_minmax(0,1fr)_340px]',
+            )}
         >
             <section
                 className={cn(
@@ -87,7 +96,7 @@ export function ConversationShell({
             <section
                 className={cn(
                     'flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--cv-details,#f0f2f5)] xl:border-s xl:border-[var(--cv-border,#e9edef)]',
-                    pane === 'details' ? 'flex' : 'hidden xl:flex',
+                    pane === 'details' ? 'flex' : detailsHidden ? 'hidden' : 'hidden xl:flex',
                 )}
             >
                 {details}
@@ -139,15 +148,17 @@ export function ConversationList({
     header,
     footer,
     children,
+    testId,
 }: {
     header: ReactNode;
     footer?: ReactNode;
     children: ReactNode;
+    testId?: string;
 }) {
     return (
         <>
             <div className="shrink-0 bg-[var(--cv-panel,#fff)] px-3 pb-2 pt-3">{header}</div>
-            <ul className="min-h-0 flex-1 overflow-y-auto">{children}</ul>
+            <ul className="min-h-0 flex-1 overflow-y-auto" data-testid={testId}>{children}</ul>
             {footer && <div className="shrink-0 border-t border-[var(--cv-border,#e9edef)] bg-[var(--cv-bar,#f0f2f5)] p-2">{footer}</div>}
         </>
     );
@@ -279,6 +290,8 @@ export function ConversationListItem({
     badges,
     active,
     onClick,
+    testId,
+    unreadTestId,
 }: {
     title: string;
     subtitle?: string | null;
@@ -289,6 +302,8 @@ export function ConversationListItem({
     badges?: ReactNode;
     active: boolean;
     onClick: () => void;
+    testId?: string;
+    unreadTestId?: string;
 }) {
     return (
         <li>
@@ -296,6 +311,7 @@ export function ConversationListItem({
                 type="button"
                 onClick={onClick}
                 aria-current={active ? 'true' : undefined}
+                data-testid={testId}
                 className={cn(
                     'flex w-full items-center gap-3 ps-3 text-start transition-colors hover:bg-[var(--cv-hover,#f5f6f6)]',
                     active && 'bg-[var(--cv-sel,#f0f2f5)] hover:bg-[var(--cv-sel,#f0f2f5)]',
@@ -336,6 +352,7 @@ export function ConversationListItem({
                             <span
                                 className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--cv-unread,#25d366)] px-1.5 text-[11.5px] font-semibold tabular-nums text-[var(--cv-unread-ink,#fff)]"
                                 aria-label={String(unread)}
+                                data-testid={unreadTestId}
                             >
                                 {unread}
                             </span>

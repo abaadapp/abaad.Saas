@@ -47,12 +47,41 @@ class WhatsAppEmbeddedSignup
      */
     public const PLATFORM_SMB_APP = 'SMB_APP';
 
+    /** رقمٌ في الحساب لم يُسجَّل في Cloud API بعد — `platform_type` كما تكتبه ميتا */
+    public const PLATFORM_NOT_APPLICABLE = 'NOT_APPLICABLE';
+
+    /** رمزُ التحقّق بخطوتين لا يطابق رمزَ الرقم */
+    public const PIN_MISMATCH = '133005';
+
     /** أمكتملُ الإعداد؟ — بلا معرّفٍ أو سرٍّ أو إعدادِ تسجيلٍ لا يُعرض الزرّ */
     public static function configured(): bool
     {
         return filled(config('whatsapp.app_id'))
             && filled(config('whatsapp.app_secret'))
-            && filled(config('whatsapp.config_id'));
+            // ورقمُ الإعداد يُكتب من شاشة المنصّة، وإلّا فمن الخادم (`WhatsAppMerchantLink::configId`)
+            && filled(WhatsAppMerchantLink::configId());
+    }
+
+    /**
+     * ‏‏ما يلزم المتصفّحَ ليفتح نافذة Meta — معرّفُ التطبيق ورقمُ إعداده، ولا سرَّ فيه.
+     * تأخذه شاشةُ التاجر وصفحةُ رابط العميل معًا.
+     *
+     * @return array<string, mixed>
+     */
+    public static function publicConfig(): array
+    {
+        return [
+            'configured' => self::configured(),
+            'app_id' => (string) config('whatsapp.app_id'),
+            'config_id' => WhatsAppMerchantLink::configId(),
+            'graph_version' => (string) config('whatsapp.api_version'),
+            'feature_type' => (string) config('whatsapp.feature_type'),
+            'session_info_version' => (string) config('whatsapp.session_info_version'),
+            // نسخةُ التسجيل المدمج إن كُتبت — وبلا نسخةٍ تخدمها ميتا بـv4
+            'version' => config('whatsapp.es_version'),
+            // والتعايشُ يُعرض اختيارًا مطفأً بسببه ما لم يُفتح على الخادم
+            'coexistence_open' => WhatsAppOnboarding::coexistenceOpen(),
+        ];
     }
 
     private static function base(): string
@@ -141,13 +170,19 @@ class WhatsAppEmbeddedSignup
      *
      * @return array{ok:bool, app_id:?string, scopes:list<string>, waba_ids:list<string>, messaging_waba_ids:list<string>, expires_at:?Carbon, code:?string, message:?string}
      */
-    public static function inspect(string $token): array
+    public static function inspect(string $token, ?string $appId = null, ?string $appSecret = null): array
     {
+        /*
+         * وتطبيقُ التاجر يصف رموزَه هو — بمعرّفه وسرّه (`WhatsAppOwnApp`). وسرٌّ
+         * خاطئ يُردّ هنا قبل أن يُحفظ: به وحده يُتحقَّق من إشعارات تطبيقه.
+         */
+        $app = ($appId ?? config('whatsapp.app_id')).'|'.($appSecret ?? config('whatsapp.app_secret'));
+
         try {
             $response = Http::timeout(self::timeout())->acceptJson()
                 ->get(self::base().'/debug_token', [
                     'input_token' => $token,
-                    'access_token' => config('whatsapp.app_id').'|'.config('whatsapp.app_secret'),
+                    'access_token' => $app,
                 ]);
         } catch (\Throwable $e) {
             return ['ok' => false, 'app_id' => null, 'scopes' => [], 'waba_ids' => [], 'messaging_waba_ids' => [], 'expires_at' => null,
@@ -250,6 +285,182 @@ class WhatsAppEmbeddedSignup
     }
 
     /**
+     * تسجيلُ الرقم في Cloud API — `POST /{phone}/register` برمز التحقّق بخطوتين.
+     *
+     * خطوةٌ تطلبها ميتا بعد التسجيل المدمج لرقمٍ جديدٍ على Cloud API: بلاها
+     * يبقى الرقمُ في الحساب ولا يُرسل (`133010`). والرمزُ يكتبه التاجر: إن
+     * كان لرقمه رمزٌ قائم فهو هو، وإلّا صار ما كتبه رمزَه.
+     *
+     * والرمزُ لا يُحفظ ولا يُكتب في سجلّ — يمرّ في هذا النداء وحده.
+     *
+     * @return array{ok:bool, code:?string, message:?string}
+     */
+    public static function register(string $phoneNumberId, string $token, string $pin): array
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->post(self::base().'/'.$phoneNumberId.'/register', [
+                    'messaging_product' => 'whatsapp',
+                    'pin' => $pin,
+                ]);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful() || $response->json('success') !== true) {
+            [$code, $message] = self::error($response->json());
+
+            return ['ok' => false, 'code' => $code, 'message' => $message];
+        }
+
+        return ['ok' => true, 'code' => null, 'message' => null];
+    }
+
+    /**
+     * يطلب من Meta مزامنةَ رقمٍ بقي في تطبيق واتساب للأعمال (التعايش): جهاتِ الاتّصال
+     * (`smb_app_state_sync`) أو المحادثاتِ السابقة (`history`).
+     *
+     * ═══ مرّةً واحدة لكلٍّ منهما، خلال ٢٤ ساعة من الربط ═══
+     *
+     * وثيقةُ Meta: «You can only perform this step once» — وإعادتُه تحتاج أن يُفصل الرقمُ
+     * ويُربط من أوّله. فالمُنادي يحجز قبل النداء (`WhatsAppCoexistence::request`)، ولا يُنادى
+     * هنا مرّتين. والردُّ معرّفُ طلبٍ (`request_id`) يُحفظ للدعم — ولا يقول إنّ التاجر وافق
+     * على مشاركة محادثاته: ذلك يقوله إشعارُ `history` حين يصل.
+     *
+     * @return array{ok:bool, request_id:?string, code:?string, message:?string}
+     */
+    public static function smbAppData(string $phoneNumberId, string $token, string $syncType): array
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->post(self::base().'/'.$phoneNumberId.'/smb_app_data', [
+                    'messaging_product' => 'whatsapp',
+                    'sync_type' => $syncType,
+                ]);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'request_id' => null, 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful() || blank($response->json('request_id'))) {
+            [$code, $message] = self::error($response->json());
+
+            return ['ok' => false, 'request_id' => null, 'code' => $code, 'message' => $message];
+        }
+
+        return ['ok' => true, 'request_id' => mb_substr((string) $response->json('request_id'), 0, 120), 'code' => null, 'message' => null];
+    }
+
+    /**
+     * من يملك هذا الحساب؟ — مالكُه، ومن أُنشئ نيابةً عنه، ونوعُ ملكيّته.
+     *
+     * قراءةٌ لا غير. والملكيّةُ تقول من يملك الحساب لا من يدفع عنه — وسيلةُ
+     * الدفع تُسأل وحدها (`funding`).
+     *
+     * @return array{ok:bool, owner_id:?string, owner_name:?string, on_behalf_id:?string, on_behalf_type:?string, ownership_type:?string, code:?string, message:?string}
+     */
+    public static function wabaOwnership(string $wabaId, string $token): array
+    {
+        $none = ['ok' => false, 'owner_id' => null, 'owner_name' => null, 'on_behalf_id' => null, 'on_behalf_type' => null, 'ownership_type' => null];
+
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$wabaId, ['fields' => 'owner_business_info,on_behalf_of_business_info,ownership_type']);
+        } catch (\Throwable $e) {
+            return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            return $none + ['code' => $code, 'message' => $message];
+        }
+
+        $text = fn (string $key) => filled($response->json($key)) ? (string) $response->json($key) : null;
+
+        return [
+            'ok' => true,
+            'owner_id' => $text('owner_business_info.id'),
+            'owner_name' => $text('owner_business_info.name'),
+            'on_behalf_id' => $text('on_behalf_of_business_info.id'),
+            'on_behalf_type' => $text('on_behalf_of_business_info.type'),
+            'ownership_type' => $text('ownership_type'),
+            'code' => null,
+            'message' => null,
+        ];
+    }
+
+    /**
+     * أعلى «حساب الرسائل» وسيلةُ دفع؟ — `primary_funding_id` كما تصفه ميتا.
+     *
+     * في نموذج ميتا الجديد معرّفُ الـWABA هو معرّفُ «حساب الرسائل» (Messaging
+     * account) الذي يحمل القوالبَ ووسيلةَ الدفع. وغيابُ الحقل في ردٍّ ناجح =
+     * لا وسيلة دفع، فلا تخرج منه رسالةٌ مدفوعة. وميتا تردّه بـ`#10` لكلّ تطبيقٍ
+     * لا يملكه «مزوّد حلول أعمال» — فهو «لم يُقرأ»، لا «غائب».
+     *
+     * والمعرّفُ لا يُحفظ: بصمتُه وحدها (`mark`) — تكفي لنعرف أنّه تبدّل.
+     *
+     * @return array{state:'present'|'absent'|'unreadable', mark:?string, code:?string}
+     */
+    public static function funding(string $wabaId, string $token): array
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$wabaId, ['fields' => 'primary_funding_id']);
+        } catch (\Throwable) {
+            return ['state' => 'unreadable', 'mark' => null, 'code' => 'network_error'];
+        }
+
+        if (! $response->successful()) {
+            return ['state' => 'unreadable', 'mark' => null, 'code' => self::error($response->json())[0]];
+        }
+
+        $id = $response->json('primary_funding_id');
+
+        return filled($id)
+            ? ['state' => 'present', 'mark' => substr(hash('sha256', (string) $id), 0, 16), 'code' => null]
+            : ['state' => 'absent', 'mark' => null, 'code' => null];
+    }
+
+    /**
+     * حساباتُ واتساب التي يملكها حسابُ أعمالٍ أو شُورك معه — معرّفاتُها وحدها.
+     *
+     * `owned_whatsapp_business_accounts` أو `client_whatsapp_business_accounts`،
+     * صفحةً بعد صفحة. وما فشل منها `null` — «لا نعرف»، لا قائمةٌ فارغة.
+     *
+     * @return list<string>|null
+     */
+    public static function businessWabas(string $businessId, string $edge, string $token): ?array
+    {
+        $ids = [];
+        $url = self::base().'/'.$businessId.'/'.$edge;
+        $query = ['fields' => 'id', 'limit' => 100];
+
+        for ($page = 0; $page < 20 && $url; $page++) {
+            try {
+                $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()->get($url, $query);
+            } catch (\Throwable) {
+                return null;
+            }
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            foreach ((array) $response->json('data') as $row) {
+                if (filled($row['id'] ?? null)) {
+                    $ids[] = (string) $row['id'];
+                }
+            }
+
+            // والرابطُ التالي يحمل استعلامَه كلَّه
+            $url = $response->json('paging.next');
+            $query = [];
+        }
+
+        return $url ? null : $ids;
+    }
+
+    /**
      * حسابُ الأعمال في ميتا الذي يملك هذا الـWABA — للعرض والتقييد.
      *
      * ويُطلب وحده في نداءٍ صغير: `owner_business_info` لا يأتي مع الأرقام.
@@ -275,7 +486,7 @@ class WhatsAppEmbeddedSignup
      * و`null` تعني «لم نستطع أن نعرف» — لا «لا». فمن قرأها «لا» اشترك
      * ثانيةً، ومن قرأها «نعم» ترك الاشتراك مفقودًا.
      */
-    public static function subscribed(string $wabaId, string $token): ?bool
+    public static function subscribed(string $wabaId, string $token, ?string $appId = null): ?bool
     {
         $read = self::subscribedApps($wabaId, $token);
 
@@ -283,7 +494,7 @@ class WhatsAppEmbeddedSignup
             return null;
         }
 
-        $appId = (string) config('whatsapp.app_id');
+        $appId ??= (string) config('whatsapp.app_id');
 
         foreach ($read['apps'] as $app) {
             if ($app['app_id'] === $appId) {
@@ -368,18 +579,20 @@ class WhatsAppEmbeddedSignup
      *
      * @return array{ok:bool, callback_url:?string, fields:list<string>, active:bool, code:?string, message:?string}
      */
-    public static function appSubscription(): array
+    public static function appSubscription(?string $appId = null, ?string $appSecret = null): array
     {
         $none = ['ok' => false, 'callback_url' => null, 'fields' => [], 'active' => false];
+        $appId ??= (string) config('whatsapp.app_id');
+        $appSecret ??= (string) config('whatsapp.app_secret');
 
-        if (blank(config('whatsapp.app_id')) || blank(config('whatsapp.app_secret'))) {
-            return $none + ['code' => 'not_configured', 'message' => 'whatsapp.app_id or app_secret missing'];
+        if (blank($appId) || blank($appSecret)) {
+            return $none + ['code' => 'not_configured', 'message' => 'app id or app secret missing'];
         }
 
         try {
-            $response = Http::withToken(config('whatsapp.app_id').'|'.config('whatsapp.app_secret'))
+            $response = Http::withToken($appId.'|'.$appSecret)
                 ->timeout(self::timeout())->acceptJson()
-                ->get(self::base().'/'.config('whatsapp.app_id').'/subscriptions');
+                ->get(self::base().'/'.$appId.'/subscriptions');
         } catch (\Throwable $e) {
             return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
@@ -554,7 +767,55 @@ class WhatsAppEmbeddedSignup
             'display_phone_number' => $response->json('display_phone_number'),
             'verified_name' => $response->json('verified_name'),
             'quality_rating' => $response->json('quality_rating'),
+            // `NOT_APPLICABLE` = رقمٌ لم يُسجَّل في Cloud API بعد (`WhatsAppOnboarding::register`)
+            'platform_type' => $response->json('platform_type'),
             'code' => null,
+            'message' => null,
+        ];
+    }
+
+    /**
+     * ‏‏أيُرسل هذا الرقمُ الآن؟ — حالُه عند Meta وما تقوله عن قدرته على الإرسال. قراءةٌ لا غير.
+     *
+     * `status` للرقم وحده: لا بدّ أن يكون `CONNECTED`. و`health_status` تجمع الرقمَ وحسابَه ونشاطَه
+     * والتطبيق: `BLOCKED` لا يُرسل ومعه السببُ والحلّ، و`LIMITED` يُرسل بقيد. وما لم تقله Meta يبقى `null`.
+     *
+     * @return array{ok: bool, status: ?string, can_send: ?string, why: ?string, code: ?string, message: ?string}
+     */
+    public static function numberState(string $phoneNumberId, string $token): array
+    {
+        $none = ['ok' => false, 'status' => null, 'can_send' => null, 'why' => null];
+
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$phoneNumberId, ['fields' => 'status,health_status']);
+        } catch (\Throwable $e) {
+            return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            return $none + ['code' => $code, 'message' => $message];
+        }
+
+        $word = fn (mixed $v) => is_string($v) && $v !== '' ? strtoupper($v) : null;
+
+        // ‏‏وسببُ المنع من أوّل طرفٍ ممنوع — بنصّ Meta كما كتبته، وحلِّها إن ذكرته
+        $blocked = collect((array) $response->json('health_status.entities'))
+            ->first(fn ($e) => is_array($e) && $word($e['can_send_message'] ?? null) === 'BLOCKED');
+        $error = (array) (((array) ($blocked['errors'] ?? []))[0] ?? []);
+        $why = trim(implode(' ', array_filter([
+            is_string($error['error_description'] ?? null) ? $error['error_description'] : null,
+            is_string($error['possible_solution'] ?? null) ? $error['possible_solution'] : null,
+        ])));
+
+        return [
+            'ok' => true,
+            'status' => $word($response->json('status')),
+            'can_send' => $word($response->json('health_status.can_send_message')),
+            'why' => $why !== '' ? mb_substr(self::scrub($why), 0, 240) : null,
+            'code' => isset($error['error_code']) ? (string) $error['error_code'] : null,
             'message' => null,
         ];
     }

@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\DistinctPhotos;
 use Tests\TestCase;
 
 /**
@@ -63,7 +64,7 @@ class ProductGalleryTest extends TestCase
     {
         $files = [];
         for ($i = 0; $i < $n; $i++) {
-            $files[] = UploadedFile::fake()->image('img'.uniqid().'.jpg');
+            $files[] = DistinctPhotos::make('img'.uniqid().'.jpg');
         }
 
         return $this->post(route('admin.products.images.store', ($on ?? $this->product)->id), ['images' => $files]);
@@ -201,7 +202,7 @@ class ProductGalleryTest extends TestCase
          * يملؤه بصورٍ لم يرفعها أحد.
          */
         $this->product->forceFill(['image' => 'https://picsum.photos/seed/x/400/400'])->save();
-        ProductImages::add($this->product, UploadedFile::fake()->image('real.jpg'));
+        ProductImages::add($this->product, DistinctPhotos::make('real.jpg'));
 
         $only = $this->extras()->first();
         $this->post(route('admin.products.images.promote', [$this->product->id, $only->id]))
@@ -329,7 +330,7 @@ class ProductGalleryTest extends TestCase
     public function test_a_neighbours_image_cannot_be_promoted_or_deleted(): void
     {
         $theirs = $this->neighboursProduct();
-        $theirImage = ProductImages::add($theirs, UploadedFile::fake()->image('theirs.jpg'));
+        $theirImage = ProductImages::add($theirs, DistinctPhotos::make('theirs.jpg'));
 
         $this->post(route('admin.products.images.promote', [$this->product->id, $theirImage->id]))->assertNotFound();
         $this->delete(route('admin.products.images.destroy', [$this->product->id, $theirImage->id]))->assertNotFound();
@@ -349,7 +350,7 @@ class ProductGalleryTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'صنفٌ آخر',
             'price' => 5, 'cost' => 2, 'quantity' => 3, 'alert_qty' => 1, 'active' => true,
         ]);
-        $its = ProductImages::add($other, UploadedFile::fake()->image('other.jpg'));
+        $its = ProductImages::add($other, DistinctPhotos::make('other.jpg'));
 
         $this->post(route('admin.products.images.promote', [$this->product->id, $its->id]))->assertNotFound();
 
@@ -365,7 +366,7 @@ class ProductGalleryTest extends TestCase
 
         $this->actingAs($cashier)
             ->post(route('admin.products.images.store', $this->product->id), [
-                'images' => [UploadedFile::fake()->image('x.jpg')],
+                'images' => [DistinctPhotos::make('x.jpg')],
             ])->assertForbidden();
 
         $this->assertNull($this->main());

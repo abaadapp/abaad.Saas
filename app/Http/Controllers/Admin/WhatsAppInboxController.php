@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Models\WhatsAppOrderSession;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMedia;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOrders;
+use App\Support\WhatsAppStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -45,8 +48,10 @@ class WhatsAppInboxController extends Controller
         $business = $this->business($request);
         $user = $request->user();
         $q = (string) $request->query('q', '');
+        // «الكل» أو «غير المقروءة» — وما سواهما «الكل»
+        $filter = $request->query('f') === WhatsAppInbox::UNREAD ? WhatsAppInbox::UNREAD : null;
 
-        $page = WhatsAppInbox::page($business, $user, $q);
+        $page = WhatsAppInbox::page($business, $user, $q, $filter);
 
         $thread = null;
         $chatId = (string) $request->query('c', '');
@@ -57,6 +62,12 @@ class WhatsAppInboxController extends Controller
 
             $thread = WhatsAppInbox::contact($chat, $user) + WhatsAppInbox::thread($chat) + [
                 'blocked' => $check['reason'],
+                // وخارج النافذة: قالبُ المتابعة المعتمَد إن وُجد — اسمُه وحده، والنصُّ من ميتا عند الإرسال
+                'template' => $check['template'] ? (string) $check['template']->template_name : null,
+                // وما خرج إليه من إشعاراتٍ كلُّها في السجلّ — لمن يملك قسمه
+                'log_url' => $user->allows('marketing') ? route('admin.marketing.whatsapp.log', ['q' => (string) $chat->customer_phone]) : null,
+                // وطلبُه الآليّ إن كان: حالُه ومبلغُه وفاتورتُه ورابطُه (`WhatsAppOrders::forChat`)
+                'order' => WhatsAppOrders::forChat($chat),
             ];
         }
 
@@ -68,11 +79,20 @@ class WhatsAppInboxController extends Controller
                 'prev_page_url' => $page->previousPageUrl(),
                 'next_page_url' => $page->nextPageUrl(),
             ],
-            'params' => ['q' => $q, 'c' => $thread ? (string) $thread['id'] : null],
+            'params' => ['q' => $q, 'c' => $thread ? (string) $thread['id'] : null, 'f' => $filter ?? 'all'],
             'thread' => $thread,
             'canReply' => WhatsAppInbox::canReply($user),
             'line' => self::line($business),
+            /*
+             * وحالُ الربط بخطواته — من الحلّال الذي يسأله المُرسِل نفسُه.
+             *
+             * ربطٌ ناقصٌ أو منقطع لا يُغلق الصندوق: المحادثاتُ تُقرأ، ويُقال فوقها
+             * ما ينقص وأين يُصلَح. وزرُّ الربط لمن يملكه وحده.
+             */
+            'readiness' => WhatsAppFeature::readiness($business),
+            'mayManage' => (bool) $user->isAdmin(),
             'unread' => WhatsAppInbox::unreadTotal($user),
+            'unreadChats' => WhatsAppInbox::unreadChats($business, $user),
             'stamp' => WhatsAppInbox::stamp($business),
             'files' => [
                 'max' => WhatsAppMedia::MAX_FILES,
@@ -125,6 +145,8 @@ class WhatsAppInboxController extends Controller
 
         $data = $request->validate([
             'body' => ['nullable', 'string', 'max:'.WhatsAppInbox::MAX_BODY],
+            // مفتاحُ هذا الردّ من المربّع — الضغطةُ الثانية تحمله فلا يخرج ثانيةً
+            'client_key' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
             ...WhatsAppMedia::rules('files'),
         ]);
 
@@ -134,13 +156,140 @@ class WhatsAppInboxController extends Controller
             return back()->withErrors(['body' => __('اكتب ردًّا أو أرفق ملفًّا.')]);
         }
 
-        $sent = WhatsAppInbox::reply($found, $request->user(), (string) ($data['body'] ?? ''), $files);
+        ['parts' => $parts, 'again' => $again] = WhatsAppInbox::reply($found, $request->user(), (string) ($data['body'] ?? ''), $files, $data['client_key'] ?? null);
 
-        $failed = collect($sent)->where('status', 'failed')->count();
+        /*
+         * وما يُقال بحال الصفوف لا بأنّ الطلب وصل: مفتاحٌ أُجيب من قبل يُقال
+         * فيه ما جرى أوّلَ مرّة — فشلٌ بسببه، أو «قيد الإرسال»، أو «أُرسل» —
+         * ولا يخرج شيءٌ ثانيةً.
+         */
+        $failed = collect($parts)->where('status', WhatsAppStatus::FAILED)->isNotEmpty();
+        $pending = $parts === [] || collect($parts)->contains('status', WhatsAppStatus::QUEUED);
 
-        return back()->with('toast', $failed === 0
-            ? ['msg' => __('أُرسل الردّ'), 'type' => 'success']
-            : ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'danger']);
+        return back()->with('toast', match (true) {
+            $failed => ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'danger'],
+            $again && $pending => ['msg' => __('هذا الرد قيد الإرسال — لم يُرسل مرة ثانية.'), 'type' => 'info'],
+            $again => ['msg' => __('هذا الرد أُرسل من قبل — لم يُرسل مرة ثانية.'), 'type' => 'info'],
+            default => ['msg' => __('أُرسل الردّ'), 'type' => 'success'],
+        });
+    }
+
+    /**
+     * محادثةُ زبونٍ من رسالةٍ خرجت إليه — لم يكتب بعد، فلا صفَّ لها حتّى تُفتح.
+     *
+     * والرسالةُ من متجر الجلسة وحده، وما سواها 404 (`WhatsAppInbox::open`).
+     */
+    public function open(Request $request, int $message): RedirectResponse
+    {
+        $chat = WhatsAppInbox::open($this->business($request), $message);
+
+        abort_unless($chat !== null, 404);
+
+        return redirect()->route('admin.whatsappInbox.index', ['c' => $chat->id]);
+    }
+
+    /**
+     * قالبُ المتابعة — لزبونٍ أُغلقت نافذتُه، من رقم المتجر وحده.
+     *
+     * لا شيء يُقرأ من الطلب: القالبُ والرقمُ والمتغيّرُ من حال المحادثة
+     * (`WhatsAppInbox::followUp`)، والمرسِلُ من الجلسة.
+     */
+    public function followUp(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null, 404);
+
+        /*
+         * والقالبُ خارج النافذة رسالةٌ تحتسبها ميتا على حساب واتساب المتجر —
+         * فلا يخرج إلّا بعد أن يقرأ مُرسِلُه ذلك ويؤكّده. الزرُّ يسأل أوّلًا
+         * ثمّ يرسل هذا الحقل؛ وطلبٌ بلاه يُردّ ولا يُرسل شيء. ولا بابَ آخر في
+         * النظام يُرسل هذا القالب: لا مجدولَ ولا ردَّ آليًّا.
+         */
+        $request->validate(['cost_acknowledged' => ['accepted']]);
+
+        $sent = WhatsAppInbox::followUp($found, $request->user());
+
+        return back()->with('toast', $sent->status === 'failed'
+            ? ['msg' => __('لم يخرج قالب المتابعة — سببُه مكتوبٌ تحته.'), 'type' => 'danger']
+            : ['msg' => __('أُرسل قالب المتابعة — يُفتح الردّ حين يكتب العميل.'), 'type' => 'success']);
+    }
+
+    /**
+     * يتسلّم الموظّفُ المحادثةَ من الطلب الآليّ — فيصمت الآليُّ فيها.
+     *
+     * ويصمت حتى يُنهى الطلبُ من هنا (`closeOrder`)، أو يمضي يومٌ بلا رسالة.
+     */
+    public function takeOverOrder(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        WhatsAppOrders::handoff($found, $request->user());
+
+        return back()->with('toast', ['msg' => __('تسلّمت المحادثة — لن يردّ الطلب الآلي فيها'), 'type' => 'success']);
+    }
+
+    /**
+     * يُنهي الطلبَ الآليَّ في المحادثة — فيعود الآليُّ يستقبل من يكتب «طلب».
+     *
+     * ولا يمسّ فاتورةً ولا رابطًا صدرا: يُداران من صفحتهما كأيّ فاتورة.
+     */
+    public function closeOrder(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        WhatsAppOrders::close($found, $request->user());
+
+        return back()->with('toast', ['msg' => __('أُنهي الطلب الآلي في هذه المحادثة'), 'type' => 'success']);
+    }
+
+    /**
+     * يعيد رابطَ الدفع نفسَه لزبونٍ لم يصله — بلا فاتورةٍ ثانيةٍ ولا رابطٍ ثانٍ (`WhatsAppOrders::resendLink`).
+     *
+     * و`replace_uncertain` قرارٌ صريحٌ بعد محاولةٍ لم تُعرف نتيجتُها عند Paymob — كما
+     * في صفحة الفاتورة (`PaymentRequestController`): رابطٌ جديدٌ يصل الزبونَ وحده.
+     */
+    public function resendOrderLink(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        $request->validate(['replace_uncertain' => ['nullable', 'boolean']], [], ['replace_uncertain' => __('طلب رابط جديد')]);
+
+        $status = WhatsAppOrders::resendLink($found, $request->user(), $request->boolean('replace_uncertain'));
+
+        return back()->with('toast', self::resent($status, __('أُرسل رابط الدفع إلى العميل')));
+    }
+
+    /**
+     * يعيد تأكيدَ الدفع لزبونٍ دفع ولم يصله — رسالةً وحدها (`WhatsAppOrders::resendPaid`).
+     */
+    public function resendOrderPaid(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null && WhatsAppOrders::allowed((int) $found->business_id), 404);
+
+        return back()->with('toast', self::resent(WhatsAppOrders::resendPaid($found), __('أُرسل تأكيد الدفع إلى العميل')));
+    }
+
+    /**
+     * ما يُقال بعد إعادة الإرسال — بحال الرسالة لا بأنّ الزرّ ضُغط.
+     *
+     * @return array{msg: string, type: string}
+     */
+    private static function resent(?string $status, string $sent): array
+    {
+        return match (true) {
+            $status === WhatsAppOrderSession::CONFIRMING => ['msg' => __('تغيّر مبلغ الطلب — أُرسل الملخّص الجديد ليؤكّده العميل.'), 'type' => 'info'],
+            $status === null, in_array($status, WhatsAppStatus::TERMINAL, true) => ['msg' => __('لم يصل العميلَ شيء — السبب ظاهر في المحادثة وشريط الطلب.'), 'type' => 'danger'],
+            default => ['msg' => $sent, 'type' => 'success'],
+        };
     }
 
     /** مرفقٌ في محادثة — من متجر الجلسة وحده، وما سواه 404 */

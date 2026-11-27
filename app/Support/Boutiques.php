@@ -255,7 +255,12 @@ final class Boutiques
     ): array {
         $row = self::soldLines($businessId, $scope, $start, $end, $branchId, $channel)
             ->selectRaw('COALESCE(SUM(order_items.total), 0) as gross')
-            ->selectRaw('COALESCE(SUM(order_items.total * COALESCE(order_items.boutique_rate, 0) / 100), 0) as commission')
+            /*
+             * و`100.0` لا `100`: SQLite تقسم العددين الصحيحين قسمةً صحيحة — بندٌ
+             * باثني عشر بنسبة عشرين كانت عمولتُه ٢ لا ٢٫٤. وPostgreSQL تقسم
+             * عشريًّا في الحالين، فالإنتاجُ لم يتأثّر؛ والصحيحُ واحدٌ على المحرّكين.
+             */
+            ->selectRaw('COALESCE(SUM(order_items.total * COALESCE(order_items.boutique_rate, 0) / 100.0), 0) as commission')
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
             ->selectRaw('COUNT(DISTINCT order_items.order_id) as order_count')
             ->selectRaw('COUNT(*) as line_count')

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\GoogleBusiness;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -10,6 +11,29 @@ Artisan::command('inspire', function () {
 
 // قلبُ الاشتراكات المنتهية إلى «منتهي» أول كل يوم — قبل أن يفتح أحد لوحته
 Schedule::command('subscriptions:expire')->dailyAt('00:10')->withoutOverlapping();
+
+// ‏‏رموزُ إنستقرام تُجدَّد قبل انتهاء أيّامها الستّين، والإشعاراتُ الخام بعد ثلاثين يومًا تُحذف
+Schedule::command('instagram:refresh-tokens')->dailyAt('04:30')->withoutOverlapping();
+
+// ‏‏وحملاتُ واتساب دفعةً كلَّ دقيقة — في الخلفيّة فلا تؤخّر الجدول، وبلا حملةٍ تُرسل أو تُنتظر لا تُشغَّل
+Schedule::command('whatsapp:run-campaigns')->everyMinute()->withoutOverlapping(10)->runInBackground()
+    ->when(fn () => \App\Support\WhatsAppCampaigns::waiting());
+
+// ‏‏وقوالبُ العروض التي تنتظر مراجعة Meta — يُسأل عنها كلَّ ساعة، وإشعارُها يسبق إن وصل
+Schedule::command('whatsapp:run-campaigns --templates')->hourlyAt(40)->withoutOverlapping()->runInBackground()
+    ->when(fn () => \App\Support\WhatsAppCampaigns::templatesWaiting());
+
+// ‏‏ورقمُ متجرٍ رُبط حديثًا يُفحص حتى يجهز فيصير رقمَ إرساله — وبلا رقمٍ ينتظر لا تُشغَّل
+Schedule::command('whatsapp:adopt-numbers')->everyMinute()->withoutOverlapping(10)->runInBackground()
+    ->when(fn () => \App\Support\WhatsAppSender::waiting());
+
+// ‏‏وما اعتُمد يُفحص كلَّ ساعة — قراءةٌ عند Meta لا غير، فإن تعطّل قيل لصاحبه وللفريق
+Schedule::command('whatsapp:adopt-numbers --watch')->hourlyAt(25)->withoutOverlapping()->runInBackground()
+    ->when(fn () => \App\Support\WhatsAppSender::watching());
+
+// ‏‏وما بقي من تعليقات إنستقرام ورسائله بلا ردّ (عاملٌ توقّف، أو حدُّ ساعةٍ امتلأ) — يُلتقط كلَّ خمس دقائق
+Schedule::command('instagram:answer-pending')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => \App\Support\InstagramPlatform::mode() !== \App\Support\InstagramPlatform::OFF);
 
 // روابطُ الدفع المنتهية تُوسَم كلَّ ساعة — والشاشةُ توسمها عند فتحها أيضًا
 Schedule::command('payment-links:expire')->hourly()->withoutOverlapping();
@@ -94,6 +118,23 @@ Schedule::command('invoices:remind')->dailyAt('09:00')->withoutOverlapping();
  */
 Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
 
+/*
+ * فوترةُ وصلات تطبيقات التجّار كما رُوجعت؟ — قراءةٌ يوميّة عند ميتا.
+ *
+ * دليلٌ رُوجع ثمّ نقضته ميتا (شُورك الحسابُ مع أبعاد، أو غابت وسيلةُ الدفع،
+ * أو تبدّلت) يُوقف الإرسال حتى يُراجَع جديد. قراءاتٌ لا غير.
+ */
+Schedule::command('whatsapp:own-billing')->dailyAt('06:30')->withoutOverlapping();
+
+/*
+ * تقييماتُ Google لكلّ متجرٍ ربط ملفَّه — كلّ ساعة.
+ *
+ * بلا هذا لا يصل الجرسَ تقييمٌ منخفض إلّا إن ضغط التاجر «سحب التقييمات»: أي حين
+ * يكون قد عرف. وقراءةٌ لا غير — الردُّ لا يخرج إلّا بقرار التاجر من شاشته.
+ */
+Schedule::command('google:sync-reviews')->hourlyAt(25)->withoutOverlapping()->runInBackground()
+    ->when(fn () => GoogleBusiness::configured());
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 
@@ -149,3 +190,20 @@ Schedule::command('finance:post-missing-sales')->dailyAt('01:30')->withoutOverla
  * وتحذيرٌ يوميٌّ عن حالٍ مقصودةٍ يُعلّم من يقرأ السجلَّ أن يتجاهله.
  */
 Schedule::command('purge:check')->dailyAt('06:10')->withoutOverlapping();
+
+/*
+ * نسخُ الصور القديمة لكلّ المتاجر بالدور — دفعةٌ صغيرةٌ كلَّ ربع ساعة، مطفأةٌ حتى
+ * يُفتح `images.backfill`. والأصولُ لا تُمسّ، وما صُنع لا يُعاد، والخادمُ يُسأل قبل
+ * كلّ صورة (`ImagesOptimize`). وفي الخلفيّة: دفعةٌ طالت لا تؤخّر بقيّةَ الجدول.
+ */
+Schedule::command('images:optimize', ['--apply', '--limit='.(int) config('images.backfill_batch', 10)])
+    ->everyFifteenMinutes()->withoutOverlapping()->runInBackground()->when(fn () => (bool) config('images.backfill'));
+
+/*
+ * وما رُفع والخادمُ مشغول — حُفظ أصلُه وتنتظر نسخُه (`ImageState::waiting`): جولةٌ قصيرةٌ
+ * كلَّ عشر دقائق بالحرّاس أنفسهم، لا تمسّ صورةً قديمة. ولا تبدأ إن لم تنتظر صورة ولم
+ * يفت انتظارُ رفع (`ImageState::missed`) — وما فات تستدركه من القرص قبل أن تبدأ.
+ */
+Schedule::command('images:optimize', ['--backlog', '--limit='.(int) config('images.backlog_batch', 10)])
+    ->everyTenMinutes()->withoutOverlapping()->runInBackground()
+    ->when(fn () => (bool) config('images.backlog', true) && (\App\Support\ImageState::waiting() !== [] || \App\Support\ImageState::missed() !== null));

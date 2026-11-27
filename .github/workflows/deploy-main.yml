@@ -103,6 +103,11 @@ jobs:
       # ‏`command=` في authorized_keys تتجاهل ما يُرسَل وتُشغّل النشر، فلا
       # أمرَ هنا. و`-T` لأنّ المفتاح يمنع الطرفية. والمخرجُ يُحفظ: السكربتُ
       # يطبع «تمّ: من → إلى»، ومنه تُقرأ البصمةُ التي تعمل فعلًا.
+      #
+      # الاتّصالُ بحساب abaad-deploy لا root: النشرُ يجري بحساب يملك شجرةَ الكود،
+      # لا بحساب يملك الخادم. فلو تسرّب المفتاح لم يُعطِ root. والمفتاحُ نفسُه،
+      # نُقل من authorized_keys الخاصّ بـroot إلى الخاصّ بـabaad-deploy في
+      # الانتقال (DEPLOYMENT.md) — ولا يسري هذا السطر إلّا بعد أن يتمّ ذلك.
       - name: النشر
         if: env.SKIP != '1'
         run: |
@@ -111,7 +116,7 @@ jobs:
               -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=30 \
-              root@165.227.145.219 2>&1 | tee deploy.log
+              abaad-deploy@165.227.145.219 2>&1 | tee deploy.log
           test "${PIPESTATUS[0]}" -eq 0
 
       # الخادمُ فحص نفسه في `deploy.sh` (من داخله)؛ وهذا رأيٌ ثانٍ من الخارج.

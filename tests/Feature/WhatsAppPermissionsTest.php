@@ -34,6 +34,8 @@ class WhatsAppPermissionsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
 
         $this->business = Business::create(['name' => 'محل ورد', 'type' => 'محل ورود', 'status' => 'نشط']);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
@@ -50,6 +52,8 @@ class WhatsAppPermissionsTest extends TestCase
             'business_id' => null, 'name' => 'مدير المنصة', 'email' => 'root@abaad.om',
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     /* --------------------------- التاجر لا يرفع حدّه --------------------------- */

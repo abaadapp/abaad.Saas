@@ -10,7 +10,7 @@ use App\Support\MarketingSettings;
  *
  * ═══ الخطُّ الذي يُرسَم هنا ═══
  *
- * إعداداتُ المتجر تسعةٌ وأربعون مفتاحًا في سلّةٍ واحدة، وفيها نوعان لا
+ * إعداداتُ المتجر خمسةٌ وأربعون مفتاحًا في سلّةٍ واحدة، وفيها نوعان لا
  * يُخلطان:
  *
  *  • **ما يراه الزائر فقط** — نصٌّ وصورةٌ وترتيبُ أقسام. هذا يُحرَّر في
@@ -24,8 +24,11 @@ use App\Support\MarketingSettings;
  * صباحًا وبقي القديمُ **يُحصَّل من الزبائن** حتّى ينشر. وذلك خطأٌ ماليّ لا
  * بصريّ — وأثرُه لا يُرى في الشاشة بل في الفاتورة.
  *
- * ولمَ يبقى `store_seo_index` حيًّا: «لا تُفهرسني» طلبٌ يُستعجَل — من كشف
- * صفحةً قبل أوانها يريد إخفاءها الآن لا بعد نشرة.
+ * ولمَ يبقى «الظهور في البحث» كلُّه حيًّا — العنوانُ والوصفُ بلغتيهما وإذنُ
+ * الفهرسة: «لا تُفهرسني» طلبٌ يُستعجَل، ومن كتب عنوانَه في غوغل وضغط «حفظ»
+ * ينتظر أن يقرأه غوغل لا أن ينتظر نشرةَ تصميم. وكان النصُّ في العقد والإذنُ
+ * خارجَه — فشاشةٌ واحدةٌ بزرّ حفظٍ واحد يسري نصفُها ويتأجّل نصفُها، ونشرُ
+ * مسوّدةٍ قديمة يُعيد عنوانًا كتب صاحبُه فوقه. انظر `StoreSeo::save`.
  *
  * ولمَ يبقى `store_on` حيًّا: هو مفتاحُ الخدمة نفسِها. ولو جُمِّد لَدار
  * المنطقُ على نفسه — مفتاحُ النشر لا يُنشَر.
@@ -45,7 +48,7 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — تسعةٌ وأربعون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — خمسةٌ وأربعون مفتاحًا.
      *
      * @var list<string>
      */
@@ -66,8 +69,6 @@ final class StoreContent
         'store_block_title_en', 'store_block_text_en', 'store_block_cta_en',
         // «اختيارات RIBBON» و«أضف مع طلبك» بيده — انظر `RibbonPicks` و`RibbonUpsells`
         'store_picks', 'store_picks_title', 'store_picks_title_en', 'store_ribbon_upsells',
-        // وما يقرؤه غوغل من نصّ — أمّا إذنُ الفهرسة فيسري فورًا
-        'store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en',
         // ورأسُ المتجر: شريطُ الإعلان واختصاراتُ الفئات — انظر `StoreHeader`
         'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
         'store_shop_nav_categories',
@@ -91,6 +92,41 @@ final class StoreContent
      * يكون عن «استرجاعٍ آمن». فيُكتب في اللقطة ليُقرأ، ولا يُكتب منها.
      */
     public const READ_ONLY = ['store_theme'];
+
+    /**
+     * مفاتيحُ خرجت من العقد وقد تبقى قيمُها في مسوّداتٍ كُتبت قبل خروجها.
+     *
+     * نصوصُ «الظهور في البحث» كانت تُحفظ في المسوّدة وتنتظر النشر، ثمّ صارت
+     * تسري بالحفظ (`StoreSeo::save`). ومن حفظ عنوانًا قبل ذلك ولم ينشره بقي
+     * عنوانُه في `store_sites.draft` — لا يُنشر بعد اليوم ولا يُرمى: تحمله
+     * المسوّدةُ كما هو حتّى تعرضه شاشةُ البحث على صاحبه فيقرّر
+     * (`StoreSeo::pending`)، ويُمحى حين يحفظ هناك.
+     *
+     * فلا يُكتب منها شيءٌ في نشرة (`only` تُسقطها)، ولا تسقط من المسوّدة
+     * بحفظ المحرّر أو بالتراجع (`ThemePublisher::saveDraft` و`discard`).
+     *
+     * @var list<string>
+     */
+    public const RETIRED = ['store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en'];
+
+    /**
+     * ما تحمله مسوّدةٌ من المفاتيح الخارجة — نصوصًا كما حُفظت.
+     *
+     * @param  array<string, mixed>  $draft
+     * @return array<string, string>
+     */
+    public static function retired(array $draft): array
+    {
+        $out = [];
+
+        foreach (self::RETIRED as $key) {
+            if (array_key_exists($key, $draft) && is_scalar($draft[$key])) {
+                $out[$key] = (string) $draft[$key];
+            }
+        }
+
+        return $out;
+    }
 
     /** أهذا المتجرُ على نظام المسوّدات؟ — ومن لا صفَّ له يعمل كما كان */
     public static function usesDrafts(int $businessId): bool

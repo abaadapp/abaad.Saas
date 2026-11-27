@@ -40,8 +40,10 @@ use App\Support\Purge\Vault;
 use App\Support\Roles;
 use App\Support\Search;
 use App\Support\SupportWhatsApp;
+use App\Support\TillCatalogSwitch;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppLinkHealth;
+use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\JsonResponse;
@@ -517,6 +519,8 @@ class PageController extends Controller
                 'role_key' => $model->role,
                 // كانت «الباقة الاحترافية» نصًّا ثابتًا تحت اسم الشركة
                 'business_plan' => $model->business?->plan?->name,
+                // «دخول كمستخدم» يُرسم لمن يُدخل فعلًا — والقاعدةُ قاعدةُ الخادم نفسُها
+                'can_enter' => ImpersonationController::refusal($model) === null,
             ],
             'activities' => Demo::userActivities($model->id),
             'roles' => $this->roleOptions(),
@@ -631,6 +635,25 @@ class PageController extends Controller
             // حال البريد كما هو على الخادم — لا كما حُفظ في الشاشة
             'mail' => PlatformConfig::mailStatus(),
             /*
+             * ‏‏ومفتاحُ كتالوج الصندوق على الجهاز كما يقرؤه الصندوقُ الآن — لا كما حُفظ وحده:
+             * إطفاءُ الخادم (`POS_CATALOG_ON_DEVICE`) يغلبه، وصفٌّ لا يُقرأ يعني «مطفأ».
+             * ومعه آخرُ ما تبدّل فيه، من سجلّ النشاط.
+             */
+            'posCatalog' => TillCatalogSwitch::state(),
+            /*
+             * ‏‏وكيف يربط التجّارُ الجدد واتسابهم، وجاهزيّةُ الربط بضغطة عبر تطبيق أبعاد — وآخرُ ما
+             * تبدّل فيهما. ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» (`WhatsAppMerchantLink`).
+             */
+            'whatsappLink' => WhatsAppMerchantLink::state(),
+            // ‏‏وكلفةُ رقم أبعاد المشترك: تصنيفُ Meta وتقديرُها — ولا مبلغَ من عندنا
+            'whatsappSharedCost' => \App\Support\WhatsAppPrices::sharedView(),
+            // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات — مقفلةٌ افتراضًا (`ChannelAutomationsSwitch`)
+            'channelAutomations' => \App\Support\ChannelAutomationsSwitch::state(),
+            // ‏‏ولمن تُفتح حملاتُ واتساب — مقفلةٌ افتراضًا (`WhatsAppCampaignsSwitch`)
+            'whatsappCampaigns' => \App\Support\WhatsAppCampaignsSwitch::state(),
+            // ‏‏وتطبيقُ إنستقرام ولمن يُفتح ربطُه، والعناوينُ التي تُلصق في لوحة Meta (`InstagramPlatform`)
+            'instagram' => \App\Support\InstagramPlatform::state(),
+            /*
              * الباقات بأسمائها لتُختار لا لتُكتب.
              *
              * «الباقة الافتراضية» كانت حقلًا نصّيًّا يُطابَق بالحرف: مسافةٌ
@@ -665,6 +688,7 @@ class PageController extends Controller
                 'gbpConfigured' => GoogleBusiness::configured(),
                 'gbpConnected' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('refresh_token')->count(),
                 'gbpErrors' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('last_error')->count(),
+                'gbpBlocked' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('api_blocked_at')->count(),
             ],
             /*
              * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.

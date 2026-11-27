@@ -7,11 +7,17 @@ use App\Models\Branch;
 use App\Models\BranchGooglePlace;
 use App\Models\GoogleBusinessAccount;
 use App\Models\GoogleBusinessReview;
+use App\Support\CostsAndLosses;
 use App\Support\Demo;
 use App\Support\GoogleBusiness;
 use App\Support\MarketingSettings;
+use App\Support\Pagination;
+use Closure;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -28,17 +34,61 @@ use Inertia\Response;
  * ثلاثةٌ يحتاجها التكامل: عميلُ OAuth وسرُّه ووصولٌ **معتمَدٌ** من Google.
  * وغيابُ أيٍّ منها يجعل الشاشة تقول «غيرُ مهيّأ» ولا تعرض زرَّ ربطٍ يقود
  * إلى صفحة خطأٍ عند Google.
+ *
+ * ═══ وهي للتاجر وحده ═══
+ *
+ * مديرُ المنصّة يدخل المتجرَ باسم صاحبه ليساعده، فيرث صلاحياته. وهذه الشاشة
+ * تقرأ زبائنَ التاجر وتنشر باسمه على ملفّه العامّ وتربط حسابه: لا يد لأبعاد فيها.
+ * فتُغلق كلُّها أثناء الدخول، ويبقى له الحالُ التشخيصيّ في لوحته بلا رمزٍ ولا نصّ.
+ *
+ * والمقيَّدُ بفرعٍ يرى فرعَه ويردّ عليه وحده، وما يمسّ المتجرَ كلَّه (الإذنُ
+ * والتنبيهات) لمن لم يُقيَّد.
  */
-class GoogleBusinessController extends Controller
+class GoogleBusinessController extends Controller implements HasMiddleware
 {
     private const STATE_KEY = 'google_business_state';
+
+    /** كم تقييمًا في الصفحة */
+    private const PER_PAGE = 25;
 
     /** عمرُ طلب الإذن — من ضغط الزرّ إلى العودة من Google */
     private const STATE_MINUTES = 10;
 
+    public static function middleware(): array
+    {
+        return [static function (Request $request, Closure $next) {
+            abort_if(
+                $request->session()->has('impersonator_id'),
+                403,
+                __('تقييمات Google يديرها صاحب المتجر — لا تُفتح أثناء الدخول باسمه.'),
+            );
+
+            return $next($request);
+        }];
+    }
+
     private function bid(): int
     {
         return Demo::bid();
+    }
+
+    /**
+     * فروعُ المتجر التي يراها هذا المستخدم.
+     *
+     * @return Collection<int, int>
+     */
+    private function branchIds(): Collection
+    {
+        $all = Branch::where('business_id', $this->bid())->orderBy('id')->pluck('id');
+        $only = CostsAndLosses::allowedBranches($this->bid(), auth()->user());
+
+        return $only === null ? $all : $all->intersect($only)->values();
+    }
+
+    /** ما يمسّ المتجر كلَّه لا يفعله من قُيِّد بفرع */
+    private function wholeShopOnly(): void
+    {
+        abort_unless(CostsAndLosses::allowedBranches($this->bid(), auth()->user()) === null, 403);
     }
 
     public function index(Request $request): Response
@@ -46,10 +96,13 @@ class GoogleBusinessController extends Controller
         $bid = $this->bid();
         $account = GoogleBusiness::for($bid);
         $settings = MarketingSettings::group($bid, 'google');
+        $ids = $this->branchIds();
+        $page = $this->reviews($ids, $request);
 
         return Inertia::render('Admin/Integrations/GoogleBusiness', [
             /* حالُ التهيئة أوّلُ ما يُقرأ — ولا يُعرض زرٌّ يقود إلى خطأ */
             'configured' => GoogleBusiness::configured(),
+            'state' => GoogleBusiness::state($bid)['state'],
             'connected' => $account !== null,
             /* انقطع الإذنُ من جهة Google — فيُعرض «أعِد الربط» لا «لم يُربط بعد» */
             'reconnect' => $account === null && GoogleBusiness::needsReconnect($bid),
@@ -63,8 +116,10 @@ class GoogleBusinessController extends Controller
                 'syncedAt' => optional($account->synced_at)->toIso8601String(),
                 'error' => $account->last_error,
             ] : null,
-            'branches' => $this->branches($bid),
-            'reviews' => $this->reviews($bid),
+            'branches' => $this->branches($ids),
+            'reviews' => collect($page->items())->map($this->reviewRow(...))->values()->all(),
+            'pagination' => Pagination::meta($page),
+            'filters' => $this->filters($request),
             'alerts' => [
                 'enabled' => ($settings['gbp_alerts_enabled'] ?? '1') === '1',
                 'threshold' => (int) ($settings['gbp_low_rating'] ?? 2),
@@ -82,6 +137,8 @@ class GoogleBusinessController extends Controller
      */
     public function connect(Request $request): RedirectResponse
     {
+        $this->wholeShopOnly();
+
         if (! GoogleBusiness::configured()) {
             return back()->with('toast', [
                 'msg' => __('إدارة تقييمات Google غير متاحة على المنصّة بعد.'), 'type' => 'danger',
@@ -135,6 +192,19 @@ class GoogleBusinessController extends Controller
             return $back->with('toast', ['msg' => $result['error'], 'type' => 'danger']);
         }
 
+        /*
+         * وإذنٌ بلا إدارة الملفّ لا يُحفظ.
+         *
+         * من ألغى خانتها في صفحة الموافقة يعود ناجحًا، ثمّ يُردّ كلُّ نداءٍ بـ٤٠٣
+         * وشاشتُه تقول «مربوط». فيُقال له الآن ما ينقص، ولا يُكتب رمزٌ لا يفتح شيئًا.
+         */
+        if (! GoogleBusiness::granted((array) $result['data'])) {
+            return $back->with('toast', [
+                'msg' => __('لم تمنح إذن إدارة ملفّ الأعمال — أعد الربط واترك خانته مفعّلة.'),
+                'type' => 'warning',
+            ]);
+        }
+
         GoogleBusiness::store($this->bid(), (array) $result['data'], $request->user());
 
         return $back->with('toast', ['msg' => __('تم ربط حساب Google بنجاح'), 'type' => 'success']);
@@ -169,6 +239,8 @@ class GoogleBusinessController extends Controller
 
     public function disconnect(): RedirectResponse
     {
+        $this->wholeShopOnly();
+
         $account = GoogleBusiness::for($this->bid());
 
         if ($account) {
@@ -248,6 +320,19 @@ class GoogleBusinessController extends Controller
             return back()->withErrors(['location' => $owned['error']]);
         }
 
+        /*
+         * ومكانُ الموقع يُقارَن بمكان الفرع على الخرائط.
+         *
+         * موقعان متشابها الاسم يُخلطان، فتُسحب تقييماتُ فرعٍ إلى آخر ويُردّ باسمه.
+         * ويُسأل التاجر ولا يُمنع: معرّفُ المكان قد يتبدّل عند Google.
+         */
+        $placeOfBranch = (string) BranchGooglePlace::query()->linked()->where('branch_id', $target->id)->value('place_id');
+        $placeOfLocation = (string) ($owned['location']['placeId'] ?? '');
+
+        if ($placeOfBranch !== '' && $placeOfLocation !== '' && $placeOfBranch !== $placeOfLocation && ! $request->boolean('confirmed')) {
+            return back()->withErrors(['location' => __('هذا الموقع ليس مكان هذا الفرع على الخرائط. تأكّد منه قبل ربطه.')]);
+        }
+
         GoogleBusiness::linkLocation($target, $data['location'], $data['account']);
 
         return back()->with('toast', ['msg' => __('تم ربط الفرع بموقعه'), 'type' => 'success']);
@@ -294,6 +379,8 @@ class GoogleBusinessController extends Controller
     /** مقابضُ التنبيه — مُشغَّلةٌ وحدُّها */
     public function alerts(Request $request): RedirectResponse
     {
+        $this->wholeShopOnly();
+
         $data = $request->validate([
             'gbp_alerts_enabled' => ['nullable', 'boolean'],
             'gbp_low_rating' => ['required', 'integer', 'min:1', 'max:3'],
@@ -309,57 +396,92 @@ class GoogleBusinessController extends Controller
 
     /* ═══════════════════ البناء ═══════════════════ */
 
-    /** فرعٌ من فروع هذا المتجر — والحصرُ في الاستعلام لا في فحصٍ بعده */
+    /** فرعٌ يراه هذا المستخدم من فروع متجره — والحصرُ في الاستعلام لا في فحصٍ بعده */
     private function branch(int $id): Branch
     {
-        return Branch::where('business_id', $this->bid())->findOrFail($id);
-    }
-
-    /** تقييمٌ على فرعٍ من فروع هذا المتجر — ولا يُردّ على تقييم الجار */
-    private function review(int $id): GoogleBusinessReview
-    {
-        return GoogleBusinessReview::whereIn(
-            'branch_id',
-            Branch::where('business_id', $this->bid())->pluck('id'),
-        )->findOrFail($id);
-    }
-
-    /** @return list<array<string, mixed>> */
-    private function branches(int $bid): array
-    {
-        return Branch::where('business_id', $bid)->with('googlePlace')->orderBy('id')->get()
-            ->map(fn (Branch $b) => [
-                'id' => $b->id,
-                'name' => $b->name,
-                'location' => $b->googlePlace?->gbp_location,
-                'linked' => filled($b->googlePlace?->gbp_location),
-                'reviews' => GoogleBusinessReview::where('branch_id', $b->id)->live()->count(),
-            ])->all();
+        return Branch::whereIn('id', $this->branchIds())->findOrFail($id);
     }
 
     /**
-     * تقييماتُ المتجر — الأحدثُ أوّلًا، والمحذوفُ عند Google لا يُعرض.
-     *
+     * تقييمٌ قائمٌ على فرعٍ يراه هذا المستخدم — ولا يُردّ على تقييم الجار، ولا
+     * على كلامٍ اختفى من Google.
+     */
+    private function review(int $id): GoogleBusinessReview
+    {
+        return GoogleBusinessReview::live()->whereIn('branch_id', $this->branchIds())->findOrFail($id);
+    }
+
+    /**
+     * @param  Collection<int, int>  $ids
      * @return list<array<string, mixed>>
      */
-    private function reviews(int $bid): array
+    private function branches(Collection $ids): array
     {
+        return Branch::whereIn('id', $ids)->with('googlePlace')->orderBy('id')->get()
+            ->map(function (Branch $b) {
+                $place = $b->googlePlace;
+
+                return [
+                    'id' => $b->id,
+                    'name' => $b->name,
+                    'location' => $place?->gbp_location,
+                    'linked' => filled($place?->gbp_location),
+                    'reviews' => GoogleBusinessReview::where('branch_id', $b->id)->live()->count(),
+                    /* ومعرّفُ الفرع على الخرائط — به يُعلَّم موقعُه في قائمة الاختيار */
+                    'placeId' => $place?->isLinked() && filled($place->place_id) ? $place->place_id : null,
+                    'syncedAt' => optional($place?->gbp_synced_at)->toIso8601String(),
+                    'syncError' => $place?->gbp_sync_error,
+                ];
+            })->all();
+    }
+
+    /** مرشِّحاتُ القائمة — تُقاس بما يُقبل ولا تُصدَّق كما وصلت */
+    private function filters(Request $request): array
+    {
+        $stars = (int) $request->query('stars', 0);
+
+        return [
+            'branch' => (int) $request->query('branch', 0) ?: null,
+            'stars' => $stars >= 1 && $stars <= 5 ? $stars : null,
+            'unanswered' => $request->boolean('unanswered'),
+        ];
+    }
+
+    /**
+     * تقييماتُ ما يراه المستخدم — الأحدثُ أوّلًا، والمحذوفُ عند Google لا يُعرض.
+     *
+     * وصفحاتٌ لا سقف: كانت تُقرأ أوّلُ مئةٍ وحدها، فتقييمٌ قديمٌ بلا ردٍّ لا يصله
+     * صاحبُه أبدًا. والمزامنةُ تجلب الكلّ، فالشاشةُ تعرض الكلّ.
+     *
+     * @param  Collection<int, int>  $ids
+     */
+    private function reviews(Collection $ids, Request $request): LengthAwarePaginator
+    {
+        $filters = $this->filters($request);
+
         return GoogleBusinessReview::live()
-            ->whereIn('branch_id', Branch::where('business_id', $bid)->pluck('id'))
+            ->whereIn('branch_id', $filters['branch'] ? $ids->intersect([$filters['branch']]) : $ids)
+            ->when($filters['stars'], fn ($q, $n) => $q->where('rating', $n))
+            ->when($filters['unanswered'], fn ($q) => $q->whereNull('reply'))
             ->with('branch:id,name')
-            ->orderByDesc('reviewed_at')
-            ->limit(100)->get()
-            ->map(fn (GoogleBusinessReview $r) => [
-                'id' => $r->id,
-                'branch' => $r->branch?->name,
-                'rating' => $r->rating,
-                'comment' => $r->comment,
-                'author' => $r->author,
-                'photo' => $r->author_photo,
-                'at' => optional($r->reviewed_at)->toIso8601String(),
-                /* والردُّ المعروضُ هو ما عند Google — لا ما كُتب في الحقل */
-                'reply' => $r->reply,
-                'repliedAt' => optional($r->replied_at)->toIso8601String(),
-            ])->all();
+            ->orderByDesc('reviewed_at')->orderByDesc('id')
+            ->paginate(self::PER_PAGE)->withQueryString();
+    }
+
+    /** @return array<string, mixed> */
+    private function reviewRow(GoogleBusinessReview $r): array
+    {
+        return [
+            'id' => $r->id,
+            'branch' => $r->branch?->name,
+            'rating' => $r->rating,
+            'comment' => $r->comment,
+            'author' => $r->author,
+            'photo' => $r->author_photo,
+            'at' => optional($r->reviewed_at)->toIso8601String(),
+            /* والردُّ المعروضُ هو ما عند Google — لا ما كُتب في الحقل */
+            'reply' => $r->reply,
+            'repliedAt' => optional($r->replied_at)->toIso8601String(),
+        ];
     }
 }

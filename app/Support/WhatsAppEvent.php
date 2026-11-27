@@ -57,8 +57,32 @@ class WhatsAppEvent
         self::ORDER_OUT_FOR_DELIVERY,
     ];
 
+    /** أحداثُ حال الطلب — ومهمّةُ الفاتورة في لوحة التجهيز تُرسلها بقوالبها نفسِها */
+    public const ORDER_STATUS_EVENTS = [
+        self::ORDER_RECEIVED,
+        self::ORDER_CONFIRMED,
+        self::ORDER_READY,
+        self::ORDER_OUT_FOR_DELIVERY,
+        self::ORDER_DELIVERED,
+    ];
+
     /** ما يُربط قالبُه فقط يومَ يظهر عند ميتا معتمَدًا. */
     public const ON_APPROVAL = [self::INVOICE_PAID];
+
+    /*
+     * ═══ قالبا الطلب الآليّ عبر واتساب (`WhatsAppOrders`) ═══
+     *
+     * لا يدخلان دورةَ الطلبات ولا رسائلَ الفواتير القديمة (`ALL`، `RIBBON_EVENTS`):
+     * يُستعملان خارج نافذة الخدمة وحدها — رابطٌ تأخّر عن آخر رسالةٍ من الزبون
+     * أكثر من يوم، أو دفعٌ وصل بعد ذلك. وداخل النافذة رسالةٌ عاديّة بلا قالب.
+     * ويُربطان يومَ تعتمدهما ميتا (`WhatsAppTemplates::adopt`)، وبلاهما يُقيَّد
+     * ما لم يُرسَل بسببه.
+     */
+    public const ORDER_PAYMENT_LINK = 'wa_order_payment_link';
+
+    public const ORDER_PAID = 'wa_order_paid';
+
+    public const GUIDED_ORDER = [self::ORDER_PAYMENT_LINK, self::ORDER_PAID];
 
     /** الدورة الافتراضيّة للحالات — RIBBON يمرّ من forBusinessStatus أدناه. */
     public static function statusMap(): array
@@ -113,6 +137,23 @@ class WhatsAppEvent
         };
     }
 
+    /**
+     * الانتقال → حدث هذا المتجر — كـ`forBusinessStatus`، إلّا قفزةً تتخطّى التأكيد.
+     *
+     * في RIBBON «جديد» ← «قيد التجهيز» مباشرةً (`OrderStatus::NEXT` يجيزها) لا يمرّ
+     * بـ«مؤكّد»، فكانت رسالةُ التأكيد تضيع والزبونُ لا يعلم أنّ طلبه قُبل. فالقفزةُ
+     * نفسُها تأكيد. ولا تكرار: التأكيدُ مرّةً للطلب (`WhatsAppAutomation::dedupeKey`).
+     * وبقيّةُ المتاجر على دورتها كما كانت.
+     */
+    public static function forBusinessTransition(int $businessId, ?string $from, ?string $to): ?string
+    {
+        if (self::isRibbonBusiness($businessId) && $from === OrderStatus::PENDING && $to === OrderStatus::PREPARING) {
+            return self::ORDER_CONFIRMED;
+        }
+
+        return self::forBusinessStatus($businessId, $to);
+    }
+
     /** مفاتيح مقابض الإرسال في إعدادات المتجر. */
     public const SETTING_KEYS = [
         self::ORDER_RECEIVED => 'wa_on_received',
@@ -134,9 +175,27 @@ class WhatsAppEvent
         self::INVOICE_DUE_SOON => 'اقتراب استحقاق فاتورة',
         self::INVOICE_OVERDUE => 'تأخّر سداد فاتورة',
         self::INVOICE_PAID => 'إرسال الفاتورة بعد دفعها برابط الدفع',
+        self::ORDER_PAYMENT_LINK => 'رابط دفع طلب واتساب',
+        self::ORDER_PAID => 'تأكيد دفع طلب واتساب',
     ];
 
     public const LANGUAGES = ['ar', 'en'];
+
+    /** اسما قالبَي الطلب الآليّ — لكلّ متجر، ولـRIBBON باسمه (`guidedTemplateName`) */
+    public const GUIDED_TEMPLATES = [
+        self::ORDER_PAYMENT_LINK => 'abaad_order_payment_link',
+        self::ORDER_PAID => 'abaad_order_paid',
+    ];
+
+    public const RIBBON_GUIDED_TEMPLATES = [
+        self::ORDER_PAYMENT_LINK => 'ribbon_payment_link',
+        self::ORDER_PAID => 'ribbon_order_paid',
+    ];
+
+    public static function guidedTemplateName(int $businessId, string $event): string
+    {
+        return (self::isRibbonBusiness($businessId) ? self::RIBBON_GUIDED_TEMPLATES : self::GUIDED_TEMPLATES)[$event] ?? $event;
+    }
 
     /** أسماء أبعاد الافتراضيّة لبقيّة الحسابات. */
     public const DEFAULT_TEMPLATES = [

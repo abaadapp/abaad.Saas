@@ -159,7 +159,7 @@ class TheTillLeavesTheOwnersBranchAloneTest extends TestCase
 
         $till = $this->get(route('pos.index'));
         $this->assertSame($this->muscat->id, $this->branchOf($till));
-        $shelf = collect($till->viewData('page')['props']['products'])->firstWhere('id', $this->rose->id);
+        $shelf = collect($this->tillProductsOf($till))->firstWhere('id', $this->rose->id);
         $this->assertSame(250, (int) $shelf['qty'], 'عرض الصندوقُ رصيدَ فرعٍ غير فرعه');
 
         $order = $this->checkout();

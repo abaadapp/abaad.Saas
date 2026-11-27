@@ -65,6 +65,8 @@ class UserController extends Controller
              * داخل نشاطٍ بلا نشاطٍ مربوط يدخل إلى نظامٍ فارغ لا بيانات فيه.
              */
             'blocked' => $u->trashed() ? null : self::blockedReason($u),
+            // «دخول كمستخدم» يُرسم لمن يُدخل فعلًا — والقاعدةُ قاعدةُ الخادم نفسُها
+            'can_enter' => ImpersonationController::refusal($u) === null,
         ]);
 
         return \Inertia\Inertia::render('Platform/Users/Index', [

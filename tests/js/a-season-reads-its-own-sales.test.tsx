@@ -204,10 +204,22 @@ describe('شاشةُ الصندوق وموسمُ البند', () => {
         const fs = await import('node:fs');
         const path = await import('node:path');
         const src = fs.readFileSync(path.resolve(process.cwd(), 'resources/js/Pages/Pos/Index.tsx'), 'utf8');
+        /*
+         * ‏سطرُ الصنف يُبنى في موضعين لا غير، ويمرّ بهما كلُّ من يُضيف صنفًا:
+         * `plainLine` (البطاقةُ والماسحُ لصنفٍ بلا مقاس) و`addChoice` (النافذةُ
+         * وباركودُ المقاس). فلا إضافةَ لصنفٍ بسطرٍ مكتوبٍ في مكانه يفوته الموسم.
+         */
+        const plain = src.match(/const plainLine = [\s\S]*?\}\);/)?.[0] ?? '';
+        const choice = src.match(/const addChoice = [\s\S]*?cart\.add\(\{[\s\S]*?\}\);/)?.[0] ?? '';
+        expect(plain).toContain('season_id: seasonFor(p.id)');
+        expect(choice).toContain('season_id: seasonFor(p.id)');
+
         const adds = src.match(/cart\.add\(\{[\s\S]*?\}\);/g) ?? [];
         const productAdds = adds.filter((a) => a.includes('id: p.id'));
-        expect(productAdds).toHaveLength(2);
-        productAdds.forEach((a) => expect(a).toContain('season_id: seasonFor(p.id)'));
+        expect(productAdds).toHaveLength(1);
+        expect(choice).toContain(productAdds[0]);
+        // ‏والبطاقةُ والماسحُ كلاهما بسطر البطاقة
+        expect(src.match(/cart\.add\(plainLine\(/g) ?? []).toHaveLength(2);
     });
 });
 

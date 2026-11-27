@@ -35,6 +35,7 @@ use App\Support\InvoiceAttachments;
 use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
 use App\Support\InvoiceLineDetails;
+use App\Support\Loyalty;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
@@ -316,6 +317,14 @@ class CustomerInvoiceController extends Controller
             'invoice' => $this->row($invoice) + [
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
+                // ومنه خصمُ نقاط الولاء — لقطةٌ كُتبت مع الورقة لا تُعاد
+                'loyalty_points' => (int) $invoice->loyalty_points,
+                'loyalty_discount' => (float) $invoice->loyalty_discount,
+                // مسودّةٌ تحمل الخصمَ ولم تُصرف نقاطُها بعد — تُصرف عند الإصدار
+                'loyalty_pending' => (int) $invoice->loyalty_points > 0
+                    && $invoice->status === CustomerInvoice::DRAFT
+                    && CustomerInvoices::pointsSpent($invoice) === 0,
+                'loyalty_returned' => (int) $invoice->loyalty_points > 0 ? CustomerInvoices::pointsReturned($invoice) : 0,
                 'tax_total' => (float) $invoice->tax_total,
                 // ملاحظةُ العميل تُطبع، والداخليّةُ لا تخرج من هذه الشاشة
                 'notes' => $invoice->notes,
@@ -763,6 +772,26 @@ class CustomerInvoiceController extends Controller
      * من أوّل حرف. ومعاينةٌ لا تظهر حتى يكتمل النموذج لا يراها أحدٌ إلّا
      * بعد أن يفرغ من حاجته إليها.
      */
+    /**
+     * ما يُعرض في تنبيه النقاط — أقصى ما يجوز لهذا العميل على هذه البنود.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private static function loyaltyOffer(int $bid, Customer $customer, array $items): array
+    {
+        $quote = CustomerInvoices::loyaltyQuote($bid, $customer, $items);
+
+        return [
+            'eligible' => $quote['eligible'],
+            'reason' => $quote['reason'],
+            'balance' => $quote['balance'],
+            'points' => $quote['max_points'],
+            'discount' => $quote['max_discount'],
+            // وفي طريقة النسبة يُقال كم بالمئة من الفاتورة هذا الخصم — و`null` في المبلغ الثابت
+            'percent' => Loyalty::percentOf(Loyalty::rules($bid), $quote['max_points']),
+        ];
+    }
+
     public function preview(Request $request)
     {
         $bid = $this->bid();
@@ -796,6 +825,8 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'bank_account_id' => ['nullable', 'integer'],
+            // نقاطٌ اختار التاجرُ استبدالَها — تُعاين ولا تُخصم (`CustomerInvoices::draft`)
+            'redeem_points' => ['nullable', 'integer', 'min:0'],
         ] + InvoiceLineDetails::rules() + [
             /*
              * ولغةُ الورقة تُرسَل لتُعاين — ولا تُحفظ من هنا.
@@ -844,6 +875,23 @@ class CustomerInvoiceController extends Controller
         $invoice = CustomerInvoices::draft($bid, $customer, $data, $items);
 
         return response()->json([
+            /*
+             * ═══ وعرضُ النقاط من الخادم لا من الشاشة ═══
+             *
+             * التنبيهُ يقول «رصيده كذا ويستطيع خصمَ كذا»، والرقمُ من الحساب
+             * نفسِه الذي تُكتب به الورقة (`CustomerInvoices::loyaltyQuote`) —
+             * فلا يقرأ التاجرُ مبلغًا ويُكتب غيرُه. والمجاميعُ بعد الخصم من
+             * `compute` نفسِها، بضريبتها على ما بقي.
+             */
+            'loyalty' => $customer !== null ? self::loyaltyOffer($bid, $customer, $items) : null,
+            'totals' => [
+                'subtotal' => (float) $invoice->subtotal,
+                'discount' => (float) $invoice->discount_total,
+                'tax' => (float) $invoice->tax_total,
+                'total' => (float) $invoice->total,
+                'loyalty_points' => (int) $invoice->loyalty_points,
+                'loyalty_discount' => (float) $invoice->loyalty_discount,
+            ],
             'html' => InvoiceBranding::render(
                 $bid,
                 $data['lang'] ?? null,
@@ -1185,6 +1233,16 @@ class CustomerInvoiceController extends Controller
              */
             'payment_link' => ['nullable', 'boolean'],
             'form_token' => ['nullable', 'string', 'max:64'],
+            /*
+             * نقاطُ الولاء التي اختار التاجرُ استبدالَها — تُحسب وتُخصم في
+             * الخادم مع الورقة (`CustomerInvoices::create`)، ولا تُطبَّق إلّا
+             * بطلبه: صفرٌ أو غيابٌ يعني «بدون خصم».
+             *
+             * ومعها قيمتُها كما عرضتها الشاشة — فإن حسب الخادمُ غيرَها رُدّت
+             * الورقةُ ومعها العرضُ الصحيح، ولا تُكتب بخصمٍ لم يُرَ.
+             */
+            'redeem_points' => ['nullable', 'integer', 'min:0'],
+            'redeem_discount' => ['nullable', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
             // منتجٌ أو إضافة — لا الاثنان: إضافةٌ لا تلبس منتجًا وهميًّا
@@ -1487,6 +1545,17 @@ class CustomerInvoiceController extends Controller
          * آجلةً كما يجب، بلا تحصيلٍ مزعوم، وتُعاد المحاولةُ من صفحتها على
          * الفاتورة نفسِها — لا فاتورةٌ ثانية.
          */
+        /*
+         * ولا يُطلب رابطُ دفعٍ لورقةٍ لا باقيَ لها — غطّتها النقاطُ كلُّها. لا
+         * يُفتح طلبٌ عند Paymob بصفر، ويُقال للتاجر لمَ لم يُنشأ رابط.
+         */
+        if ($wantsLink && $invoice->status === CustomerInvoice::ISSUED && $invoice->outstanding() <= 0) {
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                'msg' => __('أُصدرت الفاتورة :n مسدَّدةً بالكامل بنقاط الولاء — لا يُطلب لها رابط دفع.', ['n' => $invoice->number]),
+                'type' => 'success',
+            ]);
+        }
+
         if ($wantsLink) {
             try {
                 [$link] = PaymentLinks::forInvoice($invoice, auth()->id());
@@ -1550,6 +1619,15 @@ class CustomerInvoiceController extends Controller
     {
         $total = round((float) $invoice->total, 3);
         $amount = isset($data['paid_amount']) ? round((float) $data['paid_amount'], 3) : $total;
+
+        /*
+         * وورقةٌ غطّتها النقاطُ كلُّها لا يُقبض عليها شيء: لا إيصالَ بصفر (يردّه
+         * `CustomerPayments::record`)، وهي مسدَّدةٌ بباقيها الصفريّ. ومبلغٌ كُتب
+         * فوق الصفر يُردّ بسطره أدناه كما يُردّ على أيّ ورقة.
+         */
+        if ($total <= 0 && ! isset($data['paid_amount'])) {
+            return;
+        }
 
         if ($amount > $total) {
             throw ValidationException::withMessages([

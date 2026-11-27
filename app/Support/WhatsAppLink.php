@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Models\WhatsAppConnection;
 
 /**
- * حالُ الربط كما تُقرأ على البطاقة — ستُّ حالاتٍ لا سابعة.
+ * حالُ الربط كما تُقرأ على البطاقة — ثماني حالاتٍ لا تاسعة.
  *
  * ═══ ولمَ تُحسب هنا لا في الشاشة ═══
  *
@@ -28,6 +28,12 @@ class WhatsAppLink
 
     /** التفويض تمّ والرقمُ لم يصل بعد */
     public const CONNECTING = 'connecting';
+
+    /** الرقمُ وصل ولم يُسجَّل في Cloud API — ينتظر رمزَ التحقّق بخطوتين */
+    public const NEEDS_REGISTRATION = 'needs_registration';
+
+    /** رُبط بتطبيق التاجر ولم يثبت أنّ فوترة ميتا عليه — لا يُرسل (`WhatsAppOwnApp`) */
+    public const BILLING_UNPROVEN = 'billing_unproven';
 
     public const CONNECTED = 'connected';
 
@@ -64,12 +70,25 @@ class WhatsAppLink
             return self::REAUTH;
         }
 
+        if (WhatsAppOwnApp::awaitsBilling($c)) {
+            return self::BILLING_UNPROVEN;
+        }
+
+        if (WhatsAppOnboarding::awaitsRegistration($c)) {
+            return self::NEEDS_REGISTRATION;
+        }
+
         if ($c->status === WhatsAppConnection::PENDING) {
             return self::CONNECTING;
         }
 
         if ($c->status === WhatsAppConnection::ERROR) {
             return self::ERROR;
+        }
+
+        // ‏‏ورُبط عبر تطبيق أبعاد ولم تثبت جهةُ رسومه — مربوطٌ ولا يُرسل (`WhatsAppBillingLock`)
+        if (filled($c->phone_number_id) && WhatsAppBillingLock::stop($c) !== null) {
+            return self::BILLING_UNPROVEN;
         }
 
         if ($c->status === WhatsAppConnection::REAUTH || self::daysLeft($c) !== null && self::daysLeft($c) <= self::ALERT_DAYS[0]) {
@@ -127,6 +146,8 @@ class WhatsAppLink
         return match ($state) {
             self::CONNECTED => __('متصل'),
             self::CONNECTING => __('جاري الربط'),
+            self::NEEDS_REGISTRATION => __('بقي تفعيل الرقم'),
+            self::BILLING_UNPROVEN => __('بانتظار إثبات الفوترة'),
             self::REAUTH => __('يحتاج إعادة تفويض'),
             self::EXPIRED => __('انتهت صلاحية التفويض'),
             self::ERROR => __('حدث خطأ'),
@@ -154,6 +175,8 @@ class WhatsAppLink
             'phone_number_id' => $c?->phone_number_id,
             'display_phone_number' => $c?->display_phone_number,
             'coexistence' => (bool) ($c?->coexistence),
+            // ‏‏ومزامنةُ تطبيق واتساب للأعمال — الجهاتُ والمحادثاتُ السابقة وانفصالُه (`WhatsAppCoexistence::view`)
+            'sync' => WhatsAppCoexistence::view($c),
             'connected_at' => optional($c?->connected_at)->format('Y-m-d H:i'),
             'connected_by' => $c?->connectedBy?->name,
             'last_webhook_at' => optional($c?->last_webhook_at)->format('Y-m-d H:i'),

@@ -99,7 +99,7 @@ class BusinessController extends Controller
             return back()->withInput()->withErrors(['sector_id' => __('اختر القطاع.')]);
         }
 
-        $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
+        $data['logo'] = $request->hasFile('logo') ? \App\Support\Store\StoreImageUpload::storeShrunk($request->file('logo'), 'logos', 1024) : null;
 
         /*
          * مدّة التجربة — من إعدادات المنصة.
@@ -144,6 +144,9 @@ class BusinessController extends Controller
 
         // بابُ الإنشاء يختمه الخادم — `validateData` لا يقبله من الطلب
         $data['registration_source'] = Business::SOURCE_PLATFORM_MANUAL;
+        // ويبدأ على رقمه هو بتطبيقه — ورقمُ أبعاد المشترك مغلقٌ عن الجديد كلّيًّا (`WhatsAppMode::DEFAULT`)
+        $data['whatsapp_mode'] = \App\Support\WhatsAppMode::DEFAULT;
+        $data['whatsapp_shared_allowed'] = false;
 
         try {
             /*

@@ -10,14 +10,24 @@ import { useTranslate } from '@/lib/i18n';
 
 export interface AutoReplySettings {
     enabled: boolean;
+    /** أقال صاحبُ المتجر رأيه؟ — وإلّا فالإشعالُ افتراض */
+    explicit?: boolean;
     ar: string;
     en: string;
     branch_id: number | null;
     cooldown_hours: number;
 }
 
+/** حالُ الردّ كما يقع — `WhatsAppAutoReply::state` */
+export interface AutoReplyState {
+    state: 'working' | 'waiting' | 'off';
+    reason: string | null;
+}
+
 interface Props {
     settings: AutoReplySettings;
+    state?: AutoReplyState | null;
+    defaults?: { ar: string; en: string } | null;
     branches: { id: number; name: string }[];
     /** ولا يُرسل ردٌّ من رقمٍ لا يعمل — فالمقبض لا يُعرض حيًّا قبل الربط */
     linked: boolean;
@@ -28,13 +38,13 @@ interface Props {
 export const MAX_TEXT = 900;
 
 /**
- * الردُّ التلقائيّ على أوّل رسالة — مُطفأٌ حتى يُشعله صاحبُه.
+ * الردُّ التلقائيّ على أوّل رسالة — مُشعَلٌ لمن لم يقل رأيه، وصامتٌ لمن أطفأه.
  *
- * ═══ ولمَ الإطفاءُ هو الافتراض ═══
+ * ═══ والحالُ من الخادم لا من المقبض ═══
  *
- * هذا أوّلُ ما يكتب إلى زبونٍ بلا أن يفعل أحدٌ شيئًا — وكلُّ ما سواه يتبع
- * فعلًا: بيعةً تمّت أو حالةَ طلبٍ تبدّلت. فلا يُورَث بترقية، ولا يُشعل
- * لأنّ حقلًا مُلئ: المفتاحُ يُضغط بيدٍ تعرف ما تكتب.
+ * «يعمل» حين يُرسل فعلًا لو كتب زبونٌ الآن، و«بانتظار» حين يُشعَل ويمنعه ربطٌ
+ * أو فوترةٌ لم تُراجَع — والسببُ بكلماته، و«متوقف» لمن أطفأه (`state`). ولا
+ * يُقال «يعمل» لمقبضٍ مُشعَلٍ على رقمٍ لا يُرسل.
  *
  * ═══ ولغةُ الردّ ═══
  *
@@ -42,7 +52,7 @@ export const MAX_TEXT = 900;
  * والعربيّةُ لمن لا نعرفه. ولا تُخمَّن من حروف رسالته: «hi» يكتبها من
  * يقرأ العربيّة.
  */
-export default function WhatsappAutoReply({ settings, branches, linked, mayManage }: Props) {
+export default function WhatsappAutoReply({ settings, state, defaults, branches, linked, mayManage }: Props) {
     const t = useTranslate();
 
     const form = useForm({
@@ -53,7 +63,12 @@ export default function WhatsappAutoReply({ settings, branches, linked, mayManag
         cooldown_hours: String(settings.cooldown_hours),
     });
 
-    const live = form.data.enabled && linked;
+    /*
+        والحالُ ما يقوله الخادم عمّا حُفظ — والمقبضُ المُبدَّل قبل الحفظ لا يغيّره.
+        وبلا حالٍ من الخادم (صفحةٌ قديمة) يُقال «بانتظار» لمقبضٍ على رقمٍ غير مربوط.
+    */
+    const now: AutoReplyState['state'] = state?.state
+        ?? (! settings.enabled ? 'off' : linked ? 'working' : 'waiting');
 
     return (
         <SettingsSection
@@ -61,16 +76,18 @@ export default function WhatsappAutoReply({ settings, branches, linked, mayManag
             description="يُرسَل ردٌّ واحد لمن يكتب إلى رقم متجرك — مرةً في كل فترة، لا على كل رسالة."
             icon={MessageCircleReply}
             status={
-                live
+                now === 'working'
                     ? <StatusPill state="ready" label="يعمل" />
-                    : <StatusPill state="off" label="متوقف" />
+                    : now === 'waiting'
+                      ? <StatusPill state="progress" label="بانتظار اكتمال الربط/الفوترة" />
+                      : <StatusPill state="off" label="متوقف" />
             }
         >
             <div className="space-y-4">
                 <div data-testid="autoreply-switch">
                     <Toggle
                         label="تشغيل الرد التلقائي"
-                        hint="لا يُرسل شيء قبل تشغيله — وهو متوقف حتى تُشغّله بنفسك."
+                        hint="مُشغَّل افتراضيًا — يعمل حين يجهز رقمك، ويمكنك إيقافه أو تعديل نصّه."
                         on={form.data.enabled}
                         onChange={(v) => mayManage && form.setData('enabled', v)}
                     />
@@ -82,9 +99,14 @@ export default function WhatsappAutoReply({ settings, branches, linked, mayManag
                     وإخفاءُ القسم كان أسوأ: من كتب نصَّه ثمّ ربط رقمه لا يجد
                     ما كتب ولا يعرف أنّه حُفظ.
                 */}
-                {form.data.enabled && ! linked && (
-                    <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] leading-relaxed text-[#b45309]">
-                        {t('اربط رقم متجرك أولًا — لا يصل ردٌّ من رقم أبعاد المشترك.')}
+                {now === 'waiting' && (
+                    <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] leading-relaxed text-[#b45309]" data-testid="autoreply-waiting">
+                        {state?.reason ?? t('اربط رقم متجرك أولًا — لا يصل ردٌّ من رقم أبعاد المشترك.')}
+                    </p>
+                )}
+                {defaults && (
+                    <p className="text-[12px] leading-relaxed text-[#6b7280]" data-testid="autoreply-default-note">
+                        {t('إن تركت النص فارغًا يُرسل النص الافتراضي باسم متجرك.')}
                     </p>
                 )}
 
@@ -95,7 +117,7 @@ export default function WhatsappAutoReply({ settings, branches, linked, mayManag
                         value={form.data.ar}
                         disabled={! mayManage}
                         onChange={(e) => form.setData('ar', e.target.value)}
-                        placeholder={t('مثال: أهلًا بك في متجرنا 🌷 وصلتنا رسالتك وسيردّ عليك فريقنا قريبًا.')}
+                        placeholder={defaults?.ar ?? t('مثال: أهلًا بك في متجرنا 🌷 وصلتنا رسالتك وسيردّ عليك فريقنا قريبًا.')}
                         className="min-h-20"
                     />
                 </Field>
@@ -107,7 +129,7 @@ export default function WhatsappAutoReply({ settings, branches, linked, mayManag
                         value={form.data.en}
                         disabled={! mayManage}
                         onChange={(e) => form.setData('en', e.target.value)}
-                        placeholder="Thanks for reaching out — our team will reply shortly."
+                        placeholder={defaults?.en ?? 'Thanks for reaching out — our team will reply shortly.'}
                         className="min-h-20"
                     />
                 </Field>

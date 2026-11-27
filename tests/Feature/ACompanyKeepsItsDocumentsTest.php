@@ -49,7 +49,11 @@ class ACompanyKeepsItsDocumentsTest extends TestCase
         $this->shop = Business::create(['name' => 'زهور الريان', 'owner_name' => 'سالم الهنائي', 'phone' => '91234567', 'status' => 'نشط', 'plan_id' => $plan->id]);
         $this->other = Business::create(['name' => 'مخبز الرحمة', 'owner_name' => 'خالد', 'phone' => '92345678', 'status' => 'نشط', 'plan_id' => $plan->id]);
         $this->super = User::create(['name' => 'مدير المنصة', 'email' => 'super@abaadapp.test', 'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط']);
-        // بترتيب الهجرة: العقدُ أوّلًا ثمّ النماذج — فبعد اختبارٍ يفرّغ القاعدة يبقى العقدُ أوّلَ القوالب كما على الإنتاج
+        /*
+         * ‏العقدُ قبل الاتفاقيات كما تزرعها الهجرات — فهو أوّلُها بمعرّفه.
+         * واختبارٌ بـDatabaseTruncation قبله في قسم PostgreSQL نفسه يمحو ما زرعته
+         * الهجرة، فلو زُرعت الاتفاقياتُ أوّلًا لصار العقدُ آخرَها والترتيبُ غيرَ ما في الإنتاج.
+         */
         $this->subscriptionContract();
         DocumentForms::seedTemplates();
     }

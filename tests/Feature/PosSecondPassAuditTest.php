@@ -203,14 +203,15 @@ class PosSecondPassAuditTest extends TestCase
          * النهائيّ» لا تُجمع إضافاتُه فوقه، كما لا يجمعها الخادم (`addons_total`
          * صفرٌ فيه). انظر `AFinalPriceHoldsItsAddOnsInsideTest`.
          */
+        // ومنذ `VatLines`: البندُ سعرٌ وكميّةٌ وإضافاتُه المدفوعة (`billableAddons`) — بالبيسات في الطرفين
         $this->assertStringContainsString(
-            'const net = cartLineTotal(i);',
+            'addons: billableAddons(i),',
             $screen,
             'الشاشة لم تعد تحسب وعاءها من ثمن البند كاملًا',
         );
 
         $this->assertStringContainsString(
-            "\$net = \$l['price'] * \$l['qty'] + (\$l['addons_total'] ?? 0);",
+            "'net' => Baisa::of((float) \$l['price']) * (int) \$l['qty'] + Baisa::of((float) (\$l['addons_total'] ?? 0)),",
             $server,
             'الخادم يقرأ سعر الصنف وحده — والإضافة في المجموع وليست في الوعاء',
         );

@@ -44,6 +44,7 @@ import CustomAlerts, {
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
 import BackToSettings from './partials/BackToSettings';
+import { PortalSettingsCard } from '@/Components/RibbonPortal';
 import { PaymobStatus, type GatewayState } from '@/Pages/Admin/Website/theme/sections/Gateway';
 import DomainChooser, {
     DomainPathStrip,
@@ -128,6 +129,8 @@ const SECTIONS = [
 const SECTION_KEYS = SECTIONS.map((s) => s.key);
 
 interface Props {
+    /** «بوابة العملاء» — يصل لمتجر RIBBON ولمن يديرها وحدهم */
+    portalUrl?: string;
     settings: Settings;
     /** حقولُ كل قسم — من `SettingController::fieldsBySection` لا مكتوبةً هنا */
     settingsFields: Record<string, string[]>;
@@ -333,7 +336,7 @@ const NOTIF_COLORS: Record<string, string> = {
 export default function SettingsIndex() {
     const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, storeBranches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
-        accounts, trial, types, archive, backups } =
+        accounts, trial, types, archive, backups, portalUrl } =
         usePage<PageProps<Props>>().props;
     const { auth, context } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -821,6 +824,8 @@ export default function SettingsIndex() {
                                         </button>
                                     );
                                 })}
+                                {/* تخصيصٌ لمتجر RIBBON — بلا رابطٍ من الخادم لا بطاقة */}
+                                {g.group === 'العملاء' && portalUrl && <PortalSettingsCard href={portalUrl} />}
                             </div>
                         </section>
                     ))}
@@ -956,16 +961,31 @@ export default function SettingsIndex() {
                         }
                         action={
                             store.slug && (store.serves !== 'none' || storeForm.data.store_on) && (
-                                <Button variant="outline" size="sm" asChild>
-                                    <a
-                                        href={`https://${store.slug}.${store.domain}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        <ExternalLink />
-                                        {t('افتح متجري')}
-                                    </a>
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {/*
+                                        و«الظهور في البحث» لصفحته المنشورة — عنوانُها في غوغل ووصفُها
+                                        وإذنُ فهرستها، يسري بالحفظ (`SettingsController::simpleSeo`).
+                                    */}
+                                    {store.serves !== 'none' && (
+                                        <Button variant="outline" size="sm" asChild>
+                                            {/* والبسيطةُ المنشورة إلى شاشتها — ولو كان موقعٌ مبنيٌّ قيد الإنشاء */}
+                                            <Link href={route(store.serves === 'simple' ? 'admin.website.seo.store' : 'admin.website.seo')} data-testid="store-card-seo">
+                                                <Search />
+                                                {t('الظهور في البحث')}
+                                            </Link>
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" size="sm" asChild>
+                                        <a
+                                            href={`https://${store.slug}.${store.domain}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            <ExternalLink />
+                                            {t('افتح متجري')}
+                                        </a>
+                                    </Button>
+                                </div>
                             )
                         }
                         divided

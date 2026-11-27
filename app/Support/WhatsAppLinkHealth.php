@@ -94,7 +94,7 @@ final class WhatsAppLinkHealth
         }
 
         if ($c->link_problem === WhatsAppLinkCheck::WRONG_APP
-            || (filled($c->token_app_id) && $c->token_app_id !== WhatsAppLinkCheck::appId())) {
+            || (filled($c->token_app_id) && $c->token_app_id !== WhatsAppLinkCheck::expectedApp($c)['id'])) {
             return self::WRONG_APP;
         }
 
@@ -168,7 +168,7 @@ final class WhatsAppLinkHealth
                 default => __('تطبيقُ أبعاد ليس مشتركًا في إشعارات هذا الحساب — الرسائلُ الواردة لا تصل. أعد الربط.'),
             },
             self::ROUTED_AWAY => __('تطبيقُ أبعاد مشترك، لكنّ إعداد «توجيه المحادثات» (Conversation Routing) عند ميتا يُسلّم رسائلَ الزبائن لمستجيبٍ آخر على هذا الرقم، فلا تصل أبعاد. يضبطه صاحبُ حساب واتساب من Meta Business Suite بجعل أبعاد المستجيبَ الأساسيَّ لنقطة «الخدمة» — ولا يُضبط من أبعاد.'),
-            self::SUBSCRIBED => __('تطبيقُ أبعاد مشتركٌ في الإشعارات، لكنّ صندوق محادثات واتساب غير مفتوحٍ لهذا المتجر — فرسائلُ الزبائن تصل ولا تُحفظ. يفتحه فريقُ أبعاد.'),
+            self::SUBSCRIBED => __('تطبيقُ أبعاد مشتركٌ في الإشعارات، لكنّ صندوق محادثات واتساب غير متاحٍ لهذا المتجر — باقتُه لا تشمل واتساب أو واتساب مطفأ لحسابه — فرسائلُ الزبائن تصل ولا تُحفظ.'),
             self::READY => __('تطبيقُ أبعاد مشتركٌ في الإشعارات وصندوقُ المحادثات مفتوح، ولم يصل شيءٌ بعد. يثبت الاستقبال بأوّل رسالةٍ يكتبها زبون.'),
             self::STATUSES => __('وصلت حالاتُ تسليمٍ لما أرسله المتجر، ولم تصل رسالةُ زبونٍ بعد — حالةُ التسليم وحدها لا تُثبت أنّ رسائل الزبائن تصل.'),
             self::INBOUND => __('آخرُ رسالة عميل حُفظت في المحادثات: :at', ['at' => optional($c?->last_inbound_saved_at)->format('Y-m-d H:i')]),
@@ -225,7 +225,7 @@ final class WhatsAppLinkHealth
      * معرّفُ رقمٍ ولا معرّفُ تطبيقٍ آخر. والفحصُ الحيُّ زرٌّ لكلّ متجر
      * (`super-admin.businesses.whatsapp.check`) أو أمرُ `whatsapp:own-numbers`.
      *
-     * @return list<array{business_id:int, business:string, phone:?string, inbox:bool, health:array<string, mixed>}>
+     * @return list<array{business_id:int, business:string, phone:?string, inbox:bool, health:array<string, mixed>, sender:?array{state:string, text:string}, billing:?array<string, mixed>}>
      */
     public static function fleet(): array
     {
@@ -235,6 +235,10 @@ final class WhatsAppLinkHealth
             'phone' => $c->display_phone_number,
             'inbox' => WhatsAppInbox::available($c->business),
             'health' => self::view($c),
+            // ‏‏ومن أيّ رقمٍ تخرج رسائلُه: معتمَد، أو ينتظر ولماذا، أو تعطّل (`WhatsAppSender`)
+            'sender' => $c->business ? WhatsAppSender::brief($c->business, $c) : null,
+            // ‏‏وعلى من رسومُه عند Meta — بإحدى خمس (`WhatsAppBillingLock`)
+            'billing' => WhatsAppBillingLock::brief($c),
         ])->all();
     }
 }

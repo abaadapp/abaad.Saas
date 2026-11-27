@@ -180,7 +180,8 @@ class Branding
         $old = self::coverPath($businessId);
 
         if ($file !== null) {
-            $path = $file->store('covers', 'public');
+            // ‏بنوعه وبعرض صفحة A4 مطبوعة — لا بما صوّره به الهاتف
+            $path = \App\Support\Store\StoreImageUpload::storeShrunk($file, 'covers', 2480);
         } elseif ($remove) {
             $path = '';
         } else {

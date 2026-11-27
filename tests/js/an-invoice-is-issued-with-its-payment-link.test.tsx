@@ -23,6 +23,8 @@ import { pageProps } from './setup';
 
 const sent: { url: string; payload: Record<string, unknown> }[] = [];
 const posts: { url: string; data: unknown }[] = [];
+/** أخطاءُ النماذج كما يردّها الخادم — يملؤها الاختبارُ الذي يحتاجها */
+const formErrors: Record<string, string> = {};
 
 vi.mock('@inertiajs/react', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('@inertiajs/react');
@@ -37,7 +39,7 @@ vi.mock('@inertiajs/react', async () => {
 
         return {
             data,
-            errors: {} as Record<string, string>,
+            errors: formErrors,
             processing: false,
             setData: (key: unknown, value?: unknown) =>
                 setData((d) => (typeof key === 'string' ? { ...d, [key]: value } : { ...d, ...(key as Record<string, unknown>) })),
@@ -121,6 +123,7 @@ beforeAll(() => {
 beforeEach(() => {
     sent.length = 0;
     posts.length = 0;
+    for (const k of Object.keys(formErrors)) delete formErrors[k];
     reset();
 });
 
@@ -236,6 +239,46 @@ describe('صفحةُ الفاتورة نفسُها', () => {
         });
         render(<Show />);
     };
+
+    /**
+     * وحدُّ الإشعار الدائن حدُّ الخادم: الإجماليُّ ناقصًا ما رُدّ.
+     *
+     * «الباقي + المسدَّد» وحده كان يُبقي فاتورةً مدفوعةً رُدّت كلُّها قابلةً
+     * لإشعارٍ كاملٍ آخر — زرٌّ وحدٌّ أعلى يرفضهما الخادم.
+     */
+    /*
+     * وإصدارٌ رُدّ يقول لماذا — مسودّةٌ صُرف رصيدُ نقاطها في الصندوق قبل إصدارها.
+     * كان الردُّ يقع في نموذجٍ لا يُعرض: يضغط التاجرُ «إصدار» فلا يحدث شيء.
+     */
+    it('إصدارٌ رُدّ يقول سببَه فوق الورقة', () => {
+        formErrors.invoice = 'تغيّر رصيد نقاط العميل أو قواعد الاستبدال منذ كُتبت المسودّة — الرصيد الآن 300 نقطة';
+        showPage({ invoice: { ...invoice, status: 'مسودة', state: 'مسودة' } });
+
+        expect(screen.getByTestId('issue-refused')).toHaveTextContent('الرصيد الآن 300 نقطة');
+        expect(screen.getByRole('button', { name: 'إصدار الفاتورة' })).toBeInTheDocument();
+    });
+
+    it('وبلا ردٍّ لا تنبيه', () => {
+        showPage({ invoice: { ...invoice, status: 'مسودة', state: 'مسودة' } });
+
+        expect(screen.queryByTestId('issue-refused')).toBeNull();
+    });
+
+    it('لا «إشعار دائن» على مدفوعةٍ رُدّت كلُّها', () => {
+        showPage({ invoice: { ...invoice, paid: 105, outstanding: 0, credit_notes: [{ id: 1, number: 'CN-1', amount: 105, reason: 'رُدّت', at: '2026-10-20' }] } });
+
+        expect(screen.queryByRole('button', { name: /إشعار دائن/ })).toBeNull();
+    });
+
+    it('ومدفوعةٌ رُدّ بعضُها: الحدُّ الأعلى ما بقي من إجماليّها', async () => {
+        showPage({ invoice: { ...invoice, paid: 105, outstanding: 0, credit_notes: [{ id: 1, number: 'CN-1', amount: 40, reason: 'رُدّت', at: '2026-10-20' }] } });
+
+        await userEvent.setup().click(screen.getByRole('button', { name: /إشعار دائن/ }));
+
+        const cap = screen.getByText(/الحدّ الأعلى/);
+        expect(cap).toHaveTextContent('65');
+        expect(cap).not.toHaveTextContent('105');
+    });
 
     it('بعد «إصدار الفاتورة وإنشاء رابط دفع»: الرابطُ بارزًا بعنوانه', () => {
         showPage({ flash: { toast: null, status: null, paymentLink: row(), paymentLinkIssued: true } });

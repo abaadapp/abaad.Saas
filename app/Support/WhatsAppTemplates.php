@@ -228,6 +228,8 @@ class WhatsAppTemplates
             ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
             ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
             ->where('enabled', true)
+            // وقالبُ متابعة الصندوق ليس من الإشعارات — حالُه لا تُحمِّر خطوةَ القوالب
+            ->where('event_type', '!=', WhatsAppInbox::FOLLOW_UP_EVENT)
             ->get(['meta_status']);
 
         if ($rows->isEmpty() || $rows->every(fn ($r) => blank($r->meta_status))) {
@@ -322,6 +324,23 @@ class WhatsAppTemplates
     }
 
     /**
+     * متغيّراتُ رسالة حالٍ لمهمّة فاتورةٍ في لوحة التجهيز — كطلبٍ رقمُه رقمُ الفاتورة.
+     *
+     * قوالبُ الطلبات نفسُها (`variables`): قوالبُ RIBBON الأربعة بلا متغيّرات من
+     * رقمه، وغيرُها اسمُ المتجر ورقمُ الورقة.
+     *
+     * @return list<string>
+     */
+    public static function taskVariables(Business $business, CustomerInvoice $invoice, ?string $mode = null): array
+    {
+        if (WhatsAppEvent::isRibbonBusiness((int) $business->id) && $mode === WhatsAppMode::BUSINESS_OWN) {
+            return [];
+        }
+
+        return self::invoiceVariables($business, $invoice);
+    }
+
+    /**
      * قيمُ متغيّرات رسائل الفواتير — ولا فراغَ فيها.
      *
      * وميتا ترفض متغيّرًا بلا قيمة (`132000`)، فكان تذكيرُ السداد يُبنى
@@ -405,9 +424,10 @@ class WhatsAppTemplates
             return;
         }
 
+        // وقالبا الطلب الآليّ يبقيان: رُبطا يومَ اعتمدتهما ميتا ولا يُعاد ربطُهما إلّا بمزامنة (`adopt`)
         WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
             ->where('business_id', $businessId)
-            ->whereNotIn('event_type', WhatsAppEvent::RIBBON_EVENTS)
+            ->whereNotIn('event_type', [...WhatsAppEvent::RIBBON_EVENTS, WhatsAppInbox::FOLLOW_UP_EVENT, ...WhatsAppEvent::GUIDED_ORDER])
             ->delete();
 
         foreach (WhatsAppEvent::RIBBON_EVENTS as $event) {
@@ -474,6 +494,57 @@ class WhatsAppTemplates
     private static function adopt(array $templates, string $scope, ?int $businessId): void
     {
         $preferred = (string) config('whatsapp.language', 'ar');
+
+        /*
+         * وقالبُ متابعة الصندوق — في حساب المتجر وحده، ويُربط مثلها يومَ يُعتمد.
+         *
+         * رقمُ أبعاد لا يبدأ محادثةً عن متجر، فلا يُربط له. ومتغيّرُه اسمُ
+         * المتجر وحده — انظر `WhatsAppInbox::followUp`.
+         */
+        if ($scope === WhatsAppMode::OWNER_BUSINESS && $businessId !== null) {
+            $approved = array_keys(array_filter((array) ($templates[WhatsAppInbox::FOLLOW_UP_TEMPLATE] ?? []), fn ($status) => $status === self::APPROVED));
+
+            if ($approved !== []) {
+                WhatsAppTemplateMapping::firstOrCreate(
+                    ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => WhatsAppInbox::FOLLOW_UP_EVENT],
+                    [
+                        'template_name' => WhatsAppInbox::FOLLOW_UP_TEMPLATE,
+                        'language_code' => in_array($preferred, $approved, true) || in_array('*', $approved, true) ? $preferred : (string) $approved[0],
+                        'enabled' => true,
+                        'variable_mapping' => ['1' => 'business_name'],
+                    ],
+                );
+            }
+        }
+
+        /*
+         * وقالبا الطلب الآليّ — في حساب متجرٍ فُتح له الطلب وحده، ويومَ يُعتمدان.
+         *
+         * ومتغيّراتُهما تُكتب مع الرسالة نفسِها (`WhatsAppOrders::template`)،
+         * فالخريطةُ هنا وصفٌ يُقرأ لا مصدر.
+         */
+        if ($scope === WhatsAppMode::OWNER_BUSINESS && $businessId !== null && WhatsAppOrders::allowed($businessId)) {
+            foreach (WhatsAppEvent::GUIDED_ORDER as $event) {
+                $name = WhatsAppEvent::guidedTemplateName($businessId, $event);
+                $approved = array_keys(array_filter((array) ($templates[$name] ?? []), fn ($status) => $status === self::APPROVED));
+
+                if ($approved === []) {
+                    continue;
+                }
+
+                WhatsAppTemplateMapping::firstOrCreate(
+                    ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => $event],
+                    [
+                        'template_name' => $name,
+                        'language_code' => in_array($preferred, $approved, true) || in_array('*', $approved, true) ? $preferred : (string) $approved[0],
+                        'enabled' => true,
+                        'variable_mapping' => $event === WhatsAppEvent::ORDER_PAYMENT_LINK
+                            ? ['1' => 'customer_name', '2' => 'invoice_number', '3' => 'amount', '4' => 'payment_link']
+                            : ['1' => 'customer_name', '2' => 'invoice_number', '3' => 'amount', '4' => 'schedule'],
+                    ],
+                );
+            }
+        }
 
         foreach (WhatsAppEvent::ON_APPROVAL as $event) {
             if ($businessId !== null && ! WhatsAppEvent::allowedForBusiness($businessId, $event)) {

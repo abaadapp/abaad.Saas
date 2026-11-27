@@ -3,8 +3,8 @@ import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
 import { Input, Textarea } from '@/Components/ui/input';
-import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { LengthNote, SerpPreview } from '../../search/SearchParts';
 import type { ThemeSite } from '../Shell';
 import type { ThemeForm } from './form';
 
@@ -28,20 +28,26 @@ export default function Seo({
     fallback: { title: string; description: string };
     /** وما يُكتب في الصفحة الإنجليزيّة حين لا يكتب لها شيئًا */
     fallbackEn?: { title: string; description: string };
-    /** ما يُعرض في نتيجة غوغل — إرشادٌ لا شرطُ حفظ */
-    limits: { title: number; desc: number };
+    /** ما يُعرض في نتيجة غوغل — إرشادٌ لا شرطُ حفظ، وأدناه ما يُعدّ قصيرًا */
+    limits: { title: number; desc: number; titleMin?: number; descMin?: number };
 }) {
     const t = useTranslate();
 
     /* وما سيُكتب فعلًا — الفراغُ يُبقي المحسوب، فالمعاينةُ تقول الحقّ */
     const title = form.data.store_seo_title.trim() || fallback.title;
     const desc = form.data.store_seo_desc.trim() || fallback.description;
+    const titleEn = form.data.store_seo_title_en.trim() || (fallbackEn ?? fallback).title;
+    const descEn = form.data.store_seo_desc_en.trim() || (fallbackEn ?? fallback).description;
 
-    /** عدّادٌ يقول «كم بقي» — ويحمرّ بعد الحدّ ولا يمنع */
-    const count = (value: string, max: number) => (
-        <span className={value.length > max ? 'text-[#b91c1c]' : 'text-[#9ca3af]'}>
-            {number(value.length)} / {number(max)}
-        </span>
+    /** عدّادٌ يقول «كم بقي» وتنبيهٌ يقول «ناقص» أو «قصير» أو «طويل» — ولا يمنع */
+    const note = (value: string, kind: 'title' | 'desc', testId: string) => (
+        <LengthNote
+            value={value}
+            kind={kind}
+            min={(kind === 'title' ? limits.titleMin : limits.descMin) ?? 0}
+            max={kind === 'title' ? limits.title : limits.desc}
+            testId={testId}
+        />
     );
 
     return (
@@ -52,15 +58,17 @@ export default function Seo({
                 description="العنوان والوصف اللذان يظهران في نتائج غوغل — اتركهما فارغين فيبقى ما يُحسب من اسمك ونبذتك."
                 divided
             >
+                {/* ولكلّ لغةٍ نتيجتُها — الإنجليزيّةُ على عنوانها `?lang=en` لا على العربيّ */}
                 <SettingsGroup title="كما تظهر">
-                    <div data-testid="seo-preview" className="rounded-[12px] border border-[#e5e7eb] bg-white p-4">
-                        {site.url && (
-                            <p dir="ltr" className="truncate text-[12px] text-[#4b5563]">
-                                {site.url}
-                            </p>
-                        )}
-                        <p className="mt-1 truncate text-[18px] leading-tight text-[#1a0dab]">{title}</p>
-                        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-[#4d5156]">{desc}</p>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                        <SerpPreview url={site.url} title={title} description={desc} />
+                        <SerpPreview
+                            url={site.url ? `${site.url}?lang=en` : null}
+                            title={titleEn}
+                            description={descEn}
+                            lang="en"
+                            testId="seo-preview-en"
+                        />
                     </div>
                 </SettingsGroup>
 
@@ -76,9 +84,7 @@ export default function Seo({
                             placeholder={fallback.title}
                             aria-label={t('عنوان متجرك في البحث')}
                         />
-                        <p className="mt-1 text-[12px]" data-testid="count-title">
-                            {count(form.data.store_seo_title, limits.title)}
-                        </p>
+                        {note(form.data.store_seo_title, 'title', 'count-title')}
                     </Field>
 
                     <Field
@@ -95,9 +101,7 @@ export default function Seo({
                             placeholder={fallback.description}
                             aria-label={t('وصفُ متجرك في البحث')}
                         />
-                        <p className="mt-1 text-[12px]" data-testid="count-desc">
-                            {count(form.data.store_seo_desc, limits.desc)}
-                        </p>
+                        {note(form.data.store_seo_desc, 'desc', 'count-desc')}
                     </Field>
                 </SettingsGroup>
 
@@ -118,9 +122,7 @@ export default function Seo({
                             placeholder={fallbackEn?.title ?? fallback.title}
                             aria-label={t('Search title — English')}
                         />
-                        <p className="mt-1 text-[12px]" data-testid="count-title-en">
-                            {count(form.data.store_seo_title_en, limits.title)}
-                        </p>
+                        {note(form.data.store_seo_title_en, 'title', 'count-title-en')}
                     </Field>
 
                     <Field
@@ -138,9 +140,7 @@ export default function Seo({
                             placeholder={fallbackEn?.description ?? fallback.description}
                             aria-label={t('Search description — English')}
                         />
-                        <p className="mt-1 text-[12px]" data-testid="count-desc-en">
-                            {count(form.data.store_seo_desc_en, limits.desc)}
-                        </p>
+                        {note(form.data.store_seo_desc_en, 'desc', 'count-desc-en')}
                     </Field>
                 </SettingsGroup>
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -23,11 +23,13 @@ import {
     TrendingUp,
     User,
     UserPlus,
+    WifiOff,
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
+import HeldSalesDialog from '@/Pages/Pos/partials/HeldSalesDialog';
 import LanguageChoice from '@/Components/LanguageChoice';
 import MovementForm, { type Movement } from '@/Components/MovementForm';
 import CustomerContextCard from '@/Pages/Pos/partials/CustomerContextCard';
@@ -35,20 +37,20 @@ import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDi
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import CustomOrderCard from '@/Pages/Pos/partials/CustomOrderCard';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
-import ProductDescriptionButton from '@/Pages/Pos/partials/ProductDescriptionButton';
+import ProductGrid from '@/Pages/Pos/partials/ProductGrid';
 import { ADDONS_TAB, AddonsBar, AddonsSection, addonsLayoutOf, addonsView, shownAddons } from '@/Pages/Pos/partials/PosAddons';
-import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { decimalsFor, money as fmtMoney } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { loyaltyReasonText } from '@/lib/loyalty';
 import { cn } from '@/lib/utils';
 import useLiveStock from '@/hooks/useLiveStock';
 import {
-    POINTS_PER_UNIT,
     cartLineTotal,
     usePosCart,
+    type CartAddon,
     type LoyaltySettings,
     type PosCustomer,
     type ResumeCart,
@@ -56,19 +58,40 @@ import {
     whatBlocksPayment,
 } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
-import type { Addon, PosCoupon, Product } from '@/types/models';
+import type { Addon, PosCoupon } from '@/types/models';
+import { fromTill, type TillProductRow } from '@/lib/till-products';
+import useTillCatalog, { type TillCatalogState } from '@/hooks/useTillCatalog';
+import type { StockReply } from '@/hooks/useLiveStock';
 
 interface Props {
-    products: Product[];
+    /**
+     * ‏ما يقرؤه الصندوقُ وحده من الأصناف (`Demo::tillProducts`) — يُكمَل عند الدخول (`fromTill`).
+     *
+     * ‏‏وغائبٌ حين يكون الكتالوجُ على الجهاز (`catalog`): يُقرأ منه، ولا يُطلب إلّا إن
+     * تعذّر الكتالوجُ وليس في الجهاز شيء — فتعود الصفحةُ إليه كما كانت.
+     */
+    products?: TillProductRow[];
+    /** ‏‏الكتالوجُ على الجهاز — مفتاحُ نسخته (`TillCatalog::scope`)، أو `null` حين يُطفأ */
+    catalog?: { scope: string } | null;
+    /** ‏‏ومعه كميّاتُ الفرع الآن (`TillStock::answer` كاملًا) — لا تُعرض كميّةُ يومِ حُفظ */
+    stock?: StockReply | null;
     categories: { value: string; label: string }[];
     /** المواسمُ الجارية اليوم — مرشِّحٌ فوق الأصناف المحمَّلة، لا مصدرٌ لها */
     seasons?: { id: number; name: string; product_ids: number[] }[];
-    customers: (PosCustomer & { avatar?: string | null })[];
+    /**
+     * متجرُ نسخة الزبائن في الجهاز — والزبائنُ أنفسُهم لا يأتون مع الصفحة:
+     * يُقرؤون من الجهاز ويُزامَنون بما تغيّر (`lib/till-customers.ts`).
+     */
+    customersScope?: number | null;
+    /** قائمةٌ جاهزة بدل النسخة — لا يرسلها الخادم؛ تمرّرها الاختبارات */
+    customers?: PosCustomer[];
     addons: Addon[];
     /** كيف تُعرض الإضافات — شريطًا أم قسمًا كاملًا. انظر `PosAddonsLayout` */
     addonsLayout?: string;
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
+    /** ‏‏متجرُ كميّات الصندوق وفرعُه — يُعاد مع سؤال المخزون (`PosController::stockFeed`) */
+    stockScope?: string;
     settings: LoyaltySettings & {
         loyaltyEnabled?: boolean;
         paymentMethods?: string[];
@@ -108,16 +131,100 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
     return season !== null && seasonIds.has(productId) ? season : null;
 }
 
+/**
+ * ═══ شاشةُ الصندوق — وأصنافُها من الصفحة أو من الجهاز ═══
+ *
+ * والكتالوجُ مطفأٌ (`catalog` غائب): الأصنافُ مع الصفحة كما كانت، والشاشةُ هي هي.
+ */
 export default function PosIndex() {
-    const { products: serverProducts, categories, seasons = [], customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
+    const { products, catalog } = usePage<PageProps<Props>>().props;
+
+    if (!catalog) return <PosScreen tillRows={products ?? []} catalog={null} />;
+
+    return <CatalogGate scope={catalog.scope} fallback={products ?? null} />;
+}
+
+/**
+ * ‏‏الكتالوجُ على الجهاز — ولا تُفتح الشاشةُ قبل أن تُعرف أصنافُها.
+ *
+ * ما يُقرأ من الأصناف لحظةَ فتح الشاشة يُقرأ كما كان من قائمةٍ كاملة: ضريبةُ بنود
+ * السلّة المستأنفة من رفّها (`usePosCart`)، والسلّةُ، والبحث. فلا تُركَّب الشاشةُ
+ * على قائمةٍ فارغة ثمّ تُملأ: بندٌ معفًى يُستأنف قبل أن تصل أصنافُه كان يأخذ نسبةَ
+ * المتجر. والجهازُ يقرأ نسختَه في عشرات الأجزاء من الثانية، وجهازٌ بلا نسخةٍ
+ * ينتظر الكتالوجَ مرّةً كما كان ينتظر الصفحة.
+ *
+ * وإن تعذّر الكتالوجُ وليس في الجهاز شيء: تُطلب الأصنافُ مع الصفحة كما كانت
+ * (`products`) — الطريقُ القديم لا يُغلق.
+ */
+function CatalogGate({ scope, fallback }: { scope: string; fallback: TillProductRow[] | null }) {
+    const t = useTranslate();
+    const catalog = useTillCatalog(route('pos.catalog-feed'), scope);
+    const askedPage = useRef(false);
+    const [online, setOnline] = useState(0);
+    const failed = catalog.status === 'failed' && !catalog.rows;
+    /*
+     * ‏‏أطفأ مديرُ المنصّة الكتالوجَ والصندوقُ مفتوح (`catalog.off`): تُطلب أصنافُ الخادم مرّةً
+     * كما تُطلب حين يتعذّر الكتالوج، والشاشةُ نفسُها باقية — فلا تُمسّ السلّةُ ولا ما أُدخل
+     * فيها. وما يُعرض حتى تصل نسخةُ الجهاز المُتحقَّقُ منها، والخادمُ يتحقّق من السعر عند
+     * الدفع كما يفعل دائمًا. وانقطاعٌ في تلك اللحظة يُعاد عند عودة الاتّصال.
+     */
+    const needPage = !fallback && (failed || catalog.off);
+
+    useEffect(() => {
+        if (!catalog.off || fallback) return;
+        const again = () => {
+            askedPage.current = false;
+            setOnline((n) => n + 1);
+        };
+        window.addEventListener('online', again);
+
+        return () => window.removeEventListener('online', again);
+    }, [catalog.off, fallback]);
+
+    useEffect(() => {
+        if (!needPage || askedPage.current || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+        askedPage.current = true;
+        router.reload({ only: ['products'] });
+    }, [needPage, online]);
+
+    // ‏‏ومطفأً: أصنافُ الخادم حين تصل — هي ما كانت الصفحةُ تحمله قبل v6.600
+    const rows = catalog.off ? (fallback ?? catalog.rows) : (catalog.rows ?? fallback);
+    if (rows) return <PosScreen tillRows={rows} catalog={catalog} />;
+
+    return (
+        <PosLayout title={t('نقطة البيع')} fill>
+            <div data-testid="catalog-loading" className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-gray-500">
+                {failed ? (
+                    <>
+                        <p data-testid="catalog-failed">{t('تعذّر تحميل الأصناف: لا اتصال بالخادم ولا نسخة منها على هذا الجهاز.')}</p>
+                        <Button variant="outline" onClick={() => void catalog.refresh()}>
+                            {t('إعادة المحاولة')}
+                        </Button>
+                    </>
+                ) : (
+                    <p>{t('جارٍ تحميل الأصناف…')}</p>
+                )}
+            </div>
+        </PosLayout>
+    );
+}
+
+function PosScreen({ tillRows, catalog }: { tillRows: TillProductRow[]; catalog: TillCatalogState | null }) {
+    const { categories, seasons = [], customersScope = null, stockScope = null, stock = null, customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // ‏الاسمُ المعروض الغائبُ هو الاسم — يُكمَل هنا مرّةً، قبل أن يقرأ الأصنافَ أيُّ مكوّن
+    const serverProducts = useMemo(() => fromTill(tillRows), [tillRows]);
 
     /**
      * الكميات الحيّة تحلّ محلّ لقطة الخادم في كل مكان يقرأ `products` —
      * الشبكة والبحث والسلة — فلا يبقى مصدران للحقيقة في الشاشة نفسها.
+     *
+     * ‏‏ومع الكتالوج على الجهاز: كميّاتُ الفرع تأتي مع الصفحة (`stock`) وتُفرض من أوّل
+     * رسم، وتحديثُ الكتالوج لا يُعيد أصنافَه مرجعًا للكميّة — الصفحةُ وحدها تفعل.
      */
-    const { products, updatedAt: stockAt } = useLiveStock(route('pos.stock-feed'), serverProducts);
+    const liveStock = useLiveStock(route('pos.stock-feed'), serverProducts, catalog ? { scope: stockScope, seed: stock, freshKey: stock } : { scope: stockScope });
+    const { products, updatedAt: stockAt } = liveStock;
     const currency = context!.currency;
 
     const [cat, setCat] = useState('الكل');
@@ -126,6 +233,7 @@ export default function PosIndex() {
     const seasonIds = useMemo(() => new Set(seasons.find((s) => s.id === season)?.product_ids ?? []), [seasons, season]);
     const [q, setQ] = useState('');
     const [payOpen, setPayOpen] = useState(false);
+    const [heldOpen, setHeldOpen] = useState(false);
     const [newCustomerOpen, setNewCustomerOpen] = useState(false);
     const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
     const [movementOpen, setMovementOpen] = useState(false);
@@ -158,9 +266,11 @@ export default function PosIndex() {
     const cartProducts = useMemo(
         () =>
             products.map((p) => ({
-                id: p.id, label: p.label, price: p.price, image: p.image,
-                // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة
-                sku: p.sku, barcode: p.barcode, stock: p.tracks_stock === false ? null : p.qty,
+                // ‏وسطرُ السلّة بمربّعٍ ٤٨ — المصغّرةُ لا نسخةُ العرض
+                // ‏وسعرُ بيعه بعد خصم الصنف — ما يبيع به الخادم (`sale_price`)، لا ما قبله
+                id: p.id, label: p.label, price: p.sale_price, image: p.thumb || p.image,
+                // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة (كما في سطر البطاقة)
+                sku: p.sku, barcode: p.barcode, stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
                 /*
                  * وحالُه في الصندوق — يقرؤها الماسحُ (`scanBarcode`).
                  *
@@ -169,6 +279,14 @@ export default function PosIndex() {
                  * يُردّ إلّا عند الدفع.
                  */
                 active: p.active, pos_enabled: p.pos_enabled,
+                /*
+                 * ‏وضريبتُه هو — يقرؤها الماسحُ (`scanBarcode`) كما تقرؤها البطاقة.
+                 *
+                 * كانت لا تُرسل، فكان الصنفُ الممسوحُ يدخل السلّة بلا نسبته فيُحسب
+                 * بنسبة المتجر: صفرٌ محدَّدٌ في متجرٍ بخمسة يُعرض بخمسة، والخادمُ
+                 * يحسبه صفرًا — فيُقبض غيرُ ما يُكتب.
+                 */
+                tax: p.tax,
             })),
         [products],
     );
@@ -176,6 +294,7 @@ export default function PosIndex() {
     const cart = usePosCart({
         products: cartProducts,
         customers,
+        customersScope: customers ? null : customersScope,
         coupons,
         loyalty: settings,
         vat: settings.vat,
@@ -185,10 +304,21 @@ export default function PosIndex() {
             const fn = type === 'success' ? toast.success : type === 'danger' ? toast.error : type === 'warning' ? toast.warning : toast;
             fn(msg);
         },
-        // إعادة جلب قائمة المنتجات وحدها بعد البيع: يصحّح «المتوفر» دون
-        // إعادة تحميل الصفحة — reload يحافظ على حالة المكوّن والتمرير أصلًا،
-        // فتبقى السلة والفلاتر كما هي
-        onSynced: () => router.reload({ only: ['products'] }),
+        /*
+         * ‏‏وبعد البيع يُسأل عن المخزون حالًا — بما تغيّر وحده.
+         *
+         * كانت تُعاد قائمةُ الأصناف كلُّها بعد كلّ بيعة (`router.reload`): عند
+         * عشرة آلاف صنف خمسةُ ميغابايتات وثانيةٌ من الخادم لتتغيّر كميّةُ صنف.
+         * والأسماءُ والأسعارُ لا تتغيّر بالبيع؛ الكميّةُ وحدها تتغيّر، وتأتي الآن
+         * سلّتُها وحدها (`useLiveStock`).
+         */
+        onSynced: () => {
+            void liveStock.refresh?.();
+            // ‏‏والكتالوجُ يُسأل معه — «كما هو» في أجزاءٍ من الثانية حين لم يتغيّر شيء
+            void catalog?.refresh();
+        },
+        // ‏‏ومبلغٌ ردّه الخادم: يُفحص الكتالوجُ بالصفّ المبنيّ نفسِه، فتلحق البطاقاتُ بأسعاره
+        onPricesStale: catalog ? () => void catalog.refresh(true) : undefined,
     });
 
     /** القيمة أصلًا بالعملة الأساسية → تُحوَّل للعرض */
@@ -277,30 +407,146 @@ export default function PosIndex() {
             return;
         }
 
+        cart.add(plainLine(p));
+    };
+
+    /** ‏سطرُ صنفٍ بلا مقاسٍ ولا إضافات — يبنيه للبطاقة والماسح معًا، فلا يفترقان */
+    const plainLine = (p: (typeof products)[number]) => ({
+        key: `p${p.id}`, id: p.id, name: p.label, price: p.sale_price,
+        image: p.thumb || p.image,
+        // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
+        stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
+        tax: p.tax,
+        season_id: seasonFor(p.id),
+    });
+
+    /**
+     * ‏سطرُ صنفٍ بمقاسه وإضافاته — يبنيه لنافذة الخيارات ولباركود المقاس معًا.
+     *
+     * المفتاح يحمل المقاس والإضافات: «بوكيه وسط + شوكولاتة» و«بوكيه وسط» بندان
+     * مختلفان، وضمُّهما تحت مفتاحٍ واحد كان سيُضيف شوكولاتةً لمن لم يطلبها حين
+     * يضغط الكاشير المنتج مرّةً ثانية.
+     */
+    const addChoice = (
+        p: (typeof products)[number],
+        choice: { variantId: number | null; variantName: string | null; price: number; addons: CartAddon[] },
+    ) => {
+        const signature = choice.addons.map((a) => `${a.addon_id}x${a.qty}`).sort().join(',');
+
         cart.add({
-            key: `p${p.id}`, id: p.id, name: p.label, price: p.price,
-            image: p.image,
-            // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
+            key: `p${p.id}:v${choice.variantId ?? 0}:${signature}`,
+            id: p.id,
+            variant_id: choice.variantId,
+            variant_name: choice.variantName,
+            addons: choice.addons,
+            name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
+            price: choice.price,
+            image: p.thumb || p.image,
             stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
             tax: p.tax,
             season_id: seasonFor(p.id),
         });
     };
 
+    /**
+     * ═══ الماسح: باركودُ الصنف أو رمزُه، ثمّ باركودُ المقاس أو رمزُه ═══
+     *
+     * كان يُدخل الصنفَ الممسوحَ سطرًا بسعره وإن كانت له مقاسات، فيردّه الخادمُ
+     * عند الدفع: «اختر مقاس…» — والكاشيرُ قد قبض. والمقاسُ نفسُه لا يُعرف
+     * بباركوده أصلًا.
+     *
+     *   • صنفٌ له مقاسات: تُفتح نافذتُه كما تُفتح بالضغط عليه — لا مقاسَ يُختار عنه.
+     *   • باركودُ مقاسٍ بعينه: يُضاف ذلك المقاسُ كما تُضيفه النافذة بلا إضافات.
+     *     والموقوفُ من المقاسات لا يصل الصندوقَ أصلًا (`Demo`)، فلا يُطابَق.
+     *   • صنفٌ بلا مقاس: سطرُه كسطر البطاقة (`plainLine`). وإضافاتُه اختياريّة،
+     *     فلا تُفتح لها نافذة — كما كان الماسح.
+     *
+     * وباركودُ الصنف أوّلًا: فريدٌ بين الأصناف، وباركودُ المقاس فريدٌ بين المقاسات،
+     * ولا قاعدةَ بينهما. وما لا يُباع هنا (موقوفٌ أو مغلقٌ عن الصندوق) لا يُطابَق.
+     */
+    const scan = (raw: string) => {
+        const code = raw.trim();
+        if (!code) return;
+        const lower = code.toLowerCase();
+        const is = (barcode?: string | null, sku?: string | null) =>
+            (!!barcode && String(barcode) === code) || (!!sku && String(sku).toLowerCase() === lower);
+        const sellable = products.filter((p) => p.active !== false && p.pos_enabled !== false);
+
+        const product = sellable.find((p) => is(p.barcode, p.sku));
+        if (product) {
+            cart.setBarcode('');
+            if ((product.variants?.length ?? 0) > 0) setOptionsFor(product);
+            else cart.add(plainLine(product));
+
+            return;
+        }
+        for (const p of sellable) {
+            const v = p.variants?.find((x) => is(x.barcode, x.sku));
+            if (v) {
+                cart.setBarcode('');
+                addChoice(p, { variantId: v.id, variantName: v.label, price: v.price, addons: [] });
+
+                return;
+            }
+        }
+        // ‏ولا شيءَ بهذا الرمز: ما يقوله الماسحُ كما كان
+        cart.scanBarcode(code);
+    };
+
+    /*
+     * ‏ونقرةُ البطاقة بمرجعٍ ثابت — فلا تُعاد رسمُ الشبكة كلِّها (ألفا بطاقة) مع كلّ
+     * حرفٍ في بحث العميل أو بندٍ في السلّة. والمنادى أحدثُ `pick` دائمًا.
+     */
+    const pickRef = useRef(pick);
+    pickRef.current = pick;
+    const onPick = useCallback((p: (typeof products)[number]) => pickRef.current(p), []);
+
+    /*
+     * ‏«تخصيص الطلب» — بطاقةٌ ثابتةٌ في أوّل الشبكة، لا تتبع قسمًا ولا بحثًا ولا موسمًا.
+     *
+     * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في الكتالوج بهذا الوصف. وكان
+     * الكاشير يبيع أقربَ باقةٍ شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
+     * الباقة لا ما أُخذ منه فعلًا.
+     *
+     * ولا تُرسم إن أطفأ صاحبُ النشاط الطلباتِ المخصَّصة: الخادمُ لا يرسل قوالبَ حينها،
+     * والبابُ يُقفل من عنده. وهي عنصرٌ ثابتُ المرجع (ونقرتُها كذلك)، فلا تُعيد رسمَ
+     * الشبكة مع كلّ بندٍ في السلّة.
+     */
+    const openCustomRef = useRef(openCustom);
+    openCustomRef.current = openCustom;
+    const onOpenCustom = useCallback(() => openCustomRef.current(), []);
+    const customLabel = customTemplates.length === 1 ? customTemplates[0].name : t('تخصيص الطلب');
+    const customCard = useMemo(
+        () => (customTemplates.length > 0 ? <CustomOrderCard label={customLabel} onClick={onOpenCustom} /> : null),
+        [customTemplates.length, customLabel, onOpenCustom],
+    );
+    // ‏وما تُمرَّر فيه الشبكة — به تعرف صفوفَها الظاهرة
+    const gridScrollRef = useRef<HTMLDivElement>(null);
+
+    /*
+     * ‏ما يُبحث فيه عن كلّ صنف — يُبنى مرّةً لكلّ قائمة أصناف لا مع كلّ حرف.
+     *
+     * كان يُركَّب ويُصغَّر لكلّ صنفٍ في كلّ حرف: عشرةُ آلاف نصٍّ جديد للحرف الواحد.
+     * ويُبنى من أصناف الصفحة لا من كميّاتها: تغيّرُ كميّةٍ لا يغيّر اسمًا، فلا
+     * يُعاد بناءُ عشرة آلاف نصٍّ مع كلّ تحديثٍ للمخزون. والترتيبُ واحد
+     * (`useLiveStock` يُبقي الأصنافَ بترتيبها وعددها)، فيقرأ كلُّ صنفٍ نصَّه.
+     */
+    const haystacks = useMemo(() => serverProducts.map((p) => `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase()), [serverProducts]);
     const visibleProducts = useMemo(() => {
         // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
         const needle = q.trim().toLowerCase();
-        return products.filter((p) => {
+        return products.filter((p, i) => {
             // الموقوفُ وما أُغلقت عنه نقطةُ البيع لا يُعرضان — والخادمُ يردّهما كذلك (`SaleLines::POS`)
             if (p.active === false || p.pos_enabled === false) return false;
             const inCat = cat === 'الكل' || cat === p.cat;
             const inSeason = season === null || seasonIds.has(p.id);
-            const inSearch = !needle || `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase().includes(needle);
+            const inSearch = !needle || haystacks[i].includes(needle);
             return inCat && inSeason && inSearch;
         });
-    }, [products, cat, q, season, seasonIds]);
+    }, [products, haystacks, cat, q, season, seasonIds]);
 
-    const loyaltyOn = settings.loyaltyEnabled !== false;
+    // والبرنامجُ كما ردّه الخادمُ آخرَ مرّة — أُطفئ والصندوقُ مفتوح فيختفي سطرُه
+    const loyaltyOn = cart.loyaltyOn;
 
     return (
         <PosLayout title={t('نقطة البيع')} fill>
@@ -311,19 +557,90 @@ export default function PosIndex() {
                         initial={{ opacity: 0, y: -12 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -12 }}
+                        data-testid="outbox-status"
                         className={cn(
                             'fixed start-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold shadow-lg rtl:translate-x-1/2',
-                            cart.online
+                            cart.online && !cart.sessionLost
                                 ? 'border border-[#fde68a] bg-[#fffbeb] text-[#b45309]'
                                 : 'bg-[#dc2626] text-white',
                         )}
                     >
+                        {/* ‏حالُ الاتّصال وحدها — والعددُ وقائمةُ المراجعة في التنبيه تحت الشريط، لا هنا مرّةً ثانية */}
                         {!cart.online
                             ? t('لا اتصال — البيع مستمر ويُحفَظ محليًا')
-                            : `${t('جارٍ مزامنة الطلبات المعلّقة')} (${cart.pendingCount})`}
+                            : cart.sessionLost
+                              ? t('انتهت جلسة الصندوق — سجّل الدخول ليُرسَل ما على الجهاز')
+                              : t('جارٍ مزامنة الطلبات المعلّقة')}
+                        {cart.online && cart.sessionLost && (
+                            // ‏الطلباتُ في الجهاز لا في الصفحة: إعادةُ تحميلها تأخذ إلى الدخول ولا تمسّها
+                            <button type="button" className="rounded-full bg-white/20 px-2.5 py-0.5 underline" onClick={() => window.location.reload()}>
+                                {t('سجّل الدخول')}
+                            </button>
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
+            {/* بيعاتٌ معلّقةٌ لمتجرٍ آخر دخل هذا الجهاز — محفوظةٌ، تُرسَل من صندوق متجرها */}
+            {cart.foreignPendingCount > 0 && (
+                <p className="mx-auto mt-2 w-fit rounded-full border border-[#fde68a] bg-[#fffbeb] px-3 py-1 text-xs font-medium text-[#b45309]" data-testid="foreign-pending">
+                    {t('على هذا الجهاز :n بيعة معلّقة لمتجر آخر — محفوظة، وتُرسل حين يُفتح صندوق متجرها', { n: cart.foreignPendingCount })}
+                </p>
+            )}
+            {/*
+                ‏وما على الجهاز ولم يؤكّده الخادم — تنبيهٌ واحد في مكانه فوق الشاشة، لا
+                طافٍ فوق أزرار البيع ولا نافذةٌ تتكرّر، والبيعُ يمضي تحته. يقول كم
+                بيعةً، وأن تُبقى بياناتُ المتصفّح، وحالَ الاتّصال وآخرَ محاولة — وما
+                يحتاج يدًا (ردّه الخادمُ أو تكرّر عليه خطؤه) يُعدّ وحده.
+            */}
+            {cart.unconfirmedCount > 0 && (
+                <div
+                    role="status"
+                    data-testid="outbox-notice"
+                    className={cn(
+                        'mx-auto mt-2 flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border px-3 py-1.5 text-center text-xs font-medium',
+                        cart.reviewCount > 0 ? 'border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]' : 'border-[#fde68a] bg-[#fffbeb] text-[#b45309]',
+                    )}
+                >
+                    <span>
+                        {cart.unconfirmedCount === 1
+                            ? t('يوجد لديك عملية بيع واحدة لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.')
+                            : t('يوجد لديك :n عمليات بيع لم تكتمل مزامنتها بعد. يرجى إبقاء بيانات المتصفح وعدم مسحها حتى تتم المزامنة أو مراجعة العمليات.', { n: cart.unconfirmedCount })}
+                    </span>
+                    <span className="text-gray-600" data-testid="outbox-notice-state">
+                        {!cart.online ? t('غير متصل') : cart.sessionLost ? t('بانتظار تسجيل الدخول') : cart.forbidden ? t('المستخدم لا يملك البيع') : t('متصل')}
+                        {' · '}
+                        {cart.lastTry ? t('آخر محاولة :time', { time: new Date(cart.lastTry).toLocaleTimeString() }) : t('لم تُرسل بعد')}
+                    </span>
+                    {cart.reviewCount > 0 && (
+                        <span data-testid="review-notice" className="font-bold">
+                            {t('توجد (:n) عمليات بيع معلقة تحتاج إلى مراجعة.', { n: cart.reviewCount })}
+                        </span>
+                    )}
+                    <button type="button" data-testid="held-sales-open" onClick={() => setHeldOpen(true)} className="rounded-full bg-white px-2.5 py-0.5 font-bold underline">
+                        {t('مراجعة العمليات')}
+                    </button>
+                </div>
+            )}
+            {/* ‏ومساحةُ الجهاز تضيق: البيعُ المتّصل يعمل، وما يُحفظ بلا اتّصال قد لا يتّسع */}
+            {cart.room !== 'ok' && (
+                <p role="status" data-testid="storage-notice" className="mx-auto mt-2 w-fit max-w-[calc(100%-2rem)] rounded-2xl border border-[#fecaca] bg-[#fef2f2] px-3 py-1 text-center text-xs font-medium text-[#b91c1c]">
+                    {cart.room === 'full'
+                        ? t('مساحة التخزين المخصصة لأبعاد في هذا المتصفح ممتلئة: البيع المتصل يعمل، لكن البيع بلا اتصال لن يُحفظ على الجهاز حتى تُرسل البيعات المعلقة.')
+                        : t('مساحة التخزين المخصصة لأبعاد في هذا المتصفح تقترب من الامتلاء: البيع بلا اتصال قد لا يُحفظ بعد قليل.')}
+                </p>
+            )}
+            <HeldSalesDialog
+                open={heldOpen}
+                onOpenChange={setHeldOpen}
+                sales={cart.outbox}
+                onRetry={cart.retryOne}
+                money={money}
+                sending={cart.sending}
+                sessionLost={cart.sessionLost}
+                canRetry={cart.online && !cart.sessionLost && !cart.forbidden}
+                synced={cart.synced}
+                persisted={cart.persisted}
+            />
 
             {/*
                 عمودان من ٧٦٨ بكسل لا من ١٠٢٤.
@@ -385,7 +702,7 @@ export default function PosIndex() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            cart.scanBarcode(cart.barcode);
+                                            scan(cart.barcode);
                                         }
                                     }}
                                     placeholder={t('امسح الباركود')}
@@ -425,9 +742,31 @@ export default function PosIndex() {
 
                     {/* عمر الأرقام المعروضة: «المتوفر» يُستطلَع كل 20 ثانية، ورقمٌ
                         لا يُعرف عمرُه يُقرأ على أنه لحظيّ */}
-                    {stockAt && (
-                        <p className="mb-3 shrink-0 text-[12px] text-[#9ca3af]">
-                            {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                    {liveStock.scopeChanged ? (
+                        <p data-testid="stock-scope-changed" className="mb-3 shrink-0 rounded-lg bg-[#fffbeb] px-3 py-1.5 text-[12px] text-[#92400e]">
+                            {t('فُتح متجر أو فرع آخر في تبويب آخر، فتوقف تحديث الكميات هنا. أعد فتح الصندوق لترى كميات ما تبيعه.')}
+                        </p>
+                    ) : catalog?.scopeChanged ? (
+                        <p data-testid="catalog-scope-changed" className="mb-3 shrink-0 rounded-lg bg-[#fffbeb] px-3 py-1.5 text-[12px] text-[#92400e]">
+                            {t('فُتح متجر أو فرع أو لغة أخرى في تبويب آخر، فتوقف تحديث الأصناف هنا. أعد فتح الصندوق.')}
+                        </p>
+                    ) : (
+                        (stockAt || catalog?.stale) && (
+                            <p className="mb-3 shrink-0 text-[12px] text-[#9ca3af]">
+                                {stockAt && (
+                                    <>
+                                        {t('الكميات محدّثة حتى')} <span dir="ltr">{stockAt}</span>
+                                    </>
+                                )}
+                                {liveStock.stale && <span data-testid="stock-stale"> · {t('تعذّر آخر تحديث')}</span>}
+                                {/* ‏‏والأصنافُ من الجهاز ولم يصل سؤالُها: أسعارُها كما حُفظت، والخادمُ يحسب البيعةَ بسعره */}
+                                {catalog?.stale && <span data-testid="catalog-stale"> · {t('الأصناف كما حُفظت على الجهاز، تعذّر التحقّق منها')}</span>}
+                            </p>
+                        )
+                    )}
+                    {catalog?.saved === 'no' && (
+                        <p data-testid="catalog-not-saved" className="mb-3 shrink-0 text-[12px] text-[#92400e]">
+                            {t('تعذّر حفظ الأصناف على هذا الجهاز، فتُحمَّل من الخادم في كل فتح. البيع يعمل كما هو.')}
                         </p>
                     )}
 
@@ -506,7 +845,7 @@ export default function PosIndex() {
                     {view.bar && <AddonsBar addons={activeAddons} money={money} onAdd={cart.add} />}
 
                     {/* شبكة المنتجات */}
-                    <div className="-mx-1 flex-1 overflow-y-auto overscroll-contain px-1">
+                    <div ref={gridScrollRef} className="-mx-1 flex-1 overflow-y-auto overscroll-contain px-1">
                         {/* القسمُ الكامل فوق المنتجات في «الكل»، ووحدَه في تبويبه */}
                         {view.section && <AddonsSection addons={activeAddons} money={money} onAdd={cart.add} />}
                         {!view.products ? null : visibleProducts.length === 0 && customTemplates.length === 0 ? (
@@ -515,68 +854,8 @@ export default function PosIndex() {
                             </p>
                         ) : (
                             /* عمودان على اللوحيّ الرأسيّ: ثلاثةٌ في ٤٩٠ بكسل تجعل
-                               البطاقة أضيق من الإصبع */
-                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-                                {/*
-                                  * «تخصيص الطلب» — بطاقةٌ ثابتةٌ في أوّل الشبكة، لا تتبع
-                                  * قسمًا ولا بحثًا ولا موسمًا.
-                                  *
-                                  * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في
-                                  * الكتالوج بهذا الوصف. وكان الكاشير يبيع أقربَ باقةٍ
-                                  * شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
-                                  * الباقة لا ما أُخذ منه فعلًا.
-                                  *
-                                  * ولا تُرسم إن أطفأ صاحبُ النشاط الطلباتِ المخصَّصة:
-                                  * الخادمُ لا يرسل قوالبَ حينها، والبابُ يُقفل من عنده.
-                                  */}
-                                {customTemplates.length > 0 && (
-                                    <CustomOrderCard
-                                        label={customTemplates.length === 1 ? customTemplates[0].name : t('تخصيص الطلب')}
-                                        onClick={openCustom}
-                                    />
-                                )}
-                                {visibleProducts.map((p) => (
-                                    // والوصفُ زرٌّ أخٌ للبطاقة لا داخلها: زرٌّ في زرٍّ لا يُضغط وحده
-                                    <div key={p.id} className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                pick(p)
-                                            }
-                                            className="group size-full select-none overflow-hidden rounded-2xl border border-gray-100 bg-white text-start shadow-sm transition-[border-color,box-shadow] hover:border-gray-300 hover:shadow-md"
-                                        >
-                                            <div className="relative aspect-square overflow-hidden bg-gray-50">
-                                                {p.image ? (
-                                                    <img
-                                                        src={p.image}
-                                                        alt={p.label}
-                                                        loading="lazy"
-                                                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                                    />
-                                                ) : (
-                                                    <span className="flex size-full items-center justify-center text-3xl">📦</span>
-                                                )}
-                                                <span className="absolute end-2 top-2">
-                                                    <Badge status={p.stock_status} />
-                                                </span>
-                                            </div>
-                                            <div className="p-3">
-                                                <h3 className="truncate text-sm font-semibold text-gray-800">{p.label}</h3>
-                                                <p className="mt-0.5 text-xs text-gray-400">
-                                                    {p.tracks_stock === false ? t('غير مرتبط بالمخزون') : `${t('المتوفر:')} ${p.qty}`}
-                                                </p>
-                                                <div className="mt-2 flex items-center justify-between gap-1">
-                                                    <p className="text-sm font-bold text-gray-900">{money(p.price)}</p>
-                                                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-900 transition-colors group-hover:bg-gray-900 group-hover:text-white">
-                                                        <Plus className="size-4" />
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </button>
-                                        <ProductDescriptionButton name={p.label} text={p.pos_description} />
-                                    </div>
-                                ))}
-                            </div>
+                               البطاقة أضيق من الإصبع — والشبكةُ نفسُها في `ProductGrid` */
+                            <ProductGrid products={visibleProducts} currency={currency} onPick={onPick} leading={customCard} scrollRef={gridScrollRef} />
                         )}
                     </div>
                 </section>
@@ -651,7 +930,16 @@ export default function PosIndex() {
                                                         )}
                                                     </button>
                                                 ))}
-                                                {cart.customerSearch.trim() && cart.filteredCustomers.length === 0 && (
+                                                {/* القائمةُ لم تصل بعد — لا «لا نتائج» عن عميلٍ موجود */}
+                                                {cart.customers.length === 0 && cart.customersStatus === 'loading' && (
+                                                    <p className="px-4 py-3 text-center text-xs text-gray-400" data-testid="customers-loading">{t('جارٍ تحميل العملاء…')}</p>
+                                                )}
+                                                {cart.customers.length === 0 && cart.customersStatus === 'offline' && (
+                                                    <p className="px-4 py-3 text-center text-xs text-amber-700" data-testid="customers-offline">
+                                                        {t('قائمة العملاء لم تصل بعد — تُحمَّل حين يعود الاتصال، والبيع النقدي متاح')}
+                                                    </p>
+                                                )}
+                                                {cart.customerSearch.trim() && cart.filteredCustomers.length === 0 && cart.customers.length > 0 && (
                                                     <p className="px-4 py-3 text-center text-xs text-gray-400">{t('لا نتائج')}</p>
                                                 )}
                                             </div>
@@ -918,12 +1206,15 @@ export default function PosIndex() {
                                     <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[#be185d]">
                                         <Award className="size-4 shrink-0" />
                                         <span className="truncate">{t('نقاط العميل:')} {cart.selectedPoints}</span>
-                                        <span className="shrink-0 text-[#ec4899]">({money(cart.selectedPoints / POINTS_PER_UNIT)})</span>
+                                        {/* وفي طريقة النسبة لا قيمةَ ثابتةً للنقطة: تُقال نسبتُها من الفاتورة */}
+                                        <span data-testid="points-worth" className="shrink-0 text-[#ec4899]">
+                                            ({cart.redeemByPercent ? `${cart.pointsPercent(cart.selectedPoints)}%` : money(cart.pointsWorth(cart.selectedPoints))})
+                                        </span>
                                     </span>
-                                    {cart.canRedeem && (
+                                    {cart.canRedeem && cart.redeemDecided && (
                                         <button
                                             type="button"
-                                            onClick={() => cart.setRedeemActive(!cart.redeemActive)}
+                                            onClick={() => cart.chooseRedeem(!cart.redeemActive)}
                                             className={cn(
                                                 'shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition',
                                                 cart.redeemActive
@@ -931,23 +1222,83 @@ export default function PosIndex() {
                                                     : 'border border-[#f9a8d4] bg-white text-[#be185d]',
                                             )}
                                         >
-                                            {cart.redeemActive ? t('إلغاء') : t('استخدم النقاط')}
+                                            {cart.redeemActive ? t('إلغاء') : t('استخدام النقاط')}
                                         </button>
                                     )}
                                 </div>
 
-                                {cart.canRedeem ? (
-                                    <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
-                                        <Lightbulb className="size-3.5 shrink-0" />
-                                        {cart.redeemActive
-                                            ? t('سيُخصم تلقائيًا عند الدفع — اضغط «إلغاء» للتراجع')
-                                            : t('اضغط «استخدم النقاط» لخصمها من الفاتورة')}
+                                {/*
+                                    ═══ وعرضٌ تغيّر فرُدّت البيعة ═══
+
+                                    الخادمُ لم يكتب شيئًا، وردّ الرصيدَ والخصمَ
+                                    الصحيحين. فيُقال للكاشير لمَ عاد، والتنبيهُ
+                                    تحته بالأرقام الجديدة يسأل من جديد.
+                                */}
+                                {cart.redeemNotice && (
+                                    <p data-testid="redeem-changed" role="alert" className="mt-2 rounded-lg border border-[#f59e0b]/40 bg-[#fffbeb] p-2 text-[11px] font-semibold text-[#92400e]">
+                                        {cart.redeemNotice}
                                     </p>
-                                ) : (
+                                )}
+
+                                {/*
+                                    ═══ التنبيه يُسأل ولا يُطبَّق ═══
+
+                                    عميلٌ مؤهَّل يُعرض رصيدُه وما يستطيع خصمَه
+                                    الآن، ويختار الكاشيرُ أحدَ اثنين. ولا خصمَ
+                                    قبل الضغط — والرقمُ من مرآة الخادم نفسِها.
+                                */}
+                                {cart.canRedeem && !cart.redeemDecided && (
+                                    <div data-testid="redeem-offer" role="alert" className="mt-2 rounded-lg bg-white/80 p-2">
+                                        <p className="text-[11px] font-semibold text-[#be185d]">
+                                            {t('يستطيع العميل خصم')} {money(cart.redeemQuote.max_discount)}
+                                            {cart.redeemByPercent && ` (${cart.pointsPercent(cart.redeemQuote.max_points)}%)`} {t('مقابل')}{' '}
+                                            {cart.redeemQuote.max_points} {t('نقطة من هذه الفاتورة')}
+                                        </p>
+                                        <div className="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => cart.chooseRedeem(true)}
+                                                className="flex-1 rounded-full bg-[#db2777] px-3 py-1.5 text-[11px] font-semibold text-white"
+                                            >
+                                                {t('استخدام النقاط')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => cart.chooseRedeem(false)}
+                                                className="flex-1 rounded-full border border-[#f9a8d4] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#be185d]"
+                                            >
+                                                {t('بدون خصم')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {cart.canRedeem ? (
+                                    cart.redeemDecided && (
+                                        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
+                                            <Lightbulb className="size-3.5 shrink-0" />
+                                            {cart.redeemActive
+                                                ? t('سيُخصم عند الدفع — اضغط «إلغاء» للتراجع')
+                                                : t('بدون خصم — اضغط «استخدام النقاط» لخصمها من الفاتورة')}
+                                        </p>
+                                    )
+                                ) : cart.redeemOffline ? (
+                                    <p data-testid="redeem-offline" className="mt-1.5 flex items-center gap-1 text-[11px] text-[#92400e]">
+                                        <WifiOff className="size-3.5 shrink-0" />
+                                        {t('لا اتصال — لا يُستبدل رصيد النقاط حتى يعود الاتصال. أكمل البيع بلا خصم.')}
+                                    </p>
+                                ) : cart.redeemQuote.reason === 'below_min_points' ? (
                                     <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
                                         <TrendingUp className="size-3.5 shrink-0" />
                                         {t('تتراكم النقاط — يبدأ الاستبدال من')} {cart.redeemMin} {t('نقطة (باقٍ')} {cart.pointsToThreshold})
                                     </p>
+                                ) : (
+                                    loyaltyReasonText(cart.redeemQuote.reason, t) && (
+                                        <p data-testid="redeem-reason" className="mt-1.5 flex items-center gap-1 text-[11px] text-[#db2777]">
+                                            <TrendingUp className="size-3.5 shrink-0" />
+                                            {loyaltyReasonText(cart.redeemQuote.reason, t)}
+                                        </p>
+                                    )
                                 )}
 
                                 {/*
@@ -968,13 +1319,25 @@ export default function PosIndex() {
                                         </span>
                                         <span className="font-normal text-[#ec4899]">
                                             {t('يبقى')} {cart.selectedPoints - cart.redeemPointsUsed} {t('نقطة')}
-                                            {' '}({money((cart.selectedPoints - cart.redeemPointsUsed) / POINTS_PER_UNIT)})
+                                            {' '}(
+                                            {cart.redeemByPercent
+                                                ? `${cart.pointsPercent(cart.selectedPoints - cart.redeemPointsUsed)}%`
+                                                : money(cart.pointsWorth(cart.selectedPoints - cart.redeemPointsUsed))}
+                                            )
                                         </span>
                                     </p>
                                 )}
-                                {cart.redeemActive && cart.selectedPoints / POINTS_PER_UNIT > cart.redeemCap && (
+                                {cart.redeemActive && cart.redeemPointsUsed < cart.selectedPoints && (
                                     <p className="mt-1 text-[10px] text-[#ec4899]">
-                                        {t('الحد الأقصى لهذه الفاتورة')} {cart.redeemMaxPct}% ({money(cart.redeemCap)})
+                                        {/* السقفان كما حدّدهما التاجر — وبلا حدٍّ يُقال المبلغُ وحده: ما بقي من الفاتورة */}
+                                        {t('الحد الأقصى لهذه الفاتورة')}{' '}
+                                        {[
+                                            cart.redeemMaxPct !== null ? `${cart.redeemMaxPct}%` : null,
+                                            cart.redeemMaxAmount !== null ? money(cart.redeemMaxAmount) : null,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' / ')}{' '}
+                                        ({money(cart.redeemCap)})
                                     </p>
                                 )}
                             </div>
@@ -1023,6 +1386,14 @@ export default function PosIndex() {
                             </p>
                         )}
 
+                        {/* ‏طلبٌ معلّق مستأنَف: «تعليق» يحفظ التعديل عليه، و«إلغاء» يُغلقه هنا ولا يمحوه */}
+                        {cart.resumedNumber && (
+                            <p data-testid="pos-resumed" className="flex items-center gap-2 rounded-xl bg-[#fffbeb] px-3 py-2 text-xs font-medium text-[#92400e]">
+                                <PauseCircle className="size-4 shrink-0" />
+                                {t('تعديل الطلب المعلق :number — «تعليق» يحفظ التعديل عليه، و«إلغاء» يغلقه هنا ويبقيه في الطلبات المعلقة.', { number: cart.resumedNumber })}
+                            </p>
+                        )}
+
                         {/* الإجراءات */}
                         <div className="grid grid-cols-3 gap-2 pt-1">
                             <button
@@ -1036,7 +1407,7 @@ export default function PosIndex() {
                             <button
                                 type="button"
                                 disabled={cart.items.length === 0}
-                                onClick={cart.clear}
+                                onClick={cart.cancel}
                                 className="flex flex-col items-center gap-1 rounded-full bg-[#fef2f2] py-2 text-xs font-medium text-[#dc2626] transition-colors hover:bg-[#fee2e2] disabled:opacity-40 touch:py-3"
                             >
                                 <Trash2 className="size-5" /> {t('إلغاء')}
@@ -1190,29 +1561,7 @@ export default function PosIndex() {
                 money={money}
                 onClose={() => setOptionsFor(null)}
                 onConfirm={(choice) => {
-                    const p = optionsFor!;
-                    /*
-                     * المفتاح يحمل المقاس والإضافات.
-                     *
-                     * «بوكيه وسط + شوكولاتة» و«بوكيه وسط» بندان مختلفان: ضمُّهما
-                     * تحت مفتاحٍ واحد كان سيُضيف شوكولاتةً لمن لم يطلبها حين
-                     * يضغط الكاشير المنتج مرّةً ثانية.
-                     */
-                    const signature = choice.addons.map((a) => `${a.addon_id}x${a.qty}`).sort().join(',');
-
-                    cart.add({
-                        key: `p${p.id}:v${choice.variantId ?? 0}:${signature}`,
-                        id: p.id,
-                        variant_id: choice.variantId,
-                        variant_name: choice.variantName,
-                        addons: choice.addons,
-                        name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
-                        price: choice.price,
-                        image: p.image,
-                        stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
-                        tax: p.tax,
-                        season_id: seasonFor(p.id),
-                    });
+                    addChoice(optionsFor!, choice);
                     setOptionsFor(null);
                 }}
             />

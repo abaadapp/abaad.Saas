@@ -15,6 +15,7 @@ import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
 import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
+import SalesPanel from './SalesPanel';
 
 interface Line {
     product_id: number | null;
@@ -30,11 +31,15 @@ interface Line {
 interface Props {
     boutique: {
         id: number; name: string; name_en: string | null; phone: string | null;
-        contact_person: string | null; rate: number; active: boolean; notes: string | null;
+        contact_person: string | null; rate: number | null; active: boolean; notes: string | null;
         returns_terms: string | null; returns_terms_ref: string | null;
     };
+    /** من يقرأ مالَ البوتيك — والخادمُ لا يُرسل لغيره الكشفَ والأوراقَ والأرصدة */
+    canSeeMoney?: boolean;
+    canIssue?: boolean;
+    canPay?: boolean;
     /** مرتجعاتٌ بعد أوراقها — انظر `BoutiqueReturns` */
-    returns?: BoutiqueReturnsPart;
+    returns?: BoutiqueReturnsPart | null;
     statement: {
         /** أتُصدَر على شهرٍ ما زال يبيع؟ — خبرٌ من الخادم لا حسبةٌ في المتصفّح */
         partial: boolean;
@@ -44,7 +49,7 @@ interface Props {
         components?: ComponentsPart;
         /** المطلوب سداده: صافي المنفرد وصافي المكوّنات معًا */
         payable?: number;
-    };
+    } | null;
     /** الرصيدُ بين المتجر والبوتيك — `null` لمن لم يُفتح له سجلُّ المكوّنات */
     ledger?: BoutiqueLedger | null;
     period: string;
@@ -64,6 +69,10 @@ interface Props {
     }[];
     /** ما يُختار منه في النافذة — مُرشَّحٌ في الخادم ومقطوعٌ عند حدّ */
     catalog: { rows: PickRow[]; more: boolean };
+    /** بوتيكاتُ المتجر لمُرشِّح «مبيعات البوتيك وفواتيره» */
+    boutiqueOptions?: { value: number; label: string }[];
+    /** القسمُ لصاحب المتجر ومن أذن له بالمال — والخادمُ يردّ غيرهما أيضًا */
+    canSeeSales?: boolean;
     q: string;
 }
 
@@ -74,7 +83,8 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, settlement, history, products, catalog, q, ledger, returns, context } =
+    // غيابُ المفتاح يعني «كما كان»: الحارسُ الخادمُ وهو لا يُرسل الكشفَ أصلًا لمن لا يقرؤه
+    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, returns, context, boutiqueOptions, canSeeSales } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -112,17 +122,17 @@ export default function BoutiqueShow() {
         form.post(route('admin.boutiques.settle', boutique.id), { preserveScroll: true });
     };
 
-    const boxes = [
+    const boxes = statement ? ([
         { key: 'gross', label: 'إجمالي المبيعات', value: statement.gross, tone: 'plain' },
         { key: 'commission', label: 'نسبة المتجر', value: statement.commission, tone: 'ours' },
         { key: 'net', label: 'المستحق للبوتيك', value: statement.net, tone: 'theirs' },
-    ] as const;
+    ] as const) : [];
 
     return (
         <AdminLayout title={boutique.name}>
             <PageHeader
                 title={boutique.name}
-                subtitle={t('نسبة المتجر :rate% — وكشف حسابه شهرًا بشهر', { rate: String(boutique.rate) })}
+                subtitle={canSeeMoney ? t('نسبة المتجر :rate% — وكشف حسابه شهرًا بشهر', { rate: String(boutique.rate) }) : t('أصناف هذا البوتيك')}
                 actions={
                     <Button variant="ghost" asChild>
                         <SmartLink routeName="admin.boutiques.index" href={route('admin.boutiques.index')}>
@@ -133,8 +143,8 @@ export default function BoutiqueShow() {
                 }
             />
 
-            {/* الشهرُ أوّلَ الشاشة: هو ما يُبدَّل أكثرَ من كلّ شيءٍ فيها */}
-            <div className="mb-5 flex flex-wrap items-center gap-3">
+            {/* الشهرُ أوّلَ الشاشة: هو ما يُبدَّل أكثرَ من كلّ شيءٍ فيها — لمن يقرأ المال */}
+            {canSeeMoney && <div className="mb-5 flex flex-wrap items-center gap-3">
                 <span className="text-[13px] text-[#6b7280]">{t('الشهر')}</span>
                 <Select
                     value={period}
@@ -144,9 +154,9 @@ export default function BoutiqueShow() {
                     className="w-56"
                 />
                 {!boutique.active && <Badge variant="neutral">{t('غير نشط')}</Badge>}
-            </div>
+            </div>}
 
-            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {statement && <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {boxes.map((b) => (
                     <Card key={b.key} className="p-4">
                         <p className="text-[12px] text-[#6b7280]">{t(b.label)}</p>
@@ -162,7 +172,7 @@ export default function BoutiqueShow() {
                         </p>
                     </Card>
                 ))}
-            </div>
+            </div>}
 
             {/*
                 التسوية — ما صدر وما يُصدَر، لا أحدُهما.
@@ -172,7 +182,7 @@ export default function BoutiqueShow() {
                 يُؤخَذ — فاختفاؤه يعني أنّ ما بِيع بعدها لا يجد بابًا
                 يُصدَر منه، وهو العطبُ نفسُه الذي فُتح الشهرُ الجاري لأجله.
             */}
-            <Card className="mb-5 flex flex-col gap-3 p-4">
+            {statement && <Card className="mb-5 flex flex-col gap-3 p-4">
                 {settlement && (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
@@ -200,7 +210,7 @@ export default function BoutiqueShow() {
                     </div>
                 )}
 
-                {(statement.lines_count > 0 || (statement.components?.count ?? 0) > 0 || ! settlement) && (
+                {canIssue && (statement.lines_count > 0 || (statement.components?.count ?? 0) > 0 || ! settlement) && (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
                             <Receipt className="size-5 shrink-0 text-[#6b7280]" />
@@ -228,9 +238,9 @@ export default function BoutiqueShow() {
                 {errors?.settlement && (
                     <p className="w-full text-[12px] text-[#b91c1c]">{errors.settlement}</p>
                 )}
-            </Card>
+            </Card>}
 
-            {ledger && statement.components && (
+            {ledger && statement?.components && (
                 <ComponentsPanel
                     boutiqueId={boutique.id}
                     part={statement.components}
@@ -238,6 +248,7 @@ export default function BoutiqueShow() {
                     ledger={ledger}
                     settlement={settlement ? { ...settlement, id: settlement.id, number: settlement.number } : null}
                     currency={currency}
+                    canPay={canPay}
                 />
             )}
 
@@ -247,6 +258,21 @@ export default function BoutiqueShow() {
                     terms={boutique.returns_terms}
                     termsRef={boutique.returns_terms_ref}
                     part={returns}
+                    currency={currency}
+                />
+            )}
+
+            {/*
+                مبيعاتُ البوتيك وفواتيرُه — كلُّ بيعٍ بفاتورته: منفردًا، أو قطعةً
+                داخل منتج المتجر. وشهرُها شهرُ الشاشة نفسُه: مُبدِّلٌ واحد للصفحة.
+            */}
+            {canSeeSales && (
+                <SalesPanel
+                    boutiqueId={boutique.id}
+                    boutiques={boutiqueOptions?.length ? boutiqueOptions : [{ value: boutique.id, label: boutique.name }]}
+                    period={period}
+                    periods={periods}
+                    onPeriodChange={go}
                     currency={currency}
                 />
             )}
@@ -330,7 +356,7 @@ export default function BoutiqueShow() {
             />
 
             {/* ما بُني منه الرقم — صنفًا صنفًا */}
-            <Card className="mb-5 overflow-hidden">
+            {statement && <Card className="mb-5 overflow-hidden">
                 <div className="border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm font-semibold text-[#111]">
                     {t('المنتجات المباعة')}
                 </div>
@@ -391,7 +417,7 @@ export default function BoutiqueShow() {
                         </table>
                     </div>
                 )}
-            </Card>
+            </Card>}
 
             {/*
                 وما صدر من قبل — فيُقرأ تاريخُه بلا تنقّلٍ بين الشهور.

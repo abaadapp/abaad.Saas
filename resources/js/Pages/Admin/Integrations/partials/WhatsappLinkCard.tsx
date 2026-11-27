@@ -1,18 +1,21 @@
 import { router, useForm } from '@inertiajs/react';
-import { AlertTriangle, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
+import { KeyRound, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { PageActions, SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
+import OwnAppLink, { type OwnAppView } from '@/Pages/Admin/Integrations/partials/OwnAppLink';
 import { useTranslate } from '@/lib/i18n';
 import EmbeddedSignup, { type EmbeddedConfig, type OnboardingKind, type SignupAssets } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
+import LinkKinds from '@/Pages/Admin/Integrations/partials/LinkKinds';
 import { cn } from '@/lib/utils';
 
 /** حالُ الربط كما حسبها الخادم — انظر App\Support\WhatsAppLink */
 export interface WhatsappLink {
-    state: 'disconnected' | 'connecting' | 'connected' | 'reauthorization_required' | 'expired' | 'error';
+    state: 'disconnected' | 'connecting' | 'billing_unproven' | 'needs_registration' | 'connected' | 'reauthorization_required' | 'expired' | 'error';
     label: string;
     waba_id: string | null;
     meta_business_id: string | null;
@@ -27,6 +30,17 @@ export interface WhatsappLink {
     alert_days: number | null;
     error_code: string | null;
     error_message: string | null;
+    /** مزامنةُ تطبيق واتساب للأعمال — لرقمٍ بقي فيه وحده (`App\Support\WhatsAppCoexistence::view`) */
+    sync?: CoexistenceSync | null;
+}
+
+/** حالُ مزامنة رقمٍ بقي في تطبيق واتساب للأعمال — الجهاتُ والمحادثاتُ السابقة وانفصالُه */
+export interface CoexistenceSync {
+    started_at: string | null;
+    deadline: string | null;
+    contacts: { state: 'pending' | 'requested' | 'failed' | 'expired'; count: number; error: string | null };
+    history: { state: 'pending' | 'requested' | 'importing' | 'done' | 'declined' | 'failed' | 'expired'; progress: number | null; error: string | null };
+    unlinked: { event: string; reason: string | null; at: string } | null;
 }
 
 /**
@@ -83,6 +97,8 @@ export function pillFor(state: WhatsappLink['state']): SetupState {
         case 'connecting':
             return 'progress';
         case 'reauthorization_required':
+        case 'needs_registration':
+        case 'billing_unproven':
             return 'action';
         case 'expired':
         case 'error':
@@ -90,6 +106,86 @@ export function pillFor(state: WhatsappLink['state']): SetupState {
         default:
             return 'idle';
     }
+}
+
+// خطواتُ كلّ طريقةٍ وبطاقتاها في `LinkKinds` — تقرؤها صفحةُ رابط العميل أيضًا
+export { STEPS } from '@/Pages/Admin/Integrations/partials/LinkKinds';
+
+/**
+ * مزامنةُ رقمٍ بقي في تطبيق واتساب للأعمال — جملةٌ لكلّ حال، بلا مصطلحٍ تقنيّ.
+ *
+ * Meta تقبل طلبَي الجهات والمحادثات مرّةً واحدة خلال ٢٤ ساعة من الربط، والتاريخُ يصل
+ * على دفعاتٍ ما دام التطبيقُ مفتوحًا في الهاتف — فيُقال ذلك للتاجر ما دامت المزامنةُ جارية.
+ */
+export function CoexistenceSyncBox({ sync }: { sync: CoexistenceSync }) {
+    const t = useTranslate();
+    const c = sync.contacts;
+    const h = sync.history;
+
+    const contacts =
+        c.state === 'requested'
+            ? c.count > 0
+                ? t('وصلت :n جهة اتصال', { n: String(c.count) })
+                : t('طُلبت — تصل خلال دقائق')
+            : c.state === 'failed'
+              ? t('تعذّر الطلب — نعيد المحاولة تلقائيًا')
+              : c.state === 'expired'
+                ? t('فات وقتها')
+                : t('تُطلب الآن');
+
+    const history =
+        h.state === 'importing'
+            ? t('تُنقل الآن — :p%', { p: String(h.progress ?? 0) })
+            : h.state === 'done'
+              ? t('اكتملت')
+              : h.state === 'declined'
+                ? t('لم تُشارَك من التطبيق — تبدأ المحادثات في أبعاد من الآن')
+                : h.state === 'requested'
+                  ? t('طُلبت — تصل على دفعات')
+                  : h.state === 'failed'
+                    ? t('تعذّر الطلب — نعيد المحاولة تلقائيًا')
+                    : h.state === 'expired'
+                      ? t('فات وقتها')
+                      : t('تُطلب بعد جهات الاتصال');
+
+    // ما دام شيءٌ لم يُطلب بعد أو المحادثاتُ تُنقل — وجهاتٌ قبلت Meta طلبَها تصل وحدها
+    const running = ! sync.unlinked && (c.state === 'pending' || ['pending', 'requested', 'importing'].includes(h.state));
+    const expired = c.state === 'expired' || h.state === 'expired';
+
+    return (
+        <div className="mt-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4 text-[13px]" data-testid="coex-sync">
+            <p className="mb-2 font-semibold text-[#111]">{t('مزامنة تطبيق واتساب للأعمال')}</p>
+            {sync.unlinked ? (
+                <p className="rounded-[10px] bg-[#fef2f2] px-3 py-2 text-[12px] leading-relaxed text-[#b91c1c]" data-testid="coex-unlinked">
+                    {t('انفصل الرقم عن أبعاد من جهة التطبيق')}
+                    {sync.unlinked.reason ? ` — ${t(sync.unlinked.reason)}` : ''}. {t('افتح تطبيق واتساب للأعمال على هاتفك ثمّ أعد الربط.')}
+                </p>
+            ) : (
+                <>
+                    <ul className="space-y-1.5 text-[#374151]">
+                        <li data-testid="coex-contacts" data-state={c.state}>
+                            <span className="text-[#6b7280]">{t('جهات الاتصال')}: </span>
+                            {contacts}
+                        </li>
+                        <li data-testid="coex-history" data-state={h.state}>
+                            <span className="text-[#6b7280]">{t('المحادثات السابقة')}: </span>
+                            {history}
+                        </li>
+                    </ul>
+                    {running && (
+                        <p className="mt-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="coex-keep-open">
+                            {t('أبقِ تطبيق واتساب للأعمال مفتوحًا على هاتفك حتى تكتمل المزامنة.')}
+                        </p>
+                    )}
+                    {expired && (
+                        <p className="mt-2 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] leading-relaxed text-[#92400e]" data-testid="coex-expired">
+                            {t('مضت 24 ساعة على الربط قبل أن تكتمل المزامنة، وMeta لا تقبلها بعدها. افصل الرقم من تطبيق واتساب للأعمال ثمّ اربطه من جديد لتُنقل جهاتك ومحادثاتك.')}
+                        </p>
+                    )}
+                </>
+            )}
+        </div>
+    );
 }
 
 interface Props {
@@ -103,6 +199,10 @@ interface Props {
      * ومن أُغلق عنه لا يُقال له إنّ رسائله تخرج من رقم أبعاد: لا تخرج.
      */
     sharedAllowed?: boolean;
+    /** الربطُ بتطبيق التاجر — يحلّ محلَّ زرّ تطبيق أبعاد حين يكون الطريقَ (`WhatsAppOwnApp`) */
+    ownApp?: OwnAppView | null;
+    /** رُبط رقمُه ورسائلُه ما زالت من رقم أبعاد — فلا يُقال إنّها تخرج منه */
+    stillShared?: boolean;
 }
 
 /**
@@ -115,7 +215,8 @@ interface Props {
  * ضغطةً: لا حساب مطوّرين، ولا رمزٌ دائمٌ يُصنع بيد التاجر ويُلصق في حقلٍ
  * يمرّ بالمتصفّح.
  */
-export default function WhatsappLinkCard({ link, health = null, config, mayManage, sharedAllowed = true }: Props) {
+export default function WhatsappLinkCard({ link, health = null, config, mayManage, sharedAllowed = true, ownApp = null, stillShared = false }: Props) {
+    const own = ownApp?.enabled === true;
     const t = useTranslate();
     const [sending, setSending] = useState(false);
     /* رقمٌ مستقلٌّ افتراضًا — والتعايشُ يُختار صراحةً أو لا يكون */
@@ -143,6 +244,8 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
     }, [kind]);
 
     const autoReply = useForm({});
+    // رمزُ التحقّق بخطوتين — يمرّ إلى الخادم ثمّ إلى ميتا، ولا يُحفظ في أيٍّ منهما
+    const registration = useForm({ pin: '' });
 
     const state = link.state;
     const connected = state === 'connected';
@@ -165,8 +268,14 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                           : 'text-[13px] leading-relaxed text-[#6b7280]'
                 }
             >
-                {state === 'connected' && t('رقمك مربوط، والرسائل تخرج منه.')}
+                {state === 'connected' && (stillShared ? t('رقمك مربوط، ورسائلك ما زالت تخرج من رقم أبعاد.') : t('رقمك مربوط، والرسائل تخرج منه.'))}
                 {state === 'connecting' && t('تمّ التفويض — وحسابك لم يُظهر رقمًا بعد. تكتمل عادةً خلال دقائق.')}
+                {state === 'billing_unproven' &&
+                    (ownApp?.connection
+                        ? t('رُبط رقمك بتطبيقك، ولم يثبت أنّ رسائل حسابك تُحتسب عليك عند ميتا — لا تخرج رسالة حتى يثبت. أرسل لأبعاد ما يثبت وسيلة الدفع في حسابك.')
+                        : t('رقمك مربوط، ولا تخرج منه رسالة حتى تثبت جهة رسومه عند Meta — راجع «رسوم واتساب» أدناه.'))}
+                {state === 'needs_registration' &&
+                    t('رُبط رقمك ولم يُفعَّل في واتساب للأعمال بعد — اكتب رمز التحقّق بخطوتين (ستّة أرقام) ليبدأ الإرسال منه.')}
                 {state === 'disconnected' &&
                     (sharedAllowed
                         ? t('لم يُربط رقمٌ بعد — تخرج رسائلك من رقم أبعاد المشترك.')
@@ -227,7 +336,51 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             )}
 
             {/* ٢ · ما رُبط — يُقرأ بعد النجاح: الرقم واسمه وحساب الأعمال */}
-            {(connected || state === 'connecting' || state === 'reauthorization_required') && (
+            {/*
+                ١ج · تفعيلُ رقمٍ جديد — ميتا تطلبه بعد التسجيل المدمج لرقمٍ لم يُسجَّل
+                في Cloud API. ورقمٌ مسجَّلٌ أصلًا لا يصل هذه الحال (`WhatsAppOnboarding`).
+            */}
+            {state === 'needs_registration' && mayManage && (
+                <form
+                    className="mt-3 flex flex-wrap items-end gap-2"
+                    data-testid="register-number"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        registration.post(route('admin.integrations.whatsapp.register'), {
+                            preserveScroll: true,
+                            onFinish: () => registration.reset('pin'),
+                        });
+                    }}
+                >
+                    <label className="flex flex-col gap-1 text-[12px] text-[#6b7280]">
+                        {t('رمز التحقّق بخطوتين')}
+                        <Input
+                            dir="ltr"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={6}
+                            value={registration.data.pin}
+                            onChange={(e) => registration.setData('pin', e.target.value.replace(/\D/g, ''))}
+                            className="w-32 tabular-nums"
+                            data-testid="register-pin"
+                        />
+                    </label>
+                    <Button type="submit" loading={registration.processing} disabled={registration.data.pin.length !== 6} data-testid="register-submit">
+                        <KeyRound />
+                        {t('تفعيل الرقم')}
+                    </Button>
+                    <p className="basis-full text-[12px] leading-relaxed text-[#6b7280]">
+                        {t('إن كان لرقمك رمزٌ مضبوط فاكتبه هو، وإلّا صار ما تكتبه رمزَه. لا يُحفظ عندنا.')}
+                    </p>
+                    {registration.errors.pin && (
+                        <p className="basis-full text-[12px] text-[#b91c1c]" data-testid="register-error">
+                            {registration.errors.pin}
+                        </p>
+                    )}
+                </form>
+            )}
+
+            {(connected || state === 'connecting' || state === 'billing_unproven' || state === 'needs_registration' || state === 'reauthorization_required') && (
                 <dl className="mt-4 space-y-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px]" data-testid="link-facts">
                     {link.display_phone_number && (
                         <div className="flex flex-wrap justify-between gap-3">
@@ -263,75 +416,30 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             )}
 
             {/*
+                ٢ب · مزامنةُ تطبيق واتساب للأعمال — ما وصل من جهات التاجر ومحادثاته السابقة، وما
+                يُطلب منه (أن يبقى التطبيقُ مفتوحًا)، أو لماذا انفصل الرقم.
+            */}
+            {link.sync && <CoexistenceSyncBox sync={link.sync} />}
+
+            {/*
                 ٣ · إعدادُ الخادم ناقص — يُقال ولا يُترك الزرُّ يفتح نافذةً تفشل.
 
                 ومن يقرأ هذا ليس التاجرَ وحده: هو خبرٌ لمن يُدير الخادم.
             */}
-            {! config.configured && (
+            {/* ٢ · الربطُ بتطبيق التاجر — دليلُه ونموذجُه وعنوانُ إشعاراته */}
+            {own && ownApp && <OwnAppLink ownApp={ownApp} mayManage={mayManage} />}
+
+            {! own && ! config.configured && (
                 <p className="mt-4 rounded-[10px] bg-[#f5f3ff] px-3 py-2 text-[12px] leading-relaxed text-[#5b21b6]">
                     {t('الربط بضغطة غير مهيّأ على الخادم بعد — استعمل الطريقة اليدوية أدناه، أو راجع أبعاد.')}
                 </p>
             )}
 
-            {/*
-                ٤ · نوعُ الرقم — يختاره التاجر، ولا يُفترض التعايش.
-
-                رقمٌ مستقلٌّ للنظام هو الافتراض: رقمُ هاتفك الذي تستعمله لا يُمسّ.
-                والتعايشُ (الرقمُ نفسُه في تطبيق الأعمال وفي النظام) يُختار صراحةً،
-                ويبقى مطفأً بسببه ما لم يُفتح على الخادم: ربطُه بلا مزامنةٍ
-                يُضيّع تاريخَ محادثاته مرّةً واحدة.
-            */}
-            {mayManage && config.configured && (
-                <fieldset className="mt-4 space-y-2" data-testid="link-kind">
-                    <legend className="mb-1 text-[12px] font-medium text-[#374151]">{t('نوع الرقم')}</legend>
-                    {(['cloud_api', 'coexistence'] as const).map((option) => {
-                        const locked = option === 'coexistence' && ! config.coexistence_open;
-
-                        return (
-                            <label
-                                key={option}
-                                data-testid={`link-kind-${option}`}
-                                className={cn(
-                                    'flex items-start gap-2 rounded-[10px] border px-3 py-2 text-[12px] leading-relaxed',
-                                    kind === option ? 'border-[#6d28d9] bg-[#f5f3ff]' : 'border-[var(--ui-border,#e8e8e8)]',
-                                    locked && 'cursor-not-allowed opacity-60',
-                                )}
-                            >
-                                <input
-                                    type="radio"
-                                    name="whatsapp-link-kind"
-                                    className="mt-1"
-                                    value={option}
-                                    checked={kind === option}
-                                    disabled={locked}
-                                    onChange={() => setKind(option)}
-                                />
-                                <span>
-                                    <span className="block font-medium text-[#111]">
-                                        {t(option === 'cloud_api' ? 'رقم Cloud API مستقل' : 'رقم على تطبيق واتساب للأعمال (التعايش)')}
-                                    </span>
-                                    <span className="block text-[#6b7280]">
-                                        {option === 'cloud_api'
-                                            ? t('رقم مخصص للنظام منفصل عن رقم هاتفك — رقم واتساب في هاتفك لا يُمس.')
-                                            : locked
-                                              ? t('غير متاح بعد في أبعاد — يحتاج إعدادًا في تطبيق Meta ومزامنة لم تُبنَ بعد.')
-                                              : t('الرقم نفسه يبقى في تطبيق واتساب للأعمال على هاتفك ويصل النظام معًا.')}
-                                    </span>
-                                </span>
-                            </label>
-                        );
-                    })}
-                    {kind === 'coexistence' && (
-                        <p className="flex items-start gap-2 text-[12px] leading-relaxed text-[#6b7280]">
-                            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[#d97706]" />
-                            {t('بقاء رقمك في تطبيق واتساب للأعمال تُقرّره ميتا بحسب أهلية حسابك ونسخة تطبيقك — ونحن لا نُلغي تسجيل رقمك في كل الأحوال.')}
-                        </p>
-                    )}
-                </fieldset>
-            )}
+            {/* ٤ · كيف يربط رقمه — بطاقتان يختار منهما، ثمّ ما ستطلبه Meta (`LinkKinds`) */}
+            {! own && mayManage && config.configured && <LinkKinds config={config} kind={kind} onKind={setKind} />}
 
             <PageActions className="mt-5">
-                {mayManage && config.configured && (
+                {! own && mayManage && config.configured && (
                     <EmbeddedSignup
                         config={config}
                         kind={kind}
@@ -342,7 +450,7 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                         {({ open, busy }) => (
                             <Button type="button" onClick={open} loading={busy || sending} data-testid="connect-whatsapp">
                                 {state === 'disconnected' ? <PlugZap /> : <RefreshCw />}
-                                {t(state === 'disconnected' ? 'ربط واتساب API' : 'إعادة تفويض واتساب')}
+                                {t(state !== 'disconnected' ? 'إعادة تفويض واتساب' : kind === 'coexistence' ? 'ربط واتساب مع التطبيق' : 'ربط واتساب API')}
                             </Button>
                         )}
                     </EmbeddedSignup>

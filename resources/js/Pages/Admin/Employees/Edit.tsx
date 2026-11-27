@@ -52,7 +52,13 @@ export default function EmployeeEdit() {
                 title="تعديل الموظف"
                 subtitle={`${t('تعديل بيانات')}: ${employee.name}`}
             />
+            {/*
+                نموذجٌ لكلّ موظّف: `useForm` يقرأ قائمتَه مرّةً عند أوّل رسم، وInertia
+                قد تُبقي المكوّنَ حيًّا بين زيارتين — فيُفتح موظّفٌ آخر (أو متجرٌ آخر)
+                على تأشير الأوّل. والمفتاحُ يبنيه من جديد.
+            */}
             <EmployeeForm
+                key={employee.id}
                 mayReadPayroll={may_read_payroll}
                 inbox={inbox}
                 employee={employee}

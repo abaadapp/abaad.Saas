@@ -136,7 +136,9 @@ class OrderIsolationTest extends TestCase
     /**
      * من يعمل على فرعٍ بعينه لا يُحرّك طلبات فرعٍ لا يراه.
      *
-     * الفرع يُقرأ من الجلسة كما تقرؤه شاشة المبيعات — لا مما يصل في الطلب.
+     * والفرعُ في لوحة التجهيز إسنادُه (`PreparationScope`) لا ما بقي في جلسته:
+     * الجلسةُ اختيارٌ ينساه صاحبُه، والإسنادُ صلاحيّة. وشاشةُ المبيعات على
+     * فرع جلستها كما هي — ولا يُقرأ أيٌّ منهما ممّا يصل في الطلب.
      */
     public function test_a_branch_scoped_user_sees_only_his_branch(): void
     {
@@ -146,13 +148,22 @@ class OrderIsolationTest extends TestCase
         $here = $this->mineOrder($mainId, 'INV-M1');
         $there = $this->mineOrder($second->id, 'INV-M2');
 
-        session(['current_branch' => $mainId]);
+        $local = User::create([
+            'business_id' => $this->mine->id, 'name' => 'مدير الفرع', 'email' => 'local@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'manager', 'status' => 'نشط',
+        ]);
+        $local->branches()->sync([$mainId]);
+        $this->actingAs($local);
 
-        $board = array_column(
-            $this->get(route('admin.preparation.index'))->viewData('page')['props']['orders'],
-            'number'
-        );
-        $this->assertSame([$here->number], $board);
+        // وجلستُه على فرعٍ آخر لا تفتحه له ولا تُخفي فرعَه
+        foreach ([null, $second->id, $mainId] as $session) {
+            session(['current_branch' => $session]);
+            $board = array_column(
+                $this->get(route('admin.preparation.index', ['branch' => $second->id]))->viewData('page')['props']['orders'],
+                'number'
+            );
+            $this->assertSame([$here->number], $board);
+        }
 
         $this->get(route('admin.orders.show', $there->number))->assertSuccessful();
         // العرض يمرّ (شاشة الطلب لا تُقيَّد بالفرع)، والفعل لا يمرّ

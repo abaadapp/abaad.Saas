@@ -32,6 +32,12 @@ class MetaWhatsAppClient
         array $variables = [],
         ?array $document = null,
     ): array {
+        $account = self::account($connection, $to);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -77,13 +83,13 @@ class MetaWhatsAppClient
             $response = Http::withToken($connection->access_token)
                 ->timeout((int) config('whatsapp.timeout', 15))
                 ->acceptJson()
-                ->post($url, $payload);
+                ->post($url, $payload + $account['field']);
         } catch (\Throwable $e) {
             // انقطاع شبكة أو مهلة — يُعاد، لا يُقيَّد فشلًا نهائيًّا
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
     }
 
     /**
@@ -176,6 +182,12 @@ class MetaWhatsAppClient
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
+        $account = self::account($connection, $to);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -196,12 +208,52 @@ class MetaWhatsAppClient
                      * ميتا تفتح الرابط من خوادمها لتسحب عنوانه وصورته.
                      */
                     'text' => ['preview_url' => false, 'body' => $body],
-                ]);
+                ] + $account['field']);
         } catch (\Throwable $e) {
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
+    }
+
+    /**
+     * رسالةٌ تفاعليّة — أزرارُ ردٍّ أو قائمةٌ أو زرُّ رابط — داخل نافذة الخدمة.
+     *
+     * والجسمُ يُبنى عند من يسأل (`WhatsAppOrderReplies::interactive`): هنا
+     * البابُ وحده، بحارسه نفسِه — وصلةُ تاجرٍ لم تُراجَع فوترتُها لا يخرج منها
+     * شيء، وحسابُ الرسائل يُسمّى فيها كما يُسمّى في النصّ والقالب.
+     *
+     * @param  array<string, mixed>  $interactive  كائنُ `interactive` كما تطلبه ميتا
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    public static function sendInteractive(WhatsAppConnection $connection, string $to, array $interactive): array
+    {
+        $account = self::account($connection, $to);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
+        $url = rtrim((string) config('whatsapp.graph_url'), '/')
+            .'/'.config('whatsapp.api_version')
+            .'/'.$connection->phone_number_id.'/messages';
+
+        try {
+            $response = Http::withToken($connection->access_token)
+                ->timeout((int) config('whatsapp.timeout', 15))
+                ->acceptJson()
+                ->post($url, [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type' => 'individual',
+                    'to' => $to,
+                    'type' => 'interactive',
+                    'interactive' => $interactive,
+                ] + $account['field']);
+        } catch (\Throwable $e) {
+            return self::failure('network_error', $e->getMessage(), retryable: true);
+        }
+
+        return self::answered($connection, self::interpret($response));
     }
 
     /**
@@ -222,6 +274,12 @@ class MetaWhatsAppClient
         ?string $caption = null,
         ?string $filename = null,
     ): array {
+        $account = self::account($connection, $to);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
+        }
+
         if (! in_array($kind, ['image', 'document'], true)) {
             return self::failure('unsupported_kind', __('نوعٌ لا يُرسَل.'), retryable: false);
         }
@@ -257,12 +315,145 @@ class MetaWhatsAppClient
                     'to' => $to,
                     'type' => $kind,
                     $kind => $media,
-                ]);
+                ] + $account['field']);
         } catch (\Throwable $e) {
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
 
-        return self::interpret($response);
+        return self::answered($connection, self::interpret($response));
+    }
+
+    /**
+     * ‏‏إرسالُ قالبِ عرضٍ إلى Meta لمراجعته — على حساب أعمال الوصلة نفسِه.
+     *
+     * ورسالةُ الرفض تُؤخذ بلغة صاحبها (`error_user_msg`) إن كتبتها Meta: هي التي تقول ما في النصّ.
+     *
+     * @param  array<string, mixed>  $template
+     * @return array{ok: bool, id: ?string, status: ?string, category: ?string, code: ?string, message: ?string}
+     */
+    public static function createTemplate(WhatsAppConnection $connection, array $template): array
+    {
+        $r = self::graph($connection, 'post', $connection->waba_id.'/message_templates', $template);
+
+        return [
+            'ok' => $r['ok'] && filled($r['body']['id'] ?? null),
+            'id' => filled($r['body']['id'] ?? null) ? (string) $r['body']['id'] : null,
+            'status' => filled($r['body']['status'] ?? null) ? (string) $r['body']['status'] : null,
+            'category' => filled($r['body']['category'] ?? null) ? (string) $r['body']['category'] : null,
+            'code' => $r['code'],
+            'message' => $r['message'],
+        ];
+    }
+
+    /**
+     * ‏‏يرفع نموذجًا لرأس قالبٍ من نوع «مستند» — Meta تطلبه مع القالب لتراجعه (Resumable Upload).
+     *
+     * نداءان: جلسةُ رفعٍ على التطبيق، ثمّ الملفُّ نفسُه. والرمزُ في الترويسة لا في العنوان.
+     *
+     * @return array{ok: bool, handle: ?string, code: ?string, message: ?string}
+     */
+    public static function uploadSample(WhatsAppConnection $connection, string $name, string $bytes, string $mime): array
+    {
+        $no = fn (?string $code, ?string $message) => ['ok' => false, 'handle' => null, 'code' => $code, 'message' => $message];
+        $session = self::graph($connection, 'post', config('whatsapp.app_id').'/uploads?'.http_build_query([
+            'file_name' => $name, 'file_length' => strlen($bytes), 'file_type' => $mime,
+        ]));
+        $id = (string) ($session['body']['id'] ?? '');
+
+        if (! $session['ok'] || $id === '') {
+            return $no($session['code'] ?? 'no_session', $session['message']);
+        }
+
+        try {
+            $response = Http::withHeaders(['Authorization' => 'OAuth '.$connection->access_token, 'file_offset' => '0'])
+                ->timeout((int) config('whatsapp.timeout', 15))->acceptJson()
+                ->withBody($bytes, $mime)
+                ->post(rtrim((string) config('whatsapp.graph_url'), '/').'/'.config('whatsapp.api_version').'/'.$id);
+        } catch (\Throwable $e) {
+            return $no('network_error', __('تعذّر الاتصال بواتساب — حاول بعد قليل.'));
+        }
+
+        $handle = $response->successful() ? (string) $response->json('h') : '';
+
+        return $handle !== ''
+            ? ['ok' => true, 'handle' => $handle, 'code' => null, 'message' => null]
+            : $no((string) ($response->json('error.code') ?? $response->status()), mb_substr((string) $response->json('error.message'), 0, 300));
+    }
+
+    /** @return array{ok: bool, code: ?string, message: ?string} */
+    public static function removeTemplate(WhatsAppConnection $connection, string $name): array
+    {
+        $r = self::graph($connection, 'delete', $connection->waba_id.'/message_templates?'.http_build_query(['name' => $name]));
+
+        return ['ok' => $r['ok'], 'code' => $r['code'], 'message' => $r['message']];
+    }
+
+    /**
+     * ‏‏قوالبُ الحساب صفًّا صفًّا — بحالها وسبب رفضها وجودتها، صفحةً بعد صفحة.
+     *
+     * @return array{ok: bool, rows: list<array<string, mixed>>, message: ?string}
+     */
+    public static function templateRows(WhatsAppConnection $connection, int $pages = 5): array
+    {
+        $rows = [];
+        $after = null;
+
+        for ($i = 0; $i < $pages; $i++) {
+            $r = self::graph($connection, 'get', $connection->waba_id.'/message_templates', array_filter([
+                'fields' => 'id,name,status,category,language,rejected_reason,quality_score', 'limit' => 200, 'after' => $after,
+            ]));
+
+            if (! $r['ok']) {
+                return ['ok' => false, 'rows' => $rows, 'message' => $r['message']];
+            }
+
+            $rows = [...$rows, ...array_values((array) ($r['body']['data'] ?? []))];
+            $after = filled($r['body']['paging']['next'] ?? null) ? ($r['body']['paging']['cursors']['after'] ?? null) : null;
+
+            if ($after === null) {
+                break;
+            }
+        }
+
+        return ['ok' => true, 'rows' => $rows, 'message' => null];
+    }
+
+    /**
+     * ‏‏كم عميلًا في اليوم تسمح Meta لهذا الرقم أن يبدأ معهم، وجودتُه عندها — أو `null` لما لم تقله.
+     *
+     * @return array{tier: ?string, quality: ?string}
+     */
+    public static function limits(WhatsAppConnection $connection): array
+    {
+        $r = self::graph($connection, 'get', (string) $connection->phone_number_id, ['fields' => 'whatsapp_business_manager_messaging_limit,quality_rating']);
+
+        return [
+            'tier' => $r['ok'] && filled($r['body']['whatsapp_business_manager_messaging_limit'] ?? null) ? (string) $r['body']['whatsapp_business_manager_messaging_limit'] : null,
+            'quality' => $r['ok'] && filled($r['body']['quality_rating'] ?? null) ? (string) $r['body']['quality_rating'] : null,
+        ];
+    }
+
+    /** @return array{ok: bool, body: array, code: ?string, message: ?string} */
+    private static function graph(WhatsAppConnection $connection, string $method, string $path, array $data = []): array
+    {
+        $url = rtrim((string) config('whatsapp.graph_url'), '/').'/'.config('whatsapp.api_version').'/'.$path;
+
+        try {
+            $response = Http::withToken($connection->access_token)->timeout((int) config('whatsapp.timeout', 15))->acceptJson()->{$method}($url, $data);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'body' => [], 'code' => 'network_error', 'message' => __('تعذّر الاتصال بواتساب — حاول بعد قليل.')];
+        }
+
+        $body = (array) ($response->json() ?? []);
+        $error = (array) ($body['error'] ?? []);
+
+        return [
+            'ok' => $response->successful() && $error === [],
+            'body' => $body,
+            'code' => $error === [] && $response->successful() ? null : (string) ($error['code'] ?? $response->status()),
+            'message' => $error === [] && $response->successful() ? null
+                : mb_substr((string) ($error['error_user_msg'] ?? $error['message'] ?? 'HTTP '.$response->status()), 0, 300),
+        ];
     }
 
     /**
@@ -302,6 +493,75 @@ class MetaWhatsAppClient
         );
     }
 
+    /**
+     * على أيّ حساب رسائل تُحتسب هذه الرسالة — يُسمّى فيها، أو لا تخرج.
+     *
+     * آخرُ بابٍ قبل النداء، في الدوالّ الثلاث التي تُخرج رسالة: وصلةُ تطبيق
+     * تاجرٍ لم يُراجَع دليلُ فوترتها، أو لا يُعرف حسابُ رسائلها بأمان، لا يخرج
+     * منها شيء. وما يُسمّى هو الحسابُ الذي رُوجع دليلُه (`WhatsAppOwnApp::sendAccount`).
+     *
+     * @return array{refusal: ?array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}, field: array<string, string>}
+     */
+    private static function account(WhatsAppConnection $connection, string $to): array
+    {
+        $bind = WhatsAppOwnApp::sendAccount($connection);
+        /*
+         * ‏‏ولا تصل رسالةُ تجربةٍ أو متجرٍ تجريبيّ إلّا رقمَ اختبار (`WhatsAppBillingTrials::recipient`) — ويُسأل
+         * قبل العدّ: فما رُفض لا يأكل من حدّ التجربة. ثمّ تُعدّ ولا تزيد على حدّها (`WhatsAppBillingTrials::spend`).
+         */
+        $problem = $bind['problem'] ?? WhatsAppBillingTrials::recipient($connection, $to) ?? WhatsAppBillingTrials::spend($connection);
+        $says = WhatsAppOwnApp::is($connection) && ! in_array($problem, WhatsAppBillingTrials::RECIPIENT_CODES, true);
+
+        return [
+            'refusal' => $problem === null ? null
+                : self::failure($problem, $says ? WhatsAppOwnApp::say($problem) : WhatsAppBillingLock::says($problem)['text'], retryable: false),
+            'field' => $bind['account'] === null ? [] : ['messaging_account_id' => $bind['account']],
+        ];
+    }
+
+    /**
+     * ‏‏وما ردّت به Meta يُقرأ لقفل الفوترة: ردُّ الدفع يوقف ما بعده من هذا الرقم (`WhatsAppBillingLock::observe`).
+     *
+     * @param  array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}  $result
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
+     */
+    private static function answered(WhatsAppConnection $connection, array $result): array
+    {
+        if (! $result['ok']) {
+            WhatsAppBillingLock::observe($connection, $result['code']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * ‏‏تقديرُ Meta لكلفة حسابٍ في مدّة — قراءةٌ لا غير، وبحروفها: كلفةٌ لم تأتِ تبقى `null`، لا صفرًا.
+     *
+     * @return array{ok: bool, code: ?string, points: list<array{category: ?string, type: ?string, volume: int, cost: ?float}>}
+     */
+    public static function pricingAnalytics(WhatsAppConnection $connection, int $from, int $to): array
+    {
+        $r = self::graph($connection, 'get', (string) $connection->waba_id, [
+            'fields' => 'pricing_analytics.start('.$from.').end('.$to.').granularity(DAILY).dimensions(PRICING_CATEGORY,PRICING_TYPE)',
+        ]);
+
+        $points = [];
+
+        foreach ((array) ($r['body']['pricing_analytics']['data'] ?? []) as $set) {
+            foreach ((array) (((array) $set)['data_points'] ?? []) as $p) {
+                $p = (array) $p;
+                $points[] = [
+                    'category' => is_string($p['pricing_category'] ?? null) ? mb_substr($p['pricing_category'], 0, 40) : null,
+                    'type' => is_string($p['pricing_type'] ?? null) ? mb_substr($p['pricing_type'], 0, 40) : null,
+                    'volume' => is_numeric($p['volume'] ?? null) ? (int) $p['volume'] : 0,
+                    'cost' => is_numeric($p['cost'] ?? null) ? (float) $p['cost'] : null,
+                ];
+            }
+        }
+
+        return ['ok' => $r['ok'], 'code' => $r['code'], 'points' => $points];
+    }
+
     private static function failure(string $code, string $message, bool $retryable): array
     {
         return ['ok' => false, 'id' => null, 'code' => $code, 'message' => $message, 'retryable' => $retryable];
@@ -317,9 +577,10 @@ class MetaWhatsAppClient
      * والمقارنة بـ`hash_equals` لا بـ`===`: المقارنة العادية تخرج عند أوّل
      * حرفٍ مختلف، وفارقُ الزمن يُقرأ فيُخمَّن التوقيع حرفًا حرفًا.
      */
-    public static function verifySignature(?string $header, string $rawBody): bool
+    public static function verifySignature(?string $header, string $rawBody, ?string $secret = null): bool
     {
-        $secret = (string) config('whatsapp.app_secret');
+        // وإشعارُ تطبيق التاجر يُقاس بسرّ تطبيقه هو — لا بسرّ أبعاد (`WhatsAppOwnApp`)
+        $secret ??= (string) config('whatsapp.app_secret');
 
         // بلا سرٍّ لا تحقّق — ولا قبول: الأمان لا يُفتح بغياب إعداد
         if ($secret === '' || blank($header)) {

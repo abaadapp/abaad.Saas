@@ -16,6 +16,7 @@ use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\BoutiqueAccess;
 use App\Support\Boutiques;
 use App\Support\BranchGoogle;
 use App\Support\DeliveryPaper;
@@ -49,6 +50,7 @@ use App\Support\Store\StorePage;
 use App\Support\Storefront;
 use App\Support\Vat;
 use App\Support\Website\Commerce;
+use App\Support\Store\WebsiteSoldOut;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -90,6 +92,8 @@ class PageController extends Controller
             'composition' => ProductCompositionController::blank(
                 auth()->user()->business_id ?? Demo::bid(),
             ),
+            // وحالُه في الموقع بثلاثٍ — لمن يرسم موقعُه «نفدت الكمية» وحده (`WebsiteSoldOut`)
+            'websiteStatus' => WebsiteSoldOut::allowed(auth()->user()->business_id ?? Demo::bid()) ? WebsiteSoldOut::AVAILABLE : null,
             // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`
             'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
             'addonsDisplay' => $this->addonsDisplay(),
@@ -117,17 +121,24 @@ class PageController extends Controller
         $margin = $product['price'] - $product['cost'];
         $marginPct = $product['price'] > 0 ? round(($margin / $product['price']) * 100) : 0;
 
+        /*
+         * كم بيع وهامشُه وحركاتُه — لا تُرسل لمن يفتح المنتجاتِ وحدها في متجرٍ يؤوي
+         * بوتيكات: صاحبُ بوتيكٍ أُعطي حسابًا لأصنافه لا يقرأ مبيعاتٍ ولا ربحًا
+         * (`BoutiqueAccess::hidesSales`). ومتجرٌ بلا بوتيكٍ لا يتغيّر عليه شيء.
+         */
+        $hidden = BoutiqueAccess::hidesSales(auth()->user(), Business::find(auth()->user()->business_id ?? Demo::bid()));
+
         return Inertia::render('Admin/Products/Show', [
             'product' => $product,
-            'stats' => [
+            'stats' => array_values(array_filter([
                 ['label' => __('الكمية المتوفرة'), 'value' => __(':n قطعة', ['n' => $product['qty']]), 'icon' => 'package', 'color' => 'primary'],
-                ['label' => __('إجمالي المبيعات'), 'value' => __(':n قطعة', ['n' => Demo::productSold($id)]), 'icon' => 'shopping-cart', 'color' => 'success'],
+                $hidden ? null : ['label' => __('إجمالي المبيعات'), 'value' => __(':n قطعة', ['n' => Demo::productSold($id)]), 'icon' => 'shopping-cart', 'color' => 'success'],
                 ['label' => __('سعر التكلفة'), 'value' => Demo::money($product['cost']), 'icon' => 'wallet', 'color' => 'info'],
-                ['label' => __('هامش الربح'), 'value' => $marginPct.'%', 'icon' => 'trending-up', 'color' => 'primary',
+                $hidden ? null : ['label' => __('هامش الربح'), 'value' => $marginPct.'%', 'icon' => 'trending-up', 'color' => 'primary',
                     'trend' => Demo::money($margin), 'up' => true],
-            ],
-            // حركات هذا المنتج وحده، لا كل حركات المتجر
-            'movements' => array_slice(array_values(array_filter(
+            ])),
+            // حركات هذا المنتج وحده، لا كل حركات المتجر — و`null` لمن لا يقرؤها
+            'movements' => $hidden ? null : array_slice(array_values(array_filter(
                 Demo::movements(),
                 fn ($m) => $m['product'] === $product['name'],
             )), 0, 6),
@@ -171,6 +182,12 @@ class PageController extends Controller
              */
             'description' => (string) ($model?->description ?? ''),
             'descriptionEn' => (string) ($model?->description_en ?? ''),
+            /*
+             * وحالُه في الموقع — متوفّر أو نفدت الكمية أو مخفيّ — من الصفّ نفسه،
+             * ولمن يرسم موقعُه الشارةَ وحده (`WebsiteSoldOut`). وغيرُه يبقى على
+             * مفتاح «متاح للبيع في المتجر الإلكتروني» كما كان.
+             */
+            'websiteStatus' => $model && WebsiteSoldOut::allowed((int) $model->business_id) ? WebsiteSoldOut::status($model) : null,
             'composition' => $model
                 ? ProductCompositionController::payload($model)
                 : null,
@@ -235,12 +252,10 @@ class PageController extends Controller
     private function boutiquePieces(string $number): array
     {
         $bid = (int) (auth()->user()->business_id ?? Demo::bid());
-        if (! \App\Support\BoutiqueDues::active($bid)) {
-            return [];
-        }
         $order = \App\Models\Order::where('business_id', $bid)->where('number', $number)->first();
 
-        return $order ? \App\Support\BoutiqueDues::piecesOf($order) : [];
+        // ولو أُطفئ الحسابُ بعد أن سُجّل: قطعُ الطلب المعلّقة تُحسم
+        return $order && \App\Support\BoutiqueDues::reachableFor($order) ? \App\Support\BoutiqueDues::piecesOf($order) : [];
     }
 
     /**
@@ -312,7 +327,7 @@ class PageController extends Controller
              * أوّلًا» بابٌ معروضٌ لا يُفتح.
              */
             // قطعُ البوتيك في الطلب — ليُسأل عن كلٍّ منها عند الإلغاء وبعده. انظر `BoutiqueDues::piecesOf`
-            'boutiquePieces' => $this->boutiquePieces($number),
+            'boutiquePieces' => BoutiqueAccess::pieces($this->boutiquePieces($number), auth()->user()),
             // وبنودُ البوتيك التي حملتها ورقة — مرتجعُها إشعارٌ مرتبطٌ بها. انظر `BoutiqueReturns`
             'boutiqueReturns' => $this->boutiqueReturns($number),
             'googleReview' => $this->googleReviewState($number),
@@ -587,14 +602,20 @@ class PageController extends Controller
                     'invoice' => $p->invoice ? ['id' => $p->invoice->id, 'number' => $p->invoice->number] : null,
                     'order' => $p->order?->number,
                 ])->all(),
-        ]);
+        ] + array_filter([
+            // قسمُ «بوابة العميل» — لمتجر سعود ومن يعمل على البوابة وحدهم
+            'portalCustomer' => RibbonPortalController::panelFor(auth()->user(), (int) $id),
+        ]));
     }
 
     /* ----------------------------- الموظفون ----------------------------- */
 
     public function employeesIndex(): Response
     {
-        return Inertia::render('Admin/Employees/Index', $this->employeesData());
+        return Inertia::render('Admin/Employees/Index', $this->employeesData() + [
+            // ومحادثاتُ واتساب لعدّة موظّفين — لمن يمنحها وحده، وإلّا لا شيء
+            'inboxAccess' => EmployeeController::inboxRoster(),
+        ]);
     }
 
     /**
@@ -1143,7 +1164,10 @@ class PageController extends Controller
              */
             'section' => $section,
             ...$this->settingsSection($section, $request),
-        ]);
+        ] + array_filter([
+            // بطاقةُ «بوابة العملاء» — لمتجر سعود ولمن يديرها وحدهم
+            'portalUrl' => \App\Support\RibbonPortal\Portal::mayManage($request->user()) ? route('admin.settings.portal.index') : null,
+        ]));
     }
 
     /**

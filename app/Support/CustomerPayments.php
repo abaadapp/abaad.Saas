@@ -186,6 +186,14 @@ final class CustomerPayments
                 'business_id' => $businessId,
             ]);
 
+            /*
+             * وفاتورةٌ أتمّها هذا التحصيلُ تظهر في لوحة التجهيز إن طُلب لها —
+             * بعد تثبيت المعاملة كلِّها لا فيها: سقوطٌ هناك لا يُسقط المال، ولا
+             * يرمي (`CustomerInvoicePreparations::afterPayment`).
+             */
+            $paymentId = (int) $payment->id;
+            DB::afterCommit(fn () => CustomerInvoicePreparations::afterPayment($paymentId));
+
             return $payment->fresh('allocations');
         });
     }

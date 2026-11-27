@@ -152,6 +152,15 @@ class Permissions
     /** إشعارٌ دائن — يُنقص دَينًا قائمًا على العميل */
     public const CUSTOMER_CREDIT_NOTE = 'customerCreditNote.create';
 
+    /**
+     * تصحيحُ رصيد نقاط العميل بيدٍ إداريّة — زيادةً أو نقصًا، بسببٍ مكتوب.
+     *
+     * ليس استبدالًا: لا يُنتج خصمًا ولا مالًا. الاستبدالُ مقابل خصمٍ بابُه
+     * الصندوقُ وفاتورةُ العميل وحدهما، بقواعد التاجر (`Loyalty::quote`).
+     * ولهذا الفعل اسمُه: يُمنح للمالك افتراضًا، ولغيره باسمه.
+     */
+    public const CUSTOMER_POINTS_ADJUST = 'customerPoints.adjust';
+
     /** تسجيلُ تحصيل — مالٌ يدخل، وهو فعلٌ غيرُ الإصدار */
     public const CUSTOMER_PAYMENT_CREATE = 'customerPayment.create';
 
@@ -398,6 +407,7 @@ class Permissions
         self::CUSTOMER_INVOICE_ISSUE => 'إصدار فاتورة عميل',
         self::CUSTOMER_INVOICE_CANCEL => 'إلغاء فاتورة عميل صادرة',
         self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
+        self::CUSTOMER_POINTS_ADJUST => 'تصحيح رصيد نقاط العميل',
         self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
         self::CUSTOMER_PAYMENT_CANCEL => 'إلغاء تحصيل عميل',
         self::PAYMENT_LINK_CREATE => 'إنشاء روابط الدفع',
@@ -510,6 +520,8 @@ class Permissions
          */
         self::PAYMENT_LINK_CREATE => ['admin', 'manager', 'accountant'],
         self::CUSTOMER_CREDIT_NOTE => ['admin', 'manager', 'accountant'],
+        // وتصحيحُ رصيد النقاط للمالك وحده بدوره — وغيرُه يُمنحه باسمه
+        self::CUSTOMER_POINTS_ADJUST => ['admin'],
         self::CUSTOMER_INVOICE_CANCEL => ['admin', 'manager'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
@@ -659,10 +671,22 @@ class Permissions
         };
     }
 
-    /** أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط وحده */
+    /**
+     * أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط، أو مديرُه المخوَّل.
+     *
+     * والمخوَّلُ من خوّله صاحبُ النشاط: مديرٌ (`isAdmin`) يملك قسمَ الموظّفين،
+     * ومنحه صاحبُ النشاط الردَّ على المحادثات بنفسه. فالمالكُ يقرّر من يدير
+     * المحادثات بقرارٍ واحد يُرى في ملفّ ذلك المدير — ولا يمنحها مديرٌ لا يملكها،
+     * ولا يرفع أحدٌ صلاحيته هو (`EmployeeController::inboxGrant`).
+     */
     public static function grantsInbox(?User $actor): bool
     {
-        return self::isOwner($actor);
+        if (self::isOwner($actor)) {
+            return true;
+        }
+
+        return $actor !== null && $actor->business_id !== null && $actor->isAdmin()
+            && $actor->allows('employees') && self::inboxMay($actor, self::INBOX_REPLY);
     }
 
     /**

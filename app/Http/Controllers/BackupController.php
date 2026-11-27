@@ -488,12 +488,24 @@ class BackupController extends Controller
             }
 
             if (! $existing) {
+                /*
+                 * ═══ وحسابُ صاحب البوتيك يعود على رفِّه ═══
+                 *
+                 * حسابٌ في النسخة لا في القاعدة (غُيّر بريدُه بعدها) يُنشأ
+                 * بصلاحيّاته من الملفّ — فإن نُزع ربطُه عاد حسابًا حرًّا يرى أصنافَ
+                 * المتجر كلَّها. فيُحمل ربطُه كما في النسخة: الربطُ يُضيّق ولا
+                 * يُوسّع، وبوتيكٌ ليس من هذا المتجر يُغلق الحسابَ ولا يفتح شيئًا
+                 * (`BoutiqueAccount::boutique`). والحسابُ القائمُ لا يُمسّ ربطُه:
+                 * ما تركه التاجرُ من شاشة الموظف هو الربط. انظر `BoutiqueAccount`.
+                 */
+                $shelf = is_numeric($row['boutique_id'] ?? null) ? ['boutique_id' => (int) $row['boutique_id']] : [];
+
                 User::create($fields + [
                     'email' => $email,
                     'business_id' => $bid,
                     'role' => 'cashier',
                     'password' => bcrypt(Str::random(40)),
-                ]);
+                ] + $shelf);
 
                 continue;
             }

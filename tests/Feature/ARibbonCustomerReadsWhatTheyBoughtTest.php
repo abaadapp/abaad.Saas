@@ -343,7 +343,7 @@ class ARibbonCustomerReadsWhatTheyBoughtTest extends TestCase
         $this->assertStringContainsString('>مدفوعة</span>', $this->row($cookie, $invoice->number));
 
         // وإشعارُ دائنٍ يُطرح من مجموعه ويُذكر في صفّه
-        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'مرتجع', $this->owner->id);
+        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'مرتجع', $this->owner->id, basis: 'return');
         $this->assertStringContainsString('إشعار دائن', $this->row($cookie, $invoice->number));
         $this->assertStringContainsString('80.000', (new Account($this->maryam->fresh(), 'ar'))->summary()['total']);
 

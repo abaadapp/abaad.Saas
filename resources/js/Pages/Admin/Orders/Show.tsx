@@ -70,8 +70,8 @@ interface OrderDetail {
     date: string;
     payment: string;
     payment_status: string;
-    /** حالُ السداد من تحصيلاته — الشارةُ منه لا من `payment_status` */
-    pay_state: PayState;
+    /** حالُ السداد من تحصيلاته — الشارةُ منه لا من `payment_status`، وإن غاب فالحقلُ كما كان */
+    pay_state?: PayState | null;
     notes: string | null;
     /* تفاصيل التنفيذ — كلّها قد تكون فارغة في طلبٍ قديم */
     recipient_name: string | null;
@@ -987,9 +987,13 @@ export default function OrderShow() {
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-[#6b7280]">{t('حالة الدفع')}</span>
-                                <PayStateBadges pay={order.pay_state} />
+                                {order.pay_state ? (
+                                    <PayStateBadges pay={order.pay_state} />
+                                ) : (
+                                    <Badge variant="success">{t(order.payment_status)}</Badge>
+                                )}
                             </div>
-                            <PayStateFacts pay={order.pay_state} m={m} />
+                            {order.pay_state && <PayStateFacts pay={order.pay_state} m={m} />}
                             {/*
                                 وما بقي على العميل بعد صنفٍ أُضيف إلى فاتورةٍ مدفوعة — ذمّةٌ لا
                                 تُكتب مدفوعةً من نفسها، وتُحصَّل بقيدٍ بيومها.

@@ -356,4 +356,34 @@ class ABoutiqueAccountSeesOnlyItsOwnShelfTest extends TestCase
         }
         $this->assertSame(1, DB::table('users')->whereNotNull('boutique_id')->count());
     }
+
+    /**
+     * باقةٌ بناها التاجرُ على رفّ البوتيك من أصناف المتجر — لا تحمل لصاحب البوتيك تكلفتَها.
+     *
+     * شاشةُ التعديل تُرسل التركيبَ بتكلفة كلّ مكوّنٍ وتكلفةِ السطر وهامشِ الباقة،
+     * وتلك تكلفةُ أصناف المتجر وربحُه. والمكوّناتُ نفسها تبقى بأسمائها وكمّيّاتها.
+     */
+    public function test_a_bundle_the_merchant_built_on_its_shelf_brings_it_no_shop_cost(): void
+    {
+        $rose = Product::create(['business_id' => $this->shop->id, 'name' => 'ورد المتجر للباقة', 'price' => 9, 'cost' => 4.321, 'quantity' => 50, 'alert_qty' => 0, 'active' => true, 'published' => true]);
+        $ring = $this->p['lama'];
+        \App\Models\ProductVariant::create(['product_id' => $ring->id, 'business_id' => $this->shop->id, 'name' => 'كبير', 'price' => 15, 'active' => true, 'sort_order' => 0]);
+        \App\Models\RecipeItem::create(['business_id' => $this->shop->id, 'product_id' => $ring->id, 'component_product_id' => $rose->id, 'quantity' => 2, 'wastage_percent' => 0, 'sort_order' => 0]);
+
+        $shopCost = ['4.321' => 'تكلفة المكوّن', '8.642' => 'تكلفة السطر والباقة', '3.358' => 'هامش الباقة', '6.358' => 'هامش المقاس'];
+        $props = fn (User $who) => json_encode($this->actingAs($who)->get(route('admin.products.edit', $ring->id))->assertOk()->viewData('page')['props'], JSON_UNESCAPED_UNICODE);
+
+        // والمالكُ يراها — وإلّا فالاختبارُ لا يرى شيئًا
+        $owners = $props($this->owner);
+        foreach ($shopCost as $amount => $what) {
+            $this->assertStringContainsString($amount, $owners, "المالكُ لم يجد {$what}");
+        }
+
+        $lama = $this->user($this->shop, 'sales', ['products'], $this->lama);
+        $hers = $props($lama);
+        foreach ($shopCost as $amount => $what) {
+            $this->assertStringNotContainsString($amount, $hers, "{$what} وصلت حسابَ البوتيك");
+        }
+        $this->assertStringContainsString('ورد المتجر للباقة', $hers, 'غابت مكوّناتُ الباقة عن صاحبها — يُحجب المالُ لا التركيب');
+    }
 }

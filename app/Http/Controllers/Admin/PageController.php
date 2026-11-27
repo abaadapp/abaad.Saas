@@ -84,6 +84,10 @@ class PageController extends Controller
      * وكميّتها — يبني منها التاجرُ باقاتِه. وصاحبُ البوتيك لا يبني باقةً من
      * أصناف غيره (`ProductController::store`)، فلا تُرسل إليه. انظر `BoutiqueAccount`.
      *
+     * وباقةٌ بناها التاجرُ على رفّه من أصناف المتجر تبقى بمكوّناتها وكمّيّاتها، بلا
+     * تكلفةِ مكوّنٍ ولا تكلفةِ سطرٍ ولا تكلفةِ الباقة وهامشِها: تلك تكلفةُ المتجر وربحُه.
+     * والشاشةُ لا ترسم شيئًا منها — كانت تصل في بيانات الصفحة وحدها.
+     *
      * @param  array<string, mixed>  $composition
      * @return array<string, mixed>
      */
@@ -91,6 +95,17 @@ class PageController extends Controller
     {
         if (! BoutiqueAccount::bound(auth()->user())) {
             return $composition;
+        }
+
+        $costless = fn (array $recipe): array => array_diff_key([
+            'items' => array_map(fn (array $item) => array_diff_key($item, ['unit_cost' => 1, 'line_cost' => 1]), $recipe['items'] ?? []),
+        ] + $recipe, ['cost' => 1, 'margin' => 1, 'margin_pct' => 1]);
+
+        if (is_array($composition['recipe'] ?? null)) {
+            $composition['recipe'] = $costless($composition['recipe']);
+        }
+        if (is_array($composition['variants'] ?? null)) {
+            $composition['variants'] = array_map(fn (array $v) => is_array($v['recipe'] ?? null) ? ['recipe' => $costless($v['recipe'])] + $v : $v, $composition['variants']);
         }
 
         return array_merge($composition, array_fill_keys(

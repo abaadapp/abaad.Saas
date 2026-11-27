@@ -1,0 +1,145 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\CustomerCreditNote;
+use App\Models\CustomerInvoice;
+use App\Models\CustomerPaymentLink;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * ما يمنع إلغاءَ فاتورة العميل أو إشعارَها الدائنَ اليدويّ — يُسأل قبل أن يُكتب شيء.
+ *
+ * ═══ ما يُمنع، وما يبقى ═══
+ *
+ * الإلغاءُ يعكس قيدَ الفاتورة كلَّه اليومَ ولا يصدر له مستندٌ يشير إليها.
+ * فلا يكون لفاتورةٍ في فترةٍ ضريبيّةٍ قُدّم إقرارُها: تنقص ضريبتُها من الفترة
+ * الجارية بلا ورقة (م٤٨(٢) وم١٥٥ من اللائحة تشترطان مستندًا يشير إلى الفاتورة).
+ * وما أُلغي أو أُرجع بعد الإقرار يُكتب إشعارًا دائنًا — فذاك يبقى مفتوحًا:
+ * الإرجاعُ والخصمُ حدثان لاحقان يُعدَّلان يومَهما. وهل يكفي الإشعارُ أم يلزم
+ * إقرارٌ معدّل، قرارُ المحاسب الضريبيّ لا هذا الملفّ.
+ *
+ * ولا يُلغى ولا يُنقص ما يطلبه رابطُ دفعٍ ينتظر: يدفع العميلُ فاتورةً ملغاة
+ * أو أكثرَ ممّا عليه، فيصير مالُه رصيدًا لم يقصده. يُلغى الرابطُ أوّلًا.
+ *
+ * وضريبةُ الإشعار يكتبها التاجر — وقد يكون ما رُدّ بندًا معفًى — لكنّها لا
+ * تفوق ما يحمله مبلغُه بأعلى نسبةٍ في الفاتورة، ولا تتجاوز الإشعاراتُ معًا
+ * ضريبةَ الفاتورة: ما زاد ضريبةٌ تُنقص من الإقرار ولم تُحصَّل قطّ.
+ * ولا تتجاوز الإشعاراتُ معًا إجماليَّ الفاتورة ولو سُدّدت كلُّها: ما زاد رصيدٌ
+ * للعميل لم يدفعه (`CustomerInvoice::amountLeft`).
+ *
+ * والإشعارُ اليدويّ يحمل سببَه (`CustomerCreditNote::BASES`): تصحيحُ خطأ، أو
+ * إرجاعٌ وإلغاءُ توريد، أو خصمٌ بعد البيع. وتصحيحُ الخطأ في فترةٍ قُدّم
+ * إقرارُها ينتظر المحاسب كما ينتظره تصحيحُ الفاتورة — ولا تتجاوزه الصلاحية.
+ * والإرجاعُ والخصمُ يبقيان: السببُ المختار لا يُثبت المشروعيّة وحده، ويبقى
+ * معه النصُّ المكتوب والمرفقاتُ وصلاحيةُ الإصدار وسجلُّ النشاط.
+ *
+ * والدفاترُ المقفلة يمنعها الدفترُ نفسُه (`BooksPeriod::assertOpen`).
+ */
+final class ManualInvoiceAdjustments
+{
+    /** فرقُ التقريب المقبول في مبلغٍ بثلاث خانات */
+    private const ROUNDING = 0.001;
+
+    /** ما يمنع إلغاءَ الفاتورة الآن، بسببه — أو لا شيء */
+    public static function cancelRefusal(CustomerInvoice $invoice): ?string
+    {
+        if ($invoice->status !== CustomerInvoice::ISSUED) {
+            return null;
+        }
+
+        if (self::asked($invoice) > 0) {
+            return __('على الفاتورة رابط دفع لم يُدفع بعد أو محاولة لم تُعرف نتيجتها — ألغِ الرابط أولًا من «المالية ← روابط الدفع»، فلا يدفع العميل فاتورة ملغاة.');
+        }
+
+        // فاتورةُ الطلبات لا قيدَ لها يُعكس — قيدُها قيدُ طلباتها
+        $bid = (int) $invoice->business_id;
+        $taxed = Vat::enabled($bid) || (float) $invoice->tax_total > 0;
+
+        if (! $invoice->coversOrders() && $taxed && Vat::isFiled($bid, $invoice->issued_at)) {
+            return __('الفاتورة في فترة ضريبية قُدّم إقرارها حتى :d — إلغاؤها يعكس ضريبتها في الفترة الجارية بلا مستند يشير إليها. إن أُلغي التوريد أو أُرجع بعد الإقرار فأصدر إشعارًا دائنًا بالمبلغ، وإن كان خطأً في الفاتورة فالقرار للمحاسب الضريبي.', [
+                'd' => Vat::filedThrough($bid)?->toDateString(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * يُسأل عن كلّ إشعارٍ دائنٍ يدويّ قبل أن يُكتب — من `CustomerInvoices::creditNote` نفسِها.
+     *
+     * فلا تتجاوزه شاشةٌ ولا طلبٌ مباشر ولا استدعاءٌ آخر. والسببُ يُقال عند حقله.
+     *
+     * @throws ValidationException
+     */
+    public static function assertCreditNote(CustomerInvoice $invoice, float $amount, float $tax, ?string $basis): void
+    {
+        $refuse = fn (string $field, string $why) => throw ValidationException::withMessages([$field => $why]);
+
+        if (! in_array($basis, CustomerCreditNote::BASES, true)) {
+            $refuse('basis', __('اختر سبب الإشعار: تصحيح خطأ، أو إرجاع أو إلغاء توريد، أو خصم بعد البيع.'));
+        }
+
+        $bid = (int) $invoice->business_id;
+        $taxed = Vat::enabled($bid) || (float) $invoice->tax_total > 0;
+        if ($basis === CustomerCreditNote::ERROR && $taxed && Vat::isFiled($bid, $invoice->issued_at)) {
+            $refuse('basis', __('الفاتورة في فترة ضريبية قُدّم إقرارها حتى :d — تصحيح خطأ فيها قد يحتاج إقرارًا معدّلًا، والقرار للمحاسب الضريبي قبل إصدار المستند. والإرجاع أو الخصم بعد الإقرار يُصدر بسببه.', [
+                'd' => Vat::filedThrough($bid)?->toDateString(),
+            ]));
+        }
+
+        // والإشعاراتُ معًا لا تتجاوز إجماليَّ الفاتورة — مسدَّدةً كانت أو لا: ما زاد رصيدٌ للعميل لم يدفعه
+        $room = $invoice->amountLeft();
+        if ($amount > $room + self::ROUNDING / 2) {
+            $refuse('amount', match (true) {
+                $invoice->status !== CustomerInvoice::ISSUED => __('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'),
+                $room <= 0 => __('رُدّت الفاتورة كلها بإشعارات سابقة — لا يصدر عليها إشعار آخر.'),
+                default => __('لا تتجاوز الإشعارات قيمة الفاتورة — الباقي منها :n.', ['n' => number_format($room, 3)]),
+            });
+        }
+
+        $asked = self::asked($invoice);
+        if ($asked > 0 && $asked > round($invoice->outstanding() - $amount, 3) + self::ROUNDING) {
+            $refuse('amount', __('على الفاتورة رابط دفع بـ :n لم يُدفع بعد أو محاولة لم تُعرف نتيجتها — والإشعار يُنزل ما عليها تحته. ألغِ الرابط أولًا، فلا يُطلب من العميل أكثر مما عليه.', [
+                'n' => number_format($asked, 3),
+            ]));
+        }
+
+        $left = $invoice->taxLeft();
+        if ($tax > $left + self::ROUNDING) {
+            $refuse('tax_amount', $left <= 0
+                ? __('لم يبقَ على الفاتورة ضريبة — لا يحمل إشعارها ضريبة.')
+                : __('لا تتجاوز ضريبة الإشعارات ضريبة الفاتورة — الباقي منها :n.', ['n' => number_format($left, 3)]));
+        }
+
+        $rate = $invoice->items()->max('tax_rate');
+        if ($rate !== null) {
+            $most = round($amount * (float) $rate / (100 + (float) $rate), 3);
+            if ($tax > $most + self::ROUNDING) {
+                $refuse('tax_amount', __('ضريبة الإشعار أكبر مما يحمله مبلغه بأعلى نسبة في الفاتورة (:r٪) — أقصاها :n.', [
+                    'r' => rtrim(rtrim(number_format((float) $rate, 2, '.', ''), '0'), '.'),
+                    'n' => number_format($most, 3),
+                ]));
+            }
+        }
+    }
+
+    /**
+     * ما تطلبه روابطُ الدفع من الفاتورة الآن — المعلَّقةُ التي لم تنقضِ، والمحاولةُ التي لا تُعرف نتيجتُها.
+     *
+     * ورابطُ التجربة لا يُحصِّل مالًا (`PaymentLinks::settle`) — فلا يُعدّ.
+     */
+    private static function asked(CustomerInvoice $invoice): float
+    {
+        $pending = (float) CustomerPaymentLink::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)
+            ->where('status', CustomerPaymentLink::PENDING)
+            ->where('is_live', true)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->sum('amount');
+
+        $doubt = PaymentLinks::doubt($invoice);
+
+        return round($pending + ($doubt && $doubt->is_live ? (float) $doubt->amount : 0.0), 3);
+    }
+}

@@ -29,6 +29,9 @@ use RuntimeException;
  * طلبَها (`order_id`) فتُعدّ فيما رُدّ ولا تمنع. ولا يتجاوز الإلغاءُ ما بقي من
  * الفاتورة مبلغًا وضريبة.
  *
+ * والإشعارُ اليدويّ يسمّي طلبَه عند إصداره أو بعده (`CreditNoteOrders`): فلا
+ * يمنع إلغاءَ غيره، ويمنع إلغاءَ طلبه هو — ما رُدّ منه رُدّ بالإشعار.
+ *
  * وما عاد من البضاعة بعد الرفض لا يعود إلى الرفّ تلقائيًّا: بابُه تعديلُ
  * المخزون — بسببٍ وصلاحيةٍ وسجلّ، وقيدُه مخزونٌ لا إيرادٌ ولا ضريبة.
  *
@@ -56,17 +59,32 @@ final class BilledOrderCancel
             return null;
         }
 
-        // ما لا يقول طلبَه — يدويٌّ، أو قديمٌ بلا مصدر — لا يُنسب إلى طلبٍ آخر
-        $unknown = $invoice->creditNotes()
-            ->where(fn ($q) => $q->where('source', '<>', CustomerInvoices::NOTE_ORDER_CANCELLED)
-                ->orWhereNull('source')->orWhereNull('order_id'))
-            ->orderBy('id')->pluck('number');
+        // ما لا يقول طلبَه — يدويٌّ لم يُسمَّ، أو قديمٌ بلا مصدر — لا يُنسب إلى طلبٍ آخر
+        $notes = $invoice->creditNotes()->with('orderLink')->orderBy('id')->get();
+        $unknown = $notes
+            ->filter(fn ($n) => ! ($n->source === CustomerInvoices::NOTE_ORDER_CANCELLED && $n->order_id !== null) && ! $n->orderLink)
+            ->pluck('number');
 
         if ($unknown->isNotEmpty()) {
             return __('الطلب :order في الفاتورة :invoice، وعليها إشعار دائن (:notes) لا يُعرف أي طلب يخص — وإلغاء الطلب يعكس إيراده وضريبته مرة أخرى. راجع التسوية مع المحاسب قبل الإلغاء، وإن عادت البضاعة فسجّلها بتعديل مخزون.', [
                 'order' => $order->number,
                 'invoice' => $invoice->number,
                 'notes' => $unknown->implode('، '),
+            ]);
+        }
+
+        /*
+         * وإشعارٌ سُمّي عن هذا الطلب (`CreditNoteOrders`): ما رُدّ منه رُدّ به،
+         * وإلغاؤه يعكس إيرادَه وضريبتَه كاملين فوق ما ردّه الإشعار. وما بقي منه
+         * يُرَدّ بإشعار إرجاعٍ آخرَ يسمّيه — جزءًا بعد جزءٍ حتى كلِّه.
+         */
+        $mine = $notes->filter(fn ($n) => (int) $n->orderLink?->order_id === (int) $order->id)->pluck('number');
+
+        if ($mine->isNotEmpty()) {
+            return __('الطلب :order في الفاتورة :invoice رُدّ منه بإشعار دائن سُمّي عنه (:notes) — إلغاؤه يعكس إيراده وضريبته مرة أخرى. ما بقي منه يُرَدّ بإشعار إرجاع آخر يسمّيه، وإن عادت البضاعة فسجّلها بتعديل مخزون.', [
+                'order' => $order->number,
+                'invoice' => $invoice->number,
+                'notes' => $mine->implode('، '),
             ]);
         }
 

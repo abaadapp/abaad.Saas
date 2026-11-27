@@ -9,6 +9,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerCreditNoteOrder;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerPayment;
@@ -17,6 +18,8 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\CreditNoteOrderRefused;
+use App\Support\CreditNoteOrders;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -378,13 +381,26 @@ class CustomerInvoiceController extends Controller
                         ? route('admin.customerInvoices.attachment', [$invoice->id, $a->id])
                         : null,
                 ])->all(),
-                'credit_notes' => $invoice->creditNotes->map(fn ($n) => [
+                'credit_notes' => $invoice->creditNotes->load('orderLink.order')->map(fn ($n) => [
                     'id' => $n->id,
                     'number' => $n->number,
                     'amount' => (float) $n->amount,
                     'reason' => $n->reason,
                     'at' => optional($n->issued_at)->format('Y-m-d'),
+                    /* يدويٌّ يُسمّى طلبُه إن لم يُسمَّ — وإشعارُ إلغاء الطلب طلبُه معروف */
+                    'manual' => $n->source === CustomerInvoices::NOTE_MANUAL,
+                    'order' => $n->orderLink ? [
+                        'number' => $n->orderLink->order?->number,
+                        'by' => $n->orderLink->linked_by_name,
+                        'at' => optional($n->orderLink->created_at)->format('Y-m-d'),
+                        'reason' => $n->orderLink->mode === CustomerCreditNoteOrder::LATER ? $n->orderLink->reason : null,
+                    ] : null,
                 ])->all(),
+                /*
+                 * والطلباتُ التي يُسمّى بها إشعارٌ — وما بقي من كلٍّ منها
+                 * (`CreditNoteOrders::choices`). فارغةٌ لورقةٍ لا تجمع طلبات.
+                 */
+                'link_orders' => CreditNoteOrders::choices($invoice),
             ],
             /*
              * والورقةُ إلى جانب تفاصيلها — كأختيها: الطلبُ وأمرُ الشراء.
@@ -1748,8 +1764,11 @@ class CustomerInvoiceController extends Controller
             'basis' => ['required', Rule::in(CustomerCreditNote::BASES)],
             // رمزُ النموذج: يُرسَل مرّتين فيصدر إشعارٌ واحد
             'token' => ['required', 'string', 'max:64'],
+            // والطلبُ الذي كان عنه إشعارُ الإرجاع — اختياريّ، وما يمنعه تسأله الخدمة (`CreditNoteOrders`)
+            'order_id' => ['nullable', 'integer', 'prohibited_unless:basis,'.CustomerCreditNote::RETURN],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
+            'order_id.prohibited_unless' => __('يُسمّى الطلبُ في إشعار الإرجاع وحده.'),
         ]);
 
         $invoice = $this->find($id);
@@ -1778,10 +1797,13 @@ class CustomerInvoiceController extends Controller
                 $data['reason'],
                 auth()->id(),
                 basis: $data['basis'],
+                forOrderId: isset($data['order_id']) ? (int) $data['order_id'] : null,
             );
             Cache::put($key, $note->number, now()->addDay());
         } catch (LockTimeoutException) {
             return back()->withErrors(['amount' => __('يُصدر هذا الإشعار الآن — انتظر لحظة ثم أعد فتح الفاتورة.')]);
+        } catch (CreditNoteOrderRefused $e) {
+            return back()->withErrors(['order_id' => $e->getMessage()]);
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);
         } finally {
@@ -1790,6 +1812,36 @@ class CustomerInvoiceController extends Controller
 
         return back()->with('toast', [
             'msg' => __('أُصدر إشعار الدائن :n', ['n' => $note->number]), 'type' => 'success',
+        ]);
+    }
+
+    /**
+     * يسمّي طلبَ إشعارٍ دائنٍ صدر بلا طلب — بعد التحقّق، ولماذا (`CreditNoteOrders::link`).
+     *
+     * لمن يملك إصدارَ الإشعار نفسَه: صاحبُ النشاط أو المحاسبُ المخوَّل. ولا
+     * يمسّ مبلغًا ولا قيدًا — يُكتب سطرًا في سجلّ التدقيق، ويُبقي إلغاءَ طلبات
+     * الفاتورة الأخرى ممكنًا.
+     */
+    public function creditNoteOrder(Request $request, int|string $note)
+    {
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_CREDIT_NOTE), 403);
+
+        $data = $request->validate([
+            'order_id' => ['required', 'integer'],
+            'reason' => ['required', 'string', 'max:200'],
+        ]);
+
+        $note = CustomerCreditNote::where('business_id', $this->bid())->whereKey($note)->firstOrFail();
+
+        try {
+            $link = CreditNoteOrders::link($note, (int) $data['order_id'], $data['reason'], auth()->id());
+        } catch (CreditNoteOrderRefused $e) {
+            return back()->withErrors(['order_id' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', [
+            'msg' => __('سُمّي الإشعار :note عن الطلب :order', ['note' => $note->number, 'order' => $link->order->number]),
+            'type' => 'success',
         ]);
     }
 

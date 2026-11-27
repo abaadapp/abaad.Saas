@@ -39,7 +39,9 @@ class SubscriptionWhatsAppTemplates extends Command
         }
 
         foreach (SubscriptionWhatsApp::TEMPLATES as $stage => $template) {
-            $this->line("  {$stage} · {$template['name']}: ".($there[$template['name']] ?? 'غير موجود'));
+            foreach (array_keys($template['bodies']) as $language) {
+                $this->line("  {$stage} · {$template['name']} ({$language}): ".($there[SubscriptionWhatsApp::key($template['name'], $language)] ?? 'غير موجود'));
+            }
         }
 
         if (! $this->option('create')) {

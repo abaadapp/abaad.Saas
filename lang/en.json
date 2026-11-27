@@ -11772,5 +11772,6 @@
     "الفاتورة :n مدفوعة بالكامل — لا يُحصَّل عليها شيء.": "Invoice :n is fully paid — nothing more can be collected on it.",
     "المتبقي على الفاتورة :n هو :left — لا يُحصَّل عليها أكثر منه.": "The remaining balance on invoice :n is :left — no more than that can be collected on it.",
     "حدّث الصفحة ثم أعد تسجيل التحصيل.": "Refresh the page, then record the collection again.",
-    "هذا التحصيل سُجّل من قبل (:n) — ولم يُكتب ثانيةً.": "This collection was already recorded (:n) — it was not written again."
+    "هذا التحصيل سُجّل من قبل (:n) — ولم يُكتب ثانيةً.": "This collection was already recorded (:n) — it was not written again.",
+    "تعذّر تسجيل التحصيل الآن — أعد المحاولة.": "The collection could not be recorded right now — try again."
 }

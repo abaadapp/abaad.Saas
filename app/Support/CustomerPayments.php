@@ -10,7 +10,6 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\JournalEntry;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -177,16 +176,22 @@ final class CustomerPayments
             return $written;
         }
 
-        try {
-            return self::write($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact);
-        } catch (UniqueConstraintViolationException $e) {
-            // سبقه إرسالٌ بالمفتاح نفسِه إلى الفهرس الفريد — فهو هو، لا تحصيلٌ ثانٍ
-            if ($requestKey !== null && ($written = self::written($businessId, $requestKey))) {
-                return $written;
-            }
+        /*
+         * والكتابةُ في نقطة حفظها (`Contention`): اصطدامٌ بالفهرس الفريد يُميت
+         * الكتابةَ وحدَها، ولا يُجهض معاملةً تحيط بها على PostgreSQL.
+         */
+        $payment = Contention::attempt(fn () => self::write($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact));
 
-            throw $e;
+        if ($payment !== null) {
+            return $payment;
         }
+
+        // سبقه إرسالٌ بالمفتاح نفسِه إلى الفهرس الفريد — فهو هو، لا تحصيلٌ ثانٍ
+        if ($requestKey !== null && ($written = self::written($businessId, $requestKey))) {
+            return $written;
+        }
+
+        throw new RuntimeException(__('تعذّر تسجيل التحصيل الآن — أعد المحاولة.'));
     }
 
     /** تحصيلٌ كُتب بهذا المفتاح في هذا المتجر — موسومًا بأنّه أُعيد */

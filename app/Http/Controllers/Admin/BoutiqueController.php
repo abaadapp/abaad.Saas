@@ -12,6 +12,7 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\User;
 use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueDues;
 use App\Support\BoutiqueReturns;
@@ -344,6 +345,15 @@ class BoutiqueController extends Controller
 
         if (BoutiqueReturn::where('boutique_id', $boutique->id)->whereIn('status', BoutiqueReturn::OPEN)->exists()) {
             return back()->withErrors(['boutique' => __('له مرتجعاتٌ لم تُحسم أو لم تُستردّ — أتمّها قبل حذفه.')]);
+        }
+
+        /*
+         * وحسابٌ مربوطٌ به يُفكّ من شاشة الموظف بيد التاجر أوّلًا — لا يبقى
+         * مربوطًا إلى بوتيكٍ غاب فيُغلق عليه كلُّ شيءٍ دون أن يعرف التاجرُ لماذا.
+         * انظر `BoutiqueAccount`.
+         */
+        if (User::where('business_id', $boutique->business_id)->where('boutique_id', $boutique->id)->exists()) {
+            return back()->withErrors(['boutique' => __('حسابُ صاحبه مربوطٌ به — افكك الربطَ أو عطّل الحساب من شاشة الموظف قبل حذفه.')]);
         }
 
         $boutique->delete();

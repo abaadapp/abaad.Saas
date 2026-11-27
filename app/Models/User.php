@@ -61,6 +61,12 @@ class User extends Authenticatable
         return $this->belongsTo(Business::class);
     }
 
+    /** بوتيكُ هذا الحساب إن كان حسابَ صاحب بوتيك — انظر `BoutiqueAccount` */
+    public function boutique(): BelongsTo
+    {
+        return $this->belongsTo(Boutique::class);
+    }
+
     /**
      * العنوان الذي يصل إليه بريدٌ فعلًا — لا الذي يُكتب في خانة الدخول.
      *
@@ -221,6 +227,18 @@ class User extends Authenticatable
     {
         if ($this->isSuperAdmin()) {
             return true;
+        }
+
+        /*
+         * وحسابُ صاحب البوتيك لا يحمل إلا «المنتجات» — مهما كُتب في صلاحيّاته.
+         *
+         * الربطُ يُضيّق ولا يُوسّع: «المنتجات» نفسُها تُفتح بما منحه التاجر،
+         * وكلُّ قسمٍ سواها مغلق — لوحةُ التحكم والطلباتُ والتقاريرُ والماليّة.
+         * فالسؤالُ واحدٌ في كلّ موضع: الحارسُ والقائمةُ والجرسُ ووجهةُ الدخول.
+         * انظر `BoutiqueAccount`.
+         */
+        if ($this->boutique_id !== null && $section !== 'products') {
+            return false;
         }
 
         $manual = $this->permissions;

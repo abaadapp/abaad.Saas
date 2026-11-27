@@ -6,6 +6,7 @@ use App\Http\Middleware\CheckPlanFeature;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EntersPanel;
+use App\Http\Middleware\KeepsABoutiqueAccountOnItsShelf;
 use App\Http\Middleware\GuardsTenantExport;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NormalizeNumbers;
@@ -51,6 +52,11 @@ return Application::configure(basePath: dirname(__DIR__))
             SecurityHeaders::class,
             SetLocale::class,
             NormalizeNumbers::class,
+            /*
+             * وحسابُ صاحب البوتيك لا يبلغ إلا أبوابَ أصناف بوتيكه — قبل أن
+             * يُبنى للصفحة شيء. انظر `BoutiqueAccount`.
+             */
+            KeepsABoutiqueAccountOnItsShelf::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

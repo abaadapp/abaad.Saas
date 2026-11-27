@@ -163,6 +163,13 @@ export interface SharedProps {
          * نفسه الذي يحرس المسار — انظر `User::isEmployee`.
          */
         isEmployee: boolean;
+        /**
+         * حسابُ صاحب بوتيك: بوتيكُه الذي رُبط به — `null` لغيره.
+         *
+         * لتقول الشاشةُ لمن هو ولتُخفي ما لا يُفتح له. والحارسُ في الخادم
+         * (`KeepsABoutiqueAccountOnItsShelf`) لا هنا.
+         */
+        boutiqueAccount?: { id: number; name: string | null } | null;
         /** جلسة انتحالٍ من لوحة المنصة — تُعلَن في كل صفحة */
         impersonating: boolean;
         /** لماذا جلسةُ الدعم هنا للعرض وحده (متجرٌ معطَّل، اشتراكٌ منتهٍ…) — null إن كانت تكتب (`Tenancy::supportViewOnly`) */

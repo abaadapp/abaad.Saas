@@ -31,11 +31,12 @@ const REVIEW: PlatformBilling = {
 
 const LOCK: BillingLockState = {
     launched: false, passed: null, trial: null, kinds: [{ key: 'billing_charge', label: 'رسم ظهر' }],
-    defaults: { messages: 15, hours: 72, max_messages: 50, max_hours: 168 },
+    defaults: { messages: 15, hours: 72, max_messages: 50, max_hours: 168, max_phones: 5 },
 };
 
 const TRIAL: NonNullable<BillingLockState['trial']> = {
     id: 4, business_id: 7, business: 'متجر التجربة', waba_id: '1001', open: true, used: 2, limit: 15, until: '2026-11-28 10:00', opened_by: 'المدير', may_pass: true,
+    phones: ['96891234567', '96895555555'],
     messages: [
         { id: 11, tail: 'AAAA1111', at: '2026-11-25 10:00', kind: 'إشعار من النظام', category: 'إشعار', status: 'delivered', delivered: true, charged: true, why_free: null },
         { id: 12, tail: 'BBBB2222', at: '2026-11-25 10:01', kind: 'محادثة', category: 'ردّ خدمة', status: 'delivered', delivered: true, charged: false, why_free: 'ضمن الردود المجانية الشهرية' },
@@ -226,7 +227,23 @@ describe('قفلُ النقل والتجربة', () => {
         rerender(<WhatsAppBillingLock state={LOCK} pilot={[{ id: 7, name: 'متجر التجربة' }]} />);
         expect(screen.getByTestId('wa-trial-start')).toBeDisabled();
         await user.click(screen.getByTestId('wa-trial-accept'));
+        // ‏‏ولا تُفتح بلا رقم اختبار — رسائلُها لا تخرج إلّا إليه
+        expect(screen.getByTestId('wa-trial-start')).toBeDisabled();
+        await user.type(screen.getByTestId('wa-trial-phones'), '   ');
+        expect(screen.getByTestId('wa-trial-start')).toBeDisabled();
+        await user.clear(screen.getByTestId('wa-trial-phones'));
+        await user.type(screen.getByTestId('wa-trial-phones'), '91234567');
         expect(screen.getByTestId('wa-trial-start')).toBeEnabled();
+        expect(screen.getByTestId('wa-trial-phones')).toHaveValue('91234567');
+    });
+
+    it('والتجربةُ المفتوحة تقول إلى أيّ أرقامٍ وحدها تخرج رسائلُها', () => {
+        const { rerender } = render(<WhatsAppBillingLock state={{ ...LOCK, trial: TRIAL }} pilot={[]} />);
+        const list = screen.getByTestId('wa-trial-phones-list');
+        expect(list).toHaveTextContent('+96891234567');
+        expect(list).toHaveTextContent('+96895555555');
+        rerender(<WhatsAppBillingLock state={{ ...LOCK, trial: { ...TRIAL, phones: [] } }} pilot={[]} />);
+        expect(screen.getByTestId('wa-trial-phones-list')).toHaveTextContent('لا رقم، فلا تخرج رسالة');
     });
 
     it('ورسائلُ التجربة تُعرض كما صنّفتها Meta، ولا يُختار للدليل إلّا ما وصل واحتُسب', () => {

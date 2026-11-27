@@ -1082,11 +1082,18 @@ final class BoutiqueSales
     public static function customerInvoice(int $businessId, int $invoiceId, bool $full = true): ?array
     {
         $invoice = CustomerInvoice::where('business_id', $businessId)->with(['items', 'creditNotes'])->find($invoiceId);
-        $kept = $invoice === null ? collect() : BoutiqueInvoiceDues::lines($invoice)->keyBy('customer_invoice_item_id');
+        $all = $invoice === null ? collect() : BoutiqueInvoiceDues::lines($invoice);
 
-        if ($kept->isEmpty()) {
+        if ($all->isEmpty()) {
             return null;
         }
+
+        /*
+         * الصنفُ المنفرد صفٌّ واحدٌ لبنده، وقطعُ الباقة صفوفٌ كثيرةٌ لبندها نفسِه (`BoutiqueInvoicePieces`).
+         * فكان الفهرسُ برقم البند يُبقي آخرَ قطعةٍ ويُسقط ما قبلها — بوتيكٌ تغيب حصّتُه من النافذة كلِّها.
+         */
+        $kept = $all->where('kind', '!=', BoutiqueInvoiceLine::PIECE)->keyBy('customer_invoice_item_id');
+        $piecesOf = $all->where('kind', BoutiqueInvoiceLine::PIECE)->groupBy('customer_invoice_item_id');
 
         $void = $invoice->status === CustomerInvoice::CANCELLED;
         $left = fn (BoutiqueInvoiceLine $l, string $k) => self::baisa($l->{$k}) - self::baisa($l->{'returned_'.$k});
@@ -1101,6 +1108,8 @@ final class BoutiqueSales
             $discountB += self::baisa($item->discount);
             $paidLinesB += self::baisa($item->line_total);
             $l = $kept->get($item->id);
+            $pieces = $piecesOf->get($item->id, collect());
+            $duesB = $void ? 0 : (int) $pieces->sum(fn (BoutiqueInvoiceLine $p) => $left($p, 'net'));
 
             $lines[] = [
                 'id' => (int) $item->id,
@@ -1120,17 +1129,36 @@ final class BoutiqueSales
                     'settlement' => $l->settlement?->number,
                     'settle_state' => BoutiqueInvoiceDues::state($l),
                 ],
-                'pieces' => [],
-                'dues' => 0.0,
-                'shop_remaining' => null,
-                'shop_share' => self::money($void ? 0 : $itemGrossB - ($l === null ? 0 : self::baisa($l->net))),
+                // وقطعُ البوتيكات داخل باقته — كما تقولها نافذةُ الطلب، بما بقي بعد ما عاد منها
+                'pieces' => $pieces->map(fn (BoutiqueInvoiceLine $p) => [
+                    'boutique' => (string) $p->boutique_name,
+                    'product' => (string) $p->name,
+                    'type' => $p->source === BoutiqueComponentDue::RECIPE ? self::BUNDLE : self::ADDON,
+                    'addon' => null,
+                    'quantity' => round((float) $p->quantity - (float) $p->returned_quantity, 3),
+                    'unit_price' => round((float) $p->unit_price, 3),
+                    'amount' => self::money($void ? 0 : $left($p, 'net')),
+                    'credited' => 0.0,
+                    'kept_state' => null,
+                    'settlement' => $p->settlement?->number,
+                    'settle_state' => BoutiqueInvoiceDues::state($p),
+                ])->values()->all(),
+                'dues' => self::money($duesB),
+                'shop_remaining' => $pieces->isEmpty() ? null : self::money($itemGrossB - $duesB),
+                'shop_share' => self::money($void ? 0 : $itemGrossB - ($l === null ? 0 : self::baisa($l->net))
+                    - (int) $pieces->sum(fn (BoutiqueInvoiceLine $p) => self::baisa($p->net))),
             ];
         }
 
         $parties = [];
-        foreach ($kept as $l) {
+        foreach ($all as $l) {
             $id = (int) $l->boutique_id;
-            $parties[$id] ??= ['id' => $id, 'name' => (string) $l->boutique_name, 'gross' => 0, 'commission' => 0, 'net' => 0];
+            $parties[$id] ??= ['id' => $id, 'name' => (string) $l->boutique_name, 'gross' => 0, 'commission' => 0, 'net' => 0, 'components' => 0];
+            if ($l->kind === BoutiqueInvoiceLine::PIECE) {
+                $parties[$id]['components'] += $left($l, 'net');
+
+                continue;
+            }
             foreach (['gross', 'commission', 'net'] as $k) {
                 $parties[$id][$k] += $left($l, $k);
             }
@@ -1139,15 +1167,16 @@ final class BoutiqueSales
         $owedB = 0;
         $parties = array_values(array_map(function (array $p) use ($void, &$owedB) {
             $net = $void ? 0 : $p['net'];
-            $owedB += $net;
+            $components = $void ? 0 : $p['components'];
+            $owedB += $net + $components;
 
             return [
                 'id' => $p['id'], 'name' => $p['name'],
                 'standalone_gross' => self::money($void ? 0 : $p['gross']),
                 'commission' => self::money($void ? 0 : $p['commission']),
                 'standalone_net' => self::money($net),
-                'components_due' => 0.0,
-                'owed' => self::money($net),
+                'components_due' => self::money($components),
+                'owed' => self::money($net + $components),
             ];
         }, $parties));
         $sumOf = fn (string $k) => self::money((int) collect($parties)->sum(fn ($p) => self::baisa($p[$k])));
@@ -1169,13 +1198,13 @@ final class BoutiqueSales
         // ما رُدّ بإشعارٍ دائن بالأساس الذي كُتبت به البنود: شاملًا ضريبتَه أو قبلها
         $creditedB = (int) $invoice->creditNotes->sum(fn ($n) => self::baisa($n->amount) - ($basis === 'added' ? self::baisa($n->tax_amount) : 0));
         $linesB = $grossB - $creditedB;
-        $state = $void ? self::CANCELLED : ($kept->contains(fn ($l) => (float) $l->returned_quantity > 0) ? self::PARTIAL : self::ACTIVE);
+        $state = $void ? self::CANCELLED : ($all->contains(fn ($l) => (float) $l->returned_quantity > 0) ? self::PARTIAL : self::ACTIVE);
         $discount = self::money($discountB);
         $points = min($discount, round((float) $invoice->loyalty_discount, 3));
         $channel = __(self::INVOICE_DOORS[str_starts_with((string) $invoice->form_token, WhatsAppOrderCheckout::FORM_TOKEN) ? 'whatsapp' : 'manual']);
         $head = ['id' => (int) $invoice->id, 'number' => (string) $invoice->number, 'ordered_at' => optional($invoice->issued_by_at ?? $invoice->issued_at)->format('Y-m-d H:i'),
             'status' => (string) $invoice->status, 'channel' => $channel, 'invoice_state' => $state];
-        $totals = ['standalone_gross' => $sumOf('standalone_gross'), 'commission' => $sumOf('commission'), 'standalone_net' => $sumOf('standalone_net'), 'components_due' => 0.0, 'owed' => $sumOf('owed')];
+        $totals = ['standalone_gross' => $sumOf('standalone_gross'), 'commission' => $sumOf('commission'), 'standalone_net' => $sumOf('standalone_net'), 'components_due' => $sumOf('components_due'), 'owed' => $sumOf('owed')];
 
         if (! $full) {
             return [

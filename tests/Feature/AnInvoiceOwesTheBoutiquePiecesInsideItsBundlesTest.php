@@ -259,6 +259,28 @@ class AnInvoiceOwesTheBoutiquePiecesInsideItsBundlesTest extends TestCase
         $this->assertSame($pieces, round((float) BoutiqueInvoicePieces::cost($this->shop->id, null, null, null)->sum(DB::raw('journal_lines.debit - journal_lines.credit')), 3));
     }
 
+    /** نافذةُ الفاتورة في قسم المبيعات: لكلّ بوتيكٍ منفردُه وقطعُه، ونصيبُ المتجر ما بقي — لا قطعةٌ واحدةٌ من كلّ بند */
+    public function test_the_sales_dialog_names_every_piece_of_every_bundle_and_each_party_once(): void
+    {
+        // باقةٌ فيها قطعتان لبوتيكين، وباقةٌ فيها قطعتان لبوتيكين آخرين ×2، وصنفُ بوتيكٍ منفرد
+        $invoice = $this->invoice([[$this->bundles[2], 1], [$this->bundles[3], 2], [$this->pieces[1], 1]]);
+        $d = BoutiqueSales::customerInvoice($this->shop->id, $invoice->id);
+        $by = collect($d['shares']['boutiques'])->keyBy('name');
+
+        // لمى: 7 × 2 + 0.335 × 4 × 2 · سارة: 6.335 · ريم: 15 × 2 قطعًا + (15 − 10٪) منفردًا
+        $this->assertSame([16.68, 0.0, 16.68], [$by['لمى']['components_due'], $by['لمى']['standalone_net'], $by['لمى']['owed']]);
+        $this->assertSame(6.335, $by['سارة']['owed']);
+        $this->assertSame([30.0, 13.5, 43.5], [$by['ريم']['components_due'], $by['ريم']['standalone_net'], $by['ريم']['owed']]);
+        $this->assertSame([195.0, 128.485, 66.515], [$d['shares']['lines_total'], $d['shares']['shop'], $d['totals']['owed']]);
+        $this->assertSame(round((float) BoutiqueInvoiceLine::where('customer_invoice_id', $invoice->id)->sum('net'), 3), $d['totals']['owed']);
+        // وكلُّ قطعةٍ تحت بندها، وما يبقى للمتجر من كلّ بند
+        $this->assertSame([2, 2, 0], array_map(fn ($l) => count($l['pieces']), $d['lines']));
+        $this->assertSame([[20.335, 39.665], [32.68, 87.32]], [[$d['lines'][0]['dues'], $d['lines'][0]['shop_remaining']], [$d['lines'][1]['dues'], $d['lines'][1]['shop_remaining']]]);
+        $this->assertSame([39.665, 87.32, 1.5], array_column($d['lines'], 'shop_share'));
+        // ومن يقرأ مال البوتيك ولا يملك المبيعات: الأنصبةُ نفسُها، بلا منتجات المتجر
+        $this->assertSame(66.515, BoutiqueSales::customerInvoice($this->shop->id, $invoice->id, false)['totals']['owed']);
+    }
+
     public function test_the_website_owes_it_too(): void
     {
         foreach ([1, 2, 3] as $n) {

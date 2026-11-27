@@ -910,6 +910,8 @@ final class WhatsAppBillingLock
             self::NO_ACCOUNT => [__('لا معرّف حساب واتساب على هذا الربط — أعد الربط.'), 'merchant'],
             self::LINK_LOST => [__('سحبت Meta تفويض واتساب أو نقصت صلاحياته — الإرسال متوقف، أعد الربط.'), 'merchant'],
             self::TRIAL_SPENT => [__('انتهى عدد رسائل التجربة المسموح به.'), 'abaad'],
+            WhatsAppBillingTrials::NOT_A_TEST_NUMBER => [__('رقم ليس من أرقام الاختبار — رسائل متجر التجربة لا تخرج إلا إليها.'), 'abaad'],
+            WhatsAppBillingTrials::DEMO_SENDS_NOTHING => [__('المتجر التجريبي لا يرسل واتساب إلا أثناء تجربة مفتوحة على رقمه، ولأرقام اختبارها وحدها.'), 'abaad'],
             self::PAYMENT_REFUSED => [__('ردّت Meta رسالة بسبب وسيلة الدفع — أصلحها في حسابك عند Meta ثم اضغط «أعد المحاولة».'), 'merchant'],
             self::OWNER_CHANGED => [__('تبدّل مالك حساب واتساب عند Meta بعد التحقق — الإرسال متوقف حتى يُعاد التحقق.'), 'abaad'],
             self::PARTNER_ADDED => [__('أُضيف شريك إلى حساب واتساب عند Meta بعد التحقق — الإرسال متوقف حتى يُعاد التحقق.'), 'abaad'],

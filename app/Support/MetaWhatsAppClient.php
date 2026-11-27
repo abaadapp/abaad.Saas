@@ -32,7 +32,7 @@ class MetaWhatsAppClient
         array $variables = [],
         ?array $document = null,
     ): array {
-        $account = self::account($connection);
+        $account = self::account($connection, $to);
 
         if ($account['refusal'] !== null) {
             return $account['refusal'];
@@ -182,7 +182,7 @@ class MetaWhatsAppClient
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
-        $account = self::account($connection);
+        $account = self::account($connection, $to);
 
         if ($account['refusal'] !== null) {
             return $account['refusal'];
@@ -228,7 +228,7 @@ class MetaWhatsAppClient
      */
     public static function sendInteractive(WhatsAppConnection $connection, string $to, array $interactive): array
     {
-        $account = self::account($connection);
+        $account = self::account($connection, $to);
 
         if ($account['refusal'] !== null) {
             return $account['refusal'];
@@ -274,7 +274,7 @@ class MetaWhatsAppClient
         ?string $caption = null,
         ?string $filename = null,
     ): array {
-        $account = self::account($connection);
+        $account = self::account($connection, $to);
 
         if ($account['refusal'] !== null) {
             return $account['refusal'];
@@ -502,15 +502,19 @@ class MetaWhatsAppClient
      *
      * @return array{refusal: ?array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}, field: array<string, string>}
      */
-    private static function account(WhatsAppConnection $connection): array
+    private static function account(WhatsAppConnection $connection, string $to): array
     {
         $bind = WhatsAppOwnApp::sendAccount($connection);
-        // ‏‏ورسالةُ متجر التجربة تُعدّ قبل أن تخرج — ولا تزيد على حدّها (`WhatsAppBillingTrials::spend`)
-        $problem = $bind['problem'] ?? WhatsAppBillingTrials::spend($connection);
+        /*
+         * ‏‏ولا تصل رسالةُ تجربةٍ أو متجرٍ تجريبيّ إلّا رقمَ اختبار (`WhatsAppBillingTrials::recipient`) — ويُسأل
+         * قبل العدّ: فما رُفض لا يأكل من حدّ التجربة. ثمّ تُعدّ ولا تزيد على حدّها (`WhatsAppBillingTrials::spend`).
+         */
+        $problem = $bind['problem'] ?? WhatsAppBillingTrials::recipient($connection, $to) ?? WhatsAppBillingTrials::spend($connection);
+        $says = WhatsAppOwnApp::is($connection) && ! in_array($problem, WhatsAppBillingTrials::RECIPIENT_CODES, true);
 
         return [
             'refusal' => $problem === null ? null
-                : self::failure($problem, WhatsAppOwnApp::is($connection) ? WhatsAppOwnApp::say($problem) : WhatsAppBillingLock::says($problem)['text'], retryable: false),
+                : self::failure($problem, $says ? WhatsAppOwnApp::say($problem) : WhatsAppBillingLock::says($problem)['text'], retryable: false),
             'field' => $bind['account'] === null ? [] : ['messaging_account_id' => $bind['account']],
         ];
     }

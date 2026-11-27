@@ -87,6 +87,9 @@ class AppServiceProvider extends ServiceProvider
         // كلُّ هجرةٍ تنتظر قفلَها مهلةً قصيرةً لا بلا حدّ — انظر `MigrationLockTimeout`
         \App\Support\MigrationLockTimeout::register();
 
+        // والمهامُّ المجدولة تنتظر ما دام النشرُ يبدّل الكود — انظر `DeployHold`
+        \App\Support\DeployHold::register();
+
         // لغة افتراضية لـ Carbon قبل معالجة الطلب (الأوامر المجدولة مثلًا).
         // داخل الطلب يعيد SetLocale ضبطها على لغة المستخدم، وإلا بقيت التواريخ
         // النسبية («منذ 19 دقيقة») عربية حتى في الواجهة الإنجليزية.

@@ -94,7 +94,8 @@ class ADeployMigratesWithoutADumpTest extends TestCase
 
         $log = 'echo "$(basename "$0") $*" >> "$CALLS"';
         // بديلُ sudo يسجّل الحسابَ المقصود ثمّ ينفّذ — فيُعرف أنّ artisan جرى بحساب www-data وsystemctl بصلاحية root
-        $sudo = 'u=root; while [ $# -gt 0 ]; do case "$1" in -n) shift;; -u) u="$2"; shift 2;; *) break;; esac; done; '
+        // و-l يسأل ولا يُجري (كما sudo): يُجاب بالإباحة — sudoers هذا الفرع مثبّتة
+        $sudo = 'u=root; while [ $# -gt 0 ]; do case "$1" in -n) shift;; -l) exit 0;; -u) u="$2"; shift 2;; *) break;; esac; done; '
             .'echo "sudo[$u] $*" >> "$CALLS"; exec "$@"';
         // خرجُ `php artisan migrate` كما يطبعه Laravel
         $migrate = 'if [ "${FAIL_MIGRATE:-}" = 1 ]; then printf "\n INFO Running migrations.\n\n '.self::B.' .. 0.08ms FAIL\n\n   Illuminate\\\\Database\\\\QueryException\n\n  SQLSTATE[23505]: Key (email)=('.self::SECRET.')\n"; exit 1; fi; '
@@ -109,6 +110,11 @@ class ADeployMigratesWithoutADumpTest extends TestCase
             'systemctl' => $log,
             'curl' => $log.'; printf "%s" "${HEALTH_CODE:-200}"',
         ];
+        // flock من util-linux على الخادم وفي CI. وماك بلا util-linux: بديلٌ يقفل الوصفَ الموروث
+        // نفسَه بـflock(2) كما يفعل الأصل (السكربتُ يرفض النشرَ بلا قفل)
+        if (trim((string) shell_exec('command -v flock')) === '') {
+            $stubs['flock'] = '[ "$1" = "-n" ] && shift; exec perl -MFcntl=:flock -e \'open(my $l, ">&=", $ARGV[0]) or exit 2; flock($l, LOCK_EX | LOCK_NB) or exit 1\' "$1"';
+        }
         foreach ($stubs as $name => $body) {
             file_put_contents($this->root.'/bin/'.$name, "#!/usr/bin/env bash\n".$body."\n");
             chmod($this->root.'/bin/'.$name, 0700);
@@ -132,6 +138,9 @@ class ADeployMigratesWithoutADumpTest extends TestCase
             'PHP_BIN' => 'php',
             'SYSTEMCTL' => 'systemctl',
             'GIT_CONFIG_NOSYSTEM' => '1',
+            // انتظارُ العامل حقيقيٌّ هنا (لا بديلَ لـsleep) — فيُجعل صفرًا
+            'QUEUE_DRAIN_WAIT' => '0',
+            'QUEUE_RESTART_WAIT' => '0',
             // السكربتُ ينسخ نفسَه قبل السحب — ونسخةُ المختبر خارجَ المستودع أصلًا، فلا يمسّها السحب
             'DEPLOY_DETACHED' => '1',
         ]);

@@ -78,6 +78,20 @@ TARGET="${1:-}"
 
 cd "$APP_DIR"
 
+# نشرٌ أو رجوعٌ واحدٌ في كلّ مرّة — القفلُ نفسُه في deploy.sh، ويُمسك قبل أيّ قراءة.
+# والتجربةُ الجافّة لا تبدّل شيئًا فلا تقفل (ولا تحتاج STATE_DIR)
+if [[ "$DRY_RUN" != "1" ]]; then
+    mkdir -p "$STATE_DIR"
+    command -v flock > /dev/null || die "flock غير موجود (util-linux) — لا يُرجَع بلا قفلٍ يمنع نشرًا فوقه"
+    exec 9>> "$STATE_DIR/deploy.lock"
+    flock -n 9 || die "نشرٌ أو رجوعٌ آخر يجري الآن على $APP_DIR — لم يُلمس شيء. انتظره ثمّ أعِد.
+    $(cat "$STATE_DIR/deploy.lock.who" 2>/dev/null || true)"
+    git()      { command git "$@" 9>&-; }
+    composer() { command composer "$@" 9>&-; }
+    npm()      { command npm "$@" 9>&-; }
+    printf 'رجوعٌ بالكود إلى %s · pid %s · منذ %s\n' "$TARGET" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$STATE_DIR/deploy.lock.who"
+fi
+
 git cat-file -e "$TARGET^{commit}" 2>/dev/null || die "لا إيداعَ «$TARGET» في $APP_DIR — git fetch أوّلًا"
 FROM="$(git rev-parse --short HEAD)"
 TO="$(git rev-parse --short "$TARGET^{commit}")"
@@ -111,7 +125,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     printf '  ١. git reset --hard %s   (الكود: %s → %s)\n' "$TO" "$FROM" "$TO"
     printf '  ٢. composer install --no-dev --no-scripts ثمّ package:discover بحساب %s\n' "$APP_USER"
     printf '  ٣. بناء الواجهة في public/build.new ثمّ تبديلها بالحيّة\n'
-    printf '  ٠. queue:pause لطابورَي واتساب والافتراضيّ — لا يُسحب جديد، والجاريةُ تُكمل\n'
+    printf '  ٠. قفلُ النشر، وإيقافُ المهامّ المجدولة (.deploy-hold)، وqueue:pause لطابورَي واتساب والافتراضيّ إن أباحته sudoers — لا يُسحب جديد، والجاريةُ تُكمل\n'
     printf '  ٤. config:cache · route:cache · view:cache (بحساب %s) · إعادة تحميل php-fpm · queue:restart ثمّ queue:resume\n' "$APP_USER"
     printf '  ٥. فحص %s\n' "$HEALTH_URL"
     printf 'والقاعدةُ لا تُمسّ: لا استعادةَ نسخة، ولا هجرة، ولا رجوعَ هجرة.\n'
@@ -124,13 +138,22 @@ fi
 # وإن سقط الرجوعُ في منتصفه أُطلق الطابورُ كما كان، ولا يُعاد العامل.
 # ---------------------------------------------------------------------------
 QUEUE_RESTART_WAIT="${QUEUE_RESTART_WAIT:-10}"
-mkdir -p "$STATE_DIR"
+QUEUE_DRAIN_WAIT="${QUEUE_DRAIN_WAIT:-15}"
 QUEUE_LOG="$STATE_DIR/queue-rollback-$(date +%Y%m%d-%H%M%S).log"
 ( umask 077; : > "$QUEUE_LOG" )
 PAUSED_WHATSAPP=0
 PAUSED_DEFAULT=0
 RELEASED=0
 CURRENT_STEP="إيقاف الطابور"
+
+# أتبيح قاعدةُ sudo هذا الأمرَ؟ — كـdeploy.sh: يُسأل ولا يُجرى، فلا يُوقف طابورٌ لا يُطلق
+may() { sudo -n -u "$APP_USER" -l "$PHP_BIN" "$APP_DIR/artisan" "$@" > /dev/null 2>&1; }
+
+# والمهامُّ المجدولة تقف ما دام الكودُ يتبدّل — كـdeploy.sh (`App\Support\DeployHold`).
+# والرجوعُ لا يغيّر القاعدة (يرفض ما بينه وبين الهدف من هجرات)، فتُطلق المهامّ في آخره
+# نجح أو سقط: الكودُ على القرص — هذا أو ذاك — يجري على القاعدة كما هي
+HOLD_FILE="$APP_DIR/.deploy-hold"
+HELD=0
 
 release_queue() {
     (( RELEASED == 0 )) || return 0
@@ -159,21 +182,40 @@ on_exit() {
                 "$APP_USER" "$PHP_BIN" "$APP_DIR" "$QUEUE_LOG" >&2
         fi
     fi
+    if (( HELD == 1 )); then
+        if rm -f "$HOLD_FILE"; then
+            printf '  أُطلقت المهامّ المجدولة\n' >&2
+        else
+            printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف (أو نصفَ ساعة)\033[0m\n' "$HOLD_FILE" >&2
+        fi
+    fi
     # والنسخةُ التي يجري منها السكربت تحذف نفسَها — كما كان فخُّها يفعل
     [[ "$(basename "$ME")" != abaad-rollback.* ]] || rm -f "$ME"
 }
 trap on_exit EXIT
 
-step "إيقاف الطابور قبل تبديل الكود"
-art queue:pause whatsapp >> "$QUEUE_LOG" 2>&1 && PAUSED_WHATSAPP=1 || true
-art queue:pause default >> "$QUEUE_LOG" 2>&1 && PAUSED_DEFAULT=1 || true
-if (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )); then
-    ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يُعاد العامل"
+step "إيقاف المهامّ المجدولة والطابور قبل تبديل الكود"
+if printf 'رجوعٌ إلى %s · pid %s · %s\n' "$TO" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$HOLD_FILE" 2> /dev/null; then
+    HELD=1
+    ok "المهامّ المجدولة: يتخطّاها التطبيقُ حتى يُبنى الكودُ وذاكرتُه"
 else
-    release_queue || true
-    PAUSED_WHATSAPP=0
-    PAUSED_DEFAULT=0
-    printf '  \033[33m!\033[0m لم يُوقف الطابور (قاعدةُ الإيقاف في sudoers غيرُ مثبّتة؟ انظر %s) — يمضي الرجوعُ كما كان\n' "$QUEUE_LOG"
+    printf '  \033[33m!\033[0m تعذّرت كتابةُ %s — تجري المهامّ المجدولة أثناء الرجوع\n' "$HOLD_FILE"
+fi
+if may queue:pause whatsapp && may queue:pause default && may queue:resume whatsapp && may queue:resume default; then
+    art queue:pause whatsapp >> "$QUEUE_LOG" 2>&1 && PAUSED_WHATSAPP=1 || true
+    art queue:pause default >> "$QUEUE_LOG" 2>&1 && PAUSED_DEFAULT=1 || true
+    if (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )); then
+        ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يُعاد العامل"
+        sleep "$QUEUE_DRAIN_WAIT"
+        ok "أُمهلت المهمّةُ الجارية ${QUEUE_DRAIN_WAIT} ثانيةً تُكمل فيها"
+    else
+        release_queue || true
+        PAUSED_WHATSAPP=0
+        PAUSED_DEFAULT=0
+        printf '  \033[33m!\033[0m لم يُوقف الطابور (انظر %s) — يمضي الرجوعُ كما كان\n' "$QUEUE_LOG"
+    fi
+else
+    printf '  \033[33m!\033[0m قاعدةُ إيقاف الطابور غيرُ مثبّتة في sudoers (deploy/abaad-deploy.sudoers) — لم يُوقف الطابور، ويمضي الرجوعُ كما كان\n'
 fi
 
 # ---------------------------------------------------------------------------
@@ -205,6 +247,14 @@ art route:cache --quiet
 art view:cache --quiet
 reload_fpm
 ok "config · route · view · php-fpm"
+
+if (( HELD == 1 )); then
+    rm -f "$HOLD_FILE"
+    HELD=0
+    # والكودُ على القرص يجري على القاعدة كما هي: لا هجراتٍ معلّقةً يُنتظر لها
+    rm -f "$STATE_DIR/MIGRATIONS_PENDING"
+    ok "أُطلقت المهامّ المجدولة"
+fi
 
 # العاملُ يُعاد كلَّ ساعة لا عند الرجوع — فيُطلب منه أن يُعيد نفسَه بعد مهمّته الجارية،
 # ثمّ يُنتظر خروجُ القديم قبل أن يُطلق الطابور. وتعذّرُها يُقال لا يُخفى

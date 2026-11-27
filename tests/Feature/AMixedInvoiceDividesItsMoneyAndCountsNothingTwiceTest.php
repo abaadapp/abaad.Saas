@@ -308,7 +308,7 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
 
     /* ═══════════ ما لا يدخل هذه الأرقام ═══════════ */
 
-    /** فاتورةُ عميلٍ بلا طلب: تُقال بعددها ومبلغها كما كُتبت، ولا تدخل مبيعاتٍ ولا مستحقًّا */
+    /** فاتورةُ عميلٍ صدرت قبل أن تُحفظ لقطتُها: تُقال بعددها ومبلغها كما كُتبت، ولا تدخل مبيعاتٍ ولا مستحقًّا */
     public function test_what_customer_invoices_sold_is_said_and_never_counted(): void
     {
         $this->sell([[$this->silver]]);
@@ -323,6 +323,8 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         CustomerInvoices::issue($invoice([$this->silver], '2027-01-20'));            // شهرٌ آخر
         $invoice([$this->silver]);                                                    // مسودّة
         CustomerInvoices::cancel(CustomerInvoices::issue($invoice([$this->silver])), 'أُلغيت');
+        // وكلُّها صدرت قبل أن تُحفظ اللقطة — وما له لقطةٌ محسوبٌ في مكانه (`TheSalesSectionReadsTheInvoicesTest`)
+        DB::table('boutique_invoice_lines')->delete();
         // آجلٌ من الصندوق: له طلبٌ محسوب فلا يُقال مرّتين
         $this->sell([[$this->silver]], ['credit' => true, 'customer_id' => $company->id]);
 

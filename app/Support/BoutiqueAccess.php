@@ -74,8 +74,11 @@ final class BoutiqueAccess
      */
     public static function totals(string|Boutique $scope, array $totals, ?User $user): array
     {
-        return $scope === Boutiques::OWN || self::read($user) ? $totals : array_diff_key($totals, ['commission' => 1, 'net' => 1]);
+        return $scope === Boutiques::OWN || self::read($user) ? $totals : array_intersect_key($totals, array_flip(self::OPEN_TOTALS));
     }
+
+    /** ما يقرؤه من يملك «التقارير» من نطاق بوتيك — وما زيد بعده محجوبٌ حتّى يُذكر هنا */
+    public const OPEN_TOTALS = ['gross', 'quantity', 'orders', 'lines', 'invoices'];
 
     /** سجلُّ النشاط: ما يكتب مبلغَ ورقةٍ أو شرطَ اتّفاقية — بنوع موضوعه */
     public const ACTIVITY_SUBJECTS = ['boutique_settlement', 'boutique'];

@@ -237,8 +237,11 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         // «ورقة تجهيز داخلية» — بحصر اللوحة نفسِه (`PreparationController::sheet`)
         'admin.preparation.sheet' => ['number' => 'order_number'],
         'admin.boutiques.show' => ['id' => 'boutique'],
+        'admin.boutiques.movements' => ['id' => 'boutique'],
         // فاتورةٌ بما لبوتيكاتها فيها — بمتجر الجالس وحده (`BoutiqueSales::invoice`)
         'admin.boutiques.sales.order' => ['order' => 'order'],
+        // وفاتورةُ عميلٍ بلا طلب كذلك (`BoutiqueSales::customerInvoice`)
+        'admin.boutiques.sales.invoice' => ['invoice' => 'invoice'],
         'admin.seasons.show' => ['id' => 'season'],
         'admin.seasons.products' => ['id' => 'season'],
         'admin.products.show' => ['id' => 'product'],

@@ -180,6 +180,9 @@ final class CustomerPayments
             self::allocate($payment, $allocations, (bool) ($data['auto_allocate'] ?? true));
             self::post($payment, $userId);
 
+            // وفاتورةٌ أتمّها هذا التحصيلُ صار ما فيها لبوتيكٍ قابلًا للتسوية
+            BoutiqueInvoiceDues::syncPayment($payment);
+
             Activity::log('created', 'سجّل تحصيلًا '.$payment->number.' من '.$customer->name.' بمبلغ '.$amount, [
                 'subject_id' => $payment->id, 'subject_type' => 'customer_payment',
                 // والمتجرُ من الدفعة لا من الجلسة: إشعارُ Paymob لا جلسةَ له
@@ -346,6 +349,9 @@ final class CustomerPayments
 
             // ونقاطُ سداد فاتورةٍ برابطٍ تُعكس معه — بحركةٍ لا بمحو، وفي معاملته
             InvoiceLoyalty::reversePayment($payment, $userId);
+
+            // وما للبوتيك في فاتورته يعود «بانتظار التحصيل» ما لم تحمله ورقة
+            BoutiqueInvoiceDues::syncPayment($payment);
 
             Activity::log('deleted', 'ألغى تحصيل '.$payment->number.' — '.$reason, [
                 'subject_id' => $payment->id, 'subject_type' => 'customer_payment',

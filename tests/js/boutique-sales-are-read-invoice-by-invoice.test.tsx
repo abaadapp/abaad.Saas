@@ -337,7 +337,45 @@ describe('مبيعات البوتيك وفواتيره', () => {
         expect(box.textContent).not.toMatch(/NaN|undefined|null/);
     });
 
-    it('فواتيرُ العملاء التي لا تُحتسب تُقال في الملخّص — ولا تُقال حين لا شيء', async () => {
+    it('فواتيرُ العملاء بلا طلب: ما اكتمل تحصيلُه وما ينتظر وما أُلغي تحصيلُه بعد ورقته — كلٌّ باسمه', async () => {
+        const none = { lines: 0, invoices: 0, quantity: 0, gross: 0, commission: 0, net: 0 };
+        respond = (url) => (url.includes('summary')
+            ? { ...summary, invoices: { lines: 2, invoices: 1, quantity: 3, gross: 22, commission: 3.4, net: 18.6, awaiting: { ...none, lines: 1, invoices: 1, net: 9.6 }, reopened: { ...none, lines: 1, invoices: 1, net: 4.8 } } }
+            : page([]));
+        const first = mount();
+        const tiles = (await screen.findByTestId('boutique-invoice-tiles')).textContent ?? '';
+        for (const text of ['22.000', '3.400', '18.600', 'بانتظار التحصيل', '9.600']) expect(tiles).toContain(text);
+        expect(screen.getByTestId('boutique-reopened-note').textContent).toContain('4.800');
+        first.unmount();
+
+        // ولا شيء منها: لا تُرسم
+        respond = (url) => (url.includes('summary') ? { ...summary, invoices: { ...none, awaiting: none, reopened: none } } : page([]));
+        mount();
+        await screen.findByTestId('boutique-sales-summary');
+        expect(screen.queryByTestId('boutique-invoice-tiles')).toBeNull();
+        expect(screen.queryByTestId('boutique-reopened-note')).toBeNull();
+    });
+
+    it('صفُّ فاتورة العميل بقناته وحاله «بانتظار التحصيل»، وبابُ نافذته بابُ الفاتورة لا الطلب', async () => {
+        const asked: string[] = [];
+        respond = (url) => {
+            asked.push(url);
+            // والنافذةُ تبقى تنتظر — يُقاس بابُها لا محتواها
+            if (url.includes('sales.invoice') || url.includes('/sales/invoices/')) return new Promise(() => {});
+
+            return url.includes('summary') ? summary : page([
+                row({ key: 'invoice:4', type: 'invoice', order_id: null, invoice_id: 31, order_number: 'CINV-000031', order_status: 'صادرة', channel: 'فاتورة عميل', settle_state: 'awaiting' }),
+            ]);
+        };
+        mount();
+        const table = await screen.findByTestId('boutique-sales-table');
+        for (const text of ['CINV-000031', 'فاتورة عميل', 'بانتظار التحصيل']) expect(table.textContent).toContain(text);
+        fireEvent.click(within(table).getByRole('button', { name: 'CINV-000031' }));
+        await waitFor(() => expect(asked.some((u) => u.includes('admin.boutiques.sales.invoice') || u.includes('/sales/invoices/31'))).toBe(true));
+        expect(asked.some((u) => u.includes('sales.order') || u.includes('/sales/orders/'))).toBe(false);
+    });
+
+    it('فواتيرُ العملاء القديمة التي لا تُحتسب تُقال في الملخّص — ولا تُقال حين لا شيء', async () => {
         const first = mount();
         await screen.findByTestId('boutique-sales-summary');
         expect(screen.queryByTestId('boutique-uncounted-note')).toBeNull();
@@ -348,7 +386,7 @@ describe('مبيعات البوتيك وفواتيره', () => {
         const note = (await screen.findByTestId('boutique-uncounted-note')).textContent ?? '';
         expect(note).toContain('3 بندًا في 2 فاتورة عميل');
         expect(note).toContain('36.000');
-        expect(note).toContain('ولا تدخل المبيعات ولا المستحق');
+        expect(note).toContain('لا تدخل المبيعات ولا المستحق');
     });
 
     it('الصفُّ يقول قناته، والبطاقةُ على الهاتف تقول كمّيّتَه وسعرَه ورقمَ ورقته', async () => {
@@ -414,7 +452,7 @@ describe('مبيعات البوتيك وفواتيره', () => {
             const note = screen.getByTestId('boutique-scope-note');
             expect(note).toHaveAttribute('role', 'note');
             expect(note).toHaveTextContent('للعرض والمتابعة فقط — لا تُعتمد هذه الأرقام وحدها أساسًا للتسوية المالية.');
-            expect(note).toHaveTextContent('تشمل فواتير نقطة البيع والموقع. ولا تشمل بعد: فواتير العملاء، وطلبات واتساب الآلية، وروابط الدفع المستقلة.');
+            expect(note).toHaveTextContent('تشمل نقطة البيع والموقع، وما حُفظت حصة البوتيك على بنوده وقت إصداره من فواتير العملاء وطلبات واتساب. ولا تشمل: ما صدر منها قبل ذلك، وروابط الدفع المستقلة.');
         };
 
         const { unmount } = mount();

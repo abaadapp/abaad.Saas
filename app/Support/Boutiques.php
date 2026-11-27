@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Exceptions\SettlementRefused;
 use App\Models\Boutique;
+use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
 use App\Models\Expense;
@@ -242,7 +243,11 @@ final class Boutiques
      * والعمولةُ بنسبة كلّ بندٍ ساعةَ بيعه: `SUM(total × boutique_rate ÷ 100)`.
      * ولأصناف المحلّ لا عمولةَ ولا مستحقّ — فهما صفر.
      *
-     * @return array{gross: float, commission: float, net: float, quantity: float, orders: int, lines: int}
+     * وللبوتيك معها بنودُه في فواتير العملاء بلا طلب — بلقطتها، وبيوم الفاتورة
+     * (`BoutiqueInvoiceDues::sold`). وهي بلا قناة: تُقرأ حين لا تُختار قناة.
+     * و`awaiting_net` منها ما لم يكتمل تحصيلُه: بِيع ولم يصر مستحقَّ الدفع.
+     *
+     * @return array{gross: float, commission: float, net: float, quantity: float, orders: int, lines: int, invoices: int, awaiting_net: float}
      */
     public static function soldTotals(
         int $businessId,
@@ -269,13 +274,24 @@ final class Boutiques
         $gross = round((float) $row->gross, 3);
         $commission = $scope === self::OWN ? 0.0 : round((float) $row->commission, 3);
 
+        $sold = $scope === self::OWN || ($channel !== null && $channel !== '') ? null
+            : BoutiqueInvoiceDues::sold($businessId, (int) $scope->id, $start, $end, $branchId);
+        $invoiced = $sold === null ? null : BoutiqueInvoiceDues::totals($sold);
+        $awaiting = $sold === null ? 0.0 : BoutiqueInvoiceDues::totals($sold
+            ->whereNull('boutique_invoice_lines.boutique_settlement_id')->whereNull('boutique_invoice_lines.collected_at'))['net'];
+
+        $gross = round($gross + ($invoiced['gross'] ?? 0.0), 3);
+        $commission = round($commission + ($invoiced['commission'] ?? 0.0), 3);
+
         return [
             'gross' => $gross,
             'commission' => $commission,
             'net' => $scope === self::OWN ? 0.0 : round($gross - $commission, 3),
-            'quantity' => round((float) $row->quantity, 3),
+            'quantity' => round((float) $row->quantity + ($invoiced['quantity'] ?? 0.0), 3),
             'orders' => (int) $row->order_count,
-            'lines' => (int) $row->line_count,
+            'lines' => (int) $row->line_count + ($invoiced['lines'] ?? 0),
+            'invoices' => $invoiced['invoices'] ?? 0,
+            'awaiting_net' => $awaiting,
         ];
     }
 
@@ -345,6 +361,11 @@ final class Boutiques
     }
 
     /* ═══════════ كشفُ الحساب ═══════════ */
+
+    /** من أين سطرُ الكشف: بنودُ الطلبات، أو فواتيرُ العملاء بلا طلب */
+    public const FROM_ORDERS = 'orders';
+
+    public const FROM_INVOICES = 'invoices';
 
     /** الشهرُ كما يُكتب: «2027-02» — ومن أرسل غيرَه رُدّ إلى شهر اليوم */
     public static function period(?string $raw): string
@@ -430,15 +451,23 @@ final class Boutiques
         $rows = self::unsettled($businessId, $boutiqueId, $period)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->orderBy('orders.ordered_at')
-            ->get([
+            // صفوفٌ لا نماذج: شهرُ بوتيكٍ بآلاف البنود يُجمع ولا يُعدَّل
+            ->toBase()->get([
                 'order_items.product_id', 'order_items.name', 'order_items.variant_name',
                 'order_items.quantity', 'order_items.total', 'order_items.boutique_rate',
                 'orders.ordered_at',
             ]);
 
+        // وبنودُ فواتير العملاء التي اكتمل تحصيلُها في الشهر — بلقطتها ساعةَ الإصدار (`BoutiqueInvoiceDues`)
+        $invoiced = BoutiqueInvoiceDues::ready($businessId, $boutiqueId, $period)
+            ->orderBy('boutique_invoice_lines.collected_at')->orderBy('boutique_invoice_lines.id')->toBase()->get();
+
         // وحدّا الورقة ما شملته فعلًا — لا أوّلُ الشهر وآخرُه على الإطلاق
-        $from = $rows->isEmpty() ? $month : Carbon::parse($rows->first()->ordered_at);
-        $to = $rows->isEmpty() ? $month : Carbon::parse($rows->last()->ordered_at);
+        // والصفوفُ مرتّبةٌ بوقتها: طرفاها يكفيان، ولا يُقرأ وقتُ كلّ بند
+        $moments = collect([$rows->first()?->ordered_at, $rows->last()?->ordered_at, $invoiced->first()?->collected_at, $invoiced->last()?->collected_at])
+            ->filter()->map(fn ($at) => Carbon::parse($at))->sort()->values();
+        $from = $moments->first() ?? $month;
+        $to = $moments->last() ?? $month;
 
         $lines = [];
         foreach ($rows as $r) {
@@ -456,6 +485,7 @@ final class Boutiques
                 'name' => (string) $r->name,
                 'variant' => $r->variant_name,
                 'rate' => $rate,
+                'source' => self::FROM_ORDERS,
                 'quantity' => 0.0,
                 'gross' => 0.0,
                 'commission' => 0.0,
@@ -485,6 +515,41 @@ final class Boutiques
             $quantity += $lines[$k]['quantity'];
         }
 
+        /*
+         * ═══ وبنودُ الفواتير بلقطتها — لا تُعاد حسبتُها هنا ═══
+         *
+         * عمولةُ كلّ بندٍ وصافيه كُتبا ساعةَ الإصدار بالبيسة، فيُجمعان كما هما ناقصًا
+         * ما رُدّ. وسطرُها غيرُ سطر الطلبات ولو تشابه الصنفُ والنسبة: ذاك يُقرَّب على
+         * المجموع، وهذا مجموعُ ما قُرِّب.
+         */
+        foreach ($invoiced as $l) {
+            $rate = round((float) $l->rate, 2);
+            $key = 'i|'.((int) $l->product_id).'|'.$l->name.'|'.$rate;
+            $lines[$key] ??= [
+                'product_id' => $l->product_id ? (int) $l->product_id : null,
+                'name' => (string) $l->name,
+                'variant' => null,
+                'rate' => $rate,
+                'source' => self::FROM_INVOICES,
+                'quantity' => 0.0,
+                'gross' => 0.0,
+                'commission' => 0.0,
+                'net' => 0.0,
+            ];
+            $part = [
+                'quantity' => round((float) $l->quantity - (float) $l->returned_quantity, 3),
+                'gross' => round((float) $l->gross - (float) $l->returned_gross, 3),
+                'commission' => round((float) $l->commission - (float) $l->returned_commission, 3),
+                'net' => round((float) $l->net - (float) $l->returned_net, 3),
+            ];
+            foreach ($part as $k => $v) {
+                $lines[$key][$k] = round($lines[$key][$k] + $v, 3);
+            }
+            $gross += $part['gross'];
+            $commission += $part['commission'];
+            $quantity += $part['quantity'];
+        }
+
         $lines = array_values($lines);
         usort($lines, fn ($a, $b) => $b['gross'] <=> $a['gross']);
 
@@ -497,8 +562,8 @@ final class Boutiques
          */
         $components = BoutiqueDues::statement($businessId, $boutiqueId, $period);
         if ($components['count'] > 0) {
-            $starts = array_filter([$rows->isEmpty() ? null : $from, Carbon::parse($components['from_at'])]);
-            $ends = array_filter([$rows->isEmpty() ? null : $to, Carbon::parse($components['to_at'])]);
+            $starts = array_filter([$moments->isEmpty() ? null : $from, Carbon::parse($components['from_at'])]);
+            $ends = array_filter([$moments->isEmpty() ? null : $to, Carbon::parse($components['to_at'])]);
             $from = min($starts);
             $to = max($ends);
         }
@@ -519,6 +584,10 @@ final class Boutiques
             'lines_count' => count($lines),
             'components' => $components,
             'payable' => round($gross - $commission + $components['net'], 3),
+            // وما صدرت فواتيرُه ولم يكتمل تحصيلُها — خبرٌ لا يُجمع: لا تحمله ورقةٌ بعد
+            'awaiting' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::awaiting($businessId, $boutiqueId)),
+            // وما حملته ورقةٌ ثمّ أُلغي تحصيلُ فاتورته — يُراجَع بيد
+            'reopened' => BoutiqueInvoiceDues::totals(BoutiqueInvoiceDues::reopened($businessId, $boutiqueId)),
         ];
     }
 
@@ -590,6 +659,13 @@ final class Boutiques
                 ->distinct()->orderBy('order_items.order_id')->pluck('order_items.order_id')->all();
             Order::whereIn('id', $orders)->orderBy('id')->lockForUpdate()->pluck('id');
 
+            /*
+             * ثمّ المتجر: التحصيلُ وإلغاؤه وإشعارُ الدائن وصرفُ الشيك تمسكه قبل أن
+             * تُقيم بنودَ فاتورتها (`BoutiqueInvoiceDues::sync`). فلا يُلغى تحصيلٌ بين
+             * قراءة الكشف وختم بنوده، ولا يُقرأ بندٌ نصفُه رُدّ.
+             */
+            Business::whereKey($business->id)->lockForUpdate()->first();
+
             $now = self::statement((int) $business->id, (int) $boutique->id, $period);
             $same = fn (array $s) => [$s['lines_count'], $s['gross'], $s['net'], $s['components']['count'], $s['components']['net']];
 
@@ -599,6 +675,8 @@ final class Boutiques
 
             $ids = self::unsettled((int) $business->id, (int) $boutique->id, $period)
                 ->pluck('order_items.id')->all();
+            $invoiceLines = BoutiqueInvoiceDues::ready((int) $business->id, (int) $boutique->id, $period)
+                ->orderBy('boutique_invoice_lines.id')->lockForUpdate()->pluck('boutique_invoice_lines.id')->all();
 
             $number = self::nextNumber((int) $business->id, $period);
             $due = Carbon::createFromFormat('Y-m-d', $statement['to'])->endOfDay();
@@ -644,6 +722,10 @@ final class Boutiques
                 'employee_name' => $employee,
             ]);
 
+            // ما قُيّد من صافيها مع فواتيره قبل اليوم — فلا تقيّده الورقةُ ثانيةً (`BoutiqueInvoiceDues::accrue`)
+            $accruedAtSale = $invoiceLines === [] ? 0.0 : BoutiqueInvoiceDues::totals(
+                BoutiqueInvoiceLine::query()->whereIn('boutique_invoice_lines.id', $invoiceLines)->whereNotNull('accrued_on'))['net'];
+
             $settlement = BoutiqueSettlement::create([
                 'business_id' => $business->id,
                 'boutique_id' => $boutique->id,
@@ -667,6 +749,7 @@ final class Boutiques
                 'components_credit' => $components['credit'],
                 'components_net' => $components['net'],
                 'expense_id' => $expense?->id,
+                'accrued_at_sale' => $accruedAtSale,
                 'issued_at' => now(),
             ]);
 
@@ -674,7 +757,7 @@ final class Boutiques
                 ->whereNull('boutique_settlement_id')
                 ->update(['boutique_settlement_id' => $settlement->id]);
 
-            if ($claimed !== count($ids)) {
+            if ($claimed !== count($ids) || BoutiqueInvoiceDues::claim($invoiceLines, $settlement) !== count($invoiceLines)) {
                 throw new SettlementRefused(__('صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.'));
             }
 
@@ -697,24 +780,29 @@ final class Boutiques
              */
             if ($expense !== null && (float) $expense->amount > 0) {
                 // وفرعُه من فروع بنوده، قبل القيد: القيدُ يحمل فرعَ المصروف المباشر
-                $scope = self::branchScope($ids, (float) $expense->amount);
+                $scope = self::branchScope($ids, $invoiceLines, (float) $expense->amount);
                 if ($scope !== null) {
                     ExpenseScope::apply($expense, $scope);
                 }
 
-                Ledger::post(
-                    (int) $business->id,
-                    __('استحقاق تسوية بوتيك — ورقة ').$number,
-                    [
-                        ['account' => Books::expenseAccount(self::EXPENSE_TYPE, (int) $business->id), 'debit' => round((float) $expense->amount, 3), 'memo' => $expense->description],
-                        ['account' => 'boutique_payable', 'credit' => round((float) $expense->amount, 3)],
-                    ],
-                    $postedAt,
-                    self::ACCRUAL,
-                    ExpenseScope::journalBranch($expense),
-                    auth()->id(),
-                    $settlement,
-                );
+                // والباقي منها بعد ما قُيّد مع فواتيره — وورقةٌ كلُّها قُيّدت قبلها لا قيدَ لصدورها
+                $rest = round((float) $expense->amount - $accruedAtSale, 3);
+
+                if ($rest > 0) {
+                    Ledger::post(
+                        (int) $business->id,
+                        __('استحقاق تسوية بوتيك — ورقة ').$number,
+                        [
+                            ['account' => Books::expenseAccount(self::EXPENSE_TYPE, (int) $business->id), 'debit' => $rest, 'memo' => $expense->description],
+                            ['account' => 'boutique_payable', 'credit' => $rest],
+                        ],
+                        $postedAt,
+                        self::ACCRUAL,
+                        ExpenseScope::journalBranch($expense),
+                        auth()->id(),
+                        $settlement,
+                    );
+                }
             }
 
             Activity::log('created', 'تسوية بوتيك '.$boutique->name.' عن '.$period.' بمبلغ '.$statement['net'], [
@@ -737,10 +825,13 @@ final class Boutiques
      * السطر (`statement`). وما يبقى من تقريب السطور — أجزاءٌ من الألف —
      * يُضمّ إلى أكبر الفروع، فيساوي المجموعُ صافيَ الورقة بالبيسة.
      *
+     * وبندُ فاتورة العميل بفرع فاتورته وصافيه كما كُتب.
+     *
      * @param  list<int>  $ids
+     * @param  list<int>  $invoiceLines
      * @return array{scope: string, branch_id: ?int, allocations: list<array{branch_id: int, amount: float}>}|null
      */
-    private static function branchScope(array $ids, float $net): ?array
+    private static function branchScope(array $ids, array $invoiceLines, float $net): ?array
     {
         $groups = [];
         $rows = OrderItem::query()->whereIn('order_items.id', $ids)
@@ -756,13 +847,19 @@ final class Boutiques
             $groups[$branch][$key]['gross'] += (float) $r->total;
         }
 
-        if ($groups === [] || isset($groups[0])) {
+        $invoiced = $invoiceLines === [] ? collect() : BoutiqueInvoiceLine::whereIn('id', $invoiceLines)
+            ->groupBy('branch_id')->selectRaw('branch_id, SUM(settled_net) as net')->get();
+
+        if (($groups === [] && $invoiced->isEmpty()) || isset($groups[0]) || $invoiced->contains(fn ($l) => $l->branch_id === null)) {
             return null;
         }
 
         $mils = [];
+        foreach ($invoiced as $l) {
+            $mils[(int) $l->branch_id] = Baisa::of((float) $l->net);
+        }
         foreach ($groups as $branch => $lines) {
-            $mils[$branch] = 0;
+            $mils[$branch] ??= 0;
             foreach ($lines as $l) {
                 $gross = round($l['gross'], 3);
                 $mils[$branch] += (int) round(($gross - round($gross * $l['rate'] / 100, 3)) * 1000);
@@ -804,11 +901,23 @@ final class Boutiques
     }
 
     /**
+     * أدَينُ هذه الورقة في 2160 قبل سدادها؟ — قُيّد يومَ صدورها، أو مع فواتيره قبلها، أو بعضُه هنا وبعضُه هناك.
+     *
+     * به يُعرف كيف تُسدَّد (يُطفأ الدَّين، أو مصروفٌ يومَ السداد لورقةٍ أقدم) وكيف يُخفَّض مرتجعُها.
+     */
+    public static function accrued(Expense $expense): bool
+    {
+        return self::accrual($expense) !== null || BoutiqueSettlement::where('business_id', $expense->business_id)
+            ->where('expense_id', $expense->id)->where('accrued_at_sale', '>', 0)->exists();
+    }
+
+    /**
      * قيدُ الورقة يومَ صدورها لمصروفها هذا — أو `null`.
      *
      * و`null` لمصروفٍ ليس ورقةَ بوتيك، ولورقةٍ صدرت قبل أن تُقيَّد يومَ
      * صدورها: تلك تُسدَّد على طريقتها الأولى (مصروفٌ يومَ السداد)، فلا
-     * يُطفأ عنها دَينٌ لم يُكتب.
+     * يُطفأ عنها دَينٌ لم يُكتب. ولورقةٍ قُيّد صافيها كلُّه مع فواتيره — و«أدَينُها في
+     * 2160؟» يُسأل من `accrued` لا من هنا.
      */
     public static function accrual(Expense $expense): ?JournalEntry
     {

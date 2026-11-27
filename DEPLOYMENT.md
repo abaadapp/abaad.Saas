@@ -204,13 +204,16 @@ php artisan abaad:preflight          # يجب أن يخرج ✓ جاهز للإ�
 **قاعدتا sudo، لا ثالثةَ لهما** (`deploy/abaad-deploy.sudoers`):
 
 ```
-abaad-deploy ALL=(www-data) NOPASSWD: ABAAD_ARTISAN      # سبعةُ أوامر artisan بأعيانها
+abaad-deploy ALL=(www-data) NOPASSWD: ABAAD_ARTISAN      # أحدَ عشرَ أمرَ artisan بأعيانها
 abaad-deploy ALL=(root)     NOPASSWD: ABAAD_FPM_RELOAD   # /usr/bin/systemctl reload php8.4-fpm
 ```
 
-- **الأولى** تبيح أوامرَ Laravel السبعةَ التي يحتاجها النشرُ والرجوع، بوسائطها المثبّتة، بحساب
+- **الأولى** تبيح أوامرَ Laravel الأحدَ عشرَ التي يحتاجها النشرُ والرجوع، بوسائطها المثبّتة، بحساب
   www-data: `migrate --force`، و`config:cache` و`route:cache` و`view:cache` و`package:discover`
-  و`queue:restart` (كلٌّ بـ`--quiet`)، و`abaad:preflight`. لا `artisan *`، فلا tinker ولا
+  و`queue:restart` (كلٌّ بـ`--quiet`)، و`abaad:preflight`، و`queue:pause`/`queue:resume` لطابورَي
+  `whatsapp` و`default` بأسمائهما (يقف الطابورُ قبل تبديل الكود ويُطلق بعد إعادة العامل).
+  **وتحديثُ هذا الملفّ على الخادم خطوةٌ يدويّة** (`visudo -cf` ثمّ `install` كما في الانتقال):
+  قبلها يردّ sudo الإيقافَ، فيقول النشرُ «لم يُوقف الطابور» ويمضي كما كان — لا يسقط. لا `artisan *`، فلا tinker ولا
   `db:wipe` ولا `migrate:fresh` ولا أيُّ أمرٍ آخر. والقائمةُ في الملفّ نفسِه، وحارسٌ يمنع أن
   يضيف السكربتُ أمرًا ليس فيها. والانتقالُ إلى www-data نزولٌ لا صعود: www-data هويّةُ
   التطبيق، وأدنى من حساب النشر الذي يملك الكود — فلا حدَّ أمنيًّا يُكسَر.

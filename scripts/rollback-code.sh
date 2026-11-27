@@ -46,6 +46,7 @@ fi
 # والنسخةُ تحذف نفسَها حين تنتهي، نجحت أو فشلت
 ME="${BASH_SOURCE[0]}"
 [[ "$(basename "$ME")" == abaad-rollback.* ]] && trap 'rm -f "$ME"' EXIT
+# (وبعد التجربة الجافّة يحلّ محلَّه `on_exit` أدناه — يحذفها هو ويُطلق الطابور)
 
 APP_DIR="${APP_DIR:-/var/www/abaad}"
 APP_USER="${APP_USER:-www-data}"
@@ -59,7 +60,7 @@ SYSTEMCTL="${SYSTEMCTL:-/usr/bin/systemctl}"
 FPM_SERVICE="${FPM_SERVICE:-php8.4-fpm}"
 export npm_config_cache="${NPM_CACHE:-$HOME/.npm-cache}"
 
-step()  { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
+step()  { CURRENT_STEP="$*"; printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 die()   { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -110,15 +111,73 @@ if [[ "$DRY_RUN" == "1" ]]; then
     printf '  ١. git reset --hard %s   (الكود: %s → %s)\n' "$TO" "$FROM" "$TO"
     printf '  ٢. composer install --no-dev --no-scripts ثمّ package:discover بحساب %s\n' "$APP_USER"
     printf '  ٣. بناء الواجهة في public/build.new ثمّ تبديلها بالحيّة\n'
-    printf '  ٤. config:cache · route:cache · view:cache (بحساب %s) · إعادة تحميل php-fpm · queue:restart\n' "$APP_USER"
+    printf '  ٠. queue:pause لطابورَي واتساب والافتراضيّ — لا يُسحب جديد، والجاريةُ تُكمل\n'
+    printf '  ٤. config:cache · route:cache · view:cache (بحساب %s) · إعادة تحميل php-fpm · queue:restart ثمّ queue:resume\n' "$APP_USER"
     printf '  ٥. فحص %s\n' "$HEALTH_URL"
     printf 'والقاعدةُ لا تُمسّ: لا استعادةَ نسخة، ولا هجرة، ولا رجوعَ هجرة.\n'
     exit 0
 fi
 
 # ---------------------------------------------------------------------------
-step "الكود: $FROM → $TO"
+# الطابورُ يقف قبل أن يتبدّل الكود ويُطلق بعد أن يُعاد عاملُه عليه — كـdeploy.sh
+# حرفًا: `queue:pause` لا يقطع مهمّةً جارية، و`queue:restart` يُفحص بين المهامّ.
+# وإن سقط الرجوعُ في منتصفه أُطلق الطابورُ كما كان، ولا يُعاد العامل.
+# ---------------------------------------------------------------------------
+QUEUE_RESTART_WAIT="${QUEUE_RESTART_WAIT:-10}"
 mkdir -p "$STATE_DIR"
+QUEUE_LOG="$STATE_DIR/queue-rollback-$(date +%Y%m%d-%H%M%S).log"
+( umask 077; : > "$QUEUE_LOG" )
+PAUSED_WHATSAPP=0
+PAUSED_DEFAULT=0
+RELEASED=0
+CURRENT_STEP="إيقاف الطابور"
+
+release_queue() {
+    (( RELEASED == 0 )) || return 0
+    RELEASED=1
+    local failed=0
+    if (( PAUSED_WHATSAPP == 1 )); then
+        art queue:resume whatsapp >> "$QUEUE_LOG" 2>&1 || failed=1
+    fi
+    if (( PAUSED_DEFAULT == 1 )); then
+        art queue:resume default >> "$QUEUE_LOG" 2>&1 || failed=1
+    fi
+    return "$failed"
+}
+
+on_exit() {
+    local rc=$?
+    if (( rc != 0 )); then
+        printf '\n\033[31m✗ سقط الرجوعُ عند «%s»\033[0m — الكودُ على القرص %s (كان %s).\n' \
+            "$CURRENT_STEP" "$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')" "$FROM" >&2
+    fi
+    if (( RELEASED == 0 && PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
+        if release_queue; then
+            printf '  أُطلق الطابور كما كان — العاملُ على كوده ولم يُعَد\n' >&2
+        else
+            printf '\033[31m  ✗ تعذّر إطلاقُ الطابور — هو موقوف. أطلقه بحساب %s: %s %s/artisan queue:resume whatsapp (ثمّ default)، والخرجُ في %s\033[0m\n' \
+                "$APP_USER" "$PHP_BIN" "$APP_DIR" "$QUEUE_LOG" >&2
+        fi
+    fi
+    # والنسخةُ التي يجري منها السكربت تحذف نفسَها — كما كان فخُّها يفعل
+    [[ "$(basename "$ME")" != abaad-rollback.* ]] || rm -f "$ME"
+}
+trap on_exit EXIT
+
+step "إيقاف الطابور قبل تبديل الكود"
+art queue:pause whatsapp >> "$QUEUE_LOG" 2>&1 && PAUSED_WHATSAPP=1 || true
+art queue:pause default >> "$QUEUE_LOG" 2>&1 && PAUSED_DEFAULT=1 || true
+if (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )); then
+    ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يُعاد العامل"
+else
+    release_queue || true
+    PAUSED_WHATSAPP=0
+    PAUSED_DEFAULT=0
+    printf '  \033[33m!\033[0m لم يُوقف الطابور (قاعدةُ الإيقاف في sudoers غيرُ مثبّتة؟ انظر %s) — يمضي الرجوعُ كما كان\n' "$QUEUE_LOG"
+fi
+
+# ---------------------------------------------------------------------------
+step "الكود: $FROM → $TO"
 printf '%s  رجوعُ الكود: %s → %s\n' "$(date -Is)" "$FROM" "$TO" >> "$STATE_DIR/ROLLBACK.log"
 git reset --hard --quiet "$TO"
 ok "$(git log --oneline -1)"
@@ -145,9 +204,23 @@ art config:cache --quiet
 art route:cache --quiet
 art view:cache --quiet
 reload_fpm
-# العاملُ يُعاد كلَّ ساعة لا عند النشر — فيُطلب منه أن يُعيد نفسَه بعد مهمّته الجارية
-art queue:restart --quiet || true
-ok "config · route · view · php-fpm · queue"
+ok "config · route · view · php-fpm"
+
+# العاملُ يُعاد كلَّ ساعة لا عند الرجوع — فيُطلب منه أن يُعيد نفسَه بعد مهمّته الجارية،
+# ثمّ يُنتظر خروجُ القديم قبل أن يُطلق الطابور. وتعذّرُها يُقال لا يُخفى
+step "عامل الطابور"
+RESTART_RC=0
+art queue:restart --quiet || RESTART_RC=$?
+if (( RESTART_RC == 0 )); then
+    ok "طُلب من العامل أن يُعاد بعد مهمّته الجارية"
+else
+    printf '  \033[33m!\033[0m تعذّر queue:restart — يبقى العاملُ بالكود الذي كان عليه حتى يُعاد بنفسه (--max-time)\n'
+fi
+if (( RELEASED == 0 && PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
+    (( RESTART_RC != 0 )) || sleep "$QUEUE_RESTART_WAIT"
+    release_queue || die "تعذّر إطلاقُ الطابور — هو موقوف. أطلقه بحساب $APP_USER: $PHP_BIN $APP_DIR/artisan queue:resume whatsapp ثمّ default"
+    ok "أُطلق الطابور"
+fi
 
 step "الموقع"
 CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$HEALTH_URL" || echo 000)"

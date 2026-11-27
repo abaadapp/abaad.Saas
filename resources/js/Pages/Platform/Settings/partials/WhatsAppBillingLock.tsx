@@ -35,10 +35,12 @@ export interface BillingLockState {
         until: string | null;
         opened_by: string;
         may_pass: boolean;
+        /** أرقامُ الاختبار — وحدها تصلها رسائلُ التجربة (`WhatsAppBillingTrials::recipient`) */
+        phones: string[];
         messages: TrialMessage[];
     } | null;
     kinds: { key: string; label: string }[];
-    defaults: { messages: number; hours: number; max_messages: number; max_hours: number };
+    defaults: { messages: number; hours: number; max_messages: number; max_hours: number; max_phones: number };
 }
 
 /**
@@ -53,7 +55,7 @@ export default function WhatsAppBillingLock({ state, pilot }: { state: BillingLo
     const [reason, setReason] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    const open = useForm({ business_id: String(pilot[0]?.id ?? ''), messages: String(state.defaults.messages), hours: String(state.defaults.hours), charges_accepted: false });
+    const open = useForm({ business_id: String(pilot[0]?.id ?? ''), messages: String(state.defaults.messages), hours: String(state.defaults.hours), phones: '', charges_accepted: false });
     const pass = useForm({ kind: '', price_id: '', waba_id: '', reference: '', abaad_reference: '', amount: '', currency: '', merchant_checked: false, abaad_checked: false });
     const first = (e: Record<string, string | undefined>) => Object.values(e).find(Boolean) ?? null;
 
@@ -131,12 +133,24 @@ export default function WhatsAppBillingLock({ state, pilot }: { state: BillingLo
                                     <Input type="number" min={1} max={state.defaults.max_hours} value={open.data.hours} onChange={(e) => open.setData('hours', e.target.value)} className="w-28" data-testid="wa-trial-hours" />
                                 </label>
                             </div>
+                            <label className="flex flex-col gap-1 text-[12px] text-[#6b7280]">
+                                {t('أرقام الاختبار')}
+                                <textarea
+                                    rows={2}
+                                    dir="ltr"
+                                    className="w-full max-w-sm rounded-[8px] border border-[#e5e7eb] p-2 text-[12px]"
+                                    value={open.data.phones}
+                                    onChange={(e) => open.setData('phones', e.target.value)}
+                                    data-testid="wa-trial-phones"
+                                />
+                                <span className="text-[11px] leading-relaxed">{t('رقم في كل سطر، حتى :max. رسائل التجربة لا تخرج إلا إلى هذه الأرقام — لا لعملاء المتجر.', { max: state.defaults.max_phones })}</span>
+                            </label>
                             <label className="flex items-start gap-2 text-[12px] leading-relaxed text-[#374151]">
                                 <input type="checkbox" className="mt-0.5" checked={open.data.charges_accepted} onChange={(e) => open.setData('charges_accepted', e.target.checked)} data-testid="wa-trial-accept" />
                                 <span>{t('أوافق على رسوم حقيقية من Meta على بطاقة حساب الاختبار — وليست بطاقة أبعاد.')}</span>
                             </label>
                             {first(open.errors as Record<string, string>) && <p className="text-[12px] text-[#b91c1c]" data-testid="wa-trial-open-error">{first(open.errors as Record<string, string>)}</p>}
-                            <Button type="submit" size="sm" loading={open.processing} disabled={!open.data.charges_accepted} data-testid="wa-trial-start">{t('افتح التجربة')}</Button>
+                            <Button type="submit" size="sm" loading={open.processing} disabled={!open.data.charges_accepted || open.data.phones.trim() === ''} data-testid="wa-trial-start">{t('افتح التجربة')}</Button>
                         </>
                     )}
                 </form>
@@ -151,6 +165,10 @@ export default function WhatsAppBillingLock({ state, pilot }: { state: BillingLo
                         </p>
                         {trial.open && <Button type="button" variant="outline" size="sm" onClick={() => void close()} data-testid="wa-trial-close">{t('أغلق التجربة')}</Button>}
                     </div>
+                    <p className="mt-1 text-[11px] text-[#6b7280]" data-testid="wa-trial-phones-list">
+                        {t('لا تخرج رسائلها إلا إلى')}{' '}
+                        {trial.phones.length === 0 ? t('— لا رقم، فلا تخرج رسالة.') : trial.phones.map((p, i) => <span key={p}>{i > 0 ? '، ' : ''}<bdi dir="ltr">+{p}</bdi></span>)}
+                    </p>
 
                     <ul className="mt-2 space-y-0.5 text-[11px] text-[#4b4b4b]" data-testid="wa-trial-messages-list">
                         {trial.messages.length === 0 && <li>{t('لم تصل من Meta أخبار رسائل بعد.')}</li>}

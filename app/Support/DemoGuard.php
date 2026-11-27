@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Business;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -40,6 +41,30 @@ class DemoGuard
         }
 
         return $business;
+    }
+
+    /**
+     * ‏‏ويُمحى المتجرُ التجريبيّ (إعادةُ البناء أو الحذف) ما لم يكن عليه سجلُّ واتساب يُحاسَب به — أو يرفض.
+     *
+     * المحوُ يمرّ على كلّ جدولٍ فيه `business_id` (`DemoStore::wipe`)، ومنها مراجعةُ جهة الرسوم وتجربتُها
+     * وأحداثُها، وأسعارُ ما خرج، والرسائلُ التي وصلت Meta. وهي دليلُ من دفع ماذا: لا تُحذف بزرّ، ولو
+     * كان المتجرُ تجريبيًّا — يُغلق ما يُغلق منها بآليّته، ويبقى ما كُتب.
+     *
+     * @throws RuntimeException
+     */
+    public static function assertWipeable(Business $business): void
+    {
+        $id = (int) $business->id;
+        $kept = collect(['whatsapp_billing_trials', 'whatsapp_billings', 'whatsapp_billing_events', 'whatsapp_message_prices'])
+            ->contains(fn (string $table) => DB::table($table)->where('business_id', $id)->exists())
+            || DB::table('whatsapp_messages')->where('business_id', $id)->whereNotNull('provider_message_id')->exists();
+
+        if ($kept) {
+            throw new RuntimeException(__(
+                'على المتجر «:name» سجلات واتساب (جهة الرسوم أو تجربتها أو رسائل خرجت إلى Meta) — لا يُعاد بناؤه ولا يُحذف، فهي دليل ما دُفع.',
+                ['name' => $business->name],
+            ));
+        }
     }
 
     /**

@@ -243,11 +243,31 @@ class User extends Authenticatable
 
         $manual = $this->permissions;
 
-        if (is_array($manual)) {
-            return in_array($section, $manual, true);
+        $allowed = is_array($manual)
+            ? in_array($section, $manual, true)
+            : \App\Support\Permissions::allows($this->role, $section);
+
+        /*
+         * ولوحةُ التحكم مالُ المتجر كلُّه — في متجرٍ يُؤوي بوتيكات.
+         *
+         * بطاقاتُها ورسماها وأحدثُ الطلبات وأفضلُ الأصناف بإيرادها، ونبضتُها،
+         * والأهدافُ، و«ملخّص اليوم» في الجرس بصافي ربحه: كلّها تُفتح بهذا
+         * المفتاح وحده. فحسابٌ أُعطي «المنتجات» ليُدخل قطعَ بوتيكه، ومعها
+         * «لوحة التحكم» لأنّها أوّلُ القائمة، كان يقرأ مبيعاتِ المتجر كلَّه.
+         *
+         * فمن لا يقرأ المبيعات من بابٍ آخر (`BoutiqueAccess::productsOnly`)
+         * لا تُفتح له اللوحةُ هناك. والسؤالُ هنا لا في اللوحة: الصفحةُ
+         * ونبضتُها والأهدافُ والجرسُ ووجهةُ الدخول والقائمةُ كلُّها تسأل
+         * هذا السؤال — فلا بابَ يبقى خارجه. والمحفوظُ في الحساب لا يُمسّ.
+         *
+         * ومتجرٌ لا يؤوي بوتيكًا لا يتغيّر عليه شيء، ولا المالكُ ولا من
+         * يقرأ المبيعات — هم يقرؤونها من أبوابها أصلًا.
+         */
+        if ($allowed && $section === 'dashboard' && \App\Support\BoutiqueAccess::hidesSales($this, $this->business)) {
+            return false;
         }
 
-        return \App\Support\Permissions::allows($this->role, $section);
+        return $allowed;
     }
 
     /**

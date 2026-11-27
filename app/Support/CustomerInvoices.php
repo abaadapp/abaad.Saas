@@ -647,7 +647,7 @@ final class CustomerInvoices
      * `TwoHandsOnOneCustomersPointsAtOnceTest`. فالإصدارُ والإلغاءُ يأخذان
      * المتجرَ أوّلًا كذلك — وأخذُه ثانيةً في المعاملة نفسِها لا يكلّف شيئًا.
      */
-    private static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
+    public static function lockInOrder(CustomerInvoice $invoice): CustomerInvoice
     {
         Business::whereKey($invoice->business_id)->lockForUpdate()->first();
 
@@ -714,6 +714,15 @@ final class CustomerInvoices
             ]);
 
             self::post($locked, $userId);
+
+            /*
+             * وبندُ البوتيك يحفظ ما لصاحبه ساعةَ الإصدار — لقطةً لا تتغيّر بعدها.
+             * ويُسأل عن تحصيلها فورًا: ورقةٌ غطّتها النقاطُ كلَّها صدرت مسدَّدة.
+             */
+            BoutiqueInvoiceDues::snapshot($locked);
+            // وقطعُ البوتيك داخل باقاتها بحاسبة الصندوق — وما يرفضه يُرفض به الإصدار
+            BoutiqueInvoicePieces::snapshot($locked);
+            BoutiqueInvoiceDues::sync((int) $locked->id);
 
             Activity::log('updated', 'أصدر فاتورة عميل '.$locked->number.' بمبلغ '.$locked->total, [
                 'subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => (int) $locked->business_id,
@@ -885,6 +894,9 @@ final class CustomerInvoices
             // وما صُرف عليها من نقاطٍ يعود إلى صاحبه — كما يعيده إلغاءُ بيعة الصندوق
             self::returnPoints($invoice);
 
+            // وما للبوتيكات فيها يسقط — وما حملته ورقةٌ يُكتب مرتجعُه إشعارًا
+            BoutiqueInvoiceDues::cancelled($invoice, $reason);
+
             Activity::log('deleted', 'ألغى فاتورة عميل '.$invoice->number.' — '.$reason, [
                 'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
             ]);
@@ -907,6 +919,7 @@ final class CustomerInvoices
         ?int $userId = null,
         string $source = self::NOTE_MANUAL,
         ?int $orderId = null,
+        ?array $items = null,
         ?string $basis = null,
     ): CustomerCreditNote {
         $amount = round($amount, 3);
@@ -915,7 +928,7 @@ final class CustomerInvoices
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $items, $basis) {
             /*
              * والحدُّ يُقرأ تحت قفل المتجر، من الورقة كما هي الآن.
              *
@@ -949,12 +962,21 @@ final class CustomerInvoices
                 'reason' => $reason,
                 'source' => $source,
                 'order_id' => $orderId,
+                // بنودُه حين يُسمّى ما رُدّ، وأساسُه — وفراغٌ لإشعارٍ بمبلغٍ وحده كما كان
+                'items' => $items,
                 'basis' => $basis,
                 'created_by' => $userId,
             ]);
 
             // وما صُرف عليها من نقاطٍ يعود بنسبة ما رُدّ — في المعاملة نفسِها
             self::returnPointsForCredit($invoice, $note);
+
+            /*
+             * وما رُدّ من بنود البوتيكات يُنقص ما لأصحابها وحدهم. والإشعارُ بلا بنودٍ
+             * خصمٌ أو تسويةُ سعر: على المتجر، ولا يمسّ بوتيكًا.
+             */
+            BoutiqueInvoiceDues::returned($invoice, $note, $items ?? []);
+            BoutiqueInvoiceDues::sync((int) $invoice->id);
 
             /*
              * والقيدُ يتبع المصدر.

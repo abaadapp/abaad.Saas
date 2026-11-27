@@ -26,6 +26,7 @@ import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import { BoutiqueLineNote, listedPrice } from './partials/BoutiqueLine';
 import LineDetails, { detailsCount, type LineDetailsValue, type VariantRow } from './partials/LineDetails';
 import CustomerInvoicePreparationFields, {
     EMPTY_PREPARATION,
@@ -87,6 +88,10 @@ export function customerMatches(c: Pick<CustomerRow, 'name' | 'name_en' | 'phone
 }
 
 interface ProductRow {
+    /** بوتيكُه إن كان لبوتيك — تدخل حسابَه حين تُسدَّد الفاتورة كاملة */
+    boutique?: string | null;
+    /** نسبةُ المتجر منه — لمن يقرأ مالَ البوتيكات وحده، وإلّا `null` */
+    boutique_rate?: number | null;
     id: number;
     name: string;
     /** اسمُه الإنجليزيّ — يُبحث به ويُعرض في الواجهة الإنجليزيّة */
@@ -1207,6 +1212,18 @@ export default function CustomerInvoiceCreate({
                                                                 {t(product ? 'المقاس والإضافات والتفاصيل' : 'الخيارات والملاحظة')}
                                                                 {count > 0 && ` (${count})`}
                                                             </button>
+                                                            {/* صنفُ بوتيك: متى يدخل حسابَه، ومن يتحمّل خصمَه — يُقال لكاتبها ولا يُمنع */}
+                                                            {product?.boutique && (
+                                                                <BoutiqueLineNote
+                                                                    boutique={product.boutique}
+                                                                    rate={product.boutique_rate ?? null}
+                                                                    gross={NUMBER(line.quantity) * NUMBER(line.unit_price)}
+                                                                    discount={NUMBER(line.discount)}
+                                                                    price={NUMBER(line.unit_price)}
+                                                                    listed={listedPrice(product, line.variant_id)}
+                                                                    money={(v) => money(v, context!.currency)}
+                                                                />
+                                                            )}
                                                         </>
                                                     )}
                                                 </td>
@@ -1234,6 +1251,7 @@ export default function CustomerInvoiceCreate({
                                                         <Input
                                                             value={line.unit_price}
                                                             onChange={(e) => setLine(i, 'unit_price', e.target.value)}
+                                                            aria-label={t('سعر الوحدة')}
                                                         />
                                                     )}
                                                 </td>
@@ -1241,6 +1259,7 @@ export default function CustomerInvoiceCreate({
                                                     <Input
                                                         value={line.discount}
                                                         onChange={(e) => setLine(i, 'discount', e.target.value)}
+                                                        aria-label={t('الخصم')}
                                                     />
                                                 </td>
                                                 <td className="p-2">

@@ -205,6 +205,9 @@ final class Cheques
                 'bank_account_id' => $account,
             ])->save();
 
+            // وشيكٌ صُرف مالٌ قُبض: فاتورتُه قد يكون اكتمل تحصيلُها به
+            BoutiqueInvoiceDues::syncPayment($fresh);
+
             Activity::log('updated', 'حصّل شيك '.$payment->number.' بمبلغ '.$payment->amount, [
                 'subject_id' => $payment->id, 'subject_type' => 'customer_payment',
             ]);
@@ -265,6 +268,8 @@ final class Cheques
                 'cheque_settled_at' => now(),
                 'cheque_note' => mb_substr($reason, 0, 200),
             ])->save();
+
+            BoutiqueInvoiceDues::syncPayment($fresh);
 
             Activity::log('updated', 'شيك مرتجع '.$payment->number.' — '.$reason, [
                 'subject_id' => $payment->id, 'subject_type' => 'customer_payment',

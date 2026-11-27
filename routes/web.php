@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Http\Controllers\Admin\BoutiqueController;
+use App\Http\Controllers\Admin\BoutiqueInvoiceReviewController;
 use App\Http\Controllers\Admin\CustomOrderTemplateController;
 use App\Http\Controllers\Admin\DocumentPrintController;
 use App\Http\Controllers\Admin\EmployeeController;
@@ -853,6 +854,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/products/boutiques/sales', [BoutiqueController::class, 'sales'])->name('boutiques.sales');
     Route::get('/products/boutiques/sales/summary', [BoutiqueController::class, 'salesSummary'])->name('boutiques.sales.summary');
     Route::get('/products/boutiques/sales/orders/{order}', [BoutiqueController::class, 'salesOrder'])->whereNumber('order')->name('boutiques.sales.order');
+    Route::get('/products/boutiques/sales/invoices/{invoice}', [BoutiqueController::class, 'salesInvoice'])->whereNumber('invoice')->name('boutiques.sales.invoice');
+    // فواتيرُ عملاءٍ فيها صنفُ بوتيكٍ لم يدخل حسابَه — قراءةٌ للمراجعة (`BoutiqueInvoiceReview`)
+    Route::get('/products/boutiques/invoice-review', [BoutiqueInvoiceReviewController::class, 'index'])->name('boutiques.invoiceReview');
+    Route::get('/products/boutiques/{id}/movements', [BoutiqueController::class, 'movements'])->whereNumber('id')->name('boutiques.movements');
+    Route::post('/products/boutiques/{id}/agreements', [BoutiqueController::class, 'agree'])->whereNumber('id')->name('boutiques.agreements.store');
     Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
     Route::put('/products/boutiques/{id}', [BoutiqueController::class, 'update'])->name('boutiques.update');
     Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');
@@ -863,7 +869,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/products/boutiques/{id}/refund', [BoutiqueController::class, 'refund'])->whereNumber('id')->name('boutiques.refund');
     // مرتجعٌ بعد الورقة: قرارُ المحاسب، واستلامٌ من البوتيك بمستند، وخصمٌ من ورقةٍ لاحقة — انظر `BoutiqueReturns`
     Route::post('/products/boutiques/{id}/returns/review', [BoutiqueController::class, 'reviewReturn'])->whereNumber('id')->name('boutiques.returns.review');
+    Route::post('/products/boutiques/{id}/returns/receive', [BoutiqueController::class, 'receiveReturn'])->whereNumber('id')->name('boutiques.returns.receive');
     Route::post('/products/boutiques/{id}/returns/receipt', [BoutiqueController::class, 'returnReceipt'])->whereNumber('id')->name('boutiques.returns.receipt');
+    Route::post('/products/boutiques/{id}/holds/{hold}/release', [BoutiqueController::class, 'releaseHold'])->whereNumber('id')->whereNumber('hold')->name('boutiques.holds.release');
+    Route::post('/products/boutiques/{id}/holds/{hold}/review', [BoutiqueController::class, 'reviewHold'])->whereNumber('id')->whereNumber('hold')->name('boutiques.holds.review');
+    Route::post('/products/boutiques/{id}/holds/{hold}/pay', [BoutiqueController::class, 'payHold'])->whereNumber('id')->whereNumber('hold')->name('boutiques.holds.pay');
     Route::post('/products/boutiques/{id}/returns/offset', [BoutiqueController::class, 'returnOffset'])->whereNumber('id')->name('boutiques.returns.offset');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
@@ -1821,6 +1831,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
     Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
     Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
+    Route::post('/customer-invoices/{id}/boutique-pieces', [CustomerInvoiceController::class, 'boutiquePieces'])->name('customerInvoices.boutiquePieces');
     Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
     /*
      * مرفقاتُ الفاتورة — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.

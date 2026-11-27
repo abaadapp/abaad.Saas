@@ -22,20 +22,23 @@ import type { Currency } from '@/types';
  * آلافُ الفواتير لتُعرض خمسٌ وعشرون منها، ولا يُعاد في المتصفّح حسابُ لقطة.
  */
 
-export type SaleType = 'standalone' | 'bundle' | 'addon';
-export type SettleState = 'pending' | 'issued' | 'paid';
+export type SaleType = 'standalone' | 'invoice' | 'bundle' | 'addon';
+/** `awaiting`: فاتورةُ عميلٍ لم يكتمل تحصيلُها — لا تحملها ورقةٌ بعد */
+export type SettleState = 'awaiting' | 'pending' | 'issued' | 'paid';
 export type InvoiceState = 'active' | 'partial' | 'cancelled';
 
 export interface SaleRow {
     key: string;
     type: SaleType;
-    order_id: number;
+    /** `null` لفاتورة عميلٍ بلا طلب — وهي `invoice_id` */
+    order_id: number | null;
+    invoice_id?: number | null;
     order_number: string;
     ordered_at: string | null;
     order_status: string;
     /** البابُ الذي بيع منه — باسمه من الخادم */
     channel?: string;
-    invoice_state: InvoiceState;
+    invoice_state: InvoiceState | 'returned';
     /** فاتورةٌ ملغاةٌ لم تحملها ورقة: بندُها كما سُجّل ولا نصيبَ فيه */
     void?: boolean;
     boutique_id: number;
@@ -66,23 +69,24 @@ export interface SalesPage {
     per_page: number;
 }
 
+export interface InvoicePart { lines: number; invoices: number; quantity: number; gross: number; commission: number; net: number }
+
 export interface SalesSummary {
     standalone: { gross: number; commission: number; net: number; quantity: number; lines: number; orders: number; taxed_orders: number };
     components: { bundle: number; addon: number; due: number; quantity: number };
     bundles: { lines: number; revenue: number; boutiques_due: number; shop_remaining: number };
-    /** فواتيرُ عملاءٍ فيها أصنافُ البوتيك اليوم — لا تدخل هذه الأرقام */
+    /** فواتيرُ عملاءٍ صدرت قبل أن تُحفظ لقطةُ بوتيكها — لا تدخل هذه الأرقام */
     uncounted?: { lines: number; invoices: number; amount: number };
+    /** فواتيرُ العملاء بلا طلب: ما اكتمل تحصيلُه في الشهر، وما ينتظر، وما أُلغي تحصيلُه بعد ورقته */
+    invoices?: InvoicePart & { awaiting: InvoicePart; reopened: InvoicePart };
     owed: number;
     pieces: 'on' | 'off' | 'taxed';
     /** مفتاحُ المنصّة لهذا المتجر — والشاشةُ تبقى لمن عنده بوتيكٌ ولو أُطفئ */
     hosting: boolean;
     /** مستحقُّ قطعٍ كُتب قبل إطفاء حسابها — معروضٌ محسوب ولم يُحذف */
     pieces_recorded: boolean;
-    /** مطابقةُ التقريب بالبيسة: الفرقُ موجبٌ حين تقول دالّةُ النظام أكثر */
-    rounding: {
-        lines_commission: number; report_commission: number; report_difference: number;
-        lines_pending_net: number; sheet_pending_net: number; sheet_difference: number;
-    };
+    /** أوراقٌ صدرت قبل توحيد القاعدة وفرقُها عن جمع بنودها — كما صدرت */
+    old_sheets?: { count: number; difference: number };
     settlement: {
         sheets: number; issued: number; paid: number; unpaid: number; remaining: number;
         pending: { standalone: number; components: number; credit: number; total: number };
@@ -103,14 +107,17 @@ export interface InvoiceDetails {
     /** الفاتورةُ كاملةً، أم ما للبوتيكات فيها وحده؟ — لمن لا يملك قسم المبيعات */
     full?: boolean;
     order: {
-        id: number; number: string; ordered_at: string | null; status: string; channel?: string; invoice_state: InvoiceState;
+        id: number; number: string; ordered_at: string | null; status: string; channel?: string; invoice_state: InvoiceState | 'returned';
         subtotal: number | null; discount: number | null; tax: number | null; delivery_fee: number | null; total: number | null;
         /** أين الضريبة من أسعار البنود — مقروءةً من الفاتورة نفسها */
         tax_basis: 'none' | 'inside' | 'added' | 'unknown' | null;
     };
     lines: {
         id: number; name: string; variant: string | null; quantity: number; price: number | null; total: number | null; addons_total: number | null;
-        boutique: { name: string; rate: number; commission: number; net: number; settlement: string | null; settle_state: SettleState } | null;
+        boutique: { name: string; rate: number; commission: number; net: number; settlement: string | null; settle_state: SettleState | 'returned' | 'void' } | null;
+        /** لبند فاتورة العميل: خصمُه (على المتجر)، وما رُدّ منه بإشعار */
+        discount?: number | null;
+        returned?: number;
         pieces: Piece[];
         dues: number;
         shop_remaining: number | null;
@@ -120,6 +127,8 @@ export interface InvoiceDetails {
         lines: number; discount: number; discount_coupon: number; discount_points: number; after_discount?: number;
         tax: number; tax_basis: 'none' | 'inside' | 'added' | 'unknown'; delivery_fee: number;
         total: number; paid: number; balance: number; boutiques_owed: number;
+        /** إشعاراتُ دائنٍ على فاتورة العميل */
+        credited?: number;
         shop_after_discount: number; shop_after_tax: number;
     } | null;
     shares: {
@@ -147,11 +156,13 @@ interface Props {
 
 export const TYPE_LABEL: Record<SaleType, string> = {
     standalone: 'بيع منفرد',
+    invoice: 'فاتورة عميل',
     bundle: 'ضمن باقة',
     addon: 'إضافة اختيارية',
 };
 
 export const SETTLE_LABEL: Record<SettleState, string> = {
+    awaiting: 'بانتظار التحصيل',
     pending: 'لم تُسوَّ',
     issued: 'في ورقة لم تُسدَّد',
     paid: 'سُدِّدت',
@@ -163,7 +174,8 @@ export const STATE_LABEL: Record<InvoiceState, string> = {
     cancelled: 'ملغاة',
 };
 
-const SETTLE_VARIANT: Record<SettleState, 'neutral' | 'warning' | 'success'> = {
+const SETTLE_VARIANT: Record<SettleState, 'neutral' | 'warning' | 'success' | 'info'> = {
+    awaiting: 'info',
     pending: 'neutral',
     issued: 'warning',
     paid: 'success',
@@ -171,6 +183,7 @@ const SETTLE_VARIANT: Record<SettleState, 'neutral' | 'warning' | 'success'> = {
 
 const TYPE_VARIANT: Record<SaleType, 'info' | 'primary' | 'outline'> = {
     standalone: 'info',
+    invoice: 'info',
     bundle: 'primary',
     addon: 'outline',
 };
@@ -222,7 +235,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
     const [summary, setSummary] = useState<SalesSummary | null>(null);
     const [loading, setLoading] = useState(false);
     const [failed, setFailed] = useState(false);
-    const [opened, setOpened] = useState<number | null>(null);
+    const [opened, setOpened] = useState<string | null>(null);
 
     // البحثُ بعد أن يكفّ الكاتب — لا طلبٌ لكلّ حرف
     useEffect(() => {
@@ -272,12 +285,12 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
             <div className="border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3">
                 <h2 className="text-sm font-semibold text-[#111]">{t('مبيعات البوتيك وفواتيره')}</h2>
                 <p className="mt-0.5 text-[12px] leading-5 text-[#6b7280]">
-                    {t('كل بيعٍ بفاتورته الأصلية: صنف البوتيك منفردًا، أو قطعته داخل منتج المتجر — دون احتساب البيع أو المستحق مرتين.')}
+                    {t('كل بيعٍ بفاتورته الأصلية: صنف البوتيك منفردًا، أو في فاتورة عميل، أو قطعته داخل منتج المتجر — دون احتساب البيع أو المستحق مرتين.')}
                 </p>
                 {/* دائمٌ لا مشروط: يُقال قبل أوّل رقم، ولو سقط الملخّصُ أو خلا الشهر */}
                 <div role="note" className="mt-2 rounded-md border border-[#fcd34d] bg-[#fffbeb] px-3 py-2 text-[12px] leading-5 text-[#92400e]" data-testid="boutique-scope-note">
                     <p className="font-semibold">{t('للعرض والمتابعة فقط — لا تُعتمد هذه الأرقام وحدها أساسًا للتسوية المالية.')}</p>
-                    <p>{t('تشمل فواتير نقطة البيع والموقع. ولا تشمل بعد: فواتير العملاء، وطلبات واتساب الآلية، وروابط الدفع المستقلة.')}</p>
+                    <p>{t('تشمل نقطة البيع والموقع، وما حُفظت حصة البوتيك على بنوده وقت إصداره من فواتير العملاء وطلبات واتساب. ولا تشمل: ما صدر منها قبل ذلك، وروابط الدفع المستقلة.')}</p>
                 </div>
             </div>
 
@@ -359,7 +372,7 @@ export default function SalesPanel({ boutiqueId, boutiques, period, periods, onP
                 </div>
             )}
 
-            <InvoiceDialog orderId={opened} onClose={() => setOpened(null)} fmt={fmt} />
+            <InvoiceDialog url={opened} onClose={() => setOpened(null)} fmt={fmt} />
         </Card>
     );
 }
@@ -421,36 +434,49 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                     <Tile
                         label={t('المستحق للبوتيك قبل التسوية')}
                         value={fmt(s.owed)}
-                        hint={t('صافي المنفرد + مستحق القطع')}
+                        hint={t('صافي المنفرد وفواتير العملاء المحصّلة + مستحق القطع')}
                         tone="strong"
                     />
                 </div>
+                {s.invoices && (s.invoices.lines > 0 || s.invoices.awaiting.lines > 0 || s.invoices.reopened.lines > 0) && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4" data-testid="boutique-invoice-tiles">
+                        <Tile
+                            label={t('فواتير عملاء اكتمل تحصيلها')}
+                            value={fmt(s.invoices.gross)}
+                            hint={t(':lines بندًا في :invoices فاتورة', { lines: number(s.invoices.lines), invoices: number(s.invoices.invoices) })}
+                        />
+                        <Tile label={t('عمولة المتجر منها')} value={fmt(s.invoices.commission)} tone="ours" />
+                        <Tile label={t('صافي البوتيك منها')} value={fmt(s.invoices.net)} tone="theirs" />
+                        <Tile
+                            label={t('صافي البوتيك بانتظار التحصيل')}
+                            value={fmt(s.invoices.awaiting.net)}
+                            hint={t('لا تحمله ورقة قبل اكتمال السداد — :n فاتورة', { n: number(s.invoices.awaiting.invoices) })}
+                        />
+                    </div>
+                )}
+                {s.invoices && s.invoices.reopened.lines > 0 && (
+                    <p className="mt-2 rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] leading-5 text-[#b91c1c]" data-testid="boutique-reopened-note">
+                        {t(':n فاتورة عميل أُلغي تحصيلها بعد أن حملت ورقة التسوية :amount منها. الورقة لا تتغير، وما لم يُسدَّد منها معلّق — حصّلها من جديد، أو أصدر إشعار دائن بالقطع المرتجعة، أو راجعها في شاشة البوتيك.', {
+                            n: number(s.invoices.reopened.invoices), amount: fmt(s.invoices.reopened.net),
+                        })}
+                    </p>
+                )}
                 <p className="mt-2 text-[12px] leading-5 text-[#6b7280]" data-testid="boutique-not-final-note">
                     {t('المبالغ قبل صدور ورقة التسوية للمتابعة وليست تسوية نهائية — المعتمد ما في ورقة التسوية بعد مراجعتها.')}
                 </p>
                 {s.uncounted && s.uncounted.lines > 0 && (
                     <p className="mt-2 rounded-md bg-[#fef2f2] px-3 py-2 text-[12px] leading-5 text-[#b91c1c]" data-testid="boutique-uncounted-note">
-                        {t('هذه الأرقام من فواتير نقطة البيع والموقع. وفي الشهر :lines بندًا في :invoices فاتورة عميل (كُتبت بمبلغ :amount) صنفها اليوم لبوتيك، ولا تدخل المبيعات ولا المستحق: فاتورة العميل لا تحفظ صاحب الصنف ولا نسبته.', {
+                        {t('وفي الشهر :lines بندًا في :invoices فاتورة عميل (كُتبت بمبلغ :amount) صدرت قبل أن تُحفظ حصة البوتيك على بنودها: لا تدخل المبيعات ولا المستحق، ولا يُحسب لها شيء بنسبة اليوم.', {
                             lines: number(s.uncounted.lines), invoices: number(s.uncounted.invoices), amount: fmt(s.uncounted.amount),
                         })}
                     </p>
                 )}
-                {(s.rounding.report_difference !== 0 || s.rounding.sheet_difference !== 0) && (
-                    <div className="mt-2 rounded-md border border-dashed border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-rounding-note">
-                        <p className="font-semibold">{t('مطابقة التقريب (لم يُعدَّل أي مبلغ)')}</p>
-                        <p>
-                            {t('العمولة هنا لكل بند بالبيسة: :lines', { lines: fmt(s.rounding.lines_commission) })}
-                            {s.rounding.report_difference !== 0 &&
-                                <> · {t('تقرير مبيعات البوتيك يقرّبها على المجموع: :report (فرق :d)', { report: fmt(s.rounding.report_commission), d: fmt(s.rounding.report_difference) })}</>}
-                        </p>
-                        {s.rounding.sheet_difference !== 0 && (
-                            <p>
-                                {t('ورقة التسوية لما لم يُسوَّ تحسب صافي البوتيك :sheet مقابل :lines هنا (فرق :d) — المعتمد للدفع الورقة حتى يُقرَّر.', {
-                                    sheet: fmt(s.rounding.sheet_pending_net), lines: fmt(s.rounding.lines_pending_net), d: fmt(s.rounding.sheet_difference),
-                                })}
-                            </p>
-                        )}
-                    </div>
+                {s.old_sheets && s.old_sheets.count > 0 && (
+                    <p className="mt-2 rounded-md border border-dashed border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-rounding-note">
+                        {t('في الشهر :n ورقة صدرت قبل توحيد التقريب، مجموعها يختلف عن جمع بنودها بـ :d. الورقة كما صدرت، والجديدة تطابق بنودها بالبيسة.', {
+                            n: number(s.old_sheets.count), d: fmt(s.old_sheets.difference),
+                        })}
+                    </p>
                 )}
                 {s.standalone.taxed_orders > 0 && (
                     <p className="mt-2 rounded-md bg-[#fff7ed] px-3 py-2 text-[12px] leading-5 text-[#9a3412]" data-testid="boutique-tax-note">
@@ -495,6 +521,16 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
                 </section>
             )}
 
+            {/* ثلاثةُ أرقامٍ تُخلط: ما يأخذه المتجر من بيع البوتيك، وما يبقى له من منتجه، وربحُه في الدفتر */}
+            <details className="rounded-lg border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[12px] leading-5 text-[#4b4b4b]" data-testid="boutique-three-numbers">
+                <summary className="cursor-pointer font-semibold">{t('العمولة، والمتبقي للمتجر، وصافي الربح: ما الفرق؟')}</summary>
+                <ul className="mt-1.5 list-disc space-y-1 ps-5">
+                    <li>{t('العمولة: ما يأخذه المتجر من بيع صنف البوتيك منفردًا، بنسبة البوتيك من السعر. هي إيراد المتجر من هذا البيع.')}</li>
+                    <li>{t('المتبقي للمتجر: ما يبقى من منتج المتجر بعد ثمن قطع البوتيك فيه. قبل خصم الفاتورة، وقبل تكلفة الورد والعمالة والإيجار.')}</li>
+                    <li>{t('صافي الربح المحاسبي: من تقرير الأرباح والدفتر، بعد كل التكاليف والمصروفات. لا تقوله هذه الشاشة.')}</li>
+                </ul>
+            </details>
+
             {returnsShown && (
                 <section>
                     <p className="mb-1.5 text-[12px] font-semibold text-[#4b4b4b]">{t('المرتجعات والأرصدة — منفصلة عن المبيعات')}</p>
@@ -512,9 +548,14 @@ function SummaryBlock({ summary, fmt }: { summary: SalesSummary | null; fmt: (v:
 
 /* ═══════════ الصفوف ═══════════ */
 
+/** بابُ نافذة الفاتورة: طلبٌ، أو فاتورةُ عميلٍ بلا طلب */
+export const invoiceUrl = (r: Pick<SaleRow, 'order_id' | 'invoice_id'>) =>
+    r.order_id === null ? route('admin.boutiques.sales.invoice', r.invoice_id ?? 0) : route('admin.boutiques.sales.order', r.order_id);
+
 function InvoiceStateBadge({ row }: { row: Pick<SaleRow, 'invoice_state' | 'order_status'> }) {
     const t = useTranslate();
     if (row.invoice_state === 'cancelled') return <Badge variant="danger">{t('ملغاة')}</Badge>;
+    if (row.invoice_state === 'returned') return <Badge variant="warning">{t('مرتجعة كاملة')}</Badge>;
     if (row.invoice_state === 'partial') return <Badge variant="warning">{t('مرتجعة جزئيًا')}</Badge>;
     return <Badge variant="neutral">{t(row.order_status)}</Badge>;
 }
@@ -543,7 +584,7 @@ function ProductCell({ row, fmt }: { row: SaleRow; fmt: (v: number) => string })
     );
 }
 
-function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) => string; onOpen: (id: number) => void }) {
+function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) => string; onOpen: (url: string) => void }) {
     const t = useTranslate();
     return (
         <div className="no-scrollbar hidden overflow-x-auto md:block">
@@ -565,7 +606,7 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                     {rows.map((r) => (
                         <tr key={r.key} className="border-t border-[var(--ui-border,#e8e8e8)] align-top">
                             <td className="px-3 py-2.5">
-                                <button type="button" onClick={() => onOpen(r.order_id)} className="whitespace-nowrap font-medium text-[#1d4ed8] underline-offset-2 hover:underline">
+                                <button type="button" onClick={() => onOpen(invoiceUrl(r))} className="whitespace-nowrap font-medium text-[#1d4ed8] underline-offset-2 hover:underline">
                                     {r.order_number}
                                 </button>
                                 <p className="text-[11px] text-[#9ca3af] tabular-nums">{r.ordered_at}</p>
@@ -577,7 +618,7 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{short(r.quantity, 3)} × {fmt(r.unit_price)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">{fmt(r.amount)}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums text-[#047857]">
-                                {r.void ? <span className="text-[#9ca3af]">—</span> : r.type === 'standalone' ? <>{fmt(r.commission)} <span className="text-[11px] text-[#9ca3af]">({number(r.rate ?? 0, 2)}%)</span></> : t('لا عمولة')}
+                                {r.void ? <span className="text-[#9ca3af]">—</span> : r.rate !== null ? <>{fmt(r.commission)} <span className="text-[11px] text-[#9ca3af]">({number(r.rate ?? 0, 2)}%)</span></> : t('لا عمولة')}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-end font-medium tabular-nums text-[#6d28d9]">{r.void ? <span className="font-normal text-[#9ca3af]">—</span> : fmt(r.net)}</td>
                             <td className="space-y-1 px-3 py-2.5">
@@ -593,14 +634,14 @@ function RowsTable({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
     );
 }
 
-function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) => string; onOpen: (id: number) => void }) {
+function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) => string; onOpen: (url: string) => void }) {
     const t = useTranslate();
     return (
         <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] md:hidden" data-testid="boutique-sales-cards">
             {rows.map((r) => (
                 <li key={r.key} className="space-y-1.5 px-4 py-3 text-[13px]">
                     <div className="flex items-center justify-between gap-2">
-                        <button type="button" onClick={() => onOpen(r.order_id)} className="font-medium text-[#1d4ed8]">
+                        <button type="button" onClick={() => onOpen(invoiceUrl(r))} className="font-medium text-[#1d4ed8]">
                             {r.order_number}
                         </button>
                         <span className="text-[11px] text-[#9ca3af] tabular-nums">{r.ordered_at}</span>
@@ -617,7 +658,7 @@ function RowsCards({ rows, fmt, onOpen }: { rows: SaleRow[]; fmt: (v: number) =>
                     <p className="text-[12px] tabular-nums text-[#4b4b4b]">{short(r.quantity, 3)} × {fmt(r.unit_price)}</p>
                     <div className="grid grid-cols-3 gap-2 tabular-nums">
                         <div><p className="text-[11px] text-[#9ca3af]">{t('الإجمالي')}</p>{fmt(r.amount)}</div>
-                        <div><p className="text-[11px] text-[#9ca3af]">{t('عمولة المتجر')}</p>{r.void ? '—' : r.type === 'standalone' ? fmt(r.commission) : t('لا عمولة')}</div>
+                        <div><p className="text-[11px] text-[#9ca3af]">{t('عمولة المتجر')}</p>{r.void ? '—' : r.rate !== null ? fmt(r.commission) : t('لا عمولة')}</div>
                         <div><p className="text-[11px] text-[#9ca3af]">{t('صافي البوتيك')}</p><span className="font-medium text-[#6d28d9]">{r.void ? '—' : fmt(r.net)}</span></div>
                     </div>
                 </li>
@@ -649,6 +690,7 @@ function MoneyBlock({ money, fmt }: { money: NonNullable<InvoiceDetails['money']
             {money.tax > 0 && row(money.tax_basis === 'inside' ? t('الضريبة (ضمن الأسعار)') : t('الضريبة (مضافة)'), fmt(money.tax))}
             {money.delivery_fee > 0 && row(t('التوصيل'), fmt(money.delivery_fee))}
             {row(t('إجمالي ما على العميل'), fmt(money.total), 'border-t border-dashed border-[var(--ui-border,#e8e8e8)] font-semibold text-[#111]')}
+            {(money.credited ?? 0) > 0 && row(t('إشعارات دائن'), `−${fmt(money.credited ?? 0)}`)}
             {row(t('المدفوع فعليًا'), fmt(money.paid))}
             {row(t('المتبقي على العميل'), fmt(money.balance))}
             <div className="mt-1 border-t border-[var(--ui-border,#e8e8e8)] pt-1">
@@ -668,24 +710,24 @@ function MoneyBlock({ money, fmt }: { money: NonNullable<InvoiceDetails['money']
     );
 }
 
-function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onClose: () => void; fmt: (v: number) => string }) {
+function InvoiceDialog({ url, onClose, fmt }: { url: string | null; onClose: () => void; fmt: (v: number) => string }) {
     const t = useTranslate();
     const [data, setData] = useState<InvoiceDetails | null>(null);
     const [failed, setFailed] = useState(false);
 
     useEffect(() => {
-        if (orderId === null) return;
+        if (url === null) return;
         const ctl = new AbortController();
         setData(null);
         setFailed(false);
-        getJson<InvoiceDetails>(route('admin.boutiques.sales.order', orderId), ctl.signal)
+        getJson<InvoiceDetails>(url, ctl.signal)
             .then(setData)
             .catch((e) => e?.name !== 'AbortError' && setFailed(true));
         return () => ctl.abort();
-    }, [orderId]);
+    }, [url]);
 
     return (
-        <Dialog open={orderId !== null} onOpenChange={(o) => !o && onClose()}>
+        <Dialog open={url !== null} onOpenChange={(o) => !o && onClose()}>
             <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -754,7 +796,16 @@ function InvoiceDialog({ orderId, onClose, fmt }: { orderId: number | null; onCl
                                             name: l.boutique.name, rate: number(l.boutique.rate, 2),
                                             commission: fmt(l.boutique.commission), net: fmt(l.boutique.net),
                                         })}
-                                        <span className="ms-1"><Badge variant={SETTLE_VARIANT[l.boutique.settle_state]}>{t(SETTLE_LABEL[l.boutique.settle_state])}</Badge></span>
+                                        {l.boutique.settle_state !== 'void' && l.boutique.settle_state !== 'returned' && (
+                                            <span className="ms-1"><Badge variant={SETTLE_VARIANT[l.boutique.settle_state]}>{t(SETTLE_LABEL[l.boutique.settle_state])}</Badge></span>
+                                        )}
+                                    </p>
+                                )}
+                                {((l.discount ?? 0) > 0 || (l.returned ?? 0) > 0) && (
+                                    <p className="mt-0.5 text-[12px] text-[#6b7280]">
+                                        {(l.discount ?? 0) > 0 && t('خصم البند :amount على المتجر', { amount: fmt(l.discount ?? 0) })}
+                                        {(l.discount ?? 0) > 0 && (l.returned ?? 0) > 0 && ' · '}
+                                        {(l.returned ?? 0) > 0 && t('رُدّ منه :n', { n: short(l.returned, 3) })}
                                     </p>
                                 )}
 

@@ -8,6 +8,7 @@ import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
 import PaidLinkCollectionCard, { OrderLinks, type PaidCollection } from '@/Components/PaidLinkCollection';
 import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import { type BoutiqueShare, BoutiqueSharesCard } from './partials/BoutiqueLine';
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/InvoiceLoyaltyPanel';
 import { Button } from '@/Components/ui/button';
@@ -94,9 +95,41 @@ interface May {
     payment_link?: boolean;
 }
 
+/** قطعةُ بوتيكٍ باقيةٌ في الفاتورة — يُسأل عنها إشعارُ الدائن */
+interface BoutiquePiece {
+    /** «i12» صنفٌ منفرد، و«p34» قطعةٌ داخل باقة */
+    key: string;
+    item_id: number;
+    name: string;
+    boutique: string;
+    left: number;
+    /** ما تحمّله العميل عن الواحدة في هذه الورقة — يُقترح به مبلغُ الإشعار */
+    each: number;
+    /** حملتها ورقةُ تسوية */
+    on_sheet: boolean;
+    /** قطعةٌ داخل باقةٍ أو إضافة — يُسأل: عادت أم لا، ولا يُقترح بها مبلغ */
+    piece?: boolean;
+    parent?: string | null;
+}
+
+/** قطعٌ سُئل عنها بإشعارٍ ولم يُعرف أعادت — يُقال حالُها بعدُ */
+interface WaitingPiece {
+    id: number;
+    name: string;
+    parent: string;
+    boutique: string;
+    left: number;
+}
+
+interface PieceBack {
+    quantity?: string;
+    sellable?: string;
+    damaged?: string;
+}
+
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, context, flash } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, boutiquePieces = [], boutiqueShares = [], boutiqueWaiting = [], context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -120,6 +153,12 @@ export default function CustomerInvoiceShow() {
                 collection?: PaidCollection | null;
                 /** سندُ القبض صفحةُ «المالية» — رابطُه لمن يفتحها */
                 mayOpenReceipts?: boolean;
+                /** قطعُ البوتيكات الباقيةُ فيها — لإشعار الدائن، بلا مال (`BoutiqueInvoiceDues::pieces`) */
+                boutiquePieces?: BoutiquePiece[];
+                /** أنصبةُ البوتيكات — فارغةٌ لمن لا يقرأ مالَها (`BoutiqueAccess`) */
+                boutiqueShares?: BoutiqueShare[];
+                /** قطعُ باقاتٍ لم يُتحقَّق منها — لمن يكتب الإشعار */
+                boutiqueWaiting?: WaitingPiece[];
             }>
         >().props;
     const t = useTranslate();
@@ -244,7 +283,7 @@ export default function CustomerInvoiceShow() {
                     onDone={() => setPaying(false)}
                 />
             )}
-            {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
+            {crediting && <CreditNoteForm invoice={invoice} pieces={boutiquePieces} onDone={() => setCrediting(false)} />}
 
             {/* فُتحت من «المبيعات» على تحصيلٍ عبر رابط دفع: مبلغُه عند Paymob ويومُه ومرجعُه وسندُه */}
             {collection && (
@@ -429,6 +468,10 @@ export default function CustomerInvoiceShow() {
 
                     {/* ونقاطُ الولاء على سدادها برابط — لمن تُكسب على فاتورته وحده */}
                     {loyalty && <InvoiceLoyaltyPanel loyalty={loyalty} />}
+
+                    {/* ونصيبُ البوتيكات في بنودها — لمن يقرأ مالَها، ولا يُطبع */}
+                    <BoutiqueSharesCard shares={boutiqueShares} currency={context!.currency} />
+                    <WaitingPiecesCard invoiceId={invoice.id} pieces={boutiqueWaiting} />
 
                     {invoice.credit_notes.length > 0 && (
                         <Card className="p-4">
@@ -722,7 +765,7 @@ function PayForm({
  * على التاجر في الإقرار — يدفع عن بضاعةٍ رجعت إليه. وتبقى قابلةً للكتابة:
  * ما رُدّ قد يكون بندًا معفًى.
  */
-function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => void }) {
+function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces: BoutiquePiece[]; onDone: () => void }) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
     const m = (v: number) => money(v, context!.currency);
@@ -730,6 +773,9 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
     /* ولا يتجاوز الإشعارُ ما بقي من قيمة الورقة بعد إشعاراتٍ سبقته */
     const cap = creditRoom(invoice);
     const share = invoice.total > 0 ? invoice.tax_total / invoice.total : 0;
+
+    /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
+    const [touched, setTouched] = useState(false);
 
     /*
      * وسببُ الإشعار يُختار ولا يُفترض (`CustomerCreditNote::BASES`): تصحيحُ خطأٍ
@@ -743,11 +789,27 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
         reason: '',
         basis: '',
         token,
+        // ومن قطع البوتيك كم رُدّ من كلٍّ — للإرجاع وحده، بمفتاح القطعة (بندٌ أو قطعةُ باقة)
+        ...(pieces.length > 0 ? { pieces: {} as Record<string, PieceBack> } : {}),
     });
+    const back = (form.data.pieces ?? {}) as Record<string, PieceBack>;
+    /* ومبلغُ ما رُدّ يُقترح من الورقة ما لم يُكتب المبلغُ بيد */
+    const [typed, setTyped] = useState(false);
+    const setPiece = (id: string, part: Partial<PieceBack>) =>
+        form.setData((d) => {
+            const next = { ...((d.pieces ?? {}) as Record<string, PieceBack>), [id]: { ...back[id], ...part } };
+            // والمبلغُ يُقترح من الأصناف المنفردة وحدها: قطعةُ الباقة ثمنُها ليس ما دفعه العميل
+            const value = round3(pieces.reduce((sum, p) => sum + p.each * (Number(next[p.key]?.quantity) || 0), 0));
 
-    /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
-    const [touched, setTouched] = useState(false);
+            return {
+                ...d,
+                pieces: next,
+                ...(typed || value <= 0 ? {} : { amount: String(Math.min(cap, value)), ...(touched ? {} : { tax_amount: String(round3(Math.min(cap, value) * share)) }) }),
+            };
+        });
+
     const setAmount = (value: string) => {
+        setTyped(true);
         const next = Number(value);
         form.setData((d) => ({
             ...d,
@@ -758,6 +820,46 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
 
     return (
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
+            {pieces.length > 0 && (
+                <fieldset className="w-full space-y-2 text-[13px]" data-testid="credit-boutique">
+                    {/* سببُ الإشعار واحدٌ للفاتورة كلّها (`CREDIT_NOTE_BASES`): الإرجاعُ وحده يحمل القطعَ التي عادت */}
+                    <legend className="mb-1 font-medium">{t('في هذه الفاتورة قطع لبوتيكات')}</legend>
+                    {form.data.basis !== '' && form.data.basis !== 'return' && (
+                        <p className="text-[12px] text-[#6b7280]">{t('الخصم وتصحيح الخطأ على المتجر — لا ينقص بهما مستحق أي بوتيك.')}</p>
+                    )}
+                    {form.data.basis === '' && (
+                        <p className="text-[12px] text-[#6b7280]">{t('اختر سبب الإشعار: الإرجاع ينقص مستحق صاحب القطعة، والخصم وتصحيح الخطأ على المتجر.')}</p>
+                    )}
+                    {form.data.basis === 'return' && (
+                        <div className="space-y-2">
+                            <p className="text-[12px] text-[#6b7280]">{t('اكتب ما رُدّ من قطع البوتيكات، واترك الباقي فارغًا. ينقص به مستحق صاحب القطعة وحده.')}</p>
+                            {pieces.map((p) => (
+                                <div key={p.key} className="flex flex-wrap items-center gap-2" data-testid={p.piece ? 'credit-bundle-piece' : 'credit-piece'}>
+                                    <span className="min-w-40 flex-1">
+                                        {p.name} <span className="text-[#6b7280]">— {p.boutique}</span>
+                                        {p.piece && <span className="block text-[12px] text-[#6b7280]">{t('قطعة في «:parent»: كم شملها الإشعار، وكم عاد إلى الرف، وكم لن يعود', { parent: p.parent ?? '' })}</span>}
+                                    </span>
+                                    <Input className="w-28" type="number" min="0" max={p.left} step="any" dir="ltr" aria-label={t('رُدّ من :name', { name: p.name })}
+                                        placeholder={t('من :n', { n: String(p.left) })} value={back[p.key]?.quantity ?? ''} onChange={(e) => setPiece(p.key, { quantity: e.target.value })} />
+                                    {/* حملتها ورقةٌ — أو قطعةٌ في باقة: حالُها يُحسم به ما لصاحبها */}
+                                    {(p.on_sheet || p.piece) && (
+                                        <>
+                                            <Input className="w-28" type="number" min="0" max={p.left} step="any" dir="ltr" aria-label={t(p.piece ? 'عادت إلى الرف' : 'عاد سليمًا')} placeholder={t(p.piece ? 'عادت إلى الرف' : 'عاد سليمًا')}
+                                                value={back[p.key]?.sellable ?? ''} onChange={(e) => setPiece(p.key, { sellable: e.target.value })} />
+                                            <Input className="w-28" type="number" min="0" max={p.left} step="any" dir="ltr" aria-label={t('تالف أو لن يعود')} placeholder={t('تالف أو لن يعود')}
+                                                value={back[p.key]?.damaged ?? ''} onChange={(e) => setPiece(p.key, { damaged: e.target.value })} />
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                            {pieces.some((p) => p.piece) && (
+                                <p className="text-[12px] text-[#6b7280]">{t('قطعة الباقة التي لم تعد، أو لم يُتحقق منها، تبقى لصاحبها كما عند إلغاء طلب. وما عاد منها ينقص مستحقه.')}</p>
+                            )}
+                        </div>
+                    )}
+                    {(form.errors as Record<string, string>).pieces && <p className="text-[12px] text-[#b91c1c]">{(form.errors as Record<string, string>).pieces}</p>}
+                </fieldset>
+            )}
             <label className="text-[13px]">
                 {t('المبلغ')}
                 <Input value={form.data.amount} onChange={(e) => setAmount(e.target.value)} />
@@ -782,7 +884,11 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
                 <Select
                     id="credit-note-basis"
                     value={form.data.basis}
-                    onChange={(e) => form.setData('basis', e.target.value)}
+                    onChange={(e) => {
+                        form.setData('basis', e.target.value);
+                        // أُجيب السؤال: لا تبقى رسالتُه فوق الجواب
+                        form.clearErrors('basis' as never);
+                    }}
                     placeholder={t('اختر')}
                     options={CREDIT_NOTE_BASES.map((b) => ({ value: b.value, label: t(b.label) }))}
                 />
@@ -835,4 +941,41 @@ function creditRoom(invoice: Invoice): number {
 /** ثلاثُ خاناتٍ — كما يُخزَّن المال في هذا النظام */
 function round3(v: number): number {
     return Math.round(v * 1000) / 1000;
+}
+
+/** قطعُ باقاتٍ سُئل عنها ولم يُعرف أعادت — عادت فيُنقص مستحقُّها، أو لن تعود فتبقى لصاحبها */
+function WaitingPiecesCard({ invoiceId, pieces }: { invoiceId: number; pieces: WaitingPiece[] }) {
+    const t = useTranslate();
+    const form = useForm<{ reason: string; pieces: Record<number, { returned?: string; lost?: string }> }>({ reason: '', pieces: {} });
+    if (pieces.length === 0) return null;
+    const set = (id: number, part: { returned?: string; lost?: string }) =>
+        form.setData('pieces', { ...form.data.pieces, [id]: { ...form.data.pieces[id], ...part } });
+
+    return (
+        <Card className="p-4 text-[13px]" data-testid="boutique-waiting-pieces">
+            <h3 className="mb-1 text-[13px] font-bold">{t('قطع بوتيك لم يُتحقق منها')}</h3>
+            <p className="mb-2 text-[12px] text-[#6b7280]">{t('شملها إشعار دائن ولم يُقل أعادت. تبقى لصاحبها حتى يُقال.')}</p>
+            {pieces.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center gap-2 border-t border-[var(--ui-border,#e8e8e8)] py-2">
+                    <span className="min-w-40 flex-1">
+                        {p.name} <span className="text-[#6b7280]">— {p.boutique}</span>
+                        <span className="block text-[12px] text-[#6b7280]">{t('في «:parent» · لم يُتحقق من :n', { parent: p.parent, n: String(p.left) })}</span>
+                    </span>
+                    <Input className="w-28" type="number" min="0" max={p.left} step="1" dir="ltr" aria-label={t('عادت إلى الرف')} placeholder={t('عادت إلى الرف')}
+                        value={form.data.pieces[p.id]?.returned ?? ''} onChange={(e) => set(p.id, { returned: e.target.value })} />
+                    <Input className="w-28" type="number" min="0" max={p.left} step="1" dir="ltr" aria-label={t('لن تعود')} placeholder={t('لن تعود')}
+                        value={form.data.pieces[p.id]?.lost ?? ''} onChange={(e) => set(p.id, { lost: e.target.value })} />
+                </div>
+            ))}
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+                <Input className="min-w-48 flex-1" aria-label={t('السبب')} placeholder={t('السبب')} value={form.data.reason} onChange={(e) => form.setData('reason', e.target.value)} />
+                <Button type="button" size="sm" disabled={form.processing}
+                    onClick={() => form.post(route('admin.customerInvoices.boutiquePieces', invoiceId), { preserveScroll: true, onSuccess: () => form.reset() })}>
+                    {t('سجّل حالها')}
+                </Button>
+            </div>
+            {(form.errors as Record<string, string>).pieces && <p className="mt-1 text-[12px] text-[#b91c1c]">{(form.errors as Record<string, string>).pieces}</p>}
+            {form.errors.reason && <p className="mt-1 text-[12px] text-[#b91c1c]">{form.errors.reason}</p>}
+        </Card>
+    );
 }

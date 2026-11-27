@@ -14,19 +14,27 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
+import HoldsPanel, { type SheetHold } from './HoldsPanel';
+import MovementsPanel from './MovementsPanel';
 import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
 import SalesPanel from './SalesPanel';
+import InvoiceReviewPanel from './InvoiceReviewPanel';
 
 interface Line {
     product_id: number | null;
     name: string;
     variant: string | null;
     rate: number;
+    /** من أين: بنودُ الطلبات، أو فواتيرُ العملاء بلا طلب بعد تحصيلها */
+    source?: 'orders' | 'invoices';
     quantity: number;
     gross: number;
     commission: number;
     net: number;
 }
+
+/** ما في فواتير العملاء: بنودٌ وفواتيرُ وصافٍ */
+interface InvoicePart { lines: number; invoices: number; gross: number; net: number }
 
 interface Props {
     boutique: {
@@ -39,16 +47,24 @@ interface Props {
     canIssue?: boolean;
     canPay?: boolean;
     /** مرتجعاتٌ بعد أوراقها — انظر `BoutiqueReturns` */
+    /** تحصيلٌ أُلغي بعد صدور الورقة — `null` لمن لا يقرأ المال */
+    holds?: SheetHold[] | null;
     returns?: BoutiqueReturnsPart | null;
     statement: {
         /** أتُصدَر على شهرٍ ما زال يبيع؟ — خبرٌ من الخادم لا حسبةٌ في المتصفّح */
         partial: boolean;
         period: string; from: string; to: string; lines: Line[];
         quantity: number; gross: number; commission: number; net: number; lines_count: number;
+        /** ضريبةٌ داخل الأسعار أُخرجت قبل العمولة — صفرٌ في القاعدة القائمة */
+        vat?: number;
         /** مكوّناتُ الباقات وإضافاتُها — انظر `BoutiqueDues::statement` */
         components?: ComponentsPart;
         /** المطلوب سداده: صافي المنفرد وصافي المكوّنات معًا */
         payable?: number;
+        /** صدرت فواتيرُه ولم يكتمل تحصيلُها — لا تحمله ورقةٌ بعد */
+        awaiting?: InvoicePart;
+        /** حملته ورقةٌ ثمّ أُلغي تحصيلُ فاتورته */
+        reopened?: InvoicePart;
     } | null;
     /** الرصيدُ بين المتجر والبوتيك — `null` لمن لم يُفتح له سجلُّ المكوّنات */
     ledger?: BoutiqueLedger | null;
@@ -84,7 +100,7 @@ interface Props {
  */
 export default function BoutiqueShow() {
     // غيابُ المفتاح يعني «كما كان»: الحارسُ الخادمُ وهو لا يُرسل الكشفَ أصلًا لمن لا يقرؤه
-    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, returns, context, boutiqueOptions, canSeeSales } =
+    const { boutique, statement, canSeeMoney = true, canIssue = true, canPay = true, period, periods, settlement, history, products, catalog, q, ledger, holds, returns, context, boutiqueOptions, canSeeSales } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -252,6 +268,8 @@ export default function BoutiqueShow() {
                 />
             )}
 
+            {holds && holds.length > 0 && <HoldsPanel boutiqueId={boutique.id} holds={holds} currency={currency} canPay={canPay} />}
+
             {returns && (
                 <ReturnsPanel
                     boutiqueId={boutique.id}
@@ -276,6 +294,9 @@ export default function BoutiqueShow() {
                     currency={currency}
                 />
             )}
+
+            {/* وكلُّ حركةٍ بينه وبين المتجر بمستندها وقيدها — لمن يقرأ المال */}
+            {canSeeMoney && statement && <MovementsPanel boutiqueId={boutique.id} period={period} currency={currency} />}
 
             {/*
                 أصنافُ البوتيك — ما يحمله اليوم، لا ما بِيع منه في شهر.
@@ -355,6 +376,33 @@ export default function BoutiqueShow() {
                 q={q}
             />
 
+            {/* صدرت فواتيرُه ولم يكتمل تحصيلُها: يُقال ولا يُجمع — لا تحمله ورقة */}
+            {/* والضريبةُ المشمولة حين تُخرَج قبل العمولة تُقال: بها يجمع الإجماليُّ إلى ما تحته */}
+            {statement && (statement.vat ?? 0) > 0 && (
+                <p className="mb-5 text-[12px] text-[#6b7280]" data-testid="boutique-vat-inside">
+                    {t('ضريبة داخل الأسعار أُخرجت قبل العمولة: :vat — يورّدها المتجر.', { vat: money(statement.vat ?? 0, currency) })}
+                </p>
+            )}
+
+            {statement && ((statement.awaiting?.lines ?? 0) > 0 || (statement.reopened?.lines ?? 0) > 0) && (
+                <Card className="mb-5 space-y-1 p-4 text-[13px] leading-6" data-testid="boutique-awaiting">
+                    {(statement.awaiting?.lines ?? 0) > 0 && (
+                        <p className="text-[#4b4b4b]">
+                            {t('بانتظار التحصيل: :net للبوتيك في :n فاتورة عميل صدرت ولم تُسدَّد كاملة. يدخل كشف الشهر الذي يكتمل فيه السداد.', {
+                                net: money(statement.awaiting!.net, currency), n: number(statement.awaiting!.invoices),
+                            })}
+                        </p>
+                    )}
+                    {(statement.reopened?.lines ?? 0) > 0 && (
+                        <p className="text-[#b91c1c]">
+                            {t('للمراجعة: :net حملته ورقة تسوية ثم أُلغي تحصيل فاتورته (:n فاتورة). الورقة كما صدرت، وتفصيله في «تحصيل أُلغي بعد صدور ورقة التسوية».', {
+                                net: money(statement.reopened!.net, currency), n: number(statement.reopened!.invoices),
+                            })}
+                        </p>
+                    )}
+                </Card>
+            )}
+
             {/* ما بُني منه الرقم — صنفًا صنفًا */}
             {statement && <Card className="mb-5 overflow-hidden">
                 <div className="border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm font-semibold text-[#111]">
@@ -385,8 +433,11 @@ export default function BoutiqueShow() {
                                             {l.variant && (
                                                 <span className="text-[12px] text-[#9ca3af]"> — {l.variant}</span>
                                             )}
+                                            {l.source === 'invoices' && (
+                                                <span className="block text-[12px] text-[#6b7280]" data-testid="statement-from-invoices">{t('من فواتير عملاء اكتمل تحصيلها')}</span>
+                                            )}
                                         </td>
-                                        <td className="px-4 py-2.5 text-end tabular-nums">{number(l.quantity)}</td>
+                                        <td className="px-4 py-2.5 text-end tabular-nums">{number(l.quantity, Number.isInteger(l.quantity) ? 0 : 3)}</td>
                                         <td className="px-4 py-2.5 text-end tabular-nums">{money(l.gross, currency)}</td>
                                         <td className="px-4 py-2.5 text-end tabular-nums text-[#6b7280]">
                                             {number(l.rate)}%
@@ -418,6 +469,9 @@ export default function BoutiqueShow() {
                     </div>
                 )}
             </Card>}
+
+            {/* فواتيرُ عملاءٍ فيها صنفُه ولم تدخل هذا الكشف — للمراجعة */}
+            <InvoiceReviewPanel boutiqueId={boutique.id} currency={currency} />
 
             {/*
                 وما صدر من قبل — فيُقرأ تاريخُه بلا تنقّلٍ بين الشهور.

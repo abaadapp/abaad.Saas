@@ -111,6 +111,8 @@ class TenantTables
         'boutique_credit_offsets',
         // ومرتجعُ ما بعد الورقة بعد الطلبات والأوراق: يشير إليهما — واستردادُه بعده
         'boutique_returns', 'boutique_return_recoveries',
+        // والسعرُ المتّفق عليه مع البوتيك — بند اتّفاقه (`BoutiquePolicy`)
+        'boutique_price_agreements',
         /*
          * ونيّاتُ الدفع بعد الطلبات: كلُّ نيّةٍ نجحت تشير إلى طلبها.
          *
@@ -148,6 +150,12 @@ class TenantTables
         'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations',
         'customer_credit_notes',
+        // وما للبوتيكات في بنودها وما رُدّ منه بعد الإشعارات: يشيران إلى الفاتورة وبندها وإشعارها
+        'boutique_invoice_lines', 'boutique_invoice_returns',
+        // وما عُلّق سدادُه من أوراقها: يشير إلى بندها
+        'boutique_sheet_holds',
+        // وما سُدّد منها بعد قراءة المعلَّق: يشير إلى ورقته ومصروفها
+        'boutique_sheet_payments',
         /*
          * وحركاتُ النقاط بعد التحصيلات: نقاطُ سداد الفاتورة برابطٍ تشير إلى
          * فاتورتها وتحصيلها (`InvoiceLoyalty`).

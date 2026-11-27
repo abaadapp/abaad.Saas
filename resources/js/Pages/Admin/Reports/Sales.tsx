@@ -59,6 +59,9 @@ interface BoutiqueTotals {
     quantity: number;
     orders: number;
     lines: number;
+    /** فواتيرُ العملاء بلا طلب، ومنها ما لم يكتمل تحصيلُه */
+    invoices?: number;
+    awaiting_net?: number;
 }
 
 /** النطاقُ المختار — `null` لكلّ المبيعات */
@@ -194,6 +197,9 @@ export default function ReportsSales() {
                 ...(boutiqueTotals.commission === undefined ? [] : [{ label: t('عمولة المتجر'), value: m(boutiqueTotals.commission), icon: 'trending-up', color: 'success' }]),
                 ...(boutiqueTotals.net === undefined ? [] : [{ label: t('المستحق للبوتيك'), value: m(boutiqueTotals.net), icon: 'arrow-down-circle', color: 'warning' }]),
                 { label: t('الكمية المباعة'), value: number(boutiqueTotals.quantity), icon: 'package', color: 'info' },
+                ...((boutiqueTotals.awaiting_net ?? 0) > 0
+                    ? [{ label: t('منه بانتظار التحصيل'), value: m(boutiqueTotals.awaiting_net ?? 0), icon: 'clock', color: 'info' }]
+                    : []),
             ];
 
     const stats = !summary ? scopedStats : [

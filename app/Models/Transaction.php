@@ -49,6 +49,24 @@ class Transaction extends Model
      */
     public const ORDER_REFUND = 'order_refund';
 
+    /**
+     * مالُ البوتيكات في الصندوق والبنك — كلُّ صفٍّ منها مستندُه في شاشة البوتيك (`BoutiqueMovements`).
+     *
+     * سدادُ ورقةٍ (المنفرد)، وسدادُ قطعها، واستردادُ رصيدٍ من البوتيك، وتحصيلُ مطالبة مرتجعٍ منه.
+     */
+    public const BOUTIQUE_SHEET = 'boutique_sheet';
+
+    public const BOUTIQUE_PIECES = 'boutique_pieces';
+
+    public const BOUTIQUE_REFUND = 'boutique_refund';
+
+    public const BOUTIQUE_CLAIM = 'boutique_claim';
+
+    /** ما سُدّدت ورقتُه دونه لأنّ تحصيلَه أُلغي، ثمّ فُكّ وسُدّد (`BoutiqueHolds::pay`) */
+    public const BOUTIQUE_HELD = 'boutique_held';
+
+    public const BOUTIQUE_KINDS = [self::BOUTIQUE_SHEET, self::BOUTIQUE_PIECES, self::BOUTIQUE_REFUND, self::BOUTIQUE_CLAIM, self::BOUTIQUE_HELD];
+
     /** ما سُوّي على فاتورةٍ بعد بيعتها — لا يُكتب فوقه صفُّ البيعة */
     public const SETTLEMENT_KINDS = [self::ORDER_BALANCE, self::ORDER_REFUND];
 

@@ -629,7 +629,8 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         }
         $this->assertFileDoesNotExist($this->holdFile(), 'بقيت المهامُّ موقوفةً والكودُ لم يتغيّر');
         $this->assertStringContainsString('ما زالت مهمّةٌ تجري على الطابور بعد 6 ثانية', $run['out']);
-        $this->assertStringContainsString('  #7 whatsapp App\Jobs\SendWhatsAppMessage', $run['out'], 'لم تُسمَّ المهمّة');
+        // وتُسمّى المهمّةُ تحت رسالة الوقوف نفسِها — لا في سطر الانتظار الأوّل وحده
+        $this->assertMatchesRegularExpression('/ما زالت مهمّةٌ تجري على الطابور بعد 6 ثانية[^\n]*\n  #7 whatsapp App\\\\Jobs\\\\SendWhatsAppMessage/u', $run['out'], 'لم تُسمَّ المهمّةُ حين وقف النشر');
         // وحالُ الخادم: الكودُ كما كان، والطابورُ أُطلق، والمهامُّ تجري
         $block = $this->block($run['out']);
         foreach (['سقط عند: انتظار المهمّة الجارية قبل تبديل الكود', 'الكود على القرص: '.$this->from.' (كان '.$this->from.')',

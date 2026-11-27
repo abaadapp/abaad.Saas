@@ -49,16 +49,46 @@ final class DeployHold
     /** ملفٌّ أقدمُ من هذا (ثوانٍ) تركه نشرٌ قُتل — يُتجاهل */
     public const STALE_AFTER = 1800;
 
+    /** خطأُ الملفّ القديم يُسجَّل مرّةً في كلّ تشغيل، لا مرّةً لكلّ مهمّة */
+    private static bool $staleLogged = false;
+
     public static function register(): void
     {
-        // عند بدء `schedule:run` وحده: كلُّ مهمّةٍ في الجدول — ما كُتب اليوم وما يُضاف
-        // غدًا في routes/console.php — تُسأل قبل أن تجري. فلا قائمةَ تُنسى
+        self::$staleLogged = false;
+
         Event::listen(CommandStarting::class, function (CommandStarting $starting) {
             if ($starting->command !== 'schedule:run') {
                 return;
             }
-            foreach (app(Schedule::class)->events() as $event) {
-                $event->skip(fn () => self::holds($event));
+            $schedule = app(Schedule::class);
+
+            // النشرُ قائمٌ والتشغيلُ يبدأ: يأخذ `schedule:run` جدولًا فارغًا — فلا تجري
+            // مهمّة، ولا يُقرأ حتى شرطُها (`when`): بعضُ الشروط يسأل القاعدة، والقاعدةُ
+            // لم تُهاجَر بعد. وتُسمّى ما حان وقتُه منها مرّةً، فتُعرف اليوميّةُ التي فاتت
+            if (self::holds()) {
+                Log::warning('Scheduled tasks skipped: a deploy is swapping the code', [
+                    'tasks' => $schedule->dueEvents(app())->map(fn (ScheduledEvent $e) => self::name($e))->values()->all(),
+                    'hold' => self::describe(),
+                ]);
+                app()->instance(Schedule::class, new Schedule);
+
+                return;
+            }
+
+            // وإن بدأ النشرُ أثناء هذا التشغيل — خلف مهمّةٍ طويلة — تقف كلُّ مهمّةٍ بعدها.
+            // كلُّ مهمّة: ما كُتب اليوم في routes/console.php وما يُضاف غدًا
+            foreach ($schedule->events() as $event) {
+                $event->skip(function () use ($event) {
+                    if (! self::holds()) {
+                        return false;
+                    }
+                    Log::warning('Scheduled task skipped: a deploy started during this run', [
+                        'task' => self::name($event),
+                        'hold' => self::describe(),
+                    ]);
+
+                    return true;
+                });
             }
         });
     }
@@ -72,31 +102,50 @@ final class DeployHold
         return (string) (config('app.deploy_hold_file') ?: base_path(self::FILE));
     }
 
-    /** أيمسك النشرُ المهامَّ الآن؟ */
-    public static function holds(?ScheduledEvent $event = null): bool
+    /** أيمسك النشرُ المهامَّ الآن؟ — وملفٌّ أقدمُ من نصف ساعة لا يمسك، ويُقال ذلك */
+    public static function holds(): bool
+    {
+        $age = self::age();
+        if ($age === null) {
+            return false;
+        }
+
+        if ($age > self::STALE_AFTER) {
+            if (! self::$staleLogged) {
+                self::$staleLogged = true;
+                Log::error('Scheduled tasks ran despite a stale deploy hold — a deploy left '.self::FILE.' behind; delete it once no deploy is running', [
+                    'hold' => self::describe(),
+                    'age_seconds' => $age,
+                ]);
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /** عمرُ الملفّ بالثواني، أو null إن لم يكن */
+    private static function age(): ?int
     {
         $path = self::path();
         clearstatcache(true, $path);
         $since = @filemtime($path);
-        if ($since === false) {
-            return false;
-        }
 
-        $age = time() - $since;
-        $context = [
-            'task' => $event?->getSummaryForDisplay(),
-            'hold' => trim((string) @file_get_contents($path)),
-            'age_seconds' => $age,
-        ];
+        return $since === false ? null : time() - $since;
+    }
 
-        if ($age > self::STALE_AFTER) {
-            Log::error('Scheduled task ran despite a stale deploy hold — a deploy left '.self::FILE.' behind; delete it once no deploy is running', $context);
+    /** اسمُ المهمّة كما في routes/console.php — `whatsapp:run-campaigns` لا سطرُ الأمر كلُّه */
+    private static function name(ScheduledEvent $event): string
+    {
+        $summary = $event->description ?: (string) ($event->command ?? $event->getSummaryForDisplay());
 
-            return false;
-        }
+        return trim((string) preg_replace("/^.*'artisan'\\s*/", '', $summary));
+    }
 
-        Log::warning('Scheduled task skipped: a deploy is swapping the code', $context);
-
-        return true;
+    /** ما كتبه السكربتُ فيه: أيُّ نشرٍ ومنذ متى */
+    private static function describe(): string
+    {
+        return trim((string) @file_get_contents(self::path()));
     }
 }

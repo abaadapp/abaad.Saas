@@ -224,6 +224,41 @@ abaad-deploy ALL=(root)     NOPASSWD: ABAAD_FPM_RELOAD   # /usr/bin/systemctl re
 git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غيره). و`composer` يجري بـ`--no-scripts`
 ثمّ `package:discover` بحساب www-data، فلا يشغّل حسابُ النشر التطبيقَ ولا يكتب ذاكرتَه.
 
+### أثناء النشر: قفلٌ، والمهامّ المجدولة، والطابور
+
+`deploy.sh` و`rollback-code.sh` يفعلان بالترتيب، قبل أن يتبدّل الكود:
+
+1. **قفل** `flock` على `/var/log/abaad-deploy/deploy.lock`: نشرٌ أو رجوعٌ ثانٍ يخرج بخطأ «يجري
+   الآن» ولا يلمس شيئًا. قفلُ النواة يُفلت وحده إن مات السكربت. (و«Deploy Main» يصفّ نشراته
+   أصلًا: `concurrency: deploy-production`.)
+2. **المهامّ المجدولة** تقف بملفّ `/var/www/abaad/.deploy-hold` يكتبه حسابُ النشر، فيتخطّى
+   التطبيقُ (`App\Support\DeployHold`) كلَّ مهمّةٍ حان وقتها ويسجّل اسمها. بلا sudo ولا تعديلٍ
+   لـcron. ويُحذف بعد الهجرات والذاكرة وإعادة تحميل PHP. وعند السقوط يُحذف إن كان الكودُ على
+   القرص يجري على قاعدته، ويبقى إن كان كودٌ جديدٌ ينتظر هجراتٍ لم تجرِ (ويُعلَن تحذيرًا في سجلّ
+   Deploy Main) حتى يكتمل نشرٌ أو يُرجَع بالكود. وملفٌّ أقدمُ من نصف ساعة يتجاهله التطبيق
+   ويسجّله خطأً. **مهمّةٌ يوميّةٌ حان وقتُها أثناء النشر تُتخطّى يومَها** — اسمُها في
+   `storage/logs` («Scheduled task skipped: a deploy…»)، وتُشغَّل يدويًّا إن لزم.
+3. **الطابور**: يُسأل sudo (`-l`، لا يُجري شيئًا) أتُباح قواعدُ الإيقاف والإطلاق الأربع. إن
+   أُبيحت: `queue:pause` للطابورين، ثمّ إمهالُ المهمّة الجارية 15 ثانية، ثمّ يتبدّل الكود؛ وبعد
+   الذاكرة `queue:restart` ثمّ `queue:resume`. وإن لم تُبَح (sudoers القديم أو نصفُ تركيب) لا يُوقف
+   الطابور — يمضي النشرُ كما كان، ويُعلَن ذلك تحذيرًا.
+
+**تركيبُ قواعد الطابور الأربع على الخادم** (بموافقة المالك، بعد دمج الطلب الذي يحملها):
+
+```bash
+cd /var/www/abaad
+sudo cp -a /etc/sudoers.d/abaad-deploy /root/abaad-deploy.sudoers.before   # للرجوع
+sudo install -m 440 -o root -g root deploy/abaad-deploy.sudoers /root/abaad-deploy.sudoers.new
+sudo visudo -cf /root/abaad-deploy.sudoers.new                              # الصياغة
+diff /root/abaad-deploy.sudoers.before /root/abaad-deploy.sudoers.new       # أربعةُ أسطر الطابور وحدها (وتعليق)
+sudo install -m 440 -o root -g root /root/abaad-deploy.sudoers.new /etc/sudoers.d/abaad-deploy
+sudo visudo -c                                                              # المجموع
+sudo -l -U abaad-deploy                                                     # القاعدتان، والأحدَ عشرَ أمرًا
+```
+
+**والرجوعُ عنه:** `sudo install -m 440 -o root -g root /root/abaad-deploy.sudoers.before /etc/sudoers.d/abaad-deploy && sudo visudo -c`.
+فيعود النشرُ كما كان قبل التركيب: لا إيقافَ للطابور، والمهامّ المجدولة تقف على كلّ حال (لا sudo لها).
+
 **فحصٌ يُثبت الفصل:** `scripts/audit-deploy-permissions.sh` (قرائيٌّ، بـsudo على الخادم)
 يتحقّق أنّ www-data لا يكتب الكودَ ولا السكربتات ولا ملفّات git، وأنّه يكتب `storage`
 وحدها، وأنّ قواعد sudo قاعدتان، وأنّ مفتاح GitHub على حساب النشر لا على root.

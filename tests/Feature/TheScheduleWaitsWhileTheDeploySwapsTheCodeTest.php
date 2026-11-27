@@ -112,14 +112,43 @@ class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
         $this->assertCount(0, $ran);
     }
 
-    /** كلُّ مهمّةٍ مجدولةٍ في المنصّة — اليومَ وما يُضاف غدًا — تقف، لا قائمةٌ مكتوبةٌ باليد */
-    public function test_every_real_scheduled_task_is_held(): void
+    /** وشروطُ المهامّ (`when`) لا تُقرأ أصلًا: بعضُها يسأل قاعدةً لم تُهاجَر بعد */
+    public function test_no_task_condition_is_even_evaluated_while_held(): void
     {
-        $events = app(Schedule::class)->events();
-        $this->assertGreaterThan(20, count($events), 'لم تُقرأ مهامُّ routes/console.php');
+        $asked = new \ArrayObject;
+        $schedule = new Schedule;
+        $schedule->call(fn () => null)->everyMinute()->name('conditional')->when(function () use ($asked) {
+            $asked->append('asked');
+
+            return true;
+        });
+        $this->app->instance(Schedule::class, $schedule);
+        $this->holdSince(30);
+
+        $this->artisan('schedule:run')->assertSuccessful();
+
+        $this->assertCount(0, $asked, 'قُرئ شرطُ مهمّةٍ والنشرُ يبدّل الكود');
+    }
+
+    /** كلُّ مهمّةٍ مجدولةٍ في المنصّة — اليومَ وما يُضاف غدًا — تقف، لا قائمةٌ مكتوبةٌ باليد */
+    public function test_a_run_that_starts_during_a_deploy_gets_no_task_at_all(): void
+    {
+        $this->assertGreaterThan(20, count(app(Schedule::class)->events()), 'لم تُقرأ مهامُّ routes/console.php');
         $this->holdSince(30);
 
         event(new CommandStarting('schedule:run', new ArrayInput([]), new NullOutput));
+
+        $this->assertSame([], app(Schedule::class)->events(), 'جدولٌ فيه مهامّ والنشرُ يبدّل الكود');
+    }
+
+    public function test_every_real_scheduled_task_stops_when_a_deploy_starts_mid_run(): void
+    {
+        $events = app(Schedule::class)->events();
+        $this->assertGreaterThan(20, count($events));
+
+        event(new CommandStarting('schedule:run', new ArrayInput([]), new NullOutput));
+        // التشغيلُ بدأ قبل النشر (مهمّةٌ طويلة) — ثمّ بدأ النشر
+        $this->holdSince(5);
 
         foreach ($events as $event) {
             $this->assertFalse($event->filtersPass($this->app), 'مهمّةٌ تجري والنشرُ يبدّل الكود: '.$event->getSummaryForDisplay());

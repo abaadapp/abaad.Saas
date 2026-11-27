@@ -98,20 +98,24 @@ class ATrialReachesOnlyItsTestNumbersTest extends TestCase
     /** @return array<string, array{0: mixed}> */
     public static function badNumbers(): array
     {
+        // ‏‏والخطأُ يُسمّي ما فيه: الرقمَ الذي لا يصلح، أو الحدّ
         return [
-            'بلا أرقام' => [null],
-            'فارغة' => ['   '],
-            'ليست رقمًا' => ['أحمد'],
-            'أقصر من رقم' => ['1234'],
-            'أكثر من خمسة' => ["91111111\n92222222\n93333333\n94444444\n95555555\n96666666"],
+            'بلا أرقام' => [null, null],
+            'فارغة' => ['   ', null],
+            'ليست رقمًا' => ['أحمد', 'لا يصلح لواتساب: أحمد'],
+            'أقصر من رقم' => ["91234567\n1234", 'لا يصلح لواتساب: 1234'],
+            'أكثر من خمسة' => ["91111111\n92222222\n93333333\n94444444\n95555555\n96666666", 'على الأكثر'],
         ];
     }
 
     #[DataProvider('badNumbers')]
-    public function test_a_trial_without_valid_test_numbers_does_not_open(mixed $phones): void
+    public function test_a_trial_without_valid_test_numbers_does_not_open(mixed $phones, ?string $says): void
     {
         $this->linked();
         $this->openTrial(['phones' => $phones])->assertSessionHasErrors('phones');
+        if ($says !== null) {
+            $this->assertStringContainsString($says, (string) session('errors')->first('phones'));
+        }
         $this->assertSame(0, WhatsAppBillingTrial::count());
 
         // ‏‏ولا يفتحها نداءٌ يتخطّى الشاشة

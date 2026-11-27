@@ -765,7 +765,7 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
 
     /* ═══════════ ٨ · التقريب ═══════════ */
 
-    public function test_rounding_is_one_rule_in_whole_baisa_and_the_systems_difference_is_shown_not_hidden(): void
+    public function test_rounding_is_one_rule_in_whole_baisa_for_the_rows_the_summary_the_report_and_the_sheet(): void
     {
         $this->lama->update(['commission_rate' => 12.5]);
         $odd = $this->product('قطعة كسريّة', 0.333, boutique: $this->lama->id);
@@ -787,16 +787,30 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertEquals(6.118, $s['standalone']['net']);
         $this->assertEquals(round($rows->sum('commission'), 3), $s['standalone']['commission']);
 
-        // ودالّتا النظام تُقرّبان على المجموع — فرقُ البيسة يُعرض بعينه
-        $this->assertEquals(0.875, $s['rounding']['lines_commission']);
-        $this->assertEquals(0.874, $s['rounding']['report_commission'], 'تقريرُ المبيعات: ٦٫٩٩٣ × ١٢٫٥٪ مرّةً واحدة');
-        $this->assertEquals(-0.001, $s['rounding']['report_difference']);
-        $this->assertEquals(6.118, $s['rounding']['lines_pending_net']);
-        $this->assertEquals(6.119, $s['rounding']['sheet_pending_net'], 'ورقةُ التسوية تقرّب الصنفَ مجموعًا');
-        $this->assertEquals(0.001, $s['rounding']['sheet_difference']);
+        // والتقريرُ والكشفُ والورقةُ والدفترُ رقمُها هو — لا فرقَ يُعرض لأنّه لا فرق
+        $this->assertEquals([0.875, 6.118], [($t = Boutiques::soldTotals($this->shop->id, $this->lama))['commission'], $t['net']]);
+        $this->assertEquals([0.875, 6.118], [($st = Boutiques::statement($this->shop->id, $this->lama->id, self::PERIOD))['commission'], $st['net']]);
+        $sheet = Boutiques::settle($this->shop->fresh(), $this->lama, self::PERIOD);
+        $this->assertEquals([0.875, 6.118, 6.118], [(float) $sheet->commission, (float) $sheet->net, Ledger::balance($this->shop->id, 'boutique_payable')]);
+        $this->assertEquals(['count' => 0, 'difference' => 0.0], $this->summary()['old_sheets']);
     }
 
-    public function test_half_a_baisa_rounds_up_without_floating_point_and_the_sheets_float_is_reported(): void
+    /** وورقةٌ صدرت قبل توحيد القاعدة تبقى كما صدرت — وفرقُها عن بنودها يُقال */
+    public function test_a_sheet_issued_before_the_one_rule_keeps_its_number_and_its_difference_is_said(): void
+    {
+        $this->lama->update(['commission_rate' => 12.5]);
+        $odd = $this->product('قطعة كسريّة', 0.333, boutique: $this->lama->id);
+        foreach (range(1, 7) as $_) {
+            $this->sell([$this->line($odd, 3)]);
+        }
+        $sheet = Boutiques::settle($this->shop->fresh(), $this->lama, self::PERIOD);
+        \Illuminate\Support\Facades\DB::table('boutique_settlements')->where('id', $sheet->id)->update(['rounding' => null, 'commission' => 0.874, 'net' => 6.119]);
+
+        $this->assertEquals(['count' => 1, 'difference' => 0.001], $this->summary()['old_sheets']);
+        $this->assertEquals(6.119, $this->summary()['settlement']['issued']);
+    }
+
+    public function test_half_a_baisa_rounds_up_without_floating_point_in_the_sheet_too(): void
     {
         $this->lama->update(['commission_rate' => 12.5]);
         $half = $this->product('نصف بيسة', 0.004, boutique: $this->lama->id);
@@ -818,12 +832,10 @@ class ABoutiqueSalesAreReadInvoiceByInvoiceTest extends TestCase
         $this->assertEquals(10000.203, $reem['standalone']['commission'], '٠٫١٠١ + ٠٫١٠٢ + ١٠٠٠٠');
         $this->assertEquals(round(1.005 + 1.015 + 99999.999 - 10000.203, 3), $reem['standalone']['net']);
 
-        // وورقةُ التسوية اليوم تضرب بالكسر العائم: ٠٫١٠٠ و٠٫١٠١ — بيستان للبوتيك فوق الحساب الصحيح.
-        // لا يُصلَح هنا (تغييرٌ في مبلغ الورقة) — يُعرض فرقًا ويُرفع قرارًا
+        // وورقةُ التسوية بالبيسة نفسِها — كانت بالكسر العائم ٠٫١٠٠ و٠٫١٠١ فتزيد البوتيكَ بيستين
         $sheet = Boutiques::statement($this->shop->id, $this->reem->id, self::PERIOD);
-        $this->assertEquals(10000.201, $sheet['commission'], 'إن تغيّر هذا فقد أُصلحت الورقة — حدِّث الاختبار والتقرير');
-        $this->assertEquals(0.002, $reem['rounding']['sheet_difference']);
-        $this->assertEquals(round($sheet['net'], 3), $reem['rounding']['sheet_pending_net']);
+        $this->assertEquals(10000.203, $sheet['commission']);
+        $this->assertEquals($reem['standalone']['net'], $sheet['net']);
 
         // والفاتورةُ: الأنصبةُ بالبيسة تجمع إلى البنود بلا كسر
         $inv = $this->invoice(Order::where('business_id', $this->shop->id)->latest('id')->firstOrFail());

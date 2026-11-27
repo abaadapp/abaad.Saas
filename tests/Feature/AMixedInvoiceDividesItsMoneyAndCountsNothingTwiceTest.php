@@ -308,7 +308,7 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
 
     /* ═══════════ ما لا يدخل هذه الأرقام ═══════════ */
 
-    /** فاتورةُ عميلٍ بلا طلب: تُقال بعددها ومبلغها كما كُتبت، ولا تدخل مبيعاتٍ ولا مستحقًّا */
+    /** فاتورةُ عميلٍ صدرت قبل أن تُحفظ لقطتُها: تُقال بعددها ومبلغها كما كُتبت، ولا تدخل مبيعاتٍ ولا مستحقًّا */
     public function test_what_customer_invoices_sold_is_said_and_never_counted(): void
     {
         $this->sell([[$this->silver]]);
@@ -323,6 +323,8 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         CustomerInvoices::issue($invoice([$this->silver], '2027-01-20'));            // شهرٌ آخر
         $invoice([$this->silver]);                                                    // مسودّة
         CustomerInvoices::cancel(CustomerInvoices::issue($invoice([$this->silver])), 'أُلغيت');
+        // وكلُّها صدرت قبل أن تُحفظ اللقطة — وما له لقطةٌ محسوبٌ في مكانه (`TheSalesSectionReadsTheInvoicesTest`)
+        DB::table('boutique_invoice_lines')->delete();
         // آجلٌ من الصندوق: له طلبٌ محسوب فلا يُقال مرّتين
         $this->sell([[$this->silver]], ['credit' => true, 'customer_id' => $company->id]);
 
@@ -738,10 +740,10 @@ class AMixedInvoiceDividesItsMoneyAndCountsNothingTwiceTest extends TestCase
         foreach ($boutiques as $b) {
             $s = $this->summary(['boutique' => (string) $b->id]);
             $totals = Boutiques::soldTotals($this->shop->id, $b, Carbon::parse('2027-02-01'), null, null, Carbon::parse('2027-02-28 23:59:59'));
-            $this->assertEquals($totals['commission'], $s['rounding']['report_commission'], "تقريرُ المبيعات — {$b->name}");
+            $this->assertEquals([$totals['commission'], $totals['net']], [$s['standalone']['commission'], $s['standalone']['net']], "تقريرُ المبيعات — {$b->name}");
             $this->assertEquals($totals['gross'], $s['standalone']['gross']);
             $st = Boutiques::statement($this->shop->id, $b->id, self::PERIOD);
-            $this->assertEquals($st['net'], $s['rounding']['sheet_pending_net'], "ما ينتظر الورقة — {$b->name}");
+            $this->assertEquals($st['net'], $s['settlement']['pending']['standalone'], "ما ينتظر الورقة — {$b->name}");
             $this->assertEquals($st['payable'], $s['settlement']['pending']['total']);
             $rowsSum += self::baisa($s['standalone']['commission']);
         }

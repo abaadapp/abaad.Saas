@@ -199,7 +199,7 @@ class ABoutiquesCommissionIsNotReadThroughTheReportsTest extends TestCase
     {
         foreach ($this->withoutReading() as $who => $user) {
             $props = $this->fetch($user, 'admin.reports.sales', $this->scope())->assertOk()->viewData('page')['props'];
-            $this->assertSame(['gross', 'lines', 'orders', 'quantity'], collect($props['boutiqueTotals'])->keys()->sort()->values()->all(), $who);
+            $this->assertSame(['gross', 'invoices', 'lines', 'orders', 'quantity'], collect($props['boutiqueTotals'])->keys()->sort()->values()->all(), $who);
             $this->assertEquals([24.51, 3.0, 1], [$props['boutiqueTotals']['gross'], $props['boutiqueTotals']['quantity'], $props['boutiqueTotals']['orders']], "{$who}: التقريرُ العاديّ ناقص");
             $this->assertSame('لمى', $props['boutique']['name'], $who);
 

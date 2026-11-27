@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\SettlementRefused;
 use App\Http\Controllers\Controller;
 use App\Models\Boutique;
+use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
+use App\Models\BoutiqueSheetHold;
 use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
@@ -14,6 +16,9 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\BoutiqueAccess;
 use App\Support\BoutiqueDues;
+use App\Support\BoutiqueHolds;
+use App\Support\BoutiqueInvoiceDues;
+use App\Support\BoutiqueMovements;
 use App\Support\BoutiqueReturns;
 use App\Support\BoutiqueSales;
 use App\Support\Boutiques;
@@ -171,6 +176,8 @@ class BoutiqueController extends Controller
             'canSeeSales' => $seesSales = BoutiqueSales::mayRead(auth()->user()),
             'boutiqueOptions' => $seesSales ? Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
                 ->get(['id', 'name'])->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => (string) $b->name])->all() : [],
+            // تحصيلٌ أُلغي بعد صدور الورقة: ما عُلّق سدادُه وما سُدّد قبل تحصيله — انظر `BoutiqueHolds`
+            'holds' => $seesMoney ? BoutiqueHolds::of((int) $business->id, (int) $boutique->id) : null,
             // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
             'returns' => $seesMoney ? $this->returnsOf((int) $business->id, $boutique) : null,
             'period' => $period,
@@ -262,6 +269,20 @@ class BoutiqueController extends Controller
         ]);
     }
 
+    /**
+     * حركاتُ البوتيك — ما سُجّل له وما سُدّد وما رُدّ، كلٌّ بمستنده وقيده (`BoutiqueMovements`).
+     *
+     * لمن يقرأ مالَ البوتيكات وحده، كالكشف.
+     */
+    public function movements(Request $request, int $id)
+    {
+        $this->money();
+        $business = $this->shop();
+        $boutique = $this->find($id);
+
+        return response()->json(BoutiqueMovements::page((int) $business->id, (int) $boutique->id, BoutiqueMovements::filters($request), auth()->user()));
+    }
+
     /** ملخّصُ الشهر — للبوتيك المختار أو للكلّ */
     public function salesSummary(Request $request)
     {
@@ -282,6 +303,20 @@ class BoutiqueController extends Controller
         return response()->json($data + [
             'can_open' => $canOpen,
             'url' => $canOpen ? route('admin.orders.show', $data['order']['number']) : null,
+        ]);
+    }
+
+    /** فاتورةُ عميلٍ بلا طلب، بما لبوتيكاتها فيها — بالحارس نفسِه */
+    public function salesInvoice(int $invoice)
+    {
+        $business = $this->salesShop();
+        $canOpen = (bool) auth()->user()?->allows('orders');
+        $data = BoutiqueSales::customerInvoice((int) $business->id, $invoice, $canOpen);
+        abort_if($data === null, 404);
+
+        return response()->json($data + [
+            'can_open' => $canOpen,
+            'url' => $canOpen ? route('admin.customerInvoices.show', $data['order']['id']) : null,
         ]);
     }
 
@@ -344,6 +379,12 @@ class BoutiqueController extends Controller
 
         if (BoutiqueReturn::where('boutique_id', $boutique->id)->whereIn('status', BoutiqueReturn::OPEN)->exists()) {
             return back()->withErrors(['boutique' => __('له مرتجعاتٌ لم تُحسم أو لم تُستردّ — أتمّها قبل حذفه.')]);
+        }
+
+        // وما له في فواتير عملاء صدرت: بانتظار التحصيل، أو اكتمل ولم تحمله ورقة
+        if (BoutiqueInvoiceDues::awaiting((int) $boutique->business_id, (int) $boutique->id)->exists()
+            || BoutiqueInvoiceDues::ready((int) $boutique->business_id, (int) $boutique->id, null)->exists()) {
+            return back()->withErrors(['boutique' => __('له مستحقٌّ في فواتير عملاء لم تُسوَّ بعد — سوِّه قبل حذفه.')]);
         }
 
         $boutique->delete();
@@ -443,6 +484,94 @@ class BoutiqueController extends Controller
         return back()->with('toast', ['msg' => __('حُسم المرتجع'), 'type' => 'success']);
     }
 
+    /**
+     * قطعٌ رُدّت بفاتورة عميلٍ بلا طلب ولم تُستلم: كم عاد سليمًا وكم تالفًا.
+     *
+     * ومرتجعُ الطلب بابُه صفحةُ الطلب (`OrderDetailController::boutiqueReturns`). وهذا لا
+     * طلبَ له فيُحسم هنا، بقسم المصروفات: هو من يقرّر مرتجعات البوتيك.
+     */
+    public function receiveReturn(Request $request, int $id)
+    {
+        $this->money();
+        $business = $this->shop();
+        $boutique = $this->find($id);
+
+        $data = $request->validate([
+            'note' => ['required', 'integer'],
+            'sellable' => ['required', 'numeric', 'min:0', 'max:100000'],
+            'damaged' => ['required', 'numeric', 'min:0', 'max:100000'],
+        ]);
+
+        $note = BoutiqueReturn::where('business_id', $business->id)->where('boutique_id', $boutique->id)
+            ->whereNotNull('boutique_invoice_line_id')->findOrFail($data['note']);
+
+        try {
+            BoutiqueReturns::receive($note, round((float) $data['sellable'], 3), round((float) $data['damaged'], 3), __('استُلمت قطعة البوتيك المرتجعة'));
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['returns' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('حُفظ حالُ القطع المرتجعة'), 'type' => 'success']);
+    }
+
+    /* ═══════════ تحصيلٌ أُلغي بعد الورقة — `BoutiqueHolds` ═══════════ */
+
+    private function hold(Business $business, Boutique $boutique, int $hold): BoutiqueSheetHold
+    {
+        return BoutiqueSheetHold::where('business_id', $business->id)->where('boutique_id', $boutique->id)->findOrFail($hold);
+    }
+
+    /** يُفرج عن معلَّقٍ بسببٍ مكتوب — بإذن السداد: يُطلق مالًا لم يُقبض ثمنُه */
+    public function releaseHold(Request $request, int $id, int $hold)
+    {
+        $this->money('pay');
+        $business = $this->shop();
+        $row = $this->hold($business, $this->find($id), $hold);
+        $data = $request->validate(['why' => ['required', 'string', 'min:3', 'max:255']]);
+
+        try {
+            BoutiqueHolds::release($row, $data['why']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['holds' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('أُفرج عن المعلّق — يُسدَّد الآن'), 'type' => 'success']);
+    }
+
+    /** «سُدّد قبل تحصيله» رُوجع — لا قيدَ ولا سداد */
+    public function reviewHold(Request $request, int $id, int $hold)
+    {
+        $this->money();
+        $business = $this->shop();
+        $row = $this->hold($business, $this->find($id), $hold);
+        $data = $request->validate(['why' => ['required', 'string', 'min:3', 'max:255']]);
+
+        try {
+            BoutiqueHolds::review($row, $data['why']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['holds' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('حُفظت المراجعة'), 'type' => 'success']);
+    }
+
+    /** يُسدَّد ما سُدّدت الورقةُ دونه بعد أن فُكّ تعليقُه */
+    public function payHold(Request $request, int $id, int $hold)
+    {
+        $this->money('pay');
+        $business = $this->shop();
+        $row = $this->hold($business, $this->find($id), $hold);
+        $data = $request->validate(['method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)]]);
+
+        try {
+            $amount = BoutiqueHolds::pay($row, $data['method']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['holds' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('سُدّد المعلّق :amount', ['amount' => number_format($amount, 3)]), 'type' => 'success']);
+    }
+
     /** استلامٌ من البوتيك بمستندٍ ومرجع — يُطفئ مطالباتِه الأقدمَ أوّلًا */
     public function returnReceipt(Request $request, int $id)
     {
@@ -494,22 +623,24 @@ class BoutiqueController extends Controller
     private function returnsOf(int $businessId, Boutique $boutique): array
     {
         $notes = BoutiqueReturn::where('business_id', $businessId)->where('boutique_id', $boutique->id)
-            ->with(['settlement:id,number', 'order:id,number'])->latest('id')->limit(100)->get();
+            ->with(['settlement:id,number', 'order:id,number', 'invoiceLine:id,customer_invoice_id', 'invoiceLine.invoice:id,number'])->latest('id')->limit(100)->get();
 
         // أوراقٌ لم تُسدَّد قُيّدت يومَ صدورها — منها وحدها يُخصم
         $targets = BoutiqueSettlement::where('business_id', $businessId)->where('boutique_id', $boutique->id)
             ->where('kind', BoutiqueSettlement::SETTLEMENT)->whereNotNull('expense_id')->with('expense')->latest('id')->limit(24)->get()
-            ->filter(fn (BoutiqueSettlement $s) => $s->expense && ! $s->expense->isPaid() && Boutiques::accrual($s->expense) !== null)
-            ->map(fn (BoutiqueSettlement $s) => ['id' => $s->id, 'number' => $s->number, 'payable' => BoutiqueReturns::payable($s->expense)])
+            ->filter(fn (BoutiqueSettlement $s) => $s->expense && ! $s->expense->isPaid() && Boutiques::accrued($s->expense))
+            ->map(fn (BoutiqueSettlement $s) => ['id' => $s->id, 'number' => $s->number, 'payable' => BoutiqueHolds::payNow($s->expense)])
             ->values()->all();
 
         return [
             'notes' => $notes->map(fn (BoutiqueReturn $n) => [
                 'id' => $n->id,
                 'order' => $n->order?->number,
+                // وفاتورةُ عميلٍ بلا طلب برقمها
+                'invoice' => $n->invoiceLine?->invoice?->number,
                 'sheet' => $n->settlement?->number,
                 'name' => $n->name,
-                'quantity' => (int) $n->quantity,
+                'quantity' => round((float) $n->quantity, 3),
                 'amount' => (float) $n->amount,
                 'condition' => $n->condition,
                 'status' => $n->status,
@@ -699,7 +830,36 @@ class BoutiqueController extends Controller
             ->selectRaw('order_items.boutique_id, COALESCE(SUM(order_items.total), 0) as gross')
             ->groupBy('order_items.boutique_id')
             ->pluck('gross', 'boutique_id')
-            ->map(fn ($v) => (float) $v)->all();
+            ->map(fn ($v) => (float) $v)
+            ->pipe(fn ($sold) => $this->withInvoices($sold->all(), $businessId, $period, $pendingOnly));
+    }
+
+    /**
+     * وما اكتمل تحصيلُه في الشهر من فواتير العملاء — بما بقي منه، وما رُدّ بعد ورقته خارجٌ كبنود الطلبات.
+     *
+     * @param  array<int, float>  $sold
+     * @return array<int, float>
+     */
+    private function withInvoices(array $sold, int $businessId, string $period, bool $pendingOnly): array
+    {
+        $add = function ($rows) use (&$sold) {
+            foreach ($rows as $id => $gross) {
+                $sold[(int) $id] = round(($sold[(int) $id] ?? 0.0) + (float) $gross, 3);
+            }
+        };
+
+        $add(BoutiqueInvoiceDues::ready($businessId, null, $period)->toBase()
+            ->selectRaw('boutique_invoice_lines.boutique_id, SUM(boutique_invoice_lines.gross - returned_gross) as gross')
+            ->groupBy('boutique_invoice_lines.boutique_id')->pluck('gross', 'boutique_id'));
+
+        if (! $pendingOnly) {
+            $from = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
+            $add(BoutiqueInvoiceLine::where('business_id', $businessId)->whereNotNull('boutique_settlement_id')
+                ->whereBetween('collected_at', [$from, (clone $from)->endOfMonth()])
+                ->groupBy('boutique_id')->selectRaw('boutique_id, SUM(gross - returned_gross) as gross')->pluck('gross', 'boutique_id'));
+        }
+
+        return $sold;
     }
 
     /**

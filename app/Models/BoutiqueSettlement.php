@@ -28,8 +28,10 @@ class BoutiqueSettlement extends Model
     {
         return [
             'gross' => 'decimal:3',
+            'vat' => 'decimal:3',
             'commission' => 'decimal:3',
             'net' => 'decimal:3',
+            'accrued_at_sale' => 'decimal:3',
             'components_due' => 'decimal:3',
             'components_credit' => 'decimal:3',
             'components_net' => 'decimal:3',

@@ -2474,6 +2474,18 @@ class Demo
             foreach (self::addonCostByBucket($bid, $start, $end, $branchId, $bucket) as $key => $cost) {
                 $cogs[$key] = ($cogs[$key] ?? 0.0) + $cost;
             }
+
+            /*
+             * وقطعُ البوتيك داخل باقات فواتير العملاء: لا بندَ طلبٍ لها يحمل تكلفتَها، وقيدُها في
+             * الدفتر يومَ الفاتورة (`BoutiqueInvoicePieces`). وفاتورةُ العميل ليست قناةً في
+             * `SalesChannel`، فلا تُعدّ لقناةٍ بعينها.
+             */
+            $entryBucket = $unit === null ? "'all'" : self::bucketSql('journal_entries.entry_date', $unit);
+            BoutiqueInvoicePieces::cost($bid, $start, $end, $branchId)
+                ->selectRaw("{$entryBucket} as bucket, SUM(journal_lines.debit - journal_lines.credit) as cost")->groupBy('bucket')->get()
+                ->each(function ($r) use (&$cogs) {
+                    $cogs[(string) $r->bucket] = ($cogs[(string) $r->bucket] ?? 0.0) + (float) $r->cost;
+                });
         }
 
         return $cogs;
@@ -3137,6 +3149,21 @@ class Demo
         $counts = $rows->pluck('c', 'bucket');
 
         /*
+         * ونطاقُ البوتيك معه بنودُه في فواتير العملاء بلا طلب — كبطاقته فوق المخطّط
+         * (`Boutiques::soldTotals`). مبلغٌ لا طلب: العددُ عددُ الطلبات كما كان.
+         */
+        if ($boutique instanceof Boutique && ($channel === null || $channel === '')) {
+            $at = str_replace('ordered_at', $unit === 'hour' ? 'boutique_invoice_lines.issued_at' : 'customer_invoices.issued_at', $format);
+            $invoiced = BoutiqueInvoiceDues::sold($bid, (int) $boutique->id, $start, $cutoff, $branchId)
+                ->selectRaw("{$at} as bucket, SUM(boutique_invoice_lines.gross - boutique_invoice_lines.returned_gross) as s")
+                ->groupByRaw($at)->toBase()->get()->pluck('s', 'bucket');
+            $sums = $sums->map(fn ($v) => (float) $v);
+            foreach ($invoiced as $bucket => $sum) {
+                $sums[$bucket] = ($sums[$bucket] ?? 0.0) + (float) $sum;
+            }
+        }
+
+        /*
          * ═══ والمتجرُ كلُّه من الدفتر — كبطاقته ═══
          *
          * بطاقةُ «إجمالي المبيعات» فوق المخطّط تُقرأ من الدفتر للمتجر كلِّه
@@ -3690,7 +3717,19 @@ class Demo
             // و`soldLines` تقرأ النهايةَ شاملة: آخرُ ثانيةٍ داخلها لا أوّلُ ما بعدها
             : Boutiques::soldLines($bid, $boutique, $period->start, $period->end?->copy()->subSecond(), $branchId, $channel))
             ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
-            ->groupBy('name')->orderByDesc('revenue')->orderBy('name')->limit($limit)->get();
+            ->groupBy('name')->orderByDesc('revenue')->orderBy('name')
+            ->when(! $boutique instanceof Boutique, fn ($q) => $q->limit($limit))->get();
+
+        // وللبوتيك ما بيع منه بفواتير العملاء — بالاسم نفسِه يُجمع
+        if ($boutique instanceof Boutique) {
+            $invoiced = $channel !== null && $channel !== '' ? collect() : BoutiqueInvoiceDues::sold($bid, (int) $boutique->id, $period->start, $period->end?->copy()->subSecond(), $branchId)
+                ->selectRaw('boutique_invoice_lines.name, SUM(boutique_invoice_lines.quantity - returned_quantity) as sold, SUM(boutique_invoice_lines.gross - returned_gross) as revenue')
+                ->groupBy('boutique_invoice_lines.name')->toBase()->get();
+            $rows = collect($rows->map(fn ($r) => (object) ['name' => $r->name, 'sold' => (float) $r->sold, 'revenue' => (float) $r->revenue]))
+                ->concat($invoiced)->groupBy('name')
+                ->map(fn ($g, $name) => (object) ['name' => (string) $name, 'sold' => $g->sum(fn ($r) => (float) $r->sold), 'revenue' => $g->sum(fn ($r) => (float) $r->revenue)])
+                ->sortBy([['revenue', 'desc'], ['name', 'asc']])->take($limit)->values();
+        }
         $totalRev = (float) $rows->sum('revenue');
 
         return $rows->map(function ($r) use ($bid, $totalRev) {

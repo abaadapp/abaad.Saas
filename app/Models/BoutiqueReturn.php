@@ -19,6 +19,9 @@ class BoutiqueReturn extends Model
 
     public const QUANTITY = 'quantity';
 
+    /** من فاتورة عميلٍ بلا طلب — بإشعار دائنٍ سمّى بندَه، أو بإلغائها (`BoutiqueInvoiceDues`) */
+    public const INVOICE = 'invoice';
+
     /** لم تُستلم القطعةُ بعد — خارجَ الرفّ حتّى تُستلم */
     public const PENDING = 'pending';
 
@@ -79,6 +82,12 @@ class BoutiqueReturn extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    /** بندُ فاتورة العميل — حين لا طلبَ وراءه */
+    public function invoiceLine(): BelongsTo
+    {
+        return $this->belongsTo(BoutiqueInvoiceLine::class, 'boutique_invoice_line_id');
     }
 
     public function recoveries(): HasMany

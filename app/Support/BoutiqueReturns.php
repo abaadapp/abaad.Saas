@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Exceptions\SettlementRefused;
 use App\Models\Account;
 use App\Models\Boutique;
+use App\Models\BoutiqueInvoiceLine;
 use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueReturnRecovery;
 use App\Models\BoutiqueSettlement;
@@ -12,6 +13,7 @@ use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -137,6 +139,54 @@ final class BoutiqueReturns
         self::settle($note);
     }
 
+    /* ═══════════ من جهة فاتورة العميل ═══════════ */
+
+    /**
+     * مرتجعُ بندٍ من فاتورة عميلٍ بلا طلب، حملته ورقة — بالقواعد نفسِها.
+     *
+     * الحصّةُ محسوبةٌ بالفرق من لقطة البند (`BoutiqueInvoiceDues::take`). ولا حركةَ
+     * مخزونٍ هنا: فاتورةُ العميل لم تُخرج من الرفّ شيئًا فلا يعود إليه بها شيء.
+     */
+    public static function onInvoice(BoutiqueInvoiceLine $line, float $qty, float $gross, float $net, float $sellable, float $damaged, string $reason): void
+    {
+        self::lockSheets([$line->boutique_settlement_id]);
+
+        $note = BoutiqueReturn::create([
+            'business_id' => $line->business_id,
+            'boutique_id' => $line->boutique_id,
+            'boutique_settlement_id' => $line->boutique_settlement_id,
+            'order_id' => null,
+            'order_item_id' => null,
+            'boutique_invoice_line_id' => $line->id,
+            'branch_id' => $line->branch_id,
+            'source' => BoutiqueReturn::INVOICE,
+            'product_id' => $line->product_id,
+            'name' => $line->name,
+            'rate' => $line->rate,
+            'unit_price' => $line->unit_price,
+            'quantity' => $qty,
+            'gross' => $gross,
+            'amount' => max(0.0, $net),
+            'sold_at' => $line->issued_at,
+            'returned_at' => now(),
+            'condition' => BoutiqueReturn::PENDING,
+            'status' => BoutiqueReturn::AWAITING,
+            'reason' => mb_substr($reason, 0, 255),
+            'user_id' => auth()->id(),
+            'rounding' => BoutiqueSettlement::whereKey($line->boutique_settlement_id)->value('rounding'),
+        ]);
+
+        $parts = self::split($note, array_filter([
+            BoutiqueReturn::SELLABLE => $sellable,
+            BoutiqueReturn::DAMAGED => $damaged,
+            BoutiqueReturn::PENDING => round($qty - $sellable - $damaged, 3),
+        ]), $reason);
+
+        foreach ($parts as $part) {
+            self::settle($part);
+        }
+    }
+
     /** لقطةُ بندٍ يُكتب عنه إشعار — قبل أن يتغيّر أو يُحذف */
     public static function snapshot(OrderItem $item): array
     {
@@ -148,6 +198,7 @@ final class BoutiqueReturns
             'name' => (string) $item->name,
             'variant_name' => $item->variant_name,
             'rate' => round((float) ($item->boutique_rate ?? 0), 2),
+            'vat_rate' => $item->boutique_vat_rate === null ? null : round((float) $item->boutique_vat_rate, 2),
             'unit_price' => round((float) $item->price, 3),
         ];
     }
@@ -158,7 +209,7 @@ final class BoutiqueReturns
      * السليمُ يعود إلى الرفّ الآن، ثمّ تُحسم حصّةُ كلّ جزءٍ بشرط الاتّفاقية.
      * وما لم يُذكر يبقى منتظرًا في الإشعار نفسِه.
      */
-    public static function receive(BoutiqueReturn $note, int $sellable, int $damaged, string $reason): void
+    public static function receive(BoutiqueReturn $note, float $sellable, float $damaged, string $reason): void
     {
         DB::transaction(function () use ($note, $sellable, $damaged, $reason) {
             $locked = BoutiqueReturn::whereKey($note->id)->lockForUpdate()->firstOrFail();
@@ -167,10 +218,10 @@ final class BoutiqueReturns
                 throw new SettlementRefused(__('حالُ هذه القطع سُجّل قبل لحظة — افتح الطلب من جديد.'));
             }
 
-            $qty = (int) $locked->quantity;
-            if ($sellable < 0 || $damaged < 0 || $sellable + $damaged === 0 || $sellable + $damaged > $qty) {
+            $qty = round((float) $locked->quantity, 3);
+            if ($sellable < 0 || $damaged < 0 || $sellable + $damaged <= 0 || $sellable + $damaged > $qty + 0.0005) {
                 throw ValidationException::withMessages([
-                    'pieces' => __('«:name»: السليمُ والتالفُ بين قطعةٍ و:qty.', ['name' => $locked->name, 'qty' => $qty]),
+                    'pieces' => __('«:name»: السليمُ والتالفُ بين قطعةٍ و:qty.', ['name' => $locked->name, 'qty' => $qty + 0]),
                 ]);
             }
 
@@ -178,7 +229,7 @@ final class BoutiqueReturns
             $parts = self::split($locked, array_filter([
                 BoutiqueReturn::SELLABLE => $sellable,
                 BoutiqueReturn::DAMAGED => $damaged,
-                BoutiqueReturn::PENDING => $qty - $sellable - $damaged,
+                BoutiqueReturn::PENDING => round($qty - $sellable - $damaged, 3),
             ]), $reason);
 
             foreach ($parts as $part) {
@@ -221,6 +272,14 @@ final class BoutiqueReturns
     private static function settle(BoutiqueReturn $note): void
     {
         if ($note->condition === BoutiqueReturn::PENDING) {
+            return;
+        }
+
+        // وقطعةٌ داخل باقةٍ عادت: على البوتيك بقاعدة القطع نفسِها في الصندوق — لا بشرط مرتجع المنفرد
+        if ($note->boutique_invoice_line_id !== null
+            && BoutiqueInvoiceLine::whereKey($note->boutique_invoice_line_id)->value('kind') === BoutiqueInvoiceLine::PIECE) {
+            self::bear($note, 'piece', null);
+
             return;
         }
 
@@ -268,21 +327,27 @@ final class BoutiqueReturns
         if ($expense === null || $amount <= 0) {
             $note->update($decided + ['status' => BoutiqueReturn::REDUCED, 'booked_at' => now()->toDateString()]);
 
+            BoutiqueHolds::decided($note->boutique_invoice_line_id);
+
             return;
         }
 
-        $accrued = Boutiques::accrual($expense) !== null;
+        $accrued = Boutiques::accrued($expense);
 
-        if (! $expense->isPaid() && (! $accrued || $amount <= self::payable($expense) + 0.0005)) {
+        // وما سُدّدت ورقتُه دونه (`BoutiqueHolds::withhold`) ما زال دَينًا في 2160: يُنقص منه، ولا مطالبةَ بما لم يُدفع
+        if ((! $expense->isPaid() && (! $accrued || $amount <= self::payable($expense) + 0.0005))
+            || ($expense->isPaid() && $accrued && BoutiqueHolds::covers($note->boutique_invoice_line_id, $amount))) {
             // ورقةٌ قديمةٌ لم تُسدَّد لا دَينَ لها في 2160: يُسدَّد صافيها ويدخل الأثرُ يومَ السداد
             $at = $accrued ? self::post($note, $expense, 'boutique_payable') : null;
             $note->update($decided + ['status' => BoutiqueReturn::REDUCED, 'booked_at' => $at?->toDateString()]);
+            BoutiqueHolds::decided($note->boutique_invoice_line_id);
 
             return;
         }
 
         $at = self::post($note, $expense, 'boutique_receivable');
         $note->update($decided + ['status' => BoutiqueReturn::CLAIM, 'booked_at' => $at->toDateString()]);
+        BoutiqueHolds::decided($note->boutique_invoice_line_id);
     }
 
     /**
@@ -301,6 +366,7 @@ final class BoutiqueReturns
             'decided_by' => auth()->id(),
             'decided_at' => now(),
         ]);
+        BoutiqueHolds::decided($note->boutique_invoice_line_id);
 
         if ($note->condition === BoutiqueReturn::SELLABLE && ($order = Order::find($note->order_id))) {
             self::offShelf($order, (int) $note->product_id, (int) $note->quantity, __('مرتجعٌ تحمّله المتجر — خرج من رفّ البوتيك'));
@@ -315,10 +381,10 @@ final class BoutiqueReturns
 
         Ledger::post(
             (int) $note->business_id,
-            BooksPeriod::fit(__('مرتجع بوتيك — ورقة ').$number, $note->name.' × '.$note->quantity),
+            BooksPeriod::fit(__('مرتجع بوتيك — ورقة ').$number, $note->name.' × '.(round((float) $note->quantity, 3) + 0)),
             [
                 ['account' => $side, 'debit' => round((float) $note->amount, 3)],
-                ['account' => self::shareAccount($expense), 'credit' => round((float) $note->amount, 3), 'memo' => $note->name],
+                ['account' => self::shareAccount($expense, $note), 'credit' => round((float) $note->amount, 3), 'memo' => $note->name],
             ],
             $at,
             self::SOURCE,
@@ -335,8 +401,14 @@ final class BoutiqueReturns
      *
      * نوعٌ غُيّر حسابُه بعد الورقة يجعل الإشعارَ يُنقص حسابًا لم يُدَن بها.
      */
-    private static function shareAccount(Expense $expense): Account|string
+    private static function shareAccount(Expense $expense, BoutiqueReturn $note): Account|string
     {
+        // وبندٌ قُيّد مع فاتورته يُردّ من الحساب الذي حُمّله هو
+        $line = $note->boutique_invoice_line_id ? BoutiqueInvoiceLine::find($note->boutique_invoice_line_id) : null;
+        if ($line?->accrued_on !== null) {
+            return BoutiqueInvoiceDues::account($line);
+        }
+
         $entry = Boutiques::accrual($expense) ?? Books::liveEntriesFor($expense)->first();
         $line = $entry?->lines()->where('debit', '>', 0)->with('account')->first();
 
@@ -391,6 +463,13 @@ final class BoutiqueReturns
                 throw new SettlementRefused(__('المطالَب به من :name :open — والاستلامُ لا يزيد عليه.', ['name' => $boutique->name, 'open' => number_format($open, 3)]));
             }
 
+            /*
+             * استلامٌ واحد: صفٌّ في «الحركات» وقيدٌ يقابله، ولو أطفأ مطالباتٍ عدّة.
+             *
+             * كان لكلّ مطالبةٍ قيدٌ ولا صفَّ لأيٍّ منها: مالٌ دخل الصندوقَ في الدفتر ولا تقرؤه
+             * «الحركات»، وإيداعٌ واحدٌ في كشف البنك لا يقابله صفّ.
+             */
+            $taken = [];
             $left = $amount;
             foreach ($claims as $claim) {
                 if ($left <= 0.0005) {
@@ -401,24 +480,33 @@ final class BoutiqueReturns
                     continue;
                 }
 
-                $row = BoutiqueReturnRecovery::create([
+                $taken[] = [$claim, $take];
+                $left = round($left - $take, 3);
+            }
+
+            $at = BooksPeriod::openOr((int) $business->id, now());
+            $row = BoutiqueMovements::cash((int) $business->id, Transaction::BOUTIQUE_CLAIM, $amount, $method,
+                __('تحصيل مطالبة من بوتيك :name — :reference', ['name' => $boutique->name, 'reference' => $reference]), $at);
+
+            $entry = Ledger::post(
+                (int) $business->id,
+                BooksPeriod::fit(__('استرداد مرتجع من البوتيك: ').$boutique->name, $reference),
+                [
+                    ['account' => Books::payingAccount($method), 'debit' => $amount],
+                    ...array_map(fn (array $t) => ['account' => 'boutique_receivable', 'credit' => $t[1], 'memo' => $t[0]->name], $taken),
+                ],
+                $at, self::SOURCE, null, auth()->id(), $row,
+            );
+            $row->update(['journal_entry_id' => $entry->id]);
+
+            foreach ($taken as [$claim, $take]) {
+                BoutiqueReturnRecovery::create([
                     'business_id' => $business->id, 'boutique_id' => $boutique->id, 'boutique_return_id' => $claim->id,
                     'kind' => BoutiqueReturnRecovery::RECEIPT, 'amount' => $take, 'method' => $method,
-                    'reference' => $reference, 'user_id' => auth()->id(),
+                    'reference' => $reference, 'user_id' => auth()->id(), 'transaction_id' => $row->id,
                 ]);
 
-                Ledger::post(
-                    (int) $business->id,
-                    BooksPeriod::fit(__('استرداد مرتجع من البوتيك: ').$boutique->name, $reference),
-                    [
-                        ['account' => Books::payingAccount($method), 'debit' => $take],
-                        ['account' => 'boutique_receivable', 'credit' => $take, 'memo' => $claim->name],
-                    ],
-                    BooksPeriod::openOr((int) $business->id, now()), self::SOURCE, null, auth()->id(), $row,
-                );
-
                 self::closeIfRecovered($claim);
-                $left = round($left - $take, 3);
             }
 
             return $amount;
@@ -437,14 +525,15 @@ final class BoutiqueReturns
             $expense = $target->expense_id ? Expense::whereKey($target->expense_id)->lockForUpdate()->first() : null;
 
             if ((int) $target->business_id !== (int) $business->id || (int) $target->boutique_id !== (int) $boutique->id
-                || $expense === null || $expense->isPaid() || Boutiques::accrual($expense) === null) {
+                || $expense === null || $expense->isPaid() || ! Boutiques::accrued($expense)) {
                 throw new SettlementRefused(__('لا يُخصم إلّا من ورقةٍ لهذا البوتيك لم تُسدَّد وقُيّدت يومَ صدورها.'));
             }
 
             $claims = BoutiqueReturn::where('business_id', $business->id)->where('boutique_id', $boutique->id)
                 ->where('status', BoutiqueReturn::CLAIM)->orderBy('id')->lockForUpdate()->get();
 
-            $room = self::payable($expense);
+            // ولا يُخصم من معلَّقٍ لم يُراجَع
+            $room = BoutiqueHolds::payNow($expense);
             $total = 0.0;
 
             foreach ($claims as $claim) {
@@ -573,6 +662,9 @@ final class BoutiqueReturns
     public static function booked(int $businessId, ?Carbon $start, ?Carbon $end)
     {
         return BoutiqueReturn::where('boutique_returns.business_id', $businessId)
+            // وقطعةُ الباقة في فاتورةٍ تُردّ إلى تكلفة البضاعة لا إلى المصروفات (`BoutiqueInvoicePieces::cost`)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('boutique_invoice_lines as bl')
+                ->whereColumn('bl.id', 'boutique_returns.boutique_invoice_line_id')->where('bl.kind', BoutiqueInvoiceLine::PIECE))
             ->whereIn('boutique_returns.status', BoutiqueReturn::BORNE)
             ->whereNotNull('booked_at')
             ->when($start, fn ($q) => $q->where('booked_at', '>=', $start->toDateString()))
@@ -582,19 +674,14 @@ final class BoutiqueReturns
     /* ═══════════ الكتابة ═══════════ */
 
     /**
-     * إشعارٌ بحصّة `$qty` قطعة كما حملتها الورقة — بالفرق لا بالضرب.
-     *
-     * الورقةُ تقرّب على سطر الصنف ونسبته (`Boutiques::statement`). فحصّةُ ما
-     * عاد = صافي السطر قبل المرتجع ناقصًا صافيه بعده، بالتقريب نفسه. فمرتجعُ
-     * السطر كلِّه قطعةً قطعة يساوي صافيَه على الورقة بالفلس.
+     * إشعارٌ بحصّة `$qty` قطعة كما حملتها الورقة — بالفرق لا بالضرب (`share`).
      *
      * @param  array<string, mixed>  $line
      */
     private static function write(Order $order, array $line, int $qty, float $gross, string $source, string $condition, string $reason, ?int $editId): BoutiqueReturn
     {
-        [$group, $before] = self::groupGross($line, $source === BoutiqueReturn::QUANTITY ? $gross : 0.0);
         $rate = (float) $line['rate'];
-        $amount = round(self::netOf($group - $before, $rate) - self::netOf($group - $before - $gross, $rate), 3);
+        $amount = self::share($line, $gross, $source);
 
         return BoutiqueReturn::create([
             'business_id' => $order->business_id,
@@ -620,11 +707,59 @@ final class BoutiqueReturns
             'status' => BoutiqueReturn::AWAITING,
             'reason' => mb_substr($reason, 0, 255),
             'user_id' => PosCashier::id() ?? auth()->id(),
+            // قاعدةُ الورقة التي حُسبت بها حصّتُه — به يُعرف ما كتبه كودٌ أقدم (`olderRounding`)
+            'rounding' => BoutiqueSettlement::whereKey($line['settlement_id'])->value('rounding'),
         ]);
     }
 
     /**
-     * إجماليُّ سطر الورقة يومَ صدورها، وما عاد منه قبل هذا الإشعار.
+     * مرتجعاتٌ على أوراقٍ قُرّبت بندًا بندًا ولا تحمل قاعدتَها — كتبها كودٌ أقدم أثناء رجوعٍ بالكود.
+     *
+     * ذاك الكودُ يحسب حصّةَ المرتجع بتقريب الصنف مجموعًا، فقد تخالف قاعدةَ ورقتها ببيسة. فتُسمّى
+     * بعد العودة لتُراجَع بيد قبل سداد أوراقها أو استرداد مطالباتها — لا تُعدَّل وحدها.
+     *
+     * @return list<array{id: int, sheet: string, name: string, amount: float}>
+     */
+    public static function olderRounding(?int $businessId = null): array
+    {
+        return BoutiqueReturn::query()->join('boutique_settlements as s', 's.id', '=', 'boutique_returns.boutique_settlement_id')
+            ->where('s.rounding', BoutiqueMoney::LINE)->whereNull('boutique_returns.rounding')
+            ->when($businessId !== null, fn ($q) => $q->where('boutique_returns.business_id', $businessId))
+            ->orderBy('boutique_returns.id')->get(['boutique_returns.id', 's.number', 'boutique_returns.name', 'boutique_returns.amount'])
+            ->map(fn ($r) => ['id' => (int) $r->id, 'sheet' => (string) $r->number, 'name' => (string) $r->name, 'amount' => round((float) $r->amount, 3)])->all();
+    }
+
+    /**
+     * حصّةُ البوتيك ممّا عاد الآن من بند — بقاعدة ورقته هي.
+     *
+     * ورقةٌ قُرّبت بندًا بندًا (`rounding`): صافي البند قبل المرتجع ناقصًا صافيه بعده. وورقةٌ
+     * صدرت قبل ذلك قرّبت الصنفَ ونسبتَه معًا (`groupGross`): يُحسب مرتجعُها كذلك. فمرتجعُ
+     * البند كلِّه قطعةً قطعة يجمع إلى ما على ورقته بالبيسة في الحالين.
+     *
+     * @param  array<string, mixed>  $line
+     */
+    private static function share(array $line, float $gross, string $source): float
+    {
+        if (BoutiqueSettlement::whereKey($line['settlement_id'])->value('rounding') === BoutiqueMoney::LINE) {
+            // الإنقاصُ كتب البندَ بما بقي، والإلغاءُ تركه بإجماليّه: فيُطرح ما كُتب عنه من إشعارات الإلغاء
+            $after = $source === BoutiqueReturn::QUANTITY
+                ? BoutiqueMoney::baisa(OrderItem::whereKey($line['item_id'])->value('total') ?? 0)
+                : BoutiqueMoney::baisa(OrderItem::whereKey($line['item_id'])->value('total') ?? 0)
+                    - BoutiqueMoney::baisa(BoutiqueReturn::where('order_item_id', $line['item_id'])->where('source', BoutiqueReturn::CANCEL)->sum('gross'))
+                    - BoutiqueMoney::baisa($gross);
+            $net = fn (int $totalB) => BoutiqueMoney::split($totalB, BoutiqueMoney::rate($line['rate']), BoutiqueMoney::rate($line['vat_rate'] ?? 0))['net'];
+
+            return Baisa::toMoney($net($after + BoutiqueMoney::baisa($gross)) - $net($after));
+        }
+
+        [$group, $before] = self::groupGross($line, $source === BoutiqueReturn::QUANTITY ? $gross : 0.0);
+        $rate = (float) $line['rate'];
+
+        return round(self::netOf($group - $before, $rate) - self::netOf($group - $before - $gross, $rate), 3);
+    }
+
+    /**
+     * إجماليُّ سطر الورقة يومَ صدورها، وما عاد منه قبل هذا الإشعار — لورقةٍ قرّبت الصنف.
      *
      * بنودُ الطلبات الملغاة باقيةٌ بإجماليّها، والمُنقَصةُ في يومها نقص
      * إجماليُّها — فيُردّ إليها ما نقص من إشعاراتها (`QUANTITY`).
@@ -642,7 +777,8 @@ final class BoutiqueReturns
             ->filter(fn ($i) => $key($i->product_id, $i->name, $i->variant_name, $i->boutique_rate) === $mine)
             ->sum('total');
 
-        $notes = BoutiqueReturn::where('boutique_settlement_id', $line['settlement_id'])
+        // ومرتجعُ بند فاتورةٍ بلا طلب خارجٌ: حصّتُه من لقطته وحدها لا من سطر الورقة (`onInvoice`)
+        $notes = BoutiqueReturn::where('boutique_settlement_id', $line['settlement_id'])->whereNull('boutique_invoice_line_id')
             ->get(['product_id', 'name', 'variant_name', 'rate', 'gross', 'source'])
             ->filter(fn ($n) => $key($n->product_id, $n->name, $n->variant_name, $n->rate) === $mine);
 
@@ -651,7 +787,7 @@ final class BoutiqueReturns
         return [round($group, 3), round((float) $notes->sum('gross'), 3)];
     }
 
-    /** صافي سطرٍ بتقريب الورقة نفسِه */
+    /** صافي سطرٍ بتقريب ورقةٍ قرّبت الصنفَ ونسبتَه معًا */
     private static function netOf(float $gross, float $rate): float
     {
         $gross = round($gross, 3);
@@ -662,13 +798,13 @@ final class BoutiqueReturns
     /**
      * يقسم إشعارًا على أحوال قطعه — والأخيرُ يأخذ ما بقي من مبلغه وإجماليّه.
      *
-     * @param  array<string, int>  $parts
+     * @param  array<string, int|float>  $parts
      * @return list<BoutiqueReturn>
      */
     private static function split(BoutiqueReturn $note, array $parts, string $reason): array
     {
         // بأرقام الإشعار قبل القسمة — الجزءُ الأوّل يُكتب فوقه
-        $qty = (int) $note->quantity;
+        $qty = (float) $note->quantity;
         $whole = round((float) $note->amount, 3);
         $wholeGross = round((float) $note->gross, 3);
         $amountLeft = $whole;

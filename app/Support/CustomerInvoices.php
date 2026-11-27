@@ -858,6 +858,10 @@ final class CustomerInvoices
             if ($invoice->paidTotal() > 0) {
                 throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
             }
+            // ولا يُلغى ما قُدّم إقرارُه ولا ما يطلبه رابطٌ ينتظر — يُقرأ تحت القفل كالسداد (`ManualInvoiceAdjustments`)
+            if ($why = ManualInvoiceAdjustments::cancelRefusal($invoice)) {
+                throw new RuntimeException($why);
+            }
 
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
                 $entry = JournalEntry::where('business_id', $invoice->business_id)
@@ -903,6 +907,7 @@ final class CustomerInvoices
         ?int $userId = null,
         string $source = self::NOTE_MANUAL,
         ?int $orderId = null,
+        ?string $basis = null,
     ): CustomerCreditNote {
         $amount = round($amount, 3);
 
@@ -910,7 +915,7 @@ final class CustomerInvoices
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis) {
             /*
              * والحدُّ يُقرأ تحت قفل المتجر، من الورقة كما هي الآن.
              *
@@ -926,11 +931,11 @@ final class CustomerInvoices
             Business::whereKey($invoice->business_id)->lockForUpdate()->first();
             $invoice = CustomerInvoice::where('business_id', $invoice->business_id)->findOrFail($invoice->id);
 
-            $room = $invoice->outstanding() + $invoice->paidTotal();
+            // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه ومبلغُه وضريبتُه (`ManualInvoiceAdjustments`)
             if ($source === self::NOTE_MANUAL) {
-                $room = min($room, (float) $invoice->total - $invoice->creditedTotal());
-            }
-            if ($amount > round($room, 3)) {
+                ManualInvoiceAdjustments::assertCreditNote($invoice, $amount, round($taxAmount, 3), $basis);
+            } elseif ($amount > round($invoice->outstanding() + $invoice->paidTotal(), 3)) {
+                // وإشعارُ إلغاء الطلب مرآةُ قيدٍ عُكس (`Books::unpostSale`) — حدُّه كما كان (`onOrderCancelled`)
                 throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
             }
 
@@ -944,6 +949,7 @@ final class CustomerInvoices
                 'reason' => $reason,
                 'source' => $source,
                 'order_id' => $orderId,
+                'basis' => $basis,
                 'created_by' => $userId,
             ]);
 
@@ -987,7 +993,8 @@ final class CustomerInvoices
                 $note,
             );
 
-            Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number, [
+            Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number
+                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '').' — '.$reason, [
                 'subject_id' => $note->id, 'subject_type' => 'customer_credit_note',
             ]);
 

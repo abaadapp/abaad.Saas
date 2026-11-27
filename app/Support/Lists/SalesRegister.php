@@ -4,10 +4,10 @@ namespace App\Support\Lists;
 
 use App\Models\CustomerInvoice;
 use App\Models\User;
-use App\Support\CustomerInvoices;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
 use App\Support\Exports\Workbook;
+use App\Support\OrderPaymentState;
 use App\Support\OrderStatus;
 use App\Support\ReportingPeriod;
 use App\Support\SalesChannel;
@@ -250,19 +250,8 @@ final class SalesRegister
      */
     private static function orders(int $bid, ?int $branch, ReportingPeriod $period, ?string $source, ?int $customer = null): Builder
     {
-        $issued = "'".CustomerInvoice::ISSUED."'";
-        $cancelled = "'".OrderStatus::CANCELLED."'";
-        $live = 'customer_invoices.status = '.$issued;
-        $unpaid = "o.payment_status = 'غير مدفوع'";
-        $out = CustomerInvoice::outstandingSql();
-        $paidInv = CustomerInvoice::paidSql();
-
-        $q = DB::table('orders as o')
-            ->leftJoin('customer_invoices', fn ($j) => $j->on('customer_invoices.id', '=', DB::raw(
-                '(SELECT MIN(l.customer_invoice_id) FROM customer_invoice_orders l'
-                .' JOIN customer_invoices x ON x.id = l.customer_invoice_id'
-                ." WHERE l.order_id = o.id AND x.status <> '".CustomerInvoice::CANCELLED."')"
-            )))
+        // وحالُ السداد ومبلغاه من قاعدةٍ واحدة تقرؤها صفحةُ الطلب والصندوقُ ولوحةُ التجهيز (`OrderPaymentState`)
+        $q = OrderPaymentState::joinCover(DB::table('orders as o'))
             ->where('o.business_id', $bid)
             ->where('o.is_held', false)
             ->when($branch, fn ($w) => $w->where('o.branch_id', $branch))
@@ -282,19 +271,12 @@ final class SalesRegister
                 'o.status as status',
                 'customer_invoices.id as cover_id',
                 'customer_invoices.number as cover_number',
-                "CASE WHEN o.status = {$cancelled} THEN '".self::VOID."'"
-                    ." WHEN {$live} THEN (CASE WHEN {$out} <= 0.0005 THEN '".self::PAID."'"
-                    ." WHEN {$paidInv} > 0 THEN '".self::PARTIAL."' ELSE '".self::UNPAID."' END)"
-                    ." WHEN {$unpaid} THEN '".self::UNPAID."'"
-                    ." WHEN COALESCE(o.balance_due, 0) > 0.0005 THEN '".self::PARTIAL."'"
-                    ." ELSE '".self::PAID."' END as pay_state",
+                OrderPaymentState::stateSql().' as pay_state',
                 'CASE WHEN o.scheduled_for IS NULL AND o.fulfillment_type IS NULL THEN NULL ELSE o.status END as prep',
                 'NULL as prep_id',
-                "CASE WHEN o.status = {$cancelled} THEN 0 WHEN {$live} THEN NULL"
-                    ." WHEN {$unpaid} THEN 0 ELSE o.total - COALESCE(o.balance_due, 0) END as paid",
-                "CASE WHEN o.status = {$cancelled} THEN 0 WHEN {$live} THEN NULL"
-                    ." WHEN {$unpaid} THEN o.total ELSE COALESCE(o.balance_due, 0) END as due",
-                "CASE WHEN {$live} AND o.status <> {$cancelled} THEN NULL ELSE 0 END as credited",
+                OrderPaymentState::paidSql().' as paid',
+                OrderPaymentState::dueSql().' as due',
+                OrderPaymentState::creditedSql().' as credited',
             ]));
 
         if ($source !== null) {
@@ -545,54 +527,10 @@ final class SalesRegister
         ];
     }
 
-    /**
-     * ما يخصّ كلَّ طلبٍ من فاتورته الصادرة — إشعاراتُها اليدويّة ثمّ تحصيلُها.
-     *
-     * فاتورةٌ تجمع طلبات الشهر يُحصَّل عليها مبلغٌ واحد. فيُوزَّع على طلباتها
-     * الحيّة من الأقدم — قاعدةُ التحصيل نفسها (`CustomerPayments::allocate`
-     * تبدأ بالأقدم استحقاقًا). فما يُعدّ لطلبٍ لا يُعدّ لغيره، ومجموعُها
-     * مالُ الفاتورة بعينه. وإشعارُ إلغاء الطلب لا يُوزَّع: الطلبُ الملغى خرج
-     * من المجموع بحاله (`CustomerInvoices::NOTE_ORDER_CANCELLED`).
-     *
-     * @param  Builder  $orderIds  معرّفاتُ الطلبات المفوترة فيما رُشّح
-     * @return array<int, array{paid: float, credited: float, due: float}>
-     */
+    /** نصيبُ كلِّ طلبٍ من فاتورته — القاعدةُ في `OrderPaymentState::coveredShares` */
     private static function coveredShares(Builder $orderIds): array
     {
-        $invoiceIds = DB::table('customer_invoice_orders as l')
-            ->join('customer_invoices', 'customer_invoices.id', '=', 'l.customer_invoice_id')
-            ->whereIn('l.order_id', $orderIds)
-            ->where('customer_invoices.status', CustomerInvoice::ISSUED)
-            ->select('customer_invoices.id');
-
-        $pools = DB::table('customer_invoices')->whereIn('id', $invoiceIds)
-            ->selectRaw('id, '.CustomerInvoice::paidSql().' as paid, (SELECT COALESCE(SUM(n.amount), 0) FROM customer_credit_notes n'
-                ." WHERE n.customer_invoice_id = customer_invoices.id AND n.source = '".CustomerInvoices::NOTE_MANUAL."') as credited")
-            ->get()->keyBy('id');
-
-        $members = DB::table('customer_invoice_orders as l')
-            ->join('orders as o', 'o.id', '=', 'l.order_id')
-            ->whereIn('l.customer_invoice_id', $pools->keys()->all())
-            ->where('o.status', '!=', OrderStatus::CANCELLED)
-            ->orderBy('o.ordered_at')->orderBy('o.id')
-            ->get(['l.customer_invoice_id', 'o.id', 'o.total']);
-
-        $shares = [];
-        foreach ($members->groupBy('customer_invoice_id') as $invoiceId => $orders) {
-            $credit = (float) ($pools[$invoiceId]->credited ?? 0);
-            $paid = (float) ($pools[$invoiceId]->paid ?? 0);
-
-            foreach ($orders as $o) {
-                $total = (float) $o->total;
-                $c = min($credit, $total);
-                $credit -= $c;
-                $p = min($paid, $total - $c);
-                $paid -= $p;
-                $shares[(int) $o->id] = ['paid' => round($p, 3), 'credited' => round($c, 3), 'due' => round($total - $c - $p, 3)];
-            }
-        }
-
-        return $shares;
+        return OrderPaymentState::coveredShares($orderIds);
     }
 
     /**

@@ -271,8 +271,12 @@
         إيصالُ الموقع يُعطى لمن دفع ببطاقته، وهو ورقتُه أنّ مالَه قُبض. ومطفأٌ
         افتراضًا: لم يكن على الإيصال قطّ، فلا يُضاف إلى إيصال متجرٍ لم يطلبه.
     --}}
+    {{--
+        والحالُ من تحصيلاته (`OrderPaymentState`) — لا الحقلُ الذي كُتب يومَ البيع: إيصالُ
+        طلبٍ قُبضت فاتورتُه يُطبع «مدفوع» لا «غير مدفوع». وطلبُ المعاينة لم يُحفظ، فحقلُه.
+    --}}
     @if ($show('tpl_show_payment_status', false) && filled($order->payment_status))
-        <tr><td class="k">{{ __('حالة الدفع') }}</td><td class="l">{{ __($order->payment_status) }}</td></tr>
+        <tr><td class="k">{{ __('حالة الدفع') }}</td><td class="l">{{ __($order->exists ? \App\Support\OrderPaymentState::of($order)['label'] : $order->payment_status) }}</td></tr>
     @endif
     @if (($order->points_earned ?? 0) > 0)
         <tr><td class="k">{{ __('نقاط ولاء مكتسبة') }}</td><td class="l" dir="ltr">{{ $order->points_earned }}</td></tr>

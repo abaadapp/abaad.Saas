@@ -1,3 +1,4 @@
+import type { PayState } from '@/Components/OrderPaymentState';
 import type { PreparationData, PreparationOptions } from '@/Components/CustomerInvoicePreparationFields';
 
 /**
@@ -99,6 +100,8 @@ export interface PrepOrder {
     /** ما يُحصَّل عند التسليم: الإجماليُّ وحالُ الدفع ووسيلتُه */
     total?: number;
     payment_status?: string | null;
+    /** حالُ السداد من تحصيلاته — وما يُحصَّل عند التسليم هو باقيه لا الإجماليّ */
+    pay_state?: PayState | null;
     payment_method?: string | null;
     fulfillment: string | null;
     scheduled_for: string | null;

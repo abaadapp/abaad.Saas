@@ -14,6 +14,7 @@ use App\Support\CustomArrangement;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\DeliveryPaper;
 use App\Support\Demo;
+use App\Support\OrderPaymentState;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
@@ -194,6 +195,8 @@ class PreparationController extends Controller
         $mayCancel = (bool) auth()->user()?->may(Permissions::PREPARATION_CANCEL);
         // ومفتاحُ سند الشريط يُقرأ مرّةً للوحة كلّها — لا مرّةً لكلّ بطاقة
         $thermal = DeliveryPaper::thermalOn($this->bid());
+        // وحالُ السداد من تحصيلاتها دفعةً واحدة — لا «غير مدفوع» عن طلبٍ قُبضت فاتورتُه (`OrderPaymentState`)
+        $paid = OrderPaymentState::forOrders($this->bid(), $orders->pluck('id')->all());
 
         /*
          * ═══ وفواتيرُ العملاء المسدَّدة بين الطلبات — بموعدها ═══
@@ -204,7 +207,7 @@ class PreparationController extends Controller
          */
         $cards = [];
         foreach ($orders as $o) {
-            $cards[$place['o'.$o->id]] = $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal);
+            $cards[$place['o'.$o->id]] = $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal, $paid[$o->id] ?? null);
         }
         foreach ($taskIds === [] ? [] : $this->invoiceCards($taskIds) as $id => $card) {
             $cards[$place['t'.$id]] = $card;
@@ -493,8 +496,10 @@ class PreparationController extends Controller
      * وسعرُ كلّ بند (قرارُ المالك 2026-10-02). والتكلفةُ والربحُ لا يُرسلان:
      * ما يدفعه الزبون يُقال له، وما اشتراه المتجر به لا يُقال لأحد هنا.
      */
-    private function card(Order $o, array $checks = [], bool $mayCancel = false, bool $thermal = false): array
+    private function card(Order $o, array $checks = [], bool $mayCancel = false, bool $thermal = false, ?array $paid = null): array
     {
+        $paid ??= OrderPaymentState::of($o);
+
         return [
             // المفتاحُ مصنَّفًا — طلبٌ أم فاتورةُ عميل — فلا يتصادم رقمان على اللوحة
             'key' => 'order:'.$o->number,
@@ -513,6 +518,15 @@ class PreparationController extends Controller
             // ما يُحصَّل عند التسليم: الإجماليُّ وحالُ الدفع ووسيلتُه
             'total' => round((float) $o->total, 3),
             'payment_status' => $o->payment_status,
+            /*
+             * وما يُعرض: حالُ السداد من تحصيلاتها، وما بقي على العميل.
+             *
+             * الحقلُ فوقه يُكتب يومَ البيع ولا يتغيّر: طلبُ الدفع عند الاستلام
+             * يبقى فيه «غير مدفوع» بعد أن قُبضت فاتورتُه كلُّها، فكانت البطاقةُ
+             * تطلب من المندوب أن يحصّل مالًا دُفع. وما يُحصَّل عند التسليم هو
+             * الباقي لا الإجماليّ.
+             */
+            'pay_state' => $paid,
             'payment_method' => $o->payment_method,
             'fulfillment' => $o->fulfillment_type,
             'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d H:i'),

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Mail\SubscriptionNoticeMail;
 use App\Models\Business;
 use App\Models\Setting;
+use App\Support\SubscriptionWhatsApp;
 use App\Support\Tenancy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\Mail;
  * والمواعيد أربعة: قبل أسبوع، قبل يوم، يومَ الانتهاء، ثم يوم الإقفال بعد
  * انقضاء المهلة. لا يوميًّا: إنذارٌ يصل كل يومٍ يُقرأ زخرفةً في ثالثه، ثم
  * يُصنَّف مزعجًا فلا يُقرأ يوم يجب أن يُقرأ.
+ *
+ * والإنذارُ يخرج بالبريد وبواتساب من رقم أبعاد معًا (`SubscriptionWhatsApp`):
+ * البريدُ على الإنتاج لا يخرج، فبلا واتساب لا يصل شيء. وواتساب لا يخرج قبل
+ * أن تعتمد Meta قالبَ المرحلة.
  */
 class SubscriptionNotices extends Command
 {
@@ -37,9 +42,17 @@ class SubscriptionNotices extends Command
             ->pluck('value', 'key');
 
         $sent = 0;
+        $whatsapp = 0;
 
-        Business::whereNotNull('ends_at')->whereNotNull('email')->each(
-            function (Business $business) use ($dry, $contact, &$sent) {
+        // ‏‏حالُ القوالب تُقرأ مرّةً للتشغيل كلّه، وحين يُحتاج إليها فقط — لا نداءَ في يومٍ بلا إنذار
+        $line = null;
+        $statuses = null;
+        $read = false;
+
+        // ‏‏ومتجرٌ بلا بريدٍ له هاتفٌ يُنذَر بواتساب — كان يُترك بلا شيء
+        Business::whereNotNull('ends_at')
+            ->where(fn ($q) => $q->whereNotNull('email')->orWhereNotNull('phone'))
+            ->each(function (Business $business) use ($dry, $contact, &$sent, &$whatsapp, &$line, &$statuses, &$read) {
                 $stage = $this->stageFor($business);
 
                 if ($stage === null) {
@@ -51,8 +64,33 @@ class SubscriptionNotices extends Command
                 $this->line("  {$business->name} — {$name} ({$days})");
 
                 if ($dry) {
-                    $sent++;
+                    // ‏‏المعاينةُ لا تسأل Meta ولا تُرسل: تقول لمن سيخرج واتساب إن اعتُمد قالبُه
+                    $this->line('    واتساب: '.($business->is_demo ? 'لا (متجر تجريبي)' : SubscriptionWhatsApp::tail(SubscriptionWhatsApp::phone($business))));
+                    $sent += filled($business->email) ? 1 : 0;
 
+                    return;
+                }
+
+                if (! $read) {
+                    $read = true;
+                    $line = SubscriptionWhatsApp::line();
+                    $statuses = $line ? SubscriptionWhatsApp::statuses($line) : null;
+                }
+
+                /*
+                 * ‏‏واتساب قبل البريد، وفشلُ أحدهما لا يمنع الآخر: بريدٌ يرمي استثناءً
+                 * كان سيُسقط الإنذارَ الوحيد الذي يصل.
+                 */
+                try {
+                    $outcome = SubscriptionWhatsApp::send($business, $name, $line, $statuses);
+                    $whatsapp += $outcome === 'sent' ? 1 : 0;
+                    $this->line('    واتساب '.SubscriptionWhatsApp::tail(SubscriptionWhatsApp::phone($business)).': '.$outcome);
+                } catch (\Throwable $e) {
+                    report($e);
+                    $this->warn("  ✗ {$business->name} — تعذّر إرسال واتساب");
+                }
+
+                if (blank($business->email)) {
                     return;
                 }
 
@@ -77,10 +115,10 @@ class SubscriptionNotices extends Command
                     report($e);
                     $this->warn("  ✗ {$business->name} — تعذّر الإرسال");
                 }
-            }
-        );
+            });
 
         $this->info($dry ? "{$sent} إنذارًا ستُرسَل." : "أُرسل {$sent} إنذارًا.");
+        $this->info("واتساب: {$whatsapp}.");
 
         return self::SUCCESS;
     }

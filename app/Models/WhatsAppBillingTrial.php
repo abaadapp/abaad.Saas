@@ -16,6 +16,8 @@ class WhatsAppBillingTrial extends Model
         'message_limit' => 'integer',
         'messages_used' => 'integer',
         'proof' => 'array',
+        // ‏‏أرقامُ الاختبار التي تصلها رسائلُ التجربة، بصيغة واتساب — ولا تصل غيرَها (`WhatsAppBillingTrials::recipient`)
+        'allowed_phones' => 'array',
         'opened_at' => 'datetime',
         'expires_at' => 'datetime',
         'closed_at' => 'datetime',

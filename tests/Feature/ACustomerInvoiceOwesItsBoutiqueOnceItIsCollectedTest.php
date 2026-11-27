@@ -627,7 +627,7 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
     public function test_a_credit_that_names_no_piece_is_the_shops_and_touches_no_boutique(): void
     {
         $invoice = $this->mixed();
-        $this->credit($invoice, 12, [], CustomerCreditNote::PRICE);
+        $this->credit($invoice, 12, [], CustomerCreditNote::DISCOUNT);
         $this->assertStands($this->lama, 0.0, 9.6, 'خصمٌ بعد البيع على المتجر');
         $this->pay($invoice, 30);
         $this->assertStands($this->lama, 9.6, 0.0, 'اكتمل بما بقي');
@@ -812,7 +812,7 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
         $invoice = CustomerInvoice::firstOrFail();
         $this->actingAs($stranger)->getJson(route('admin.boutiques.sales.invoice', $invoice->id))->assertNotFound();
         $this->actingAs($stranger)->post(route('admin.boutiques.returns.receive', $this->lama->id), ['note' => 1, 'sellable' => 0, 'damaged' => 0])->assertNotFound();
-        $this->actingAs($stranger)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', ['amount' => 1, 'reason' => 'x', 'basis' => 'price'])->assertNotFound();
+        $this->actingAs($stranger)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', ['amount' => 1, 'reason' => 'x', 'basis' => 'discount', 'token' => 'stranger'])->assertNotFound();
     }
 
     public function test_the_shares_are_for_who_reads_boutique_money_and_the_pieces_for_who_writes_the_note(): void
@@ -856,23 +856,23 @@ class ACustomerInvoiceOwesItsBoutiqueOnceItIsCollectedTest extends TestCase
 
     /* ═══════════ ٩ · إشعار الدائن من بابه ═══════════ */
 
-    public function test_the_door_asks_what_the_credit_is_for_only_when_a_boutiques_line_is_there(): void
+    public function test_the_door_asks_what_every_credit_is_for_and_only_a_return_names_boutique_pieces(): void
     {
         $plain = $this->invoice([[$this->mine]]);
-        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$plain->id.'/credit-note', ['amount' => 5, 'reason' => 'خصم'])->assertSessionHasNoErrors();
+        $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$plain->id.'/credit-note', ['amount' => 5, 'reason' => 'خصم', 'basis' => 'discount', 'token' => 'plain'])->assertSessionHasNoErrors();
 
         $invoice = $this->mixed();
         $url = '/admin/customer-invoices/'.$invoice->id.'/credit-note';
-        $this->actingAs($this->owner)->post($url, ['amount' => 6, 'reason' => 'عادت'])->assertSessionHasErrors('basis');
+        $this->actingAs($this->owner)->post($url, ['amount' => 6, 'reason' => 'عادت', 'token' => 'no-basis'])->assertSessionHasErrors('basis');
         $this->assertSame(1, CustomerCreditNote::count());
 
         $item = $this->itemOf($invoice, $this->silver);
-        $this->actingAs($this->owner)->post($url, ['amount' => 6, 'reason' => 'عادت', 'basis' => 'return', 'pieces' => [$item => ['quantity' => 1]]])->assertSessionHasNoErrors();
+        $this->actingAs($this->owner)->post($url, ['amount' => 6, 'reason' => 'عادت', 'basis' => 'return', 'pieces' => [$item => ['quantity' => 1]], 'token' => 'back'])->assertSessionHasNoErrors();
         $this->assertStands($this->lama, 0.0, 4.8, 'من باب الشاشة');
-        $this->actingAs($this->owner)->post($url, ['amount' => 1, 'reason' => 'خصم', 'basis' => 'price', 'pieces' => [$item => ['quantity' => 1]]])->assertSessionHasNoErrors();
+        $this->actingAs($this->owner)->post($url, ['amount' => 1, 'reason' => 'خصم', 'basis' => 'discount', 'pieces' => [$item => ['quantity' => 1]], 'token' => 'off'])->assertSessionHasNoErrors();
         $this->assertStands($this->lama, 0.0, 4.8, 'خصمٌ أُرسلت معه قطعٌ فلم تُقرأ');
         // وأكثرُ ممّا بقي يُردّ على حقله
-        $this->actingAs($this->owner)->post($url, ['amount' => 6, 'reason' => 'x', 'basis' => 'return', 'pieces' => [$item => ['quantity' => 5]]])->assertSessionHasErrors('pieces');
+        $this->actingAs($this->owner)->post($url, ['amount' => 6, 'reason' => 'x', 'basis' => 'return', 'pieces' => [$item => ['quantity' => 5]], 'token' => 'too-many'])->assertSessionHasErrors('pieces');
     }
 
     /** بنودُ تصحيح الفاتورة (#195) بالشكل نفسِه — يُنقص بها ما نقصت كمّيّتُه، ولا يُنقص بخفض السعر */

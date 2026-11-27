@@ -163,7 +163,7 @@ class RevenueIsReadFromTheLedgerTest extends TestCase
     {
         $invoice = $this->invoice(200);
         // ٥٢٫٥ منها ٢٫٥ ضريبة — صافيه خمسون في «مردودات المبيعات»
-        CustomerInvoices::creditNote($invoice, 52.5, 2.5, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 52.5, 2.5, 'مردود', $this->owner->id, basis: 'return');
 
         $this->assertSame(150.0, $this->revenue());
         $this->assertSame(7.5, Ledger::outputTax($this->shop->id, Carbon::parse('2026-09-01')));
@@ -265,7 +265,7 @@ class RevenueIsReadFromTheLedgerTest extends TestCase
         $this->sale(1000, '2026-09-10 14:00', tax: 50, cost: 400);
         $this->sale(300, '2026-09-11 20:00', tax: 15, channel: SalesChannel::WEBSITE, cost: 100);
         $invoice = $this->invoice(200);
-        CustomerInvoices::creditNote($invoice, 52.5, 2.5, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 52.5, 2.5, 'مردود', $this->owner->id, basis: 'return');
         Ledger::post($this->shop->id, 'إيجار', [
             ['account' => 'rent', 'debit' => 250], ['account' => 'cash', 'credit' => 250],
         ], Carbon::parse('2026-09-05'), Books::EXPENSE);

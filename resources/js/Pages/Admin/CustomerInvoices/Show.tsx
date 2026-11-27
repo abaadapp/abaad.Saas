@@ -14,6 +14,7 @@ import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/Invoice
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { Select } from '@/Components/Field';
 import { CHEQUE } from '@/lib/cheques';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -776,12 +777,20 @@ function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces:
     /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
     const [touched, setTouched] = useState(false);
 
+    /*
+     * وسببُ الإشعار يُختار ولا يُفترض (`CustomerCreditNote::BASES`): تصحيحُ خطأٍ
+     * في فترةٍ قُدّم إقرارُها يردّه الخادم، والإرجاعُ والخصمُ يُصدران بسببهما.
+     * ورمزُ النموذج يجعل الضغطتين إشعارًا واحدًا.
+     */
+    const [token] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
     const form = useForm({
         amount: String(cap),
         tax_amount: String(round3(cap * share)),
         reason: '',
-        // فاتورةٌ فيها قطعُ بوتيك يُسأل عنها: رُدّت بضاعةٌ أم خصم؟ — والخادمُ لا يقبلها بلا جواب
-        ...(pieces.length > 0 ? { basis: '', pieces: {} as Record<string, PieceBack> } : {}),
+        basis: '',
+        token,
+        // ومن قطع البوتيك كم رُدّ من كلٍّ — للإرجاع وحده، بمفتاح القطعة (بندٌ أو قطعةُ باقة)
+        ...(pieces.length > 0 ? { pieces: {} as Record<string, PieceBack> } : {}),
     });
     const back = (form.data.pieces ?? {}) as Record<string, PieceBack>;
     /* ومبلغُ ما رُدّ يُقترح من الورقة ما لم يُكتب المبلغُ بيد */
@@ -813,21 +822,13 @@ function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces:
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
             {pieces.length > 0 && (
                 <fieldset className="w-full space-y-2 text-[13px]" data-testid="credit-boutique">
-                    <legend className="mb-1 font-medium">{t('في هذه الفاتورة قطع لبوتيكات — لماذا الإشعار؟')}</legend>
-                    <div className="flex flex-wrap gap-4">
-                        {([['return', 'رُدّت بضاعة'], ['price', 'خصم أو تسوية سعر بلا مرتجع']] as const).map(([value, label]) => (
-                            <label key={value} className="flex min-h-[44px] items-center gap-2 sm:min-h-0">
-                                <input type="radio" name="basis" value={value} checked={form.data.basis === value} onChange={() => {
-                                    form.setData('basis', value);
-                                    // أُجيب السؤال: لا تبقى رسالتُه فوق الجواب
-                                    form.clearErrors('basis' as never);
-                                }} />
-                                {t(label)}
-                            </label>
-                        ))}
-                    </div>
-                    {form.data.basis === 'price' && (
-                        <p className="text-[12px] text-[#6b7280]">{t('الخصم على المتجر — لا ينقص به مستحق أي بوتيك.')}</p>
+                    {/* سببُ الإشعار واحدٌ للفاتورة كلّها (`CREDIT_NOTE_BASES`): الإرجاعُ وحده يحمل القطعَ التي عادت */}
+                    <legend className="mb-1 font-medium">{t('في هذه الفاتورة قطع لبوتيكات')}</legend>
+                    {form.data.basis !== '' && form.data.basis !== 'return' && (
+                        <p className="text-[12px] text-[#6b7280]">{t('الخصم وتصحيح الخطأ على المتجر — لا ينقص بهما مستحق أي بوتيك.')}</p>
+                    )}
+                    {form.data.basis === '' && (
+                        <p className="text-[12px] text-[#6b7280]">{t('اختر سبب الإشعار: الإرجاع ينقص مستحق صاحب القطعة، والخصم وتصحيح الخطأ على المتجر.')}</p>
                     )}
                     {form.data.basis === 'return' && (
                         <div className="space-y-2">
@@ -856,7 +857,6 @@ function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces:
                             )}
                         </div>
                     )}
-                    {(form.errors as Record<string, string>).basis && <p className="text-[12px] text-[#b91c1c]">{(form.errors as Record<string, string>).basis}</p>}
                     {(form.errors as Record<string, string>).pieces && <p className="text-[12px] text-[#b91c1c]">{(form.errors as Record<string, string>).pieces}</p>}
                 </fieldset>
             )}
@@ -879,6 +879,21 @@ function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces:
                 />
                 {form.errors.tax_amount && <p className="text-[12px] text-[#b91c1c]">{form.errors.tax_amount}</p>}
             </label>
+            <div className="text-[13px]" data-testid="credit-note-basis">
+                {t('سبب الإشعار')}
+                <Select
+                    id="credit-note-basis"
+                    value={form.data.basis}
+                    onChange={(e) => {
+                        form.setData('basis', e.target.value);
+                        // أُجيب السؤال: لا تبقى رسالتُه فوق الجواب
+                        form.clearErrors('basis' as never);
+                    }}
+                    placeholder={t('اختر')}
+                    options={CREDIT_NOTE_BASES.map((b) => ({ value: b.value, label: t(b.label) }))}
+                />
+                {form.errors.basis && <p className="text-[12px] text-[#b91c1c]">{form.errors.basis}</p>}
+            </div>
             <label className="flex-1 text-[13px]">
                 {t('السبب')}
                 <Input
@@ -902,6 +917,13 @@ function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces:
         </Card>
     );
 }
+
+/** أسبابُ الإشعار اليدويّ — كما في `CustomerCreditNote::BASIS_LABELS` */
+const CREDIT_NOTE_BASES = [
+    { value: 'error', label: 'تصحيح خطأ في المبلغ' },
+    { value: 'return', label: 'إرجاع أو إلغاء توريد' },
+    { value: 'discount', label: 'خصم بعد البيع' },
+];
 
 /**
  * ما يسعه إشعارٌ دائنٌ جديد — حدُّ الخادم نفسُه (`CustomerInvoices::creditNote`).

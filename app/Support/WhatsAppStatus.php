@@ -67,6 +67,9 @@ class WhatsAppStatus
     /** باقةُ المتجر لا تفتح إشعارات واتساب — سببٌ يُقرأ، لا صمت */
     public const SKIP_PLAN = 'plan_excluded';
 
+    /** ‏‏متجرٌ تجريبيّ لا يُرسل من رقم أبعاد المشترك — عملاؤه أرقامٌ عشوائيّة (`DemoStore`) */
+    public const SKIP_DEMO = 'demo_shop';
+
     /*
      * ═══════════ ما يُقرأ من هذا كلِّه في شاشةِ تاجر ═══════════
      *
@@ -117,6 +120,7 @@ class WhatsAppStatus
         self::SKIP_QUOTA => 'نفدت حصّةُ رسائل الشهر — تتجدّد أوّل الشهر القادم.',
         self::SKIP_OWN_NOT_ALLOWED => 'متجرك في وضع «رقم المتجر» بلا صلاحيةٍ لذلك — راجِع أبعاد.',
         self::SKIP_PLAN => 'باقتُك لا تشمل إشعارات واتساب — راجِع أبعاد للترقية.',
+        self::SKIP_DEMO => 'المتجر التجريبي لا يرسل من رقم أبعاد — رسائله من رقمه أثناء تجربة الفوترة فقط.',
     ];
 
     public static function label(string $status): string

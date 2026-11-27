@@ -11739,5 +11739,16 @@
     "إخراج كل العملاء من أجهزتهم؟ ويدخل كل منهم من جديد برقم هاتفه.": "Sign all customers out of their devices? Each of them enters again with their phone number.",
     "إخراج الجميع": "Sign everyone out",
     "من يكتب رقم عميل في البوابة يرى مشترياته وفواتيره ونقاطه. أوقف دخول من يطلب ذلك، فلا تفتح صفحته برقمه.": "Anyone who enters a customer’s number in the portal sees their purchases, invoices and points. Stop access for anyone who asks, and their page does not open with their number.",
-    "خرج العملاء من أجهزتهم: :n": "Customers signed out of their devices: :n"
+    "خرج العملاء من أجهزتهم: :n": "Customers signed out of their devices: :n",
+    "رقم ليس من أرقام الاختبار — رسائل متجر التجربة لا تخرج إلا إليها.": "Not one of the test numbers — the trial shop's messages go only to them.",
+    "المتجر التجريبي لا يرسل واتساب إلا أثناء تجربة مفتوحة على رقمه، ولأرقام اختبارها وحدها.": "A demo shop sends WhatsApp only during an open trial on its number, and only to that trial's test numbers.",
+    "المتجر التجريبي لا يرسل من رقم أبعاد — رسائله من رقمه أثناء تجربة الفوترة فقط.": "A demo shop never sends from Abaad's number — only from its own number during the billing trial.",
+    "رقم اختبار لا يصلح لواتساب: :phone": "Test number not valid for WhatsApp: :phone",
+    "اكتب رقم اختبار واحدًا على الأقل — لا تخرج رسالة التجربة إلا إليه.": "Enter at least one test number — trial messages go only to it.",
+    "أرقام الاختبار :max على الأكثر.": "At most :max test numbers.",
+    "أرقام الاختبار": "Test numbers",
+    "رقم في كل سطر، حتى :max. رسائل التجربة لا تخرج إلا إلى هذه الأرقام — لا لعملاء المتجر.": "One number per line, up to :max. Trial messages go only to these numbers — never to the shop's customers.",
+    "لا تخرج رسائلها إلا إلى": "Its messages go only to",
+    "— لا رقم، فلا تخرج رسالة.": "— no number, so nothing is sent.",
+    "على المتجر «:name» سجلات واتساب (جهة الرسوم أو تجربتها أو رسائل خرجت إلى Meta) — لا يُعاد بناؤه ولا يُحذف، فهي دليل ما دُفع.": "The shop “:name” has WhatsApp records (its payer review, its trial, or messages sent to Meta) — it can't be rebuilt or deleted, because they are the evidence of what was paid."
 }

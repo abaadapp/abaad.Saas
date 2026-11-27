@@ -409,6 +409,17 @@ class WhatsAppFeature
 
         $mode = self::effectiveMode($business);
 
+        /*
+         * ‏‏والمتجرُ التجريبيّ لا يُرسل من رقم أبعاد المشترك أبدًا.
+         *
+         * عملاؤه أرقامُ جوّالٍ عشوائيّة (`DemoStore`) قد تكون لأناسٍ حقيقيّين، وطلباتُه تتحرّك في العروض.
+         * ومن رقمه هو لا تصل رسالةٌ إلّا رقمَ اختبارٍ في تجربةٍ مفتوحة — يُحرس عند آخر باب
+         * (`WhatsAppBillingTrials::recipient`)، لا هنا: فالبابُ يرى المستلم.
+         */
+        if ($business->is_demo && $mode !== WhatsAppMode::BUSINESS_OWN) {
+            return WhatsAppStatus::SKIP_DEMO;
+        }
+
         if ($mode === WhatsAppMode::BUSINESS_OWN && ! self::canUseOwnNumber($business)) {
             return WhatsAppStatus::SKIP_OWN_NOT_ALLOWED;
         }

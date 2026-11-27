@@ -104,7 +104,7 @@ const invoice = {
     ],
 };
 
-const may = { issue: true, cancel: true, credit_note: true, pay: false, payment_link: false };
+const may = { issue: true, cancel: true, credit_note: true, credit_note_link: true, pay: false, payment_link: false };
 
 const showPage = (over: Record<string, unknown> = {}) => {
     Object.assign(pageProps, {
@@ -210,8 +210,8 @@ describe('الإشعاراتُ على الورقة وطلباتُها', () => {
         expect(sent).toEqual([{ url: '/admin.customerInvoices.creditNotes.order/22', payload: { order_id: '11', reason: 'سند الاستلام' } }]);
     });
 
-    it('ومن لا يملك إصدارَ الإشعار لا يرى «تسمية الطلب»', () => {
-        showPage({ invoice: { ...invoice, credit_notes: [unnamed] }, may: { ...may, credit_note: false } });
+    it('ومن يملك إصدارَ الإشعار وحده لا يرى «تسمية الطلب» — فعلٌ آخر', () => {
+        showPage({ invoice: { ...invoice, credit_notes: [unnamed] }, may: { ...may, credit_note: true, credit_note_link: false } });
 
         expect(screen.queryByTestId('name-credit-note-order-22')).toBeNull();
     });

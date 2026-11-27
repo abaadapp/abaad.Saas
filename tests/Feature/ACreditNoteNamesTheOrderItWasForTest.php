@@ -21,6 +21,7 @@ use App\Support\CreditNoteOrders;
 use App\Support\CustomerInvoices;
 use App\Support\Ledger;
 use App\Support\OrderCorrection;
+use App\Support\Permissions;
 use App\Support\Receivables;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -158,6 +159,9 @@ class ACreditNoteNamesTheOrderItWasForTest extends TestCase
             round(Ledger::balance($this->shop->id, 'sales'), 3),
             round(Ledger::balance($this->shop->id, 'sales_returns'), 3),
             round(Ledger::balance($this->shop->id, 'tax_payable'), 3),
+            // ونقاطُ العميل ومستحقّاتُ البوتيكات — لا يمسّها الربطُ ولا الإلغاءُ المرفوض
+            [(int) DB::table('customers')->where('id', $this->company->id)->value('points'), DB::table('point_transactions')->where('business_id', $this->shop->id)->count()],
+            array_map(fn (string $t) => DB::table($t)->count(), ['boutique_component_dues', 'boutique_returns', 'boutique_return_recoveries', 'boutique_credit_offsets', 'boutique_settlements']),
         ];
     }
 
@@ -322,27 +326,39 @@ class ACreditNoteNamesTheOrderItWasForTest extends TestCase
 
     /* ═══ ٣ · لمن، وأين ═══ */
 
-    public function test_naming_needs_the_credit_note_permission_and_an_accountant_has_it(): void
+    /**
+     * التسميةُ اللاحقة للمالك بدوره، ولمحاسبٍ مُنحها باسمه — وإصدارُ الإشعار وحده لا يمنحها.
+     */
+    public function test_naming_later_is_the_owners_or_a_named_accountants_and_issuing_notes_alone_does_not_grant_it(): void
     {
         [$invoice, $a] = $this->month(8, 12);
         $this->issueNote($invoice, ['amount' => 50])->assertSessionHasNoErrors();
         $note = $this->lastNote();
-
-        $withheld = User::create([
-            'business_id' => $this->shop->id, 'name' => 'محاسبٌ بلا إشعار', 'email' => 'withheld@named.om',
-            'password' => bcrypt('x'), 'role' => 'accountant', 'status' => 'نشط', 'permissions' => [],
+        $staff = fn (string $name, string $role, ?array $permissions = null) => User::create([
+            'business_id' => $this->shop->id, 'name' => $name, 'email' => md5($name).'@named.om',
+            'password' => bcrypt('x'), 'role' => $role, 'status' => 'نشط', 'permissions' => $permissions,
         ]);
-        $this->actingAs($withheld);
-        $this->nameOrder($note, $a)->assertForbidden();
+
+        // يملكون إصدارَ الإشعار بدورهم — ولا يملكون التسمية
+        foreach ([$staff('المحاسب بدوره', 'accountant'), $staff('المدير بدوره', 'manager'),
+            $staff('بائعٌ مُنح الإشعار', 'sales', ['orders', Permissions::CUSTOMER_CREDIT_NOTE])] as $user) {
+            $this->assertTrue($user->may(Permissions::CUSTOMER_CREDIT_NOTE), $user->name);
+            $this->actingAs($user)->post('/admin/customer-invoices/credit-notes/'.$note->id.'/order', ['order_id' => $a->id, 'reason' => 'x'])->assertForbidden();
+        }
         $this->assertSame(0, CustomerCreditNoteOrder::count());
 
-        $accountant = User::create([
-            'business_id' => $this->shop->id, 'name' => 'المحاسب', 'email' => 'accountant@named.om',
-            'password' => bcrypt('x'), 'role' => 'accountant', 'status' => 'نشط',
-        ]);
-        $this->actingAs($accountant);
+        // ومحاسبٌ مُنحها باسمه يسمّي، ويُكتب اسمُه
+        // (والقسمُ «المبيعات» يفتح شاشةَ الفواتير — `Permissions` يقرأ `customerInvoices` منه)
+        $this->actingAs($staff('المحاسب المخوَّل', 'accountant', ['orders', Permissions::CUSTOMER_CREDIT_NOTE_LINK]));
         $this->nameOrder($note, $a)->assertSessionHasNoErrors();
-        $this->assertSame('المحاسب', CustomerCreditNoteOrder::sole()->linked_by_name);
+        $this->assertSame('المحاسب المخوَّل', CustomerCreditNoteOrder::sole()->linked_by_name);
+
+        // والشاشةُ تقول ذلك نفسَه — لا تعرض الزرَّ لمن يُردّ
+        $this->actingAs($staff('محاسبٌ آخر', 'accountant'));
+        $this->get('/admin/customer-invoices/'.$invoice->id)->assertInertia(fn ($page) => $page
+            ->where('may.credit_note', true)->where('may.credit_note_link', false));
+        $this->actingAs($this->owner);
+        $this->get('/admin/customer-invoices/'.$invoice->id)->assertInertia(fn ($page) => $page->where('may.credit_note_link', true));
     }
 
     public function test_a_shop_cannot_name_another_shops_note(): void
@@ -430,5 +446,30 @@ class ACreditNoteNamesTheOrderItWasForTest extends TestCase
 
         $this->expectException(CreditNoteOrderRefused::class);
         CreditNoteOrders::link($stale, $b->id, 'الثانية', $this->owner->id);
+    }
+
+    /* ═══ ٥ · الهجرة ═══ */
+
+    /** لا يُسقط سجلٌّ فيه تسمية — يُرجع الكودُ وحده — والفارغُ يُسقط ويعود */
+    public function test_the_migration_never_drops_a_trail_that_holds_a_naming_and_rolls_an_empty_one_back_and_forth(): void
+    {
+        $migration = require database_path('migrations/2026_12_03_090000_a_credit_note_names_the_order_it_was_for.php');
+
+        [$invoice, $a] = $this->month(8, 12);
+        $this->issueNote($invoice, ['amount' => 50, 'order_id' => $a->id])->assertSessionHasNoErrors();
+
+        try {
+            $migration->down();
+            $this->fail('أُسقط سجلُّ التسمية وفيه سطر');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('أرجِع الكود وحده', $e->getMessage());
+        }
+        $this->assertSame(1, CustomerCreditNoteOrder::count());
+
+        DB::table('customer_credit_note_orders')->delete();
+        $migration->down();
+        $this->assertFalse(\Illuminate\Support\Facades\Schema::hasTable('customer_credit_note_orders'));
+        $migration->up();
+        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasTable('customer_credit_note_orders'));
     }
 }

@@ -153,6 +153,15 @@ class Permissions
     public const CUSTOMER_CREDIT_NOTE = 'customerCreditNote.create';
 
     /**
+     * تسميةُ طلبِ إشعارٍ دائنٍ صدر بلا طلب — بعد التحقّق، وبسببٍ مكتوب (`CreditNoteOrders::link`).
+     *
+     * ليست إصدارَ الإشعار: لا تُنقص مالًا، لكنّها تقرّر أيَّ طلبٍ في الفاتورة
+     * يبقى إلغاؤه ممكنًا — قرارُ محاسبٍ لا قرارُ من يكتب الإشعار. فلا يورثها
+     * فعلُ الإصدار ولا قسم «المبيعات»: تُمنح للمالك بدوره، ولغيره باسمه.
+     */
+    public const CUSTOMER_CREDIT_NOTE_LINK = 'customerCreditNote.link';
+
+    /**
      * تصحيحُ رصيد نقاط العميل بيدٍ إداريّة — زيادةً أو نقصًا، بسببٍ مكتوب.
      *
      * ليس استبدالًا: لا يُنتج خصمًا ولا مالًا. الاستبدالُ مقابل خصمٍ بابُه
@@ -407,6 +416,7 @@ class Permissions
         self::CUSTOMER_INVOICE_ISSUE => 'إصدار فاتورة عميل',
         self::CUSTOMER_INVOICE_CANCEL => 'إلغاء فاتورة عميل صادرة',
         self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
+        self::CUSTOMER_CREDIT_NOTE_LINK => 'ربط إشعار دائن سابق بطلبه',
         self::CUSTOMER_POINTS_ADJUST => 'تصحيح رصيد نقاط العميل',
         self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
         self::CUSTOMER_PAYMENT_CANCEL => 'إلغاء تحصيل عميل',
@@ -520,6 +530,8 @@ class Permissions
          */
         self::PAYMENT_LINK_CREATE => ['admin', 'manager', 'accountant'],
         self::CUSTOMER_CREDIT_NOTE => ['admin', 'manager', 'accountant'],
+        // وتسميةُ طلبِ إشعارٍ سابق للمالك وحده بدوره — والمحاسبُ يُمنحها باسمه
+        self::CUSTOMER_CREDIT_NOTE_LINK => ['admin'],
         // وتصحيحُ رصيد النقاط للمالك وحده بدوره — وغيرُه يُمنحه باسمه
         self::CUSTOMER_POINTS_ADJUST => ['admin'],
         self::CUSTOMER_INVOICE_CANCEL => ['admin', 'manager'],

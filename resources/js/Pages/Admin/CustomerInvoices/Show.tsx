@@ -114,6 +114,8 @@ interface May {
     issue: boolean;
     cancel: boolean;
     credit_note: boolean;
+    /** تسميةُ طلبِ إشعارٍ سابق — `customerCreditNote.link`، فعلٌ غيرُ الإصدار */
+    credit_note_link?: boolean;
     pay: boolean;
     /** طلبُ الدفع برابط — `paymentLink.create`، لا «المالية» */
     payment_link?: boolean;
@@ -485,7 +487,7 @@ export default function CustomerInvoiceShow() {
                                         </p>
                                     ) : (
                                         n.manual &&
-                                        may.credit_note &&
+                                        may.credit_note_link &&
                                         (invoice.link_orders ?? []).length > 0 && (
                                             <NameCreditNoteOrder note={n} orders={invoice.link_orders ?? []} />
                                         )

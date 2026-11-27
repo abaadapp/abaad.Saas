@@ -224,6 +224,8 @@ class CustomerInvoiceController extends Controller
             'issue' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_ISSUE),
             'cancel' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_CANCEL),
             'credit_note' => (bool) $user?->may(Permissions::CUSTOMER_CREDIT_NOTE),
+            // وتسميةُ طلبِ إشعارٍ سابق — فعلٌ آخرُ غيرُ الإصدار
+            'credit_note_link' => (bool) $user?->may(Permissions::CUSTOMER_CREDIT_NOTE_LINK),
             /*
              * وهويّةُ الورقة إعدادُ متجرٍ لا فعلُ فاتورة — فتُقاس بقسم
              * الإعدادات. ومن لا يملكها لا يُرسَم له زرُّ «تخصيص التصميم»:
@@ -1818,13 +1820,14 @@ class CustomerInvoiceController extends Controller
     /**
      * يسمّي طلبَ إشعارٍ دائنٍ صدر بلا طلب — بعد التحقّق، ولماذا (`CreditNoteOrders::link`).
      *
-     * لمن يملك إصدارَ الإشعار نفسَه: صاحبُ النشاط أو المحاسبُ المخوَّل. ولا
+     * لصاحب النشاط، أو لمحاسبٍ مُنح الفعلَ باسمه — لا لمن يملك الإصدارَ وحده. ولا
      * يمسّ مبلغًا ولا قيدًا — يُكتب سطرًا في سجلّ التدقيق، ويُبقي إلغاءَ طلبات
      * الفاتورة الأخرى ممكنًا.
      */
     public function creditNoteOrder(Request $request, int|string $note)
     {
-        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_CREDIT_NOTE), 403);
+        // فعلٌ باسمه — لا يورثه إصدارُ الإشعار (`Permissions::CUSTOMER_CREDIT_NOTE_LINK`)
+        abort_if(! auth()->user()?->may(Permissions::CUSTOMER_CREDIT_NOTE_LINK), 403);
 
         $data = $request->validate([
             'order_id' => ['required', 'integer'],

@@ -11783,5 +11783,6 @@
     "الإشعار :note سُمّي عن الطلب :order من قبل — لا يُسمّى مرّتين.": "Credit note :note already names order :order — it cannot be named twice.",
     "يُسمّى الطلبُ في إشعار الإرجاع وحده.": "Only a return credit note names an order.",
     "سُمّي الإشعار :note عن الطلب :order": "Credit note :note now names order :order",
-    "الطلب :order في الفاتورة :invoice رُدّ منه بإشعار دائن سُمّي عنه (:notes) — إلغاؤه يعكس إيراده وضريبته مرة أخرى. ما بقي منه يُرَدّ بإشعار إرجاع آخر يسمّيه، وإن عادت البضاعة فسجّلها بتعديل مخزون.": "Order :order on invoice :invoice was partly or fully returned by a credit note that names it (:notes) — cancelling it would reverse its revenue and tax a second time. Return what is left of it with another return credit note that names it, and record returned goods with a stock adjustment."
+    "الطلب :order في الفاتورة :invoice رُدّ منه بإشعار دائن سُمّي عنه (:notes) — إلغاؤه يعكس إيراده وضريبته مرة أخرى. ما بقي منه يُرَدّ بإشعار إرجاع آخر يسمّيه، وإن عادت البضاعة فسجّلها بتعديل مخزون.": "Order :order on invoice :invoice was partly or fully returned by a credit note that names it (:notes) — cancelling it would reverse its revenue and tax a second time. Return what is left of it with another return credit note that names it, and record returned goods with a stock adjustment.",
+    "ربط إشعار دائن سابق بطلبه": "Name the order of an earlier credit note"
 }

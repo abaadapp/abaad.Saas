@@ -687,7 +687,8 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
                 'الطابور: أُطلق كما كان', 'المهامّ المجدولة: موقوفة',
             ]],
             'reload' => [['FAIL_RELOAD' => '1'], [
-                'سقط عند: الذاكرة المؤقتة', 'هجراتٌ جرت في هذا النشر: '.self::B, 'هجراتٌ لم تجرِ: 0 (من القاعدة)',
+                'سقط عند: الذاكرة المؤقتة', 'الويب: على ما حُمّل قبل النشر (لم يُعَد تحميل php-fpm)',
+                'هجراتٌ جرت في هذا النشر: '.self::B, 'هجراتٌ لم تجرِ: 0 (من القاعدة)',
                 'المهامّ المجدولة: تجري',
             ]],
             // قبل تثبيت قاعدة السؤال: تُقدَّر الهجراتُ من git، ويُقال إنّها تقدير
@@ -733,20 +734,47 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         $this->assertStringContainsString('نشرٌ سابقٌ سقط وأكمله هذا النشر', $run['out']);
     }
 
-    public function test_the_apps_brief_look_at_the_lock_never_refuses_a_deploy(): void
+    /** كما يسأل التطبيقُ (`DeployState::deployRunning`): قفلٌ مشتركٌ يُمسك لحظةً ثمّ يُفلت — هنا ثانيةً ونصفًا */
+    private function probeTheLockBriefly()
     {
-        $this->server();
         touch($this->root.'/state/deploy.lock');
-        // كما يسأل التطبيقُ (`DeployState::deployRunning`): قفلٌ مشتركٌ يُمسك لحظةً ثمّ يُفلت — هنا ثانيةً ونصفًا
         $probe = proc_open(['perl', '-MFcntl=:flock', '-MTime::HiRes=sleep', '-e',
             '$|=1; open(my $l, "<", $ARGV[0]) or exit 2; flock($l, LOCK_SH) or exit 3; print "held\n"; sleep 1.5;', $this->root.'/state/deploy.lock'],
             [1 => ['pipe', 'w']], $pipes);
         $this->assertSame("held\n", fgets($pipes[1]));
 
+        return $probe;
+    }
+
+    public function test_the_apps_brief_look_at_the_lock_never_refuses_a_deploy_or_a_rollback(): void
+    {
+        // تعديلُ كودٍ بلا هجرة — فيُرجَع عنه بالكود وحده
+        $this->server(false);
+
+        $probe = $this->probeTheLockBriefly();
         $run = $this->deploy(['DEPLOY_LOCK_WAIT' => '5']);
         proc_close($probe);
-
         $this->assertSame(0, $run['rc'], "ردّ سؤالُ التطبيق نشرًا:\n".$run['out']);
+
+        $probe = $this->probeTheLockBriefly();
+        $back = $this->script('scripts/rollback-code.sh', [$this->from], ['DEPLOY_LOCK_WAIT' => '5', 'CALLS' => $this->root.'/calls-2.log']);
+        proc_close($probe);
+        $this->assertSame(0, $back['rc'], "ردّ سؤالُ التطبيق رجوعًا:\n".$back['out']);
+    }
+
+    public function test_a_code_rollback_after_a_failed_deploy_resolves_its_record_and_keeps_it(): void
+    {
+        $this->server(false);
+        $this->assertNotSame(0, $this->deploy(['FAIL_RELOAD' => '1'])['rc']);
+        $record = (string) file_get_contents($this->root.'/state/DEPLOY-FAILED.txt');
+
+        $back = $this->script('scripts/rollback-code.sh', [$this->from], ['CALLS' => $this->root.'/calls-2.log']);
+
+        $this->assertSame(0, $back['rc'], $back['out']);
+        $this->assertFileDoesNotExist($this->root.'/state/DEPLOY-FAILED.txt');
+        $resolved = glob($this->root.'/state/DEPLOY-FAILED.resolved-by-rollback-*.txt');
+        $this->assertCount(1, $resolved, 'مُحي أثرُ السقوط');
+        $this->assertSame($record, file_get_contents($resolved[0]));
     }
 
     /* ═══ ١٠ · الرجوعُ بالكود: يقف ويُطلق مثلَه، ويُطلق دائمًا (لا يغيّر القاعدة) ═══ */

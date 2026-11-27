@@ -65,6 +65,9 @@ class TheGateDeploysOnlyWhatItCheckedTest extends TestCase
         $this->assertContains('الوسم', $names);
         // وإن سقط شيء: حالُ الخادم في ملخّص التشغيل — من العلامتين اللتين يطبعهما deploy.sh
         $this->assertContains('حال الخادم بعد السقوط', $names);
+        // ولا يجري إلّا بعد سقوط — ولا يجري إن اختلف الرأس
+        $summary = array_values(array_filter($steps, fn ($s) => $s[1] === 'حال الخادم بعد السقوط'))[0][2];
+        $this->assertMatchesRegularExpression("/^        if: failure\\(\\) && env\\.SKIP != '1'\$/m", $summary);
         $deploy = (string) file_get_contents(base_path('scripts/deploy.sh'));
         foreach (['=== حال الخادم بعد سقوط النشر ===', '=== نهاية حال الخادم ==='] as $marker) {
             $this->assertStringContainsString($marker, $yml, "ملخّصُ السقوط لا يقرأ العلامة: $marker");

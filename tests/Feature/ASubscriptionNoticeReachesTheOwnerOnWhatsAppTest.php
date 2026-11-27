@@ -9,9 +9,11 @@ use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Support\SubscriptionWhatsApp;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppQuota;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -253,6 +255,45 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
         $this->assertSame([], $this->sends());
+    }
+
+    public function test_the_shops_own_number_is_never_used_even_when_it_is_connected(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        // ‏‏رقمُ التاجر متّصلٌ وأحدثُ من رقم أبعاد — والإنذارُ من أبعاد لا منه
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_BUSINESS, 'business_id' => $shop->id, 'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
+            'phone_number_id' => 'PN-SHOP', 'waba_id' => '9100', 'display_phone_number' => '+968 9988 7766',
+            'access_token' => 'TOKEN-OF-SHOP', 'status' => WhatsAppConnection::ACTIVE, 'connected_at' => now(),
+        ]);
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertCount(1, $this->sends());
+        Http::assertNotSent(fn (HttpRequest $r) => str_contains($r->url(), 'PN-SHOP') || str_contains($r->url(), '/9100/'));
+        Http::assertSent(fn (HttpRequest $r) => str_ends_with((string) parse_url($r->url(), PHP_URL_PATH), '/PN-ABAAD/messages')
+            && $r->hasHeader('Authorization', 'Bearer TOKEN-OF-ABAAD'));
+    }
+
+    public function test_the_notice_takes_nothing_from_the_shops_message_balance(): void
+    {
+        $this->line();
+        $shop = $this->shop(7);
+        DB::table('whatsapp_usage_periods')->insert([
+            'business_id' => $shop->id, 'period_year' => now()->year, 'period_month' => now()->month,
+            'used' => 3, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $before = WhatsAppQuota::used($shop);
+        $tables = ['whatsapp_messages', 'whatsapp_usage_periods', 'whatsapp_message_packs', 'whatsapp_billing_trials'];
+        $snapshot = fn () => collect($tables)->mapWithKeys(fn ($t) => [$t => DB::table($t)->get()->map(fn ($r) => (array) $r)->all()])->all();
+        $was = $snapshot();
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $this->assertCount(1, $this->sends());
+        $this->assertSame($was, $snapshot());
+        $this->assertSame($before, WhatsAppQuota::used($shop->fresh()));
     }
 
     // ————— ٤· مرّةٌ في اليوم —————

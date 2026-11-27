@@ -589,9 +589,17 @@ function PayForm({
     onDone: () => void;
 }) {
     const t = useTranslate();
+    /*
+     * ومفتاحُ هذه المحاولة — يولد مع النافذة ويبقى معها حتّى تُغلق.
+     *
+     * ضغطةٌ ثانية، أو إعادةُ إرسالٍ بعد ردٍّ ضاع، تحمله نفسَه: فيردّ الخادمُ
+     * التحصيلَ الأوّل ولا يكتب غيرَه. ونافذةٌ تُفتح من جديد تحاول من جديد.
+     */
+    const [requestKey] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
     const form = useForm({
         customer_id: String(invoice.customer_id),
         customer_invoice_id: String(invoice.id),
+        request_key: requestKey,
         amount: String(invoice.outstanding),
         // وأوّلُ ما يقبله الخادم — لا اسمًا مكتوبًا هنا قد يسقط من قائمته
         method: methods[0] ?? '',

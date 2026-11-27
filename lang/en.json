@@ -11766,5 +11766,11 @@
     "رقم في كل سطر، حتى :max. رسائل التجربة لا تخرج إلا إلى هذه الأرقام — لا لعملاء المتجر.": "One number per line, up to :max. Trial messages go only to these numbers — never to the shop's customers.",
     "لا تخرج رسائلها إلا إلى": "Its messages go only to",
     "— لا رقم، فلا تخرج رسالة.": "— no number, so nothing is sent.",
-    "على المتجر «:name» سجلات واتساب (جهة الرسوم أو تجربتها أو رسائل خرجت إلى Meta) — لا يُعاد بناؤه ولا يُحذف، فهي دليل ما دُفع.": "The shop “:name” has WhatsApp records (its payer review, its trial, or messages sent to Meta) — it can't be rebuilt or deleted, because they are the evidence of what was paid."
+    "على المتجر «:name» سجلات واتساب (جهة الرسوم أو تجربتها أو رسائل خرجت إلى Meta) — لا يُعاد بناؤه ولا يُحذف، فهي دليل ما دُفع.": "The shop “:name” has WhatsApp records (its payer review, its trial, or messages sent to Meta) — it can't be rebuilt or deleted, because they are the evidence of what was paid.",
+    "مبلغ التحصيل لا يطابق ما خُصّص للفواتير.": "The collected amount does not match what was allocated to the invoices.",
+    "الفاتورة :n ليست صادرة — لا يُحصَّل عليها.": "Invoice :n is not issued — nothing can be collected on it.",
+    "الفاتورة :n مدفوعة بالكامل — لا يُحصَّل عليها شيء.": "Invoice :n is fully paid — nothing more can be collected on it.",
+    "المتبقي على الفاتورة :n هو :left — لا يُحصَّل عليها أكثر منه.": "The remaining balance on invoice :n is :left — no more than that can be collected on it.",
+    "حدّث الصفحة ثم أعد تسجيل التحصيل.": "Refresh the page, then record the collection again.",
+    "هذا التحصيل سُجّل من قبل (:n) — ولم يُكتب ثانيةً.": "This collection was already recorded (:n) — it was not written again."
 }

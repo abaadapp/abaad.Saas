@@ -1651,6 +1651,7 @@ class CustomerInvoiceController extends Controller
             /* والتخصيصُ صريحٌ على هذه الورقة: التلقائيُّ قد يذهب إلى أقدمَ منها */
             [$invoice->id => $amount],
             auth()->id(),
+            exact: true,
         );
     }
 
@@ -1825,7 +1826,16 @@ class CustomerInvoiceController extends Controller
             'external_reference' => ['nullable', 'string', 'max:80'],
             'notes' => ['nullable', 'string', 'max:500'],
             'customer_invoice_id' => ['nullable', 'integer'],
-        ], [], [
+            /*
+             * ومفتاحُ المحاولة — تولّده النافذةُ عند فتحها، ويبقى معها حتّى تُغلق.
+             *
+             * ضغطةٌ ثانية، أو إعادةُ إرسالٍ بعد ردٍّ ضاع، تحمله نفسَه: فيُردّ
+             * التحصيلُ الأوّل ولا يُكتب غيرُه (`CustomerPayments::record`).
+             */
+            'request_key' => ['required', 'string', 'max:64'],
+        ], [
+            'request_key.required' => __('حدّث الصفحة ثم أعد تسجيل التحصيل.'),
+        ], [
             'amount' => __('المبلغ'), 'method' => __('وسيلة الدفع'),
             'bank_account_id' => __('الحساب البنكي'),
         ]);
@@ -1844,12 +1854,28 @@ class CustomerInvoiceController extends Controller
             $allocations = [(int) $data['customer_invoice_id'] => (float) $data['amount']];
         }
 
+        /*
+         * وتحصيلٌ على فاتورةٍ بعينها لا يزيد على باقيها.
+         *
+         * كان الزائدُ يُقصّ في صمتٍ فيصير رصيدًا للعميل: فاتورةٌ بخمسةٍ وعشرين
+         * مدفوعةٌ كلُّها تُحصَّل ثانيةً فيدخل الصندوقَ خمسون. فصار يُردّ بسببه،
+         * والرصيدُ المقصود يُسجَّل تحصيلًا على حساب العميل — بابٌ صريحٌ قائم.
+         */
         try {
             $payment = CustomerPayments::record(
-                $this->bid(), $customer, (float) $data['amount'], $data, $allocations, auth()->id()
+                $this->bid(), $customer, (float) $data['amount'], $data, $allocations, auth()->id(),
+                requestKey: $data['request_key'],
+                exact: $allocations !== [],
             );
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['amount' => $e->getMessage()]);
+        }
+
+        if ($payment->replayed) {
+            return back()->with('toast', [
+                'msg' => __('هذا التحصيل سُجّل من قبل (:n) — ولم يُكتب ثانيةً.', ['n' => $payment->number]),
+                'type' => 'info',
+            ]);
         }
 
         /*

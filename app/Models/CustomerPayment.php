@@ -16,6 +16,13 @@ class CustomerPayment extends Model
         'cancelled_at' => 'datetime',
     ];
 
+    /**
+     * رُدّ لأنّ محاولتَه نفسَها كُتبت من قبل — لا عمودٌ، بل جوابُ `CustomerPayments::record`.
+     *
+     * خاصّيّةٌ معلنةٌ لا سمةٌ في الصفّ: لا تُحفظ ولا تُرسل في JSON.
+     */
+    public bool $replayed = false;
+
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);

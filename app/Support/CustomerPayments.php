@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Exceptions\CollectionRefused;
 use App\Models\BankAccount;
 use App\Models\Business;
 use App\Models\Customer;
@@ -9,6 +10,7 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\JournalEntry;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -119,7 +121,20 @@ final class CustomerPayments
      * على الأقدم فالأقدم — **وتُعاد النتيجةُ ليراها من سجّلها**، لا تُطبَّق
      * في صمتٍ فيكتشف بعد شهرٍ أنّ دفعتَه ذهبت إلى فاتورةٍ غير التي قصد.
      *
-     * وما زاد عن الفواتير يبقى **غيرَ مخصَّص** في رصيد العميل.
+     * وما زاد عن الفواتير يبقى **غيرَ مخصَّص** في رصيد العميل — في التحصيل على
+     * حساب العميل، وفي مالٍ وصل من خارج النظام (رابط Paymob) فلا يُردّ.
+     *
+     * ═══ ومرّةً واحدة ═══
+     *
+     * `$requestKey` مفتاحُ محاولة التحصيل من نافذته: إرسالٌ ثانٍ بالمفتاح نفسِه —
+     * ضغطةٌ مكرّرة، أو إعادةٌ بعد ردٍّ ضاع — يردّ التحصيلَ الأوّل ولا يكتب شيئًا
+     * (`$payment->replayed`). وإرسالان في اللحظة نفسها يصطدم ثانيهما بالفهرس
+     * الفريد في القاعدة، فيُقرأ الأوّلُ ويُردّ.
+     *
+     * و`$exact` تحصيلٌ على فاتورةٍ بعينها: لا يُخصَّص منه إلّا ما عليها، ولا يُقصّ
+     * الزائدُ في صمتٍ فيصير رصيدًا للعميل. فاتورةٌ مدفوعةٌ كلُّها، أو مبلغٌ أكبرُ من
+     * باقيها، أو فاتورةٌ لم تعد صادرة: يُردّ التحصيلُ بسببه (`CollectionRefused`)
+     * ولا يُكتب صفٌّ ولا قيد. والحكمُ تحت قفل صفّ الفاتورة (`allocate`).
      *
      * @param  array<int, float>  $allocations
      */
@@ -130,8 +145,11 @@ final class CustomerPayments
         array $data,
         array $allocations = [],
         ?int $userId = null,
+        ?string $requestKey = null,
+        bool $exact = false,
     ): CustomerPayment {
         $amount = round($amount, 3);
+        $requestKey = filled($requestKey) ? mb_substr(trim((string) $requestKey), 0, 64) : null;
 
         if ((int) $customer->business_id !== $businessId) {
             throw new RuntimeException(__('هذا العميل ليس من عملاء متجرك.'));
@@ -150,10 +168,61 @@ final class CustomerPayments
         $method = in_array($asked, [...self::METHODS, self::PAYMOB], true) ? $asked : 'نقدي';
         $bankAccountId = self::accountFor($businessId, $method, $data['bank_account_id'] ?? null);
 
-        return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId) {
+        if ($exact && $allocations !== [] && round(array_sum(array_map('floatval', $allocations)), 3) !== $amount) {
+            throw new CollectionRefused(__('مبلغ التحصيل لا يطابق ما خُصّص للفواتير.'));
+        }
+
+        // والمحاولةُ نفسُها كُتبت من قبل — يُردّ ما كُتب ولا يُكتب غيرُه
+        if ($requestKey !== null && ($written = self::written($businessId, $requestKey))) {
+            return $written;
+        }
+
+        try {
+            return self::write($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact);
+        } catch (UniqueConstraintViolationException $e) {
+            // سبقه إرسالٌ بالمفتاح نفسِه إلى الفهرس الفريد — فهو هو، لا تحصيلٌ ثانٍ
+            if ($requestKey !== null && ($written = self::written($businessId, $requestKey))) {
+                return $written;
+            }
+
+            throw $e;
+        }
+    }
+
+    /** تحصيلٌ كُتب بهذا المفتاح في هذا المتجر — موسومًا بأنّه أُعيد */
+    private static function written(int $businessId, string $requestKey): ?CustomerPayment
+    {
+        $payment = CustomerPayment::where('business_id', $businessId)
+            ->where('request_key', $requestKey)->with('allocations')->first();
+
+        if ($payment !== null) {
+            $payment->replayed = true;
+        }
+
+        return $payment;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, float>  $allocations
+     */
+    private static function write(
+        int $businessId,
+        Customer $customer,
+        float $amount,
+        array $data,
+        array $allocations,
+        string $method,
+        ?int $bankAccountId,
+        ?int $userId,
+        ?string $requestKey,
+        bool $exact,
+    ): CustomerPayment {
+        return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact) {
             $payment = CustomerPayment::create([
                 'business_id' => $businessId,
                 'customer_id' => $customer->id,
+                'request_key' => $requestKey,
                 'number' => self::nextNumber($businessId),
                 'amount' => $amount,
                 'method' => $method,
@@ -177,7 +246,7 @@ final class CustomerPayments
                     : null,
             ]);
 
-            self::allocate($payment, $allocations, (bool) ($data['auto_allocate'] ?? true));
+            self::allocate($payment, $allocations, (bool) ($data['auto_allocate'] ?? true), $exact);
             self::post($payment, $userId);
 
             Activity::log('created', 'سجّل تحصيلًا '.$payment->number.' من '.$customer->name.' بمبلغ '.$amount, [
@@ -207,10 +276,17 @@ final class CustomerPayments
      * و`$auto = false` لا يوزّع ما لم يُسمَّ: رابطُ دفعٍ بلا فاتورةٍ تحصيلٌ
      * للعميل لا سدادٌ لأقدم فواتيره — يبقى رصيدًا غيرَ مخصَّص.
      *
+     * و`$exact` يردّ ولا يقصّ: باقي الفاتورة يُقرأ بعد قفلها، فإن طُلب عليها أكثرُ
+     * منه — أو لم تعد صادرة — رُدّ التحصيلُ كلُّه، والمعاملةُ تُرجَع بصفّه ورقمه.
+     * فنافذتان تحصّلان الفاتورةَ كلَّها في اللحظة نفسها: الثانيةُ تنتظر قفلَ الأولى،
+     * ثمّ تقرأ باقيًا صفرًا فتُردّ — لا تُكتب رصيدًا للعميل.
+     *
      * @param  array<int, float>  $explicit
      */
-    private static function allocate(CustomerPayment $payment, array $explicit, bool $auto = true): void
+    private static function allocate(CustomerPayment $payment, array $explicit, bool $auto = true, bool $exact = false): void
     {
+        $exact = $exact && $explicit !== [];
+
         $left = round((float) $payment->amount, 3);
 
         if ($explicit === [] && ! $auto) {
@@ -232,6 +308,12 @@ final class CustomerPayments
                 ->whereKey($invoiceId)->lockForUpdate()->first();
 
             if (! $invoice || $invoice->status !== CustomerInvoice::ISSUED) {
+                if ($exact) {
+                    throw new CollectionRefused($invoice
+                        ? __('الفاتورة :n ليست صادرة — لا يُحصَّل عليها.', ['n' => $invoice->number ?: $invoice->id])
+                        : __('هذه الفاتورة ليست من فواتير متجرك.'));
+                }
+
                 // معرّفٌ من متجرٍ آخر أو فاتورةٌ غير صادرة: لا تُخصَّص، ولا يضيع المال
                 continue;
             }
@@ -249,8 +331,16 @@ final class CustomerPayments
                 throw new RuntimeException(__('الفاتورة :n ليست على هذا العميل.', ['n' => $invoice->number]));
             }
 
-            $wanted = $explicit !== [] ? round((float) $explicit[$invoiceId], 3) : $invoice->outstanding();
-            $share = round(min($wanted, $invoice->outstanding(), $left), 3);
+            $outstanding = $invoice->outstanding();
+            $wanted = $explicit !== [] ? round((float) $explicit[$invoiceId], 3) : $outstanding;
+
+            if ($exact && $wanted > $outstanding + 0.0005) {
+                throw new CollectionRefused($outstanding <= 0.0005
+                    ? __('الفاتورة :n مدفوعة بالكامل — لا يُحصَّل عليها شيء.', ['n' => $invoice->number])
+                    : __('المتبقي على الفاتورة :n هو :left — لا يُحصَّل عليها أكثر منه.', ['n' => $invoice->number, 'left' => number_format($outstanding, 3)]));
+            }
+
+            $share = round(min($wanted, $outstanding, $left), 3);
 
             if ($share <= 0) {
                 continue;
@@ -321,6 +411,19 @@ final class CustomerPayments
         }
 
         return DB::transaction(function () use ($payment, $reason, $userId) {
+            /*
+             * والإلغاءُ مرّةً واحدة — يُقرأ تحت قفل صفّه.
+             *
+             * نافذتان تُلغيان التحصيلَ نفسَه، أو صفحةٌ قديمةٌ قرأته قبل إلغائه: كانت
+             * الثانيةُ تمرّ من فحص النسخة التي في يدها، فتكتب إلغاءً فوق إلغاء
+             * وتعكس نقاطَه مرّةً ثانية. فيُقرأ الصفُّ مقفلًا، والملغى يُردّ كما هو.
+             */
+            $payment = CustomerPayment::whereKey($payment->id)->lockForUpdate()->first() ?? $payment;
+
+            if ($payment->cancelled_at !== null) {
+                return $payment;
+            }
+
             $entry = JournalEntry::where('business_id', $payment->business_id)
                 ->where('sourceable_type', CustomerPayment::class)
                 ->where('sourceable_id', $payment->id)

@@ -78,6 +78,10 @@ class AProductsAccountReadsNoShopMoneyOnAnyPageTest extends TestCase
     private function pages(): array
     {
         $numbers = DB::table('orders')->pluck('number')->filter()->values()->all();
+        // أرقامُ ما زُرع فعلًا — على PostgreSQL لا تبدأ العدّاداتُ من ١ في كلّ اختبار
+        $ids = collect(['products', 'boutiques', 'orders', 'customers'])
+            ->flatMap(fn (string $table) => DB::table($table)->pluck('id'))
+            ->map(fn ($id) => (string) $id)->unique()->values()->all() ?: ['1'];
         $pages = [];
 
         foreach (Route::getRoutes() as $route) {
@@ -89,7 +93,7 @@ class AProductsAccountReadsNoShopMoneyOnAnyPageTest extends TestCase
             $uris = ['/'.ltrim($route->uri(), '/')];
             preg_match_all('/\{(\w+)\??\}/', $route->uri(), $params);
             foreach ($params[1] as $param) {
-                $values = $param === 'number' ? ($numbers ?: ['1']) : ['1', '2', '3'];
+                $values = $param === 'number' ? ($numbers ?: ['1']) : $ids;
                 $uris = array_slice(collect($uris)->crossJoin($values)
                     ->map(fn ($pair) => preg_replace('/\{'.$param.'\??\}/', $pair[1], $pair[0], 1))->all(), 0, 9);
             }

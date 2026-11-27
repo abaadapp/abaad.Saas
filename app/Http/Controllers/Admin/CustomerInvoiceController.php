@@ -17,6 +17,8 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\BoutiqueAccess;
+use App\Support\BoutiqueInvoiceDues;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -303,6 +305,12 @@ class CustomerInvoiceController extends Controller
              * لا يُقال «نقاط» لمتجرٍ أطفأ برنامجَه ولا لفاتورةٍ كسب الزبونُ نقاطَ طلباتها.
              */
             'loyalty' => $this->loyaltyProps($invoice),
+            /*
+             * وبنودُ البوتيكات في هذه الفاتورة: قطعُها لمن يكتب إشعارَ الدائن (بلا مال)،
+             * وأنصبتُها لمن يقرأ مالَ البوتيكات وحده (`BoutiqueAccess`).
+             */
+            'boutiquePieces' => BoutiqueInvoiceDues::pieces($invoice),
+            'boutiqueShares' => BoutiqueAccess::read(auth()->user()) ? BoutiqueInvoiceDues::of($invoice) : [],
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*
@@ -523,7 +531,7 @@ class CustomerInvoiceController extends Controller
     private function catalogProducts(int $bid): array
     {
         $products = Product::where('business_id', $bid)->orderBy('name')
-            ->limit(self::CATALOG_LIMIT)->get(['id', 'business_id', 'name', 'name_en', 'sku', 'barcode', 'price']);
+            ->limit(self::CATALOG_LIMIT)->get(['id', 'business_id', 'boutique_id', 'name', 'name_en', 'sku', 'barcode', 'price']);
 
         $variants = ProductVariant::where('business_id', $bid)->where('active', true)
             ->whereIn('product_id', $products->pluck('id'))
@@ -532,11 +540,17 @@ class CustomerInvoiceController extends Controller
 
         $all = Addon::where('business_id', $bid)->orderBy('id')->get();
         $map = \App\Support\ProductAddons::map($bid);
+        // اسمُ بوتيكه حين يكون له — فيُقال لكاتب الورقة متى يدخل حسابَه. والنسبةُ لمن يقرأ مالَه وحده
+        $boutiques = \App\Models\Boutique::where('business_id', $bid)
+            ->whereIn('id', $products->pluck('boutique_id')->filter()->unique())->get(['id', 'name', 'name_en', 'commission_rate'])->keyBy('id');
+        $seesRate = BoutiqueAccess::read(auth()->user());
 
         return $products->map(fn (Product $p) => [
             'id' => $p->id,
             'name' => $p->name,
             'name_en' => $p->name_en,
+            'boutique' => $p->boutique_id ? $boutiques->get($p->boutique_id)?->label() : null,
+            'boutique_rate' => $seesRate && $boutiques->has($p->boutique_id) ? round((float) $boutiques[$p->boutique_id]->commission_rate, 2) : null,
             'sku' => $p->sku,
             'barcode' => $p->barcode,
             'price' => (float) $p->price,
@@ -1746,10 +1760,18 @@ class CustomerInvoiceController extends Controller
             'reason' => ['required', 'string', 'max:200'],
             // سببُ الإشعار — وما يمنعه سببُه تسأله الخدمةُ نفسُها (`ManualInvoiceAdjustments::assertCreditNote`)
             'basis' => ['required', Rule::in(CustomerCreditNote::BASES)],
+            // ومن بنود البوتيكات كم رُدّ من كلٍّ — للإرجاع وحده (`BoutiqueInvoiceDues::noteItems`)
+            'pieces' => ['nullable', 'array', 'max:200'],
+            'pieces.*.quantity' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'pieces.*.sellable' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'pieces.*.damaged' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             // رمزُ النموذج: يُرسَل مرّتين فيصدر إشعارٌ واحد
             'token' => ['required', 'string', 'max:64'],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
+        ], [
+            'basis' => __('سبب الإشعار'), 'pieces' => __('قطع البوتيك المرتجعة'),
+            'pieces.*.quantity' => __('الكمية المرتجعة'), 'pieces.*.sellable' => __('عاد سليمًا'), 'pieces.*.damaged' => __('تالف أو لن يعود'),
         ]);
 
         $invoice = $this->find($id);
@@ -1760,6 +1782,10 @@ class CustomerInvoiceController extends Controller
          * القفلُ على رمز النموذج يجعل الثاني ينتظر الأوّل، ثمّ يجد إشعارَه
          * مكتوبًا فيقوله ولا يكتب غيرَه. والرمزُ يُحفظ بعد الإصدار وحده: نموذجٌ
          * رُدّ لخطأٍ فيه يُصحَّح ويُرسل بالرمز نفسه.
+         *
+         * والسببُ مطلوبٌ لكلّ إشعارٍ يدويّ، وفي فاتورةٍ لها بندُ بوتيك هو الجواب:
+         * الإرجاعُ وحده يحمل القطعَ التي عادت فتُنقص ما لصاحبها، والخصمُ وتصحيحُ
+         * الخطأ على المتجر — مستحقُّ البوتيك لا يُنقص بالظنّ.
          */
         $key = 'credit-note:'.$this->bid().':'.$data['token'];
         $lock = Cache::lock($key.':lock', 30);
@@ -1771,12 +1797,14 @@ class CustomerInvoiceController extends Controller
                 return back()->with('toast', ['msg' => __('أُصدر إشعار الدائن :n', ['n' => $number]), 'type' => 'success']);
             }
 
+            $items = $data['basis'] === CustomerCreditNote::RETURN ? BoutiqueInvoiceDues::noteItems($invoice, $data['pieces'] ?? []) : [];
             $note = CustomerInvoices::creditNote(
                 $invoice,
                 (float) $data['amount'],
                 (float) ($data['tax_amount'] ?? 0),
                 $data['reason'],
                 auth()->id(),
+                items: $items === [] ? null : $items,
                 basis: $data['basis'],
             );
             Cache::put($key, $note->number, now()->addDay());

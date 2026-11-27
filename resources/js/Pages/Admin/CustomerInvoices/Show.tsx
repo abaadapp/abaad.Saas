@@ -8,6 +8,7 @@ import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
 import PaidLinkCollectionCard, { OrderLinks, type PaidCollection } from '@/Components/PaidLinkCollection';
 import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import { type BoutiqueShare, BoutiqueSharesCard } from './partials/BoutiqueLine';
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/InvoiceLoyaltyPanel';
 import { Button } from '@/Components/ui/button';
@@ -94,9 +95,27 @@ interface May {
     payment_link?: boolean;
 }
 
+/** قطعةُ بوتيكٍ باقيةٌ في الفاتورة — يُسأل عنها إشعارُ الدائن */
+interface BoutiquePiece {
+    item_id: number;
+    name: string;
+    boutique: string;
+    left: number;
+    /** ما تحمّله العميل عن الواحدة في هذه الورقة — يُقترح به مبلغُ الإشعار */
+    each: number;
+    /** حملتها ورقةُ تسوية */
+    on_sheet: boolean;
+}
+
+interface PieceBack {
+    quantity?: string;
+    sellable?: string;
+    damaged?: string;
+}
+
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, context, flash } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, boutiquePieces = [], boutiqueShares = [], context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -120,6 +139,10 @@ export default function CustomerInvoiceShow() {
                 collection?: PaidCollection | null;
                 /** سندُ القبض صفحةُ «المالية» — رابطُه لمن يفتحها */
                 mayOpenReceipts?: boolean;
+                /** قطعُ البوتيكات الباقيةُ فيها — لإشعار الدائن، بلا مال (`BoutiqueInvoiceDues::pieces`) */
+                boutiquePieces?: BoutiquePiece[];
+                /** أنصبةُ البوتيكات — فارغةٌ لمن لا يقرأ مالَها (`BoutiqueAccess`) */
+                boutiqueShares?: BoutiqueShare[];
             }>
         >().props;
     const t = useTranslate();
@@ -244,7 +267,7 @@ export default function CustomerInvoiceShow() {
                     onDone={() => setPaying(false)}
                 />
             )}
-            {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
+            {crediting && <CreditNoteForm invoice={invoice} pieces={boutiquePieces} onDone={() => setCrediting(false)} />}
 
             {/* فُتحت من «المبيعات» على تحصيلٍ عبر رابط دفع: مبلغُه عند Paymob ويومُه ومرجعُه وسندُه */}
             {collection && (
@@ -429,6 +452,9 @@ export default function CustomerInvoiceShow() {
 
                     {/* ونقاطُ الولاء على سدادها برابط — لمن تُكسب على فاتورته وحده */}
                     {loyalty && <InvoiceLoyaltyPanel loyalty={loyalty} />}
+
+                    {/* ونصيبُ البوتيكات في بنودها — لمن يقرأ مالَها، ولا يُطبع */}
+                    <BoutiqueSharesCard shares={boutiqueShares} currency={context!.currency} />
 
                     {invoice.credit_notes.length > 0 && (
                         <Card className="p-4">
@@ -722,7 +748,7 @@ function PayForm({
  * على التاجر في الإقرار — يدفع عن بضاعةٍ رجعت إليه. وتبقى قابلةً للكتابة:
  * ما رُدّ قد يكون بندًا معفًى.
  */
-function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => void }) {
+function CreditNoteForm({ invoice, pieces, onDone }: { invoice: Invoice; pieces: BoutiquePiece[]; onDone: () => void }) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
     const m = (v: number) => money(v, context!.currency);
@@ -730,6 +756,9 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
     /* ولا يتجاوز الإشعارُ ما بقي من قيمة الورقة بعد إشعاراتٍ سبقته */
     const cap = creditRoom(invoice);
     const share = invoice.total > 0 ? invoice.tax_total / invoice.total : 0;
+
+    /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
+    const [touched, setTouched] = useState(false);
 
     /*
      * وسببُ الإشعار يُختار ولا يُفترض (`CustomerCreditNote::BASES`): تصحيحُ خطأٍ
@@ -743,11 +772,26 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
         reason: '',
         basis: '',
         token,
+        // ومن قطع البوتيك كم رُدّ من كلٍّ — للإرجاع وحده
+        ...(pieces.length > 0 ? { pieces: {} as Record<number, PieceBack> } : {}),
     });
+    const back = (form.data.pieces ?? {}) as Record<number, PieceBack>;
+    /* ومبلغُ ما رُدّ يُقترح من الورقة ما لم يُكتب المبلغُ بيد */
+    const [typed, setTyped] = useState(false);
+    const setPiece = (id: number, part: Partial<PieceBack>) =>
+        form.setData((d) => {
+            const next = { ...((d.pieces ?? {}) as Record<number, PieceBack>), [id]: { ...back[id], ...part } };
+            const value = round3(pieces.reduce((sum, p) => sum + p.each * (Number(next[p.item_id]?.quantity) || 0), 0));
 
-    /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
-    const [touched, setTouched] = useState(false);
+            return {
+                ...d,
+                pieces: next,
+                ...(typed || value <= 0 ? {} : { amount: String(Math.min(cap, value)), ...(touched ? {} : { tax_amount: String(round3(Math.min(cap, value) * share)) }) }),
+            };
+        });
+
     const setAmount = (value: string) => {
+        setTyped(true);
         const next = Number(value);
         form.setData((d) => ({
             ...d,
@@ -758,6 +802,42 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
 
     return (
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
+            {pieces.length > 0 && (
+                <fieldset className="w-full space-y-2 text-[13px]" data-testid="credit-boutique">
+                    {/* سببُ الإشعار واحدٌ للفاتورة كلّها (`CREDIT_NOTE_BASES`): الإرجاعُ وحده يحمل القطعَ التي عادت */}
+                    <legend className="mb-1 font-medium">{t('في هذه الفاتورة قطع لبوتيكات')}</legend>
+                    {form.data.basis !== '' && form.data.basis !== 'return' && (
+                        <p className="text-[12px] text-[#6b7280]">{t('الخصم وتصحيح الخطأ على المتجر — لا ينقص بهما مستحق أي بوتيك.')}</p>
+                    )}
+                    {form.data.basis === '' && (
+                        <p className="text-[12px] text-[#6b7280]">{t('اختر سبب الإشعار: الإرجاع ينقص مستحق صاحب القطعة، والخصم وتصحيح الخطأ على المتجر.')}</p>
+                    )}
+                    {form.data.basis === 'return' && (
+                        <div className="space-y-2">
+                            <p className="text-[12px] text-[#6b7280]">{t('اكتب ما رُدّ من قطع البوتيكات، واترك الباقي فارغًا. ينقص به مستحق صاحب القطعة وحده.')}</p>
+                            {pieces.map((p) => (
+                                <div key={p.item_id} className="flex flex-wrap items-center gap-2" data-testid="credit-piece">
+                                    <span className="min-w-40 flex-1">
+                                        {p.name} <span className="text-[#6b7280]">— {p.boutique}</span>
+                                    </span>
+                                    <Input className="w-28" type="number" min="0" max={p.left} step="any" dir="ltr" aria-label={t('رُدّ من :name', { name: p.name })}
+                                        placeholder={t('من :n', { n: String(p.left) })} value={back[p.item_id]?.quantity ?? ''} onChange={(e) => setPiece(p.item_id, { quantity: e.target.value })} />
+                                    {/* حملتها ورقةٌ: حالُ القطعة يُحسم به من يتحمّل */}
+                                    {p.on_sheet && (
+                                        <>
+                                            <Input className="w-28" type="number" min="0" max={p.left} step="any" dir="ltr" aria-label={t('عاد سليمًا')} placeholder={t('عاد سليمًا')}
+                                                value={back[p.item_id]?.sellable ?? ''} onChange={(e) => setPiece(p.item_id, { sellable: e.target.value })} />
+                                            <Input className="w-28" type="number" min="0" max={p.left} step="any" dir="ltr" aria-label={t('تالف أو لن يعود')} placeholder={t('تالف أو لن يعود')}
+                                                value={back[p.item_id]?.damaged ?? ''} onChange={(e) => setPiece(p.item_id, { damaged: e.target.value })} />
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {(form.errors as Record<string, string>).pieces && <p className="text-[12px] text-[#b91c1c]">{(form.errors as Record<string, string>).pieces}</p>}
+                </fieldset>
+            )}
             <label className="text-[13px]">
                 {t('المبلغ')}
                 <Input value={form.data.amount} onChange={(e) => setAmount(e.target.value)} />
@@ -782,7 +862,11 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
                 <Select
                     id="credit-note-basis"
                     value={form.data.basis}
-                    onChange={(e) => form.setData('basis', e.target.value)}
+                    onChange={(e) => {
+                        form.setData('basis', e.target.value);
+                        // أُجيب السؤال: لا تبقى رسالتُه فوق الجواب
+                        form.clearErrors('basis' as never);
+                    }}
                     placeholder={t('اختر')}
                     options={CREDIT_NOTE_BASES.map((b) => ({ value: b.value, label: t(b.label) }))}
                 />

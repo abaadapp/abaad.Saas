@@ -403,9 +403,9 @@ class Books
             return;
         }
 
-        // وورقةُ بوتيكٍ خُفّض مستحقُّها بمرتجعٍ أو خصمٍ يُسدَّد صافيها — انظر `BoutiqueReturns::payable`
+        // وورقةُ بوتيكٍ خُفّض مستحقُّها بمرتجعٍ أو خصمٍ يُسدَّد صافيها، وما أُلغي تحصيلُه منها موقوف — انظر `BoutiqueHolds::payNow`
         $amount = BoutiqueReturns::sheetOf($expense) !== null
-            ? BoutiqueReturns::payable($expense)
+            ? BoutiqueHolds::payNow($expense)
             : round((float) $expense->amount, 3);
         if ($amount <= 0) {
             return;
@@ -417,7 +417,7 @@ class Books
          * وإلّا خُصمت حصّةُ البوتيك من الربح مرّتين. ويُكتب بيوم خروج المال:
          * `spent_at` يبقى يومَ الورقة، والبنكُ لا ينقص في الماضي.
          */
-        $accrued = Boutiques::accrual($expense) !== null;
+        $accrued = Boutiques::accrued($expense);
 
         Ledger::post(
             $expense->business_id,
@@ -723,6 +723,12 @@ class Books
         Transaction::ORDER_BALANCE => 'تحصيل متبقّي فاتورة',
         // وما نقص منها فرُدّ للعميل بيد الموظّف — لا استردادَ آليًّا
         Transaction::ORDER_REFUND => 'ردّ فرق فاتورة',
+        // ومالُ البوتيكات — من مستنداتها (`BoutiqueMovements::cash`)
+        Transaction::BOUTIQUE_SHEET => 'سداد ورقة بوتيك',
+        Transaction::BOUTIQUE_PIECES => 'سداد قطع بوتيك',
+        Transaction::BOUTIQUE_REFUND => 'استرداد رصيد من بوتيك',
+        Transaction::BOUTIQUE_CLAIM => 'تحصيل مطالبة من بوتيك',
+        Transaction::BOUTIQUE_HELD => 'سداد معلّق لبوتيك',
     ];
 
     /**

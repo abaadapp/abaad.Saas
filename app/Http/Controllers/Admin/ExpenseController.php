@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\SettlementRefused;
 use App\Http\Controllers\Controller;
 use App\Models\BoutiqueSettlement;
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
 use App\Support\BooksPeriod;
 use App\Support\BoutiqueAccess;
+use App\Support\BoutiqueHolds;
 use App\Support\BoutiqueReturns;
 use App\Support\Boutiques;
 use App\Support\Demo;
@@ -97,6 +100,12 @@ class ExpenseController extends Controller
             ->whereIn('expense_id', collect($expenses->items())->pluck('id'))
             ->pluck('expense_id')->map(fn ($id) => (int) $id)->all();
 
+        // وما أُلغي تحصيلُه من ورقةٍ لم تُسدَّد: يُقال في سؤال السداد ما يخرج الآن وما يبقى معلَّقًا
+        $held = ! BoutiqueAccess::read(auth()->user()) ? collect() : collect($expenses->items())
+            ->filter(fn (Expense $e) => ! $e->isPaid() && $e->type === Boutiques::EXPENSE_TYPE)
+            ->mapWithKeys(fn (Expense $e) => [$e->id => BoutiqueHolds::heldOn(BoutiqueReturns::sheetOf($e)?->id)])->filter()
+            ->map(fn (float $h, int $id) => ['held' => $h, 'now' => BoutiqueHolds::payNow(collect($expenses->items())->firstWhere('id', $id))]);
+
         return Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
                 'id' => $e->id,
@@ -106,6 +115,7 @@ class ExpenseController extends Controller
                 'amount' => (float) $e->amount,
                 'status' => $e->status,
                 'payable' => ! in_array((int) $e->id, $sheets, true),
+                'hold' => $held[$e->id] ?? null,
                 // وطريقتُه — يفتح بها سؤالُ «تسجيل السداد» على ما كُتب
                 'method' => $e->method,
                 /*
@@ -275,13 +285,13 @@ class ExpenseController extends Controller
     {
         /*
          * وورقةُ البوتيك يخرج لها صافيها: مبلغُها ناقصًا ما خفّضه مرتجعٌ أو
-         * خصمٌ بعد صدورها (`BoutiqueReturns::payable`). ويومُ الحركة يومُ خروج
+         * خصمٌ بعد صدورها وما أُلغي تحصيلُه (`BoutiqueHolds::payNow`). ويومُ الحركة يومُ خروج
          * المال: ورقةٌ قُيّدت يومَ صدورها يبقى `spent_at` يومَها، والدرجُ لا
          * ينقص في شهرٍ مضى.
          */
         $sheet = BoutiqueReturns::sheetOf($expense) !== null;
-        $amount = $sheet ? BoutiqueReturns::payable($expense) : (float) $expense->amount;
-        $accrued = $sheet && Boutiques::accrual($expense) !== null;
+        $amount = $sheet ? BoutiqueHolds::payNow($expense) : (float) $expense->amount;
+        $accrued = $sheet && Boutiques::accrued($expense);
 
         // ورقةٌ استُنفد صافيها لا حركةَ لها — وسائرُ المصروفات كما كانت
         if (! $sheet || $amount > 0) {
@@ -294,6 +304,8 @@ class ExpenseController extends Controller
                 'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
                 'method' => $expense->method,
                 'type' => 'مصروف',
+                // وورقةُ البوتيك تُسمّى بنوعها — وسائرُ المصروفات كما كانت
+                'kind' => $sheet ? Transaction::BOUTIQUE_SHEET : null,
                 'amount' => $amount,
                 'employee_name' => $expense->employee_name,
                 'occurred_at' => $accrued ? now() : $expense->spent_at,
@@ -310,6 +322,13 @@ class ExpenseController extends Controller
          * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
          */
         Books::recordExpense($expense->fresh());
+
+        // وحركةُ سداد ورقة البوتيك تحمل قيدَها — فلا تُقرأ «غير مُرحَّلة» وقيدُها في الدفتر
+        if ($sheet && $expense->transaction_id) {
+            Transaction::whereKey($expense->transaction_id)->update([
+                'journal_entry_id' => Books::liveEntriesFor($expense)->last()?->id,
+            ]);
+        }
     }
 
     /**
@@ -361,7 +380,7 @@ class ExpenseController extends Controller
          * (`Boutiques::branchScope`)، وقيدُها كُتب بفرعها. فتغييرُه هنا يُفرّق
          * تقريرَ الفروع عن الدفتر — ولا يُعاد قيدُ الاستحقاق من هذا الباب.
          */
-        if (Boutiques::accrual($expense) !== null) {
+        if (Boutiques::accrued($expense)) {
             return back()->withErrors(['scope' => __('نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.')]);
         }
 
@@ -464,27 +483,42 @@ class ExpenseController extends Controller
                  * فكتبت كلٌّ حركتَها: قيدٌ واحد في الدفتر، وثلاثُ حركاتٍ في الصندوق —
                  * ولورقة بوتيكٍ: مستحقًّا دُفع ثلاث مرّات.
                  */
+                // وورقةُ البوتيك: المتجرُ أوّلًا — وإلغاءُ التحصيل يمسكه قبل أن يعلّق حصّتَها (`BoutiqueHolds::sync`)
+                if ($expense->sheetItSettles() !== null) {
+                    Business::whereKey($expense->business_id)->lockForUpdate()->first();
+                }
+
                 $locked = Expense::whereKey($expense->id)->lockForUpdate()->firstOrFail();
 
                 if ($locked->isPaid()) {
                     return false;
                 }
 
+                // ورقةٌ كلُّ ما بقي منها معلَّق لا تُوسم مسدَّدة
+                BoutiqueHolds::assertSomethingToPay($locked);
+                // وصفُّ السداد قبل الوسم: قاعدةُ البيانات لا تقبل وسمَ ورقةٍ لم يُقرأ ما عُلّق منها
+                BoutiqueHolds::paying($locked);
+
                 /*
                  * ويومُ المصروف يومُ سداده — إلّا ورقةَ بوتيكٍ قُيّدت يومَ صدورها:
                  * مصروفُها في شهر بيعها، فيبقى يومُها ولا تنتقل إلى شهر الدفع.
                  */
-                $accrued = Boutiques::accrual($locked) !== null;
+                $accrued = Boutiques::accrued($locked);
                 $locked->update(['status' => Expense::PAID] + ($accrued ? [] : ['spent_at' => now()]) + ($method ? ['method' => $method] : []));
                 $this->postToLedger($locked->fresh());
                 // ومرتجعاتٌ خُفّض بها صافي ورقةٍ قديمة تدخل الدفترَ يومَ سدادها
                 BoutiqueReturns::onSheetPaid($locked, now());
+                // وما أُلغي تحصيلُه لم يُسدَّد: يبقى دَينًا في 2160 بصفّه حتّى يُراجَع
+                BoutiqueHolds::withhold($locked);
 
                 return true;
             });
         } catch (ModelNotFoundException $e) {
             // حُذفت بين قراءتها والقفل — لا تُسدَّد فاتورةٌ في المحذوفات
             abort(404);
+        } catch (SettlementRefused $e) {
+            // رفضٌ بسببه — لا عطبَ يُسجَّل
+            return back()->withErrors(['pay' => $e->getMessage(), 'method' => $e->getMessage()]);
         } catch (Throwable $e) {
             return back()->withErrors(['pay' => $this->postingFailed($e)]);
         }

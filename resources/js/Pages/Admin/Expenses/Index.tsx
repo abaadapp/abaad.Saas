@@ -31,6 +31,8 @@ interface ExpenseRow {
     status: string;
     /** ورقةُ بوتيكٍ لا يملك الجالسُ سدادَها — الخادمُ يردّه، فلا يُرسم الزرّ */
     payable?: boolean;
+    /** أُلغي تحصيلُ بعض ورقة البوتيك: ما يبقى معلَّقًا وما يخرج الآن (`BoutiqueHolds`) */
+    hold?: { held: number; now: number } | null;
     /** طريقةُ الدفع كما كُتبت — يفتح بها سؤالُ «تسجيل السداد» */
     method: string | null;
     attachment: string | null;
@@ -749,6 +751,13 @@ export default function ExpensesIndex() {
                         </DialogTitle>
                     </DialogHeader>
                     <form onSubmit={submitPay} className="space-y-4 px-5 pb-5" data-testid="pay-dialog">
+                        {paying?.hold && (
+                            <p className="rounded-md bg-[#fffbeb] px-3 py-2 text-[13px] leading-6 text-[#92400e]" data-testid="pay-hold">
+                                {t('يُسدَّد الآن :now من :amount. ومعلّق :held: أُلغي تحصيل فاتورته، ويبقى للمراجعة في شاشة البوتيك.', {
+                                    now: m(paying.hold.now), amount: m(paying.amount), held: m(paying.hold.held),
+                                })}
+                            </p>
+                        )}
                         <PayMethodField
                             value={payForm.data.method}
                             onChange={(v) => payForm.setData('method', v)}

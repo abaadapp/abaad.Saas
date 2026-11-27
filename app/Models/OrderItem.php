@@ -11,6 +11,7 @@ class OrderItem extends Model
     protected $casts = ['price' => 'decimal:3', 'total' => 'decimal:3', 'addons_total' => 'decimal:3',
         // نسبةُ البوتيك كما كانت ساعةَ البيع — لقطةٌ لا تُقرأ من بطاقته
         'boutique_rate' => 'decimal:2',
+        'boutique_vat_rate' => 'decimal:2',
         // وصفُ الطلب المخصَّص — ما لا يُخصم من الرفّ. انظر `OrderItemComponent`
         'custom_details' => 'array'];
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }

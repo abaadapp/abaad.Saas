@@ -127,6 +127,23 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         Mail::assertSent(SubscriptionNoticeMail::class, 1);
     }
 
+    public function test_the_first_notice_comes_two_weeks_before_not_every_day(): void
+    {
+        $this->line();
+        $this->shop(14);
+        // ‏‏وما بين المواعيد صمت: لا إنذار يوميّ
+        $this->shop(13);
+        $this->shop(10);
+        $this->shop(2);
+
+        $this->artisan('subscriptions:notify')->assertSuccessful();
+
+        $sends = $this->sends();
+        $this->assertCount(1, $sends);
+        $this->assertSame('abaad_subscription_ends_soon', $sends[0]['template']['name']);
+        $this->assertSame(now()->addDays(14)->format('Y-m-d'), $this->params($sends[0])[1]);
+    }
+
     public function test_the_expiry_day_has_its_own_template(): void
     {
         $this->line();

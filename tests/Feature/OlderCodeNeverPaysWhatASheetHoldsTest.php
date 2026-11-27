@@ -338,7 +338,7 @@ class OlderCodeNeverPaysWhatASheetHoldsTest extends TestCase
     public function test_a_credit_note_written_meanwhile_without_what_it_is_for_is_named(): void
     {
         [$i] = $this->mixed();
-        CustomerInvoices::creditNote($i->fresh(), 1, 0, 'خصم', basis: 'adjustment');
+        CustomerInvoices::creditNote($i->fresh(), 1, 0, 'خصم', basis: 'discount');
         $this->assertSame([], $this->overview()['unnamed_notes']);
         $old = CustomerCreditNote::create(['business_id' => $this->shop->id, 'customer_invoice_id' => $i->id, 'number' => 'CN-OLD', 'amount' => 1, 'tax_amount' => 0, 'issued_at' => now()->toDateString(), 'reason' => 'أُعيدت', 'source' => CustomerInvoices::NOTE_MANUAL]);
         $this->assertSame(['CN-OLD'], $this->overview()['unnamed_notes']);

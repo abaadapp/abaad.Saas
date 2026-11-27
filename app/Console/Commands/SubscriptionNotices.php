@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Mail\SubscriptionNoticeMail;
 use App\Models\Business;
 use App\Models\Setting;
+use App\Support\SubscriptionWhatsApp;
 use App\Support\Tenancy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
@@ -16,9 +17,13 @@ use Illuminate\Support\Facades\Mail;
  * ولا ترسل شيئًا، والشريط في اللوحة يحذّر من يفتح اللوحة — ومن انشغل أسبوعًا
  * لا يفتحها. فيجد صباحًا بابًا مقفلًا ولا يعرف السبب.
  *
- * والمواعيد أربعة: قبل أسبوع، قبل يوم، يومَ الانتهاء، ثم يوم الإقفال بعد
- * انقضاء المهلة. لا يوميًّا: إنذارٌ يصل كل يومٍ يُقرأ زخرفةً في ثالثه، ثم
+ * والمواعيد: قبل أسبوعين، وقبل أسبوع، وقبل يوم، ويومَ الانتهاء، ثم في
+ * المهلة قبل الإقفال بأسبوعٍ وبيوم، ثم يوم الإقفال. لا يوميًّا: إنذارٌ يصل كل يومٍ يُقرأ زخرفةً في ثالثه، ثم
  * يُصنَّف مزعجًا فلا يُقرأ يوم يجب أن يُقرأ.
+ *
+ * والإنذارُ يخرج بالبريد وبواتساب من رقم أبعاد معًا (`SubscriptionWhatsApp`):
+ * البريدُ على الإنتاج لا يخرج، فبلا واتساب لا يصل شيء. وواتساب لا يخرج قبل
+ * أن تعتمد Meta قالبَ المرحلة.
  */
 class SubscriptionNotices extends Command
 {
@@ -26,8 +31,18 @@ class SubscriptionNotices extends Command
 
     protected $description = 'إنذار أصحاب المتاجر قبل انتهاء الاشتراك وعنده وعند توقّف النظام';
 
-    /** أيّامٌ قبل الانتهاء يُرسَل فيها إنذار — وما عداها صمت */
-    private const BEFORE = [7, 1];
+    /**
+     * أيّامٌ قبل الانتهاء يُرسَل فيها إنذار — وما عداها صمت.
+     *
+     * أسبوعان أوّلًا: وقتٌ يكفي لترتيب الدفع قبل أن يصير عجلة (قرار المالك
+     * 2026-11-27). ولا يوميًّا: من جدّد توقّف ما بعده من تلقاء نفسه (يتقدّم
+     * `ends_at`)، ومن لم يجدّد بعد ثلاثة إنذاراتٍ لا يُقنعه رابعٌ عشر — وإنذارٌ
+     * كلَّ يوم يُحظر رقمُ أبعاد بسببه فتنخفض جودتُه عند Meta.
+     */
+    private const BEFORE = [14, 7, 1];
+
+    /** أيّامٌ قبل الإقفال في المهلة — المهلةُ أسبوعٌ افتراضًا */
+    private const GRACE = [7, 1];
 
     public function handle(): int
     {
@@ -37,9 +52,17 @@ class SubscriptionNotices extends Command
             ->pluck('value', 'key');
 
         $sent = 0;
+        $whatsapp = 0;
 
-        Business::whereNotNull('ends_at')->whereNotNull('email')->each(
-            function (Business $business) use ($dry, $contact, &$sent) {
+        // ‏‏حالُ القوالب تُقرأ مرّةً للتشغيل كلّه، وحين يُحتاج إليها فقط — لا نداءَ في يومٍ بلا إنذار
+        $line = null;
+        $statuses = null;
+        $read = false;
+
+        // ‏‏ومتجرٌ بلا بريدٍ له هاتفٌ يُنذَر بواتساب — كان يُترك بلا شيء
+        Business::whereNotNull('ends_at')
+            ->where(fn ($q) => $q->whereNotNull('email')->orWhereNotNull('phone'))
+            ->each(function (Business $business) use ($dry, $contact, &$sent, &$whatsapp, &$line, &$statuses, &$read) {
                 $stage = $this->stageFor($business);
 
                 if ($stage === null) {
@@ -51,8 +74,33 @@ class SubscriptionNotices extends Command
                 $this->line("  {$business->name} — {$name} ({$days})");
 
                 if ($dry) {
-                    $sent++;
+                    // ‏‏المعاينةُ لا تسأل Meta ولا تُرسل: تقول لمن سيخرج واتساب إن اعتُمد قالبُه
+                    $this->line('    واتساب: '.($business->is_demo ? 'لا (متجر تجريبي)' : SubscriptionWhatsApp::tail(SubscriptionWhatsApp::phone($business))));
+                    $sent += filled($business->email) ? 1 : 0;
 
+                    return;
+                }
+
+                if (! $read) {
+                    $read = true;
+                    $line = SubscriptionWhatsApp::line();
+                    $statuses = $line ? SubscriptionWhatsApp::statuses($line) : null;
+                }
+
+                /*
+                 * ‏‏واتساب قبل البريد، وفشلُ أحدهما لا يمنع الآخر: بريدٌ يرمي استثناءً
+                 * كان سيُسقط الإنذارَ الوحيد الذي يصل.
+                 */
+                try {
+                    $outcome = SubscriptionWhatsApp::send($business, $name, $line, $statuses);
+                    $whatsapp += $outcome === 'sent' ? 1 : 0;
+                    $this->line('    واتساب '.SubscriptionWhatsApp::tail(SubscriptionWhatsApp::phone($business)).': '.$outcome);
+                } catch (\Throwable $e) {
+                    report($e);
+                    $this->warn("  ✗ {$business->name} — تعذّر إرسال واتساب");
+                }
+
+                if (blank($business->email)) {
                     return;
                 }
 
@@ -77,10 +125,10 @@ class SubscriptionNotices extends Command
                     report($e);
                     $this->warn("  ✗ {$business->name} — تعذّر الإرسال");
                 }
-            }
-        );
+            });
 
         $this->info($dry ? "{$sent} إنذارًا ستُرسَل." : "أُرسل {$sent} إنذارًا.");
+        $this->info("واتساب: {$whatsapp}.");
 
         return self::SUCCESS;
     }
@@ -114,7 +162,7 @@ class SubscriptionNotices extends Command
             return $this->lockedToday($business) ? ['locked', 0] : null;
         }
 
-        return in_array($graceLeft, self::BEFORE, true) ? ['grace', $graceLeft] : null;
+        return in_array($graceLeft, self::GRACE, true) ? ['grace', $graceLeft] : null;
     }
 
     /**

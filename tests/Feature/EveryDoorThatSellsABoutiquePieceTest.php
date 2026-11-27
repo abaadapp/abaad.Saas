@@ -442,7 +442,7 @@ class EveryDoorThatSellsABoutiquePieceTest extends TestCase
     public function test_a_credit_note_lowers_the_boutique_only_by_the_piece_it_names(): void
     {
         $invoice = CustomerInvoices::issue($this->invoiceFor(2), $this->owner->id);
-        CustomerInvoices::creditNote($invoice, 2.0, 0.0, 'خصم', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 2.0, 0.0, 'خصم', $this->owner->id, basis: 'discount');
         $this->assertAwaits(19.2, 'خصمٌ على المتجر', 24.0, 4.8);
         $items = BoutiqueInvoiceDues::noteItems($invoice, [(int) $invoice->items->first()->id => ['quantity' => 1]]);
         CustomerInvoices::creditNote($invoice->fresh(), 12.0, 0.0, 'رُدّت قطعة', $this->owner->id, items: $items, basis: CustomerCreditNote::RETURN);

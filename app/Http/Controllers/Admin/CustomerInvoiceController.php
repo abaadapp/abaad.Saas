@@ -48,11 +48,13 @@ use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -1737,8 +1739,11 @@ class CustomerInvoiceController extends Controller
             'reason' => __('سبب الإلغاء'),
         ]);
 
+        // وفاتورةُ متجرٍ آخر ٤٠٤ — لا خطأَ «لم يُعثر» يُلتقط في الـ`catch` ويُعرض للتاجر
+        $invoice = $this->find($id);
+
         try {
-            CustomerInvoices::cancel($this->find($id), $data['reason'], auth()->id());
+            CustomerInvoices::cancel($invoice, $data['reason'], auth()->id());
         } catch (RuntimeException $e) {
             return back()->withErrors(['invoice' => $e->getMessage()]);
         }
@@ -1756,12 +1761,15 @@ class CustomerInvoiceController extends Controller
             // والضريبةُ جزءٌ من المبلغ لا فوقه — وإلّا سقط على ميزان الدفتر برسالةٍ لا تسمّي الحقل
             'tax_amount' => ['nullable', 'numeric', 'min:0', 'lte:amount'],
             'reason' => ['required', 'string', 'max:200'],
-            // أبضاعةٌ رُدّت أم خصمٌ وتسويةُ سعر؟ — ومن بنود البوتيكات كم رُدّ من كلٍّ
-            'basis' => ['nullable', 'string', Rule::in(CustomerCreditNote::BASES)],
+            // سببُ الإشعار — وما يمنعه سببُه تسأله الخدمةُ نفسُها (`ManualInvoiceAdjustments::assertCreditNote`)
+            'basis' => ['required', Rule::in(CustomerCreditNote::BASES)],
+            // ومن بنود البوتيكات كم رُدّ من كلٍّ — للإرجاع وحده (`BoutiqueInvoiceDues::noteItems`)
             'pieces' => ['nullable', 'array', 'max:200'],
             'pieces.*.quantity' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'pieces.*.sellable' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'pieces.*.damaged' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            // رمزُ النموذج: يُرسَل مرّتين فيصدر إشعارٌ واحد
+            'token' => ['required', 'string', 'max:64'],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
         ], [
@@ -1772,20 +1780,27 @@ class CustomerInvoiceController extends Controller
         $invoice = $this->find($id);
 
         /*
-         * وفاتورةٌ فيها بندُ بوتيكٍ باقٍ يُسأل عنها: رُدّت بضاعةٌ أم خصم؟
+         * ونموذجٌ أُرسل مرّتين — ضغطتان أو إعادةُ الطلب — يُصدر إشعارًا واحدًا.
          *
-         * المبلغُ وحده لا يقول أيَّ صنفٍ عاد، ومستحقُّ البوتيك لا يُنقص بالظنّ: قطعةٌ
-         * عادت تُنقص ما لصاحبها، وخصمٌ يتحمّله المتجر. فلا يُكتب بلا جواب.
+         * القفلُ على رمز النموذج يجعل الثاني ينتظر الأوّل، ثمّ يجد إشعارَه
+         * مكتوبًا فيقوله ولا يكتب غيرَه. والرمزُ يُحفظ بعد الإصدار وحده: نموذجٌ
+         * رُدّ لخطأٍ فيه يُصحَّح ويُرسل بالرمز نفسه.
+         *
+         * والسببُ مطلوبٌ لكلّ إشعارٍ يدويّ، وفي فاتورةٍ لها بندُ بوتيك هو الجواب:
+         * الإرجاعُ وحده يحمل القطعَ التي عادت فتُنقص ما لصاحبها، والخصمُ وتصحيحُ
+         * الخطأ على المتجر — مستحقُّ البوتيك لا يُنقص بالظنّ.
          */
-        $basis = $data['basis'] ?? null;
-        if ($basis === null && BoutiqueInvoiceDues::pieces($invoice) !== []) {
-            throw ValidationException::withMessages([
-                'basis' => __('في هذه الفاتورة بنودٌ لبوتيكات — اختر: رُدّت بضاعة، أم خصمٌ وتسويةُ سعر.'),
-            ]);
-        }
+        $key = 'credit-note:'.$this->bid().':'.$data['token'];
+        $lock = Cache::lock($key.':lock', 30);
 
         try {
-            $items = $basis === CustomerCreditNote::RETURN ? BoutiqueInvoiceDues::noteItems($invoice, $data['pieces'] ?? []) : [];
+            $lock->block(10);
+
+            if ($number = Cache::get($key)) {
+                return back()->with('toast', ['msg' => __('أُصدر إشعار الدائن :n', ['n' => $number]), 'type' => 'success']);
+            }
+
+            $items = $data['basis'] === CustomerCreditNote::RETURN ? BoutiqueInvoiceDues::noteItems($invoice, $data['pieces'] ?? []) : [];
             $note = CustomerInvoices::creditNote(
                 $invoice,
                 (float) $data['amount'],
@@ -1793,10 +1808,15 @@ class CustomerInvoiceController extends Controller
                 $data['reason'],
                 auth()->id(),
                 items: $items === [] ? null : $items,
-                basis: $basis,
+                basis: $data['basis'],
             );
+            Cache::put($key, $note->number, now()->addDay());
+        } catch (LockTimeoutException) {
+            return back()->withErrors(['amount' => __('يُصدر هذا الإشعار الآن — انتظر لحظة ثم أعد فتح الفاتورة.')]);
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);
+        } finally {
+            $lock->release();
         }
 
         return back()->with('toast', [

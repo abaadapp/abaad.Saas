@@ -140,6 +140,40 @@ describe('طلبُ التصحيح الماليّ', () => {
     });
 });
 
+describe('الإشعارُ الدائنُ اليدويّ وإلغاءُ الصادرة ينتظران الاعتماد', () => {
+    it('طلبُ إشعارٍ يدويّ يقول ما يصدر، وبعد الاعتماد يدلّ على إشعاره', () => {
+        const { unmount } = render(
+            <CorrectionRequests
+                requests={[request({ kind: 'customer_credit_note', summary: { kind: 'customer_credit_note', number: 'CINV-000003', documents: { credit: { amount: 20, tax: 0 }, debit: null }, total: 105 } })]}
+                m={m}
+            />,
+        );
+        expect(screen.getByTestId('correction-credit-note')).toHaveTextContent('إشعار دائن يدوي');
+        expect(screen.getByTestId('correction-documents')).toHaveTextContent('إشعار دائن 20.000');
+        unmount();
+
+        render(
+            <CorrectionRequests
+                requests={[request({ kind: 'customer_credit_note', status: 'approved', may_decide: false, may_withdraw: false, decided_by: 'سالم', decided_at: '2026-11-28 10:00', credit_note: { id: 7, number: 'CN-000007' }, summary: { kind: 'customer_credit_note', number: 'CINV-000003', documents: { credit: { amount: 20, tax: 0 }, debit: null } } })]}
+                m={m}
+            />,
+        );
+        expect(screen.getByTestId('correction-credit-note-link')).toHaveTextContent('CN-000007');
+        expect(screen.queryByTestId('correction-approve')).toBeNull();
+    });
+
+    it('وطلبُ إلغاء الصادرة يقول إنّه يعكس قيدها بمبلغه', () => {
+        render(
+            <CorrectionRequests
+                requests={[request({ kind: 'customer_invoice_cancel', summary: { kind: 'customer_invoice_cancel', number: 'CINV-000004', total: 105 } })]}
+                m={m}
+            />,
+        );
+        expect(screen.getByTestId('correction-cancel')).toHaveTextContent('إلغاء الفاتورة الصادرة');
+        expect(screen.getByTestId('correction-cancel')).toHaveTextContent('105.000');
+    });
+});
+
 describe('صاحبُ النشاط بلا معتمدٍ غيره', () => {
     it('يُقال له قبل الإشعال لا بعده — من عدّ الخادم لمن يعتمد غيرَه', () => {
         const src = readFileSync(path.resolve(__dirname, '../../resources/js/Pages/Admin/Settings/Index.tsx'), 'utf8');

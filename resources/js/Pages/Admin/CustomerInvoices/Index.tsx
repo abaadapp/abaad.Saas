@@ -62,7 +62,7 @@ export default function CustomerInvoicesIndex({
     customers,
     totals,
 }: Props) {
-    const { context, auth } = usePage<PageProps>().props;
+    const { context, auth, pendingCorrections } = usePage<PageProps<{ pendingCorrections?: number | null }>>().props;
     // طلباتُ التصحيح الماليّ — لمن يعتمدها ولمن يقرأ سجلّ التعديلات (`FinancialCorrectionController::index`)
     const readsCorrections = ['financialCorrection.approve', 'customerInvoice.history'].some((a) => auth?.mayActions?.includes(a) ?? false);
     const t = useTranslate();
@@ -198,6 +198,15 @@ export default function CustomerInvoicesIndex({
                                     data-testid="corrections-link"
                                 >
                                     {t('طلبات التصحيح')}
+                                    {(pendingCorrections ?? 0) > 0 && (
+                                        <span
+                                            className="ms-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full bg-[#b45309] px-1.5 text-[11px] font-bold text-white"
+                                            data-testid="corrections-pending"
+                                            aria-label={t('بانتظار اعتمادك: :n', { n: String(pendingCorrections) })}
+                                        >
+                                            {pendingCorrections}
+                                        </span>
+                                    )}
                                 </SmartLink>
                             </Button>
                         )}

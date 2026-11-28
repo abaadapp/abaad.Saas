@@ -11,8 +11,8 @@ import { cn } from '@/lib/utils';
 /** طلبُ تصحيحٍ كما يرسله الخادم — `FinancialCorrections::present` */
 export interface CorrectionRequest {
     id: number;
-    /** تصحيحٌ بإشعار، أو إلغاءٌ وإصدارُ بديلة لعميلٍ آخر */
-    kind: 'customer_invoice_edit' | 'customer_invoice_replace';
+    /** تصحيحٌ بإشعار، أو إلغاءٌ وإصدارُ بديلة لعميلٍ آخر، أو إشعارٌ دائنٌ يدويّ، أو إلغاءُ صادرة */
+    kind: 'customer_invoice_edit' | 'customer_invoice_replace' | 'customer_credit_note' | 'customer_invoice_cancel';
     status: 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'stale';
     reason: string;
     invoice: { id: number; number: string | null };
@@ -39,6 +39,8 @@ export interface CorrectionRequest {
         total?: number;
     };
     replacement: { id: number } | null;
+    /** الإشعارُ الذي صدر باعتماد طلبِ إشعارٍ يدويّ */
+    credit_note?: { id: number; number: string | null } | null;
     requested_by: string | null;
     requested_at: string | null;
     decided_by: string | null;
@@ -136,6 +138,20 @@ export default function CorrectionRequests({
                                     </>
                                 )}
                             </p>
+                        ) : r.kind === 'customer_invoice_cancel' ? (
+                            <p data-testid="correction-cancel">
+                                <span className="font-medium">{t('إلغاء الفاتورة الصادرة')}</span>
+                                {r.summary.total !== undefined && (
+                                    <>
+                                        {' — '}
+                                        {t('يُعكس قيد')} <span dir="ltr">{m(r.summary.total)}</span>
+                                    </>
+                                )}
+                            </p>
+                        ) : r.kind === 'customer_credit_note' ? (
+                            <p data-testid="correction-credit-note">
+                                <span className="font-medium">{t('إشعار دائن يدوي')}</span>
+                            </p>
                         ) : r.summary.money && (
                             <p className="tabular-nums" dir="auto">
                                 <span className="font-medium">{t('الإجمالي')}:</span>{' '}
@@ -185,6 +201,19 @@ export default function CorrectionRequests({
                             <p className="text-[12px] text-[#6b7280]" data-testid="correction-decision">
                                 <bdi>{r.decided_by ?? '—'}</bdi> · <span dir="ltr">{r.decided_at}</span>
                                 {r.revision !== null && ` — ${t('التعديل')} ${r.revision}`}
+                                {r.credit_note && (
+                                    <>
+                                        {' — '}
+                                        <SmartLink
+                                            routeName="admin.customerInvoices.creditNotes.show"
+                                            href={route('admin.customerInvoices.creditNotes.show', r.credit_note.id)}
+                                            className="underline underline-offset-2"
+                                            data-testid="correction-credit-note-link"
+                                        >
+                                            <bdi>{r.credit_note.number ?? t('الإشعار')}</bdi>
+                                        </SmartLink>
+                                    </>
+                                )}
                                 {r.replacement && (
                                     <>
                                         {' — '}

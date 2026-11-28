@@ -187,6 +187,14 @@ class CustomerInvoiceController extends Controller
             'statuses' => [CustomerInvoice::DRAFT, CustomerInvoice::ISSUED, CustomerInvoice::CANCELLED],
             'customers' => Customer::where('business_id', $bid)->orderBy('name')->get(['id', 'name'])->all(),
             'totals' => Receivables::totals($bid),
+            /*
+             * وعددُ طلبات التصحيح المعلّقة — لمن يعتمدها وحده، فيرى أنّ عليه ما يبتّ فيه.
+             * وغيرُه لا يُرسَل إليه العددُ أصلًا (`null`)، لا يُخفى في الشاشة وحدها.
+             */
+            'pendingCorrections' => auth()->user()?->may(Permissions::FINANCIAL_CORRECTION_APPROVE)
+                ? FinancialCorrection::where('business_id', $bid)->where('status', FinancialCorrection::PENDING)
+                    ->where('requested_by', '!=', auth()->id())->count()
+                : null,
         ]);
     }
 
@@ -1803,8 +1811,21 @@ class CustomerInvoiceController extends Controller
         // وفاتورةُ متجرٍ آخر ٤٠٤ — لا خطأَ «لم يُعثر» يُلتقط في الـ`catch` ويُعرض للتاجر
         $invoice = $this->find($id);
 
+        // وضغطةٌ ثانية على إلغاءٍ أُرسل للاعتماد: طلبُه المعلّق هو الجواب
+        if (FinancialCorrection::where('business_id', $this->bid())->where('customer_invoice_id', $invoice->id)
+            ->where('kind', FinancialCorrection::INVOICE_CANCEL)->where('status', FinancialCorrection::PENDING)
+            ->where('requested_by', auth()->id())->exists()) {
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                'msg' => __('أُرسل إلغاء الفاتورة :n للاعتماد — لا تُلغى حتى يعتمده موظف آخر.', ['n' => $invoice->number]), 'type' => 'info',
+            ]);
+        }
+
         try {
             CustomerInvoices::cancel($invoice, $data['reason'], auth()->id());
+        } catch (NeedsApproval) {
+            // والاعتمادُ الثنائيّ مُشعَل: يُكتب طلبُ الإلغاء ولا يُلغى شيء (`FinancialCorrections::requestCancel`)
+            return $this->requestCorrection(fn () => FinancialCorrections::requestCancel($invoice, $data['reason'], auth()->user()), $invoice, 'invoice',
+                __('أُرسل إلغاء الفاتورة :n للاعتماد — لا تُلغى حتى يعتمده موظف آخر.', ['n' => $invoice->number]));
         } catch (RuntimeException $e) {
             return back()->withErrors(['invoice' => $e->getMessage()]);
         }
@@ -1849,6 +1870,14 @@ class CustomerInvoiceController extends Controller
                 return back()->with('toast', ['msg' => __('أُصدر إشعار الدائن :n', ['n' => $number]), 'type' => 'success']);
             }
 
+            // والنموذجُ نفسُه أُرسل للاعتماد من قبل: طلبُه هو الجواب، لا رفضٌ بأنّ على الورقة طلبًا
+            if (FinancialCorrection::where('business_id', $this->bid())->where('customer_invoice_id', $invoice->id)
+                ->where('edit_token', 'credit-note:'.$data['token'])->exists()) {
+                return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                    'msg' => __('أُرسل إشعار الدائن على الفاتورة :n للاعتماد — لا يصدر حتى يعتمده موظف آخر.', ['n' => $invoice->number]), 'type' => 'info',
+                ]);
+            }
+
             $note = CustomerInvoices::creditNote(
                 $invoice,
                 (float) $data['amount'],
@@ -1858,6 +1887,10 @@ class CustomerInvoiceController extends Controller
                 basis: $data['basis'],
             );
             Cache::put($key, $note->number, now()->addDay());
+        } catch (NeedsApproval) {
+            // والاعتمادُ الثنائيّ مُشعَل: يُكتب طلبُ الإشعار ولا يصدر شيء (`FinancialCorrections::requestCreditNote`)
+            return $this->requestCorrection(fn () => FinancialCorrections::requestCreditNote($invoice, $data, auth()->user()), $invoice, 'amount',
+                __('أُرسل إشعار الدائن على الفاتورة :n للاعتماد — لا يصدر حتى يعتمده موظف آخر.', ['n' => $invoice->number]));
         } catch (LockTimeoutException) {
             return back()->withErrors(['amount' => __('يُصدر هذا الإشعار الآن — انتظر لحظة ثم أعد فتح الفاتورة.')]);
         } catch (RuntimeException $e) {
@@ -2137,7 +2170,7 @@ class CustomerInvoiceController extends Controller
     }
 
     /** طلبُ تصحيحٍ ينتظر الاعتماد — لا يتغيّر شيءٌ حتى يعتمده غيرُ صاحبه */
-    private function requestCorrection(callable $request, CustomerInvoice $invoice, string $field = 'edit')
+    private function requestCorrection(callable $request, CustomerInvoice $invoice, string $field = 'edit', ?string $sent = null)
     {
         try {
             $request();
@@ -2148,7 +2181,7 @@ class CustomerInvoiceController extends Controller
         }
 
         return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
-            'msg' => __('أُرسل تصحيح الفاتورة :n للاعتماد — لا يتغيّر شيء حتى يعتمده موظف آخر.', ['n' => $invoice->number]),
+            'msg' => $sent ?? __('أُرسل تصحيح الفاتورة :n للاعتماد — لا يتغيّر شيء حتى يعتمده موظف آخر.', ['n' => $invoice->number]),
             'type' => 'info',
         ]);
     }

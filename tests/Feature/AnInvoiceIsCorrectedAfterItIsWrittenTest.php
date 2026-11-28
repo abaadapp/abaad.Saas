@@ -606,9 +606,22 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $paid = $this->issued('2025-09-11', 1, 100);
         $this->pay($paid, 50);
 
-        // البائعُ يعدّل المسودّة بدوره، ولا يصحّح الصادرة ولا المدفوعة — ولا ببابٍ مباشر
-        $this->actingAs($this->user('sales', 'seller@edit.om'));
-        $this->edit($draft, $this->withLine($draft, ['quantity' => 2], ['reason' => null, 'basis' => null]))->assertSessionHasNoErrors();
+        // لا البائعُ ولا المديرُ ولا المحاسبُ يعدّل المسودّة بدوره — قرارُ صاحب النشاط (2026-11-28)
+        foreach (['sales', 'manager', 'accountant'] as $role) {
+            $this->actingAs($this->user($role, $role.'-draft@edit.om'));
+            $this->get(route('admin.customerInvoices.edit', $draft->id))->assertForbidden();
+            $this->edit($draft, $this->withLine($draft, ['quantity' => 2], ['reason' => null, 'basis' => null]))->assertForbidden();
+        }
+        $this->assertEquals(1, (float) $draft->fresh()->items()->sole()->quantity, 'عُدّلت المسودّة بلا صلاحية');
+
+        // ومن منحه صاحبُ النشاط تعديلَ المسودّة باسمه يعدّلها — ولا يصحّح بها صادرة
+        $this->actingAs($this->user('sales', 'seller@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_DRAFT]));
+        $this->edit($draft, $this->withLine($draft, ['quantity' => 2], ['reason' => null, 'basis' => null]))->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertEquals(2, (float) $draft->fresh()->items()->sole()->quantity);
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertForbidden();
+
+        // والبائعُ بدوره لا يصحّح الصادرة ولا المدفوعة — ولا ببابٍ مباشر
+        $this->actingAs($this->user('sales', 'seller-role@edit.om'));
         $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertForbidden();
         $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertForbidden();
         $this->edit($paid, $this->withLine($paid, ['quantity' => 2]))->assertForbidden();
@@ -632,8 +645,12 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         // والأفعالُ بأسمائها العربيّة في شاشة الموظّفين، والمدفوعةُ لصاحب النشاط وحده بدوره
         $labels = Permissions::actionLabels();
         $this->assertSame('تصحيح فاتورة عميل مدفوعة جزئيًا أو كليًا', $labels[Permissions::CUSTOMER_INVOICE_EDIT_PAID]);
-        $this->assertSame(['admin'], Permissions::ACTION_ROLES[Permissions::CUSTOMER_INVOICE_EDIT_PAID]);
-        $this->assertNotContains('sales', Permissions::ACTION_ROLES[Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
+        // والأفعالُ الخمسة الجديدة لصاحب النشاط وحده بدوره، وما سواها كما كان
+        foreach ([Permissions::CUSTOMER_INVOICE_EDIT_DRAFT, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED, Permissions::CUSTOMER_INVOICE_EDIT_PAID,
+            Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD, Permissions::CUSTOMER_INVOICE_HISTORY] as $action) {
+            $this->assertSame(['admin'], Permissions::ACTION_ROLES[$action], $action);
+        }
+        $this->assertSame(['admin', 'manager'], Permissions::ACTION_ROLES[Permissions::CUSTOMER_INVOICE_CANCEL], 'سُحبت صلاحيةٌ قديمة');
     }
 
     public function test_a_shop_never_reaches_another_shops_invoice_or_documents(): void
@@ -891,10 +908,17 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $this->assertSame('تصحيح خطأ في الفاتورة', $page['revisions'][0]['basis']);
         $this->assertEquals(157.5, $page['revisions'][0]['total_after']);
 
-        $this->actingAs($this->user('sales', 'reader@edit.om'));
+        foreach (['sales', 'manager', 'accountant'] as $role) {
+            $this->actingAs($this->user($role, $role.'-reader@edit.om'));
+            $page = $this->get(route('admin.customerInvoices.show', $invoice->id))->assertOk()->viewData('page')['props'];
+            $this->assertFalse($page['mayEdit']);
+            $this->assertNull($page['revisions'], 'السجلُّ لمن يُمنح قراءته — لا بالدور');
+        }
+
+        // ومن مُنح قراءةَ السجلّ باسمه يقرؤه
+        $this->actingAs($this->user('accountant', 'history@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_HISTORY]));
         $page = $this->get(route('admin.customerInvoices.show', $invoice->id))->assertOk()->viewData('page')['props'];
-        $this->assertFalse($page['mayEdit']);
-        $this->assertNull($page['revisions'], 'السجلُّ لمن يُمنح قراءته');
+        $this->assertCount(1, $page['revisions']);
 
         $rev = CustomerInvoiceRevision::first();
         try {

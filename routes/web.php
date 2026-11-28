@@ -569,6 +569,11 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
      */
     Route::post('/pos-catalog', [App\Http\Controllers\SuperAdmin\TillCatalogSwitchController::class, 'update'])->name('pos-catalog.update');
     /*
+     * ‏‏ومفتاحُ إيقاف تعديل فواتير العملاء وتصحيحها — خطّةُ الرجوع بعد أوّل مستند تصحيح
+     * (`InvoiceCorrectionsSwitch`): يُوقف الإصدار ويُبقي القراءة، بلا نشرٍ ولا `.env`.
+     */
+    Route::post('/invoice-corrections', [App\Http\Controllers\SuperAdmin\InvoiceCorrectionsSwitchController::class, 'update'])->name('invoice-corrections.update');
+    /*
      * ولا مفتاحَ لخرائط Google هنا: يربطها كلُّ تاجرٍ بمفتاحه من مشروعه في
      * Google Cloud (`admin.integrations.google.key`). لا مفتاحَ لأبعاد يقع على أحد.
      */

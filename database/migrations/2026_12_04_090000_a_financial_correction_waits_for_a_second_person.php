@@ -49,6 +49,8 @@ return new class extends Migration
                 // ما نُفّذ به: نسخةُ التصحيح، أو البديلةُ المكتوبة مسودّة
                 $table->foreignId('customer_invoice_revision_id')->nullable()->index()->constrained()->nullOnDelete();
                 $table->foreignId('replacement_invoice_id')->nullable()->index()->constrained('customer_invoices')->nullOnDelete();
+                // والإشعارُ الدائنُ اليدويّ الذي صدر عند الاعتماد (`FinancialCorrection::CREDIT_NOTE`)
+                $table->foreignId('customer_credit_note_id')->nullable()->index()->constrained()->nullOnDelete();
                 $table->timestamps();
 
                 $table->unique(['business_id', 'edit_token'], 'fc_edit_token_unique');

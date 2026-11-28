@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPaymentLink;
@@ -23,6 +24,13 @@ use RuntimeException;
  * يمسّ التصحيحُ المال (`touchesMoney`):
  *   - تصحيحُ فاتورةٍ صادرةٍ أو مدفوعة يصدر به إشعارٌ دائنٌ أو مدين (#195).
  *   - «إلغاء وإصدار بديلة» لعميلٍ آخر: يلغي الفاتورةَ ويعكس قيدَها.
+ *   - إشعارٌ دائنٌ يدويّ من صفحة الفاتورة (`CREDIT_NOTE`).
+ *   - إلغاءُ فاتورةٍ صادرة (`INVOICE_CANCEL`).
+ *
+ * والحارسُ في الخدمة نفسِها لا في الشاشة (`guard`): `CustomerInvoices::creditNote`
+ * و`::cancel` و`CustomerInvoiceEdits::apply` و`::replace` تردّ ما لم يأتِ من اعتماد
+ * طلبه — فلا يتجاوزها مسارٌ مباشر ولا استدعاءٌ داخليّ. وطلبٌ معلّقٌ على الورقة يمنع
+ * ما سواه عليها ولو أُطفئ المفتاح: الإطفاءُ لا يُنفّذ معلّقًا ولا يتجاوز اعتمادَه.
  *
  * والمسودّةُ والملاحظاتُ الداخليّة تُحفظ كما كانت: لا دفترَ يتحرّك فيها.
  * ومتجرٌ لم يُشعله يعمل كما كان تمامًا — المفتاحُ مطفأٌ لكلّ نشاطٍ قائمٍ وجديد،
@@ -48,6 +56,38 @@ final class FinancialCorrections
 {
     /** مفتاحُ الإعداد — `SettingController::KEYS` */
     public const SETTING = 'dual_approval_corrections';
+
+    /**
+     * الطلبُ الذي يُنفَّذ الآن باعتماده — يعبر به الحارسُ (`guard`) في الخدمات التي
+     * يناديها التنفيذ: الإشعارُ والإلغاءُ، والإلغاءُ داخل الاستبدال. يُضبط في `approve`
+     * وحدها ويُرفع في `finally`، فلا يبقى معلّقًا بعد طلبٍ واحد.
+     */
+    private static ?FinancialCorrection $executing = null;
+
+    /**
+     * حارسُ الخدمة: إشعارٌ يدويّ أو إلغاءُ صادرة لا يقع إلّا باعتماد طلبه حين يُشعَل
+     * الاعتماد، ولا فوق طلبٍ معلّقٍ على الورقة أبدًا.
+     *
+     * @throws NeedsApproval يحتاج اعتمادًا — يُكتب طلبُه
+     * @throws RuntimeException على الورقة طلبٌ معلّق
+     */
+    public static function guard(CustomerInvoice $invoice, string $kind): void
+    {
+        $executing = self::$executing;
+        if ($executing !== null && (int) $executing->customer_invoice_id === (int) $invoice->id) {
+            return;
+        }
+
+        if (self::pendingFor($invoice)) {
+            throw new RuntimeException(__('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.'));
+        }
+
+        if (self::required((int) $invoice->business_id)) {
+            throw new NeedsApproval($kind === FinancialCorrection::INVOICE_CANCEL
+                ? __('إلغاء هذه الفاتورة يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم تُلغَ بعد.')
+                : __('إشعار الدائن هذا يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم يصدر بعد.'));
+        }
+    }
 
     /** هل أشعل هذا النشاطُ الاعتمادَ الثنائيّ؟ — لا صفَّ يعني مطفأ */
     public static function required(int $businessId): bool
@@ -248,6 +288,99 @@ final class FinancialCorrections
     }
 
     /**
+     * طلبُ إشعارٍ دائنٍ يدويّ — يُفحص كما يُفحص الإصدار (`ManualInvoiceAdjustments::assertCreditNote`)
+     * ولا يكتب شيئًا. والرمزُ رمزُ نموذج الإشعار: يُرسل مرّتين فيكون طلبًا واحدًا.
+     *
+     * @param  array{amount: float|string, tax_amount?: float|string|null, reason: string, basis: string, token: string}  $data
+     *
+     * @throws ValidationException مبلغٌ أو ضريبةٌ أو سببٌ لا يصلح
+     * @throws RuntimeException ما يمنعه، بسببه
+     */
+    public static function requestCreditNote(CustomerInvoice $invoice, array $data, User $user): FinancialCorrection
+    {
+        $bid = (int) $invoice->business_id;
+        $token = 'credit-note:'.(string) $data['token'];
+        $amount = round((float) $data['amount'], 3);
+        $tax = round((float) ($data['tax_amount'] ?? 0), 3);
+        $reason = trim((string) $data['reason']);
+
+        return DB::transaction(function () use ($invoice, $data, $user, $bid, $token, $amount, $tax, $reason) {
+            $locked = CustomerInvoice::where('business_id', $bid)->lockForUpdate()->findOrFail($invoice->id);
+
+            if ($twin = self::twin($bid, $token, (int) $locked->id)) {
+                return $twin;
+            }
+            if (self::pendingFor($locked)) {
+                throw new RuntimeException(__('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.'));
+            }
+            if ($locked->status !== CustomerInvoice::ISSUED) {
+                throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
+            ManualInvoiceAdjustments::assertCreditNote($locked, $amount, $tax, (string) $data['basis']);
+
+            if (($why = self::nobodyToApprove($bid, $user)) !== null) {
+                throw new RuntimeException($why);
+            }
+
+            return self::open($locked, FinancialCorrection::CREDIT_NOTE,
+                ['amount' => $amount, 'tax_amount' => $tax, 'reason' => $reason, 'basis' => (string) $data['basis']], [
+                    'kind' => FinancialCorrection::CREDIT_NOTE,
+                    'number' => $locked->number,
+                    'basis' => (string) $data['basis'],
+                    'documents' => ['credit' => ['amount' => $amount, 'tax' => $tax], 'debit' => null],
+                    'total' => round((float) $locked->total, 3),
+                ], $reason, $token, $user, 'طلب إشعار دائن بمبلغ '.$amount.' على فاتورة عميل '.$locked->number.' بانتظار الاعتماد');
+        });
+    }
+
+    /**
+     * طلبُ إلغاء فاتورةٍ صادرة — يُفحص كما يُفحص الإلغاء ولا يكتب شيئًا.
+     *
+     * ونموذجُ الإلغاء بلا رمز: الرمزُ رقمُ الورقة وعددُ ما بُتّ من طلباتها — فضغطتان
+     * تعطيان طلبًا واحدًا، وطلبٌ جديدٌ بعد رفضٍ يُقبل.
+     *
+     * @throws RuntimeException ما يمنعه، بسببه
+     */
+    public static function requestCancel(CustomerInvoice $invoice, string $reason, User $user): FinancialCorrection
+    {
+        $bid = (int) $invoice->business_id;
+        $reason = trim($reason);
+
+        return DB::transaction(function () use ($invoice, $reason, $user, $bid) {
+            $locked = CustomerInvoice::where('business_id', $bid)->lockForUpdate()->findOrFail($invoice->id);
+            $token = 'cancel:'.$locked->id.':'.FinancialCorrection::where('business_id', $bid)->where('customer_invoice_id', $locked->id)
+                ->where('status', '!=', FinancialCorrection::PENDING)->count();
+
+            if ($twin = self::twin($bid, $token, (int) $locked->id)) {
+                return $twin;
+            }
+            if (self::pendingFor($locked)) {
+                throw new RuntimeException(__('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.'));
+            }
+            if ($locked->status !== CustomerInvoice::ISSUED) {
+                throw new RuntimeException(__('الإلغاء بالاعتماد لفاتورةٍ صادرة.'));
+            }
+            if ($locked->paidTotal() > 0) {
+                throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $locked->paidTotal()]));
+            }
+            if ($why = ManualInvoiceAdjustments::cancelRefusal($locked)) {
+                throw new RuntimeException($why);
+            }
+            if (($why = self::nobodyToApprove($bid, $user)) !== null) {
+                throw new RuntimeException($why);
+            }
+
+            return self::open($locked, FinancialCorrection::INVOICE_CANCEL, ['reason' => $reason], [
+                'kind' => FinancialCorrection::INVOICE_CANCEL,
+                'number' => $locked->number,
+                'customer_before' => $locked->customer_name,
+                'total' => round((float) $locked->total, 3),
+            ], $reason, $token, $user, 'طلب إلغاء فاتورة عميل '.$locked->number.' بانتظار الاعتماد');
+        });
+    }
+
+    /**
      * الاعتماد — يُنفَّذ التصحيحُ كلُّه أو لا شيء منه.
      *
      * @throws AuthorizationException معتمدٌ لا يملكه، أو هو مقدّمه
@@ -289,18 +422,24 @@ final class FinancialCorrections
                 throw new RuntimeException(__('مقدّم الطلب لم يعد موظفًا نشطًا في النشاط — ارفض الطلب، ويُطلب التصحيح من جديد.'));
             }
 
+            self::$executing = $row;
             try {
-                $done = $row->kind === FinancialCorrection::INVOICE_REPLACE
-                    ? CustomerInvoiceEdits::replace(
+                $done = match ($row->kind) {
+                    FinancialCorrection::INVOICE_REPLACE => CustomerInvoiceEdits::replace(
                         $invoice,
                         Customer::where('business_id', $bid)->findOrFail((int) $row->payload['customer_id']),
                         (string) $row->payload['reason'],
                         $requester,
                         $row,
-                    )
-                    : CustomerInvoiceEdits::apply($invoice, $row->payload, $requester, $row);
+                    ),
+                    FinancialCorrection::CREDIT_NOTE => self::issueApprovedCreditNote($invoice, $row, $requester),
+                    FinancialCorrection::INVOICE_CANCEL => self::cancelApproved($invoice, $row, $requester),
+                    default => CustomerInvoiceEdits::apply($invoice, $row->payload, $requester, $row),
+                };
             } catch (AuthorizationException $e) {
                 throw new AuthorizationException(__('مقدّم الطلب لم يعد يملك هذا التعديل — :why', ['why' => $e->getMessage()]));
+            } finally {
+                self::$executing = null;
             }
 
             $row->forceFill([
@@ -309,12 +448,16 @@ final class FinancialCorrections
                 'decided_at' => now(),
                 'decision_note' => self::note($note),
                 'customer_invoice_revision_id' => $done instanceof CustomerInvoiceRevision ? $done->id : null,
-                'replacement_invoice_id' => $done instanceof CustomerInvoice ? $done->id : null,
+                'replacement_invoice_id' => $done instanceof CustomerInvoice && $row->kind === FinancialCorrection::INVOICE_REPLACE ? $done->id : null,
+                'customer_credit_note_id' => $done instanceof CustomerCreditNote ? $done->id : null,
             ])->save();
 
-            $what = $done instanceof CustomerInvoice
-                ? 'إلغاء فاتورة عميل '.$invoice->number.' وإصدار بديلتها'
-                : 'تصحيح فاتورة عميل '.$invoice->number.' (التعديل '.$done->revision.')';
+            $what = match ($row->kind) {
+                FinancialCorrection::INVOICE_REPLACE => 'إلغاء فاتورة عميل '.$invoice->number.' وإصدار بديلتها',
+                FinancialCorrection::CREDIT_NOTE => 'إشعار دائن '.$done->number.' على فاتورة عميل '.$invoice->number,
+                FinancialCorrection::INVOICE_CANCEL => 'إلغاء فاتورة عميل '.$invoice->number,
+                default => 'تصحيح فاتورة عميل '.$invoice->number.' (التعديل '.$done->revision.')',
+            };
 
             Activity::log('updated', BooksPeriod::fit('اعتمد '.$what.' طلبه '.$requester->name, (string) $note), [
                 'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice', 'business_id' => $bid,
@@ -328,6 +471,33 @@ final class FinancialCorrections
         }
 
         return $row;
+    }
+
+    /** الإشعارُ الدائنُ المعتمَد — باسم مقدّمه، وبصلاحيته اليوم */
+    private static function issueApprovedCreditNote(CustomerInvoice $invoice, FinancialCorrection $row, User $requester): CustomerCreditNote
+    {
+        if (! $requester->may(Permissions::CUSTOMER_CREDIT_NOTE)) {
+            throw new AuthorizationException(Permissions::actionLabels()[Permissions::CUSTOMER_CREDIT_NOTE] ?? Permissions::CUSTOMER_CREDIT_NOTE);
+        }
+
+        return CustomerInvoices::creditNote(
+            $invoice,
+            (float) $row->payload['amount'],
+            (float) ($row->payload['tax_amount'] ?? 0),
+            (string) $row->payload['reason'],
+            (int) $requester->id,
+            basis: (string) $row->payload['basis'],
+        );
+    }
+
+    /** الإلغاءُ المعتمَد — باسم مقدّمه، وبصلاحيته اليوم، وكلُّ موانع الإلغاء تُسأل من جديد */
+    private static function cancelApproved(CustomerInvoice $invoice, FinancialCorrection $row, User $requester): CustomerInvoice
+    {
+        if (! $requester->may(Permissions::CUSTOMER_INVOICE_CANCEL)) {
+            throw new AuthorizationException(Permissions::actionLabels()[Permissions::CUSTOMER_INVOICE_CANCEL] ?? Permissions::CUSTOMER_INVOICE_CANCEL);
+        }
+
+        return CustomerInvoices::cancel($invoice, (string) $row->payload['reason'], (int) $requester->id);
     }
 
     /** الرفض — بسببٍ يُكتب، ولا يمسّ الفاتورة */
@@ -433,6 +603,9 @@ final class FinancialCorrections
             'decision_note' => $row->decision_note,
             'revision' => $row->revision?->revision,
             'replacement' => $row->replacement_invoice_id ? ['id' => (int) $row->replacement_invoice_id] : null,
+            'credit_note' => $row->customer_credit_note_id
+                ? ['id' => (int) $row->customer_credit_note_id, 'number' => $row->creditNote?->number]
+                : null,
             'may_decide' => self::mayDecide($viewer, $row),
             'may_withdraw' => $viewer !== null && $row->isPending() && (int) $viewer->id === (int) $row->requested_by,
         ];
@@ -492,6 +665,11 @@ final class FinancialCorrections
     {
         if ((int) $approver->business_id !== $bid) {
             throw new AuthorizationException(__('هذا الطلب ليس من نشاطك.'));
+        }
+
+        // ومعتمدٌ عُطّل حسابُه لا يبتّ — ولو بقيت جلستُه مفتوحة
+        if ($approver->status === 'معطل') {
+            throw new AuthorizationException(__('حسابك معطّل — لا تبتّ في طلبات التصحيح.'));
         }
 
         if ((int) $approver->id === (int) $row->requested_by) {

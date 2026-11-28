@@ -652,4 +652,156 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
 
         $this->assertSame([0, CustomerInvoice::ISSUED], [FinancialCorrection::count(), $invoice->fresh()->status]);
     }
+
+    /* ═══════ الإشعارُ الدائنُ اليدويّ وإلغاءُ الصادرة — قرارُ المالك 2026-11-28 ═══════ */
+
+    private function creditNote(CustomerInvoice $invoice, float $amount, string $token, ?User $by = null)
+    {
+        return $this->actingAs($by ?? $this->owner)->post(route('admin.customerInvoices.creditNote', $invoice->id), [
+            'amount' => $amount, 'tax_amount' => 0, 'reason' => 'خصمٌ متّفق عليه', 'basis' => CustomerCreditNote::ERROR, 'token' => $token,
+        ]);
+    }
+
+    private function cancelInvoice(CustomerInvoice $invoice, ?User $by = null)
+    {
+        return $this->actingAs($by ?? $this->owner)->post(route('admin.customerInvoices.cancel', $invoice->id), ['reason' => 'أُلغي التوريد']);
+    }
+
+    public function test_a_manual_credit_note_waits_then_is_issued_once_in_the_requesters_name(): void
+    {
+        $invoice = $this->issued();
+        $this->dualOn();
+        $entries = $this->entries();
+
+        // مرّتين بالرمز نفسه: طلبٌ واحد، ولا إشعارَ ولا قيد
+        $this->creditNote($invoice, 20, 'cn-1')->assertRedirect(route('admin.customerInvoices.show', $invoice->id))->assertSessionHasNoErrors();
+        $this->creditNote($invoice, 20, 'cn-1')->assertSessionHasNoErrors();
+        $this->assertSame(1, FinancialCorrection::where('kind', FinancialCorrection::CREDIT_NOTE)->count());
+        $this->assertSame([0, $entries], [CustomerCreditNote::count(), $this->entries()]);
+
+        $row = FinancialCorrection::sole();
+        $this->assertSame(20.0, (float) $row->summary['documents']['credit']['amount']);
+
+        // ومقدّمُه لا يعتمده
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.corrections.approve', $row->id))->assertForbidden();
+
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $row->id))->assertSessionHasNoErrors();
+        $note = CustomerCreditNote::sole();
+        $this->assertSame([20.0, (int) $this->owner->id], [(float) $note->amount, (int) $note->created_by]);
+        $this->assertSame([FinancialCorrection::APPROVED, (int) $note->id], [$row->fresh()->status, (int) $row->fresh()->customer_credit_note_id]);
+        $this->assertSame($entries + 1, $this->entries());
+
+        // ومرّةً ثانية: بُتّ فيه
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $row->id))->assertSessionHasErrors();
+        $this->assertSame(1, CustomerCreditNote::count());
+    }
+
+    public function test_cancelling_an_issued_invoice_waits_then_reverses_its_entry_once(): void
+    {
+        $invoice = $this->issued();
+        $this->dualOn();
+
+        $this->cancelInvoice($invoice)->assertSessionHasNoErrors();
+        $this->cancelInvoice($invoice)->assertSessionHasNoErrors(); // ضغطتان: طلبٌ واحد
+        $this->assertSame([1, CustomerInvoice::ISSUED], [FinancialCorrection::where('kind', FinancialCorrection::INVOICE_CANCEL)->count(), $invoice->fresh()->status]);
+
+        $entries = $this->entries();
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', FinancialCorrection::sole()->id))->assertSessionHasNoErrors();
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+        $this->assertSame($entries + 1, $this->entries(), 'قيدُ عكسٍ واحد');
+    }
+
+    public function test_no_direct_route_or_inner_service_issues_or_cancels_without_its_approval(): void
+    {
+        $invoice = $this->issued();
+        $this->dualOn();
+
+        foreach ([
+            fn () => CustomerInvoices::creditNote($invoice, 10, 0, 'مباشر', $this->owner->id, basis: CustomerCreditNote::ERROR),
+            fn () => CustomerInvoices::cancel($invoice, 'مباشر', $this->owner->id),
+        ] as $direct) {
+            try {
+                $direct();
+                $this->fail('مرّ بلا اعتماد');
+            } catch (NeedsApproval) {
+            }
+        }
+        $this->assertSame([0, 0, CustomerInvoice::ISSUED], [FinancialCorrection::count(), CustomerCreditNote::count(), $invoice->fresh()->status]);
+    }
+
+    public function test_turning_it_off_carries_out_nothing_pending_and_lets_nothing_go_around_it(): void
+    {
+        $invoice = $this->issued();
+        $this->dualOn();
+        $this->creditNote($invoice, 20, 'cn-off')->assertSessionHasNoErrors();
+        $row = FinancialCorrection::sole();
+
+        // يُطفئه صاحبُ النشاط: لا يُنفَّذ المعلّق، ولا يقع على الورقة شيءٌ مباشرة فوقه
+        Setting::where('business_id', $this->shop->id)->where('key', FinancialCorrections::SETTING)->update(['value' => '0']);
+        $this->assertSame([FinancialCorrection::PENDING, 0], [$row->fresh()->status, CustomerCreditNote::count()]);
+
+        $this->creditNote($invoice, 5, 'cn-direct')->assertSessionHasErrors('amount');
+        $this->cancelInvoice($invoice)->assertSessionHasErrors('invoice');
+        $this->actingAs($this->owner)->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, [], 12))->assertSessionHasErrors();
+        $this->assertSame([0, CustomerInvoice::ISSUED], [CustomerCreditNote::count(), $invoice->fresh()->status]);
+
+        // ويبقى يُعتمد أو يُرفض أو يُسحب كما هو
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $row->id))->assertSessionHasNoErrors();
+        $this->assertSame(1, CustomerCreditNote::count());
+    }
+
+    public function test_a_disabled_approver_or_a_requester_who_lost_the_action_decides_and_issues_nothing(): void
+    {
+        $clerk = $this->user('manager', 'clerk@dual.om', ['dashboard', 'orders', Permissions::CUSTOMER_CREDIT_NOTE]);
+        $invoice = $this->issued();
+        $this->dualOn();
+        $this->creditNote($invoice, 20, 'cn-clerk', $clerk)->assertSessionHasNoErrors();
+        $row = FinancialCorrection::sole();
+
+        // المعتمدُ عُطّل حسابُه وجلستُه مفتوحة: لا يبتّ
+        $this->approver->forceFill(['status' => 'معطل'])->save();
+        try {
+            FinancialCorrections::approve($row, $this->approver->fresh());
+            $this->fail('اعتمد معتمدٌ معطّل');
+        } catch (AuthorizationException) {
+        }
+        $this->approver->forceFill(['status' => 'نشط'])->save();
+
+        // ومقدّمُه سُحب منه إصدارُ الإشعارات: لا يصدر باسمه
+        $clerk->forceFill(['permissions' => ['dashboard', 'orders']])->save();
+        try {
+            FinancialCorrections::approve($row, $this->approver->fresh());
+            $this->fail('صدر الإشعارُ باسم من لم يعد يملكه');
+        } catch (AuthorizationException $e) {
+            $this->assertStringContainsString('لم يعد يملك', $e->getMessage());
+        }
+        $this->assertSame([FinancialCorrection::PENDING, 0], [$row->fresh()->status, CustomerCreditNote::count()]);
+    }
+
+    public function test_a_collection_while_a_credit_note_waits_closes_it_unissued(): void
+    {
+        $invoice = $this->issued();
+        $this->dualOn();
+        $this->creditNote($invoice, 20, 'cn-stale')->assertSessionHasNoErrors();
+        $row = FinancialCorrection::sole();
+
+        $this->pay($invoice, 30);
+
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $row->id))->assertSessionHasErrors();
+        $this->assertSame([FinancialCorrection::STALE, 0], [$row->fresh()->status, CustomerCreditNote::count()]);
+    }
+
+    public function test_the_pending_count_reaches_whoever_may_approve_and_no_one_else(): void
+    {
+        $invoice = $this->issued();
+        $this->dualOn();
+        $this->creditNote($invoice, 20, 'cn-count')->assertSessionHasNoErrors();
+
+        $props = fn (User $u) => $this->actingAs($u)->get(route('admin.customerInvoices.index'))->assertOk()->viewData('page')['props'];
+        $this->assertSame(1, $props($this->approver)['pendingCorrections']);
+        // ومقدّمُه لا يُعدّ له طلبُه — لا يبتّ فيه
+        $this->assertSame(0, $props($this->owner)['pendingCorrections']);
+        $seller = $this->user('sales', 'seller@dual.om', ['dashboard', 'orders']);
+        $this->assertNull($props($seller)['pendingCorrections']);
+    }
 }

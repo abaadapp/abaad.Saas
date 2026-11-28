@@ -204,3 +204,31 @@ describe('جدولُ فواتير العملاء', () => {
         expect(screen.getByPlaceholderText('ابحث برقم الفاتورة أو اسم العميل أو رقم هاتفه أو أمر الشراء')).toBeInTheDocument();
     });
 });
+
+describe('طلباتُ التصحيح المعلّقة في قسم فواتير العملاء', () => {
+    const indexProps = (pendingCorrections: number | null) => ({
+        invoices: [],
+        pagination: { current_page: 1, last_page: 1, per_page: 20, total: 0, from: 0, to: 0 },
+        filters: {}, states: ['غير مدفوعة'], statuses: ['صادرة'], customers: [],
+        totals: { total: 0, overdue: 0, due_soon: 0, credit: 0, invoices: 0, customers: 0 },
+        pendingCorrections,
+    });
+
+    it('من يعتمد يرى عددَ ما ينتظره، ومن لا يعتمد لا يرى عددًا', () => {
+        Object.assign(pageProps, indexProps(2), { auth: { abilities: [], mayActions: ['financialCorrection.approve'] } });
+        const { unmount } = render(<Index {...(indexProps(2) as unknown as React.ComponentProps<typeof Index>)} />);
+        expect(screen.getByTestId('corrections-pending')).toHaveTextContent('2');
+        unmount();
+
+        Object.assign(pageProps, indexProps(0));
+        const second = render(<Index {...(indexProps(0) as unknown as React.ComponentProps<typeof Index>)} />);
+        expect(screen.queryByTestId('corrections-pending')).toBeNull();
+        second.unmount();
+
+        Object.assign(pageProps, indexProps(null), { auth: { abilities: [], mayActions: [] } });
+        render(<Index {...(indexProps(null) as unknown as React.ComponentProps<typeof Index>)} />);
+        expect(screen.queryByTestId('corrections-link')).toBeNull();
+        expect(screen.queryByTestId('corrections-pending')).toBeNull();
+    });
+});
+

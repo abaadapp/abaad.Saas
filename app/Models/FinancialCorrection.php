@@ -20,6 +20,12 @@ class FinancialCorrection extends Model
     /** إلغاءُ فاتورةٍ صادرة وإصدارُ بديلتها مسودّةً لعميلٍ آخر — `CustomerInvoiceEdits::replace` */
     public const INVOICE_REPLACE = 'customer_invoice_replace';
 
+    /** إشعارٌ دائنٌ يدويّ بمبلغٍ وسبب — `CustomerInvoices::creditNote` من شاشة الفاتورة */
+    public const CREDIT_NOTE = 'customer_credit_note';
+
+    /** إلغاءُ فاتورةٍ صادرة وعكسُ قيدها — `CustomerInvoices::cancel` */
+    public const INVOICE_CANCEL = 'customer_invoice_cancel';
+
     public const PENDING = 'pending';
 
     public const APPROVED = 'approved';
@@ -56,6 +62,12 @@ class FinancialCorrection extends Model
     public function requester(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requested_by');
+    }
+
+    /** الإشعارُ الدائن الذي صدر باعتماد طلبٍ من نوع `CREDIT_NOTE` */
+    public function creditNote(): BelongsTo
+    {
+        return $this->belongsTo(CustomerCreditNote::class, 'customer_credit_note_id');
     }
 
     public function decider(): BelongsTo

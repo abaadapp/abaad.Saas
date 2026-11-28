@@ -17,6 +17,8 @@ interface EditableBusiness {
     phone: string | null;
     email: string | null;
     plan_id: number | null;
+    /** قطاعُ الشركة — والباقةُ من قطاعه (`Sectors`) */
+    sector_id?: number | null;
     status: string | null;
     starts_at: string | null;
     ends_at: string | null;
@@ -61,6 +63,7 @@ export default function BusinessEdit() {
                     phone: business.phone ?? '',
                     email: business.email ?? '',
                     plan_id: business.plan_id ? String(business.plan_id) : '',
+                    sector_id: business.sector_id ? String(business.sector_id) : '',
                     status: business.status ?? '',
                     starts_at: business.starts_at ?? '',
                     ends_at: business.ends_at ?? '',

@@ -11,7 +11,7 @@ export interface InboxAccess {
     can_grant: boolean;
 }
 
-const OPTIONS: { key: InboxLevel; title: string; hint: string }[] = [
+export const OPTIONS: { key: InboxLevel; title: string; hint: string }[] = [
     { key: 'none', title: 'بدون صلاحية', hint: 'لا يرى المحادثات ولا يفتحها' },
     { key: 'view', title: 'مشاهدة فقط', hint: 'يقرأ المحادثات ولا يرسل ردًّا' },
     { key: 'reply', title: 'مشاهدة ورد', hint: 'يقرأ المحادثات ويردّ على العملاء من رقم المتجر' },
@@ -77,7 +77,7 @@ export default function InboxAccessField({
 
             {!canGrant && (
                 <p className="text-[12px] text-[#6b7280]" data-testid="inbox-access-locked">
-                    {t('صلاحيات محادثات واتساب يمنحها صاحب النشاط وحده.')}
+                    {t('صلاحيات محادثات واتساب يمنحها صاحب النشاط، أو مديرٌ منحه هو الردّ على المحادثات.')}
                 </p>
             )}
 

@@ -130,7 +130,6 @@ export default function InventoryIndex() {
                 actions={
                     <>
                         <ExportMenu
-                            action="stock.export"
                             xlsx={route('admin.inventory.xlsx')}
                             pdf={route('admin.inventory.exportPdf')}
                             csv={route('admin.export.inventory')}

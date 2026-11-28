@@ -35,6 +35,7 @@ import {
     Package,
     RefreshCw,
     Settings,
+    Shapes,
     ShoppingCart,
     Star,
     TicketPercent,
@@ -143,7 +144,7 @@ export const NAV: NavGroup[] = [
                 «محادثات واتساب» — صندوقُ المتجر مع زبائنه.
 
                 بفعلٍ لا بقسم: يراه من مُنح المشاهدة أو الردّ باسمه، ولمتجرٍ
-                فتحه له فريقُ أبعاد (`whatsapp_inbox`). والشارةُ رسائلُ لم
+                يملك واتساب (`whatsapp_inbox` — `WhatsAppInbox::available`). والشارةُ رسائلُ لم
                 يقرأها هذا الموظّف.
             */
             {
@@ -263,18 +264,9 @@ export const NAV: NavGroup[] = [
 
                         من يسأل «لماذا لم تصل رسالةُ زبوني؟» لا يبدأ من شاشة
                         المقابض ليجد زرًّا فيها — يفتح القائمة ويبحث عن سجلّ.
+                        وهو واحدٌ لكلّ متجر: المحادثاتُ في الصندوق، والدفترُ هنا.
                     */
-                    { label: 'سجلّ رسائل واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', unlessHosts: 'whatsapp_conversations' },
-                    /*
-                        والمسارُ نفسُه محادثاتٍ لمن فُتحت له — `WhatsAppConversations`.
-                        والخادمُ يقرّر ما يُرسم خلفه، والشريطُ يسمّيه.
-                    */
-                    { label: 'محادثات واتساب', icon: MessagesSquare, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', hosts: 'whatsapp_conversations', unlessHosts: 'whatsapp_inbox' },
-                    /*
-                        ومن فُتح له صندوقُ المحادثات فهذه الصفحةُ سجلُّ إشعاراته —
-                        و«محادثات واتساب» اسمُ الصندوق، لا اسمان لشيئين.
-                    */
-                    { label: 'سجلّ إشعارات واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', hosts: ['whatsapp_conversations', 'whatsapp_inbox'] },
+                    { label: 'سجلّ رسائل واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp' },
                 ],
             },
         ],
@@ -370,6 +362,11 @@ export const PLATFORM_NAV: NavGroup[] = [
     {
         heading: 'الإدارة',
         items: [
+            /*
+             * القطاعاتُ مدخلٌ يجمع باقاتِ كلِّ قطاعٍ وشركاتِه واشتراكاتِها — ولا يحلّ
+             * محلَّ ما تحته: «الشركات» و«الباقات» و«الاشتراكات» تبقى كما هي.
+             */
+            { label: 'القطاعات', icon: Shapes, route: 'super-admin.sectors.index', covers: ['super-admin.sectors.show'] },
             { label: 'الشركات', icon: Building2, route: 'super-admin.businesses.index' },
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },

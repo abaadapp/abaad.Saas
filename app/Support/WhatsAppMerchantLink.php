@@ -1,0 +1,425 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\ActivityLog;
+use App\Models\Business;
+use App\Models\Setting;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * ═══ كيف يربط التجّارُ واتسابهم — بيد مدير المنصّة، ويسري في الطلب التالي ═══
+ *
+ * طريقان (`config/whatsapp.php` › `merchant_link`):
+ *   · `own_app` — التاجرُ يربط تطبيقَه هو على Meta (`WhatsAppOwnApp`).
+ *   · `abaad_app` — بضغطةٍ عبر تطبيق أبعاد، مزوّدًا تقنيًّا (التسجيل المدمج). رقمُ التاجر
+ *     وحسابُه ووسيلةُ دفعه له، وMeta تفوتره مباشرة؛ وهو الطريقُ الوحيد الذي تُتيح فيه
+ *     Meta بقاءَ الرقم في تطبيق واتساب للأعمال (التعايش).
+ *
+ * كان الاختيارُ متغيّرَ بيئة. ومتغيّرُ البيئة على هذا الخادم لا يسري حتى `config:cache`
+ * ثمّ إعادةِ تحميل php-fpm (opcache بلا فحص طوابع — حادثة 2026-11-20). فصار صفًّا في
+ * إعدادات المنصّة يُقرأ من القاعدة، ومعه رقمُ إعداد التسجيل المدمج (`config_id`) — وهو ليس
+ * سرًّا: تحمله صفحةُ التاجر إلى نافذة Meta.
+ *
+ * ═══ ولا صفّ = ما في الإعداد ═══
+ *
+ * فيوم النشر لا يتغيّر شيء: يبقى ما كتبه الخادم (`own_app` افتراضًا). والصفُّ الذي لا
+ * يُقرأ يُرجع إلى الإعداد كذلك — وهو الطريقُ القائم، لا طريقٌ جديد.
+ *
+ * ═══ ووصلةٌ قائمة لا تتبع المفتاح ═══
+ *
+ * نوعُ الوصلة مكتوبٌ فيها (`link_type`)، وإشعاراتُ تطبيق التاجر تصل على عنوانها الخاصّ.
+ * فالمفتاحُ يقرّر كيف يُربط **الجديد** فقط — ووصلةُ RIBBON على تطبيقه تبقى كما هي.
+ */
+final class WhatsAppMerchantLink
+{
+    public const KEY = 'whatsapp_merchant_link';
+
+    public const CONFIG_KEY = 'whatsapp_es_config_id';
+
+    /** ‏‏متاجرُ تجربةٍ تربط عبر تطبيق أبعاد قبل أن يُنقل إليه غيرُها — أرقامُها مفصولةٌ بفاصلة */
+    public const PILOT_KEY = 'whatsapp_merchant_link_pilot';
+
+    public const PILOT_MAX = 20;
+
+    /** ‏‏خيارُ «أبقِ رقمك في تطبيق واتساب للأعمال» للتجّار — `1` مفتوح و`0` مقفل */
+    public const COEXISTENCE_KEY = 'whatsapp_coexistence';
+
+    public const OWN_APP = 'own_app';
+
+    public const ABAAD_APP = 'abaad_app';
+
+    public const MODES = [self::OWN_APP, self::ABAAD_APP];
+
+    /** ‏‏رقمُ إعداد Meta: أرقامٌ وحدها — كمعرّف التطبيق */
+    public const CONFIG_ID_PATTERN = '/^[0-9]{5,25}$/';
+
+    private const LABELS = [
+        self::OWN_APP => 'تطبيق التاجر على Meta',
+        self::ABAAD_APP => 'تطبيق أبعاد (بضغطة)',
+    ];
+
+    private const MODE_CHANGED = 'غيّر طريقة ربط واتساب للتجّار';
+
+    private const CONFIG_CHANGED = 'غيّر رقم إعداد الربط المدمج';
+
+    private const PILOT_CHANGED = 'غيّر متاجر تجربة الربط عبر تطبيق أبعاد';
+
+    private const COEXISTENCE_OPENED = 'فتح للتجّار خيار البقاء في تطبيق واتساب للأعمال';
+
+    private const COEXISTENCE_CLOSED = 'أقفل على التجّار خيار البقاء في تطبيق واتساب للأعمال';
+
+    /** ‏‏الطريقُ الذي يسري الآن */
+    public static function mode(): string
+    {
+        $wanted = self::wanted();
+
+        // ‏‏ومقفلٌ حتى تثبت الفوترةُ المباشرة في تجربةٍ حقيقيّة — أيًّا كان مصدرُ الاختيار: الشاشةُ أو إعدادُ الخادم
+        return $wanted === self::ABAAD_APP && ! WhatsAppBillingTrials::launched() ? self::OWN_APP : $wanted;
+    }
+
+    /** ‏‏ما اختير — وقد لا يسري حتى يُفتح القفل (`mode`) */
+    public static function wanted(): string
+    {
+        try {
+            $value = self::row(self::KEY)?->value;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return self::fallbackMode();
+        }
+
+        return in_array($value, self::MODES, true) ? $value : self::fallbackMode();
+    }
+
+    public static function ownApp(): bool
+    {
+        return self::mode() === self::OWN_APP;
+    }
+
+    /**
+     * ‏‏أطريقُ هذا المتجر تطبيقُه هو؟ — المفتاحُ للجميع، ومتجرُ التجربة على تطبيق أبعاد قبلهم.
+     */
+    public static function ownAppFor(int $businessId): bool
+    {
+        return self::ownApp() && ! in_array($businessId, self::pilot(), true);
+    }
+
+    /** @return list<int> */
+    public static function pilot(): array
+    {
+        try {
+            return self::ids((string) self::row(self::PILOT_KEY)?->value);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
+    /** ‏‏متجرٌ واحد حتى تنجح التجربة الحقيقيّة — ثمّ عشرون */
+    public static function pilotMax(): int
+    {
+        return WhatsAppBillingTrials::launched() ? self::PILOT_MAX : 1;
+    }
+
+    /**
+     * ‏‏يكتب متاجرَ التجربة — أرقامَ متاجرَ قائمة. وقائمةٌ فارغة تُنهي التجربة، ولا تمسّ وصلةً رُبطت فيها.
+     *
+     * @return array{ok: bool, changed: bool, message: ?string}
+     */
+    public static function setPilot(string $list): array
+    {
+        $ids = self::ids($list);
+
+        if (count($ids) > self::pilotMax()) {
+            return ['ok' => false, 'changed' => false, 'message' => WhatsAppBillingTrials::launched()
+                ? __('متاجر التجربة :max على الأكثر.', ['max' => self::PILOT_MAX])
+                : __('متجر اختباري واحد فقط حتى تثبت الفوترة المباشرة في تجربة حقيقية.')];
+        }
+
+        $missing = array_values(array_diff($ids, Business::whereIn('id', $ids)->pluck('id')->map(fn ($id) => (int) $id)->all()));
+
+        if ($missing !== []) {
+            return ['ok' => false, 'changed' => false, 'message' => __('لا متجر بهذا الرقم: :ids', ['ids' => implode('، ', $missing)])];
+        }
+
+        if ($ids !== [] && ! WhatsAppEmbeddedSignup::configured()) {
+            return ['ok' => false, 'changed' => false, 'message' => __('الربط بضغطة غير جاهز — اكتب رقم إعداد الربط المدمج، وتأكّد أنّ معرّف تطبيق أبعاد وسرّه على الخادم.')];
+        }
+
+        return DB::transaction(function () use ($ids) {
+            $row = self::lockedRow(self::PILOT_KEY);
+            $was = self::ids((string) $row?->value);
+
+            if ($was === $ids) {
+                return ['ok' => true, 'changed' => false, 'message' => null];
+            }
+
+            $row = self::write($row, self::PILOT_KEY, implode(',', $ids));
+
+            Activity::log('settings', self::PILOT_CHANGED.' — كانت «'.(implode('، ', $was) ?: '—').'» وصارت «'.(implode('، ', $ids) ?: '—').'»', [
+                'subject_type' => Setting::class,
+                'subject_id' => $row->id,
+            ]);
+
+            return ['ok' => true, 'changed' => true, 'message' => null];
+        });
+    }
+
+    /** @return list<int> */
+    private static function ids(string $value): array
+    {
+        $parts = preg_split('/[\s,،]+/u', trim($value), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return array_values(array_unique(array_filter(array_map('intval', $parts), fn ($i) => $i > 0)));
+    }
+
+    /**
+     * ‏‏أمفتوحٌ للتجّار خيارُ البقاء في تطبيق واتساب للأعمال (التعايش)؟ — من الشاشة إن قُرّر،
+     * وإلّا من الخادم (`whatsapp.coexistence_enabled`). وصفٌّ لا يُقرأ يُرجع إلى الخادم.
+     */
+    public static function coexistence(): bool
+    {
+        try {
+            $value = self::row(self::COEXISTENCE_KEY)?->value;
+        } catch (\Throwable $e) {
+            report($e);
+            $value = null;
+        }
+
+        return in_array($value, ['0', '1'], true) ? $value === '1' : (bool) config('whatsapp.coexistence_enabled', false);
+    }
+
+    /**
+     * ‏‏يفتح الخيارَ أو يقفله — ولا يُفتح والتجّارُ لا يربطون عبر تطبيق أبعاد أو الربطُ بضغطةٍ غيرُ
+     * جاهز: Meta لا تُتيح التعايش إلّا عبر مزوّدٍ تقنيّ.
+     *
+     * @return array{ok: bool, changed: bool, message: ?string}
+     */
+    public static function setCoexistence(bool $on): array
+    {
+        return DB::transaction(function () use ($on) {
+            $row = self::lockedRow(self::COEXISTENCE_KEY);
+            $was = self::coexistence();
+
+            if ($was === $on) {
+                return ['ok' => true, 'changed' => false, 'message' => null];
+            }
+
+            // ‏‏ومتجرُ تجربةٍ على تطبيق أبعاد يكفي ليُفتح الخيار له — وغيرُه لا يراه: طريقُه تطبيقُه
+            if ($on && ((self::mode() !== self::ABAAD_APP && self::pilot() === []) || ! WhatsAppEmbeddedSignup::configured())) {
+                return ['ok' => false, 'changed' => false,
+                    'message' => __('يُفتح هذا الخيار بعد نقل التجّار الجدد إلى تطبيق أبعاد — Meta لا تتيحه إلّا عبر مزوّد تقنيّ.')];
+            }
+
+            $row = self::write($row, self::COEXISTENCE_KEY, $on ? '1' : '0');
+
+            Activity::log('settings', $on ? self::COEXISTENCE_OPENED : self::COEXISTENCE_CLOSED, [
+                'subject_type' => Setting::class,
+                'subject_id' => $row->id,
+            ]);
+
+            return ['ok' => true, 'changed' => true, 'message' => null];
+        });
+    }
+
+    /** ‏‏رقمُ إعداد التسجيل المدمج — من الشاشة إن كُتب، وإلّا من الخادم */
+    public static function configId(): string
+    {
+        try {
+            $value = (string) self::row(self::CONFIG_KEY)?->value;
+        } catch (\Throwable $e) {
+            report($e);
+            $value = '';
+        }
+
+        return preg_match(self::CONFIG_ID_PATTERN, $value) ? $value : (string) config('whatsapp.config_id');
+    }
+
+    /**
+     * ‏‏ما تعرضه شاشةُ مدير المنصّة: الطريقُ الساري، وجاهزيّةُ الربط بضغطة، وآخرُ ما تبدّل.
+     * ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» ولا يُعرض.
+     *
+     * @return array{mode: string, default: string, platform: ?string, readable: bool, config_id: string, config_source: string, app_id_ready: bool, app_secret_ready: bool, ready: bool, coexistence: bool, pilot: list<array{id: int, name: string}>, pilot_max: int, billing: ?array<string, mixed>, held: bool, auto_sender: bool, coexistence_fields: list<string>, history: list<array{at: string, by: string, what: string}>}
+     */
+    public static function state(): array
+    {
+        $readable = true;
+        $modeRow = $configRow = $coexistRow = $pilotRow = $autoRow = null;
+        try {
+            $modeRow = self::row(self::KEY);
+            $configRow = self::row(self::CONFIG_KEY);
+            $coexistRow = self::row(self::COEXISTENCE_KEY);
+            $pilotRow = self::row(self::PILOT_KEY);
+            $autoRow = self::row(WhatsAppSender::KEY);
+        } catch (\Throwable $e) {
+            report($e);
+            $readable = false;
+        }
+
+        $fromScreen = preg_match(self::CONFIG_ID_PATTERN, (string) $configRow?->value) === 1;
+        $ids = array_values(array_filter([$modeRow?->id, $configRow?->id, $coexistRow?->id, $pilotRow?->id, $autoRow?->id]));
+
+        $history = [];
+        if ($ids !== []) {
+            foreach (ActivityLog::where('subject_type', Setting::class)->whereIn('subject_id', $ids)->where('action', 'settings')
+                ->orderByDesc('id')->limit(6)->get(['user_name', 'description', 'created_at']) as $log) {
+                $history[] = ['at' => $log->created_at->toIso8601String(), 'by' => (string) $log->user_name, 'what' => (string) $log->description];
+            }
+        }
+
+        $configId = self::configId();
+
+        return [
+            'mode' => self::mode(),
+            'default' => self::fallbackMode(),
+            'platform' => in_array($modeRow?->value, self::MODES, true) ? $modeRow->value : null,
+            'readable' => $readable,
+            'config_id' => $configId,
+            'config_source' => $fromScreen ? 'platform' : ($configId !== '' ? 'server' : 'none'),
+            'app_id_ready' => filled(config('whatsapp.app_id')),
+            'app_secret_ready' => filled(config('whatsapp.app_secret')),
+            'ready' => WhatsAppEmbeddedSignup::configured(),
+            'coexistence' => self::coexistence(),
+            // ‏‏متاجرُ التجربة بأسمائها — يراها مديرُ المنصّة وحده
+            'pilot' => Business::whereIn('id', self::pilot())->orderBy('id')->get(['id', 'name'])->map(fn ($b) => ['id' => (int) $b->id, 'name' => (string) $b->name])->all(),
+            'pilot_max' => self::pilotMax(),
+            // ‏‏وقفلُ الفوترة: أمفتوحٌ النقل، والتجربةُ وما خرج فيها (`WhatsAppBillingTrials`)
+            'billing' => self::billingState(),
+            // ‏‏اختير تطبيقُ أبعاد من قبل ولا يسري حتى يُفتح القفل
+            'held' => self::wanted() === self::ABAAD_APP && self::mode() !== self::ABAAD_APP,
+            // ‏‏واعتمادُ رقم التاجر رقمًا للإرسال آليًّا — يُوقف من هنا (`WhatsAppSender::enabled`)
+            'auto_sender' => WhatsAppSender::enabled(),
+            // ‏‏وحقولُ إشعارات Meta التي يحتاجها الخيار — تُختار في لوحة تطبيق أبعاد عند Meta
+            'coexistence_fields' => WhatsAppCoexistence::FIELDS,
+            'history' => $history,
+        ];
+    }
+
+    /**
+     * ‏‏يبدّل طريقَ الربط للتجّار الجدد — بيد مدير المنصّة وحده (الحارسُ على المسار)،
+     * تحت قفل الصفّ. وما هو عليه أصلًا لا يُكتب ولا يُقيَّد.
+     *
+     * ولا يُفتح طريقُ تطبيق أبعاد والربطُ بضغطةٍ غيرُ مهيّأ: لَرأى كلُّ تاجرٍ زرًّا يقول
+     * «غير مهيّأ على الخادم» مكان الطريق الذي كان يعمل.
+     *
+     * @return array{ok: bool, changed: bool, was: string, now: string, message: ?string}
+     */
+    public static function set(string $mode): array
+    {
+        // ‏‏والقفلُ على الخادم قبل أيّ شيء: طلبٌ كُتب بيده لا يمرّ، ولو كان الاختيارُ محفوظًا من قبل
+        if ($mode === self::ABAAD_APP && ! WhatsAppBillingTrials::launched()) {
+            return ['ok' => false, 'changed' => false, 'was' => self::mode(), 'now' => self::mode(),
+                'message' => __('مقفل حتى تنجح تجربة حقيقية يظهر فيها رسم الرسالة على حساب التاجر لا على أبعاد.')];
+        }
+
+        return DB::transaction(function () use ($mode) {
+            $row = self::lockedRow(self::KEY);
+            $was = in_array($row?->value, self::MODES, true) ? $row->value : self::fallbackMode();
+
+            if ($was === $mode) {
+                return ['ok' => true, 'changed' => false, 'was' => $was, 'now' => $mode, 'message' => null];
+            }
+
+            if ($mode === self::ABAAD_APP && ! WhatsAppEmbeddedSignup::configured()) {
+                return ['ok' => false, 'changed' => false, 'was' => $was, 'now' => $was,
+                    'message' => __('الربط بضغطة غير جاهز — اكتب رقم إعداد الربط المدمج، وتأكّد أنّ معرّف تطبيق أبعاد وسرّه على الخادم.')];
+            }
+
+            $row = self::write($row, self::KEY, $mode);
+
+            Activity::log('settings', self::MODE_CHANGED.' — كانت «'.self::LABELS[$was].'» وصارت «'.self::LABELS[$mode].'»', [
+                'subject_type' => Setting::class,
+                'subject_id' => $row->id,
+            ]);
+
+            return ['ok' => true, 'changed' => true, 'was' => $was, 'now' => $mode, 'message' => null];
+        });
+    }
+
+    /**
+     * ‏‏يكتب رقمَ إعداد التسجيل المدمج، أو يمحوه (`null`) فيُقرأ ما على الخادم.
+     *
+     * ولا يُمحى وتطبيقُ أبعاد هو طريقُ التجّار والخادمُ بلا رقم: يقف الربطُ لكلّ تاجر.
+     *
+     * @return array{ok: bool, changed: bool, message: ?string}
+     */
+    public static function setConfigId(?string $id): array
+    {
+        $id = trim((string) $id);
+
+        if ($id !== '' && ! preg_match(self::CONFIG_ID_PATTERN, $id)) {
+            return ['ok' => false, 'changed' => false, 'message' => __('رقم إعداد الربط المدمج أرقامٌ فقط، كما يظهر في لوحة Meta.')];
+        }
+
+        return DB::transaction(function () use ($id) {
+            $row = self::lockedRow(self::CONFIG_KEY);
+            $was = (string) $row?->value;
+
+            if ($was === $id || ($row === null && $id === '')) {
+                return ['ok' => true, 'changed' => false, 'message' => null];
+            }
+
+            if ($id === '' && (self::mode() === self::ABAAD_APP || self::pilot() !== []) && blank(config('whatsapp.config_id'))) {
+                return ['ok' => false, 'changed' => false,
+                    'message' => __('لا يُمحى رقم الإعداد والتجّار يربطون عبر تطبيق أبعاد — بدّل طريق الربط أوّلًا.')];
+            }
+
+            $row = self::write($row, self::CONFIG_KEY, $id);
+
+            Activity::log('settings', self::CONFIG_CHANGED.' — كان «'.($was !== '' ? $was : '—').'» وصار «'.($id !== '' ? $id : '—').'»', [
+                'subject_type' => Setting::class,
+                'subject_id' => $row->id,
+            ]);
+
+            return ['ok' => true, 'changed' => true, 'message' => null];
+        });
+    }
+
+    /** @return array<string, mixed>|null */
+    private static function billingState(): ?array
+    {
+        try {
+            return WhatsAppBillingTrials::state();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    public static function label(string $mode): string
+    {
+        return self::LABELS[$mode] ?? $mode;
+    }
+
+    private static function fallbackMode(): string
+    {
+        return config('whatsapp.merchant_link', self::OWN_APP) === self::ABAAD_APP ? self::ABAAD_APP : self::OWN_APP;
+    }
+
+    private static function write(?Setting $row, string $key, string $value): Setting
+    {
+        if ($row) {
+            $row->value = $value;
+            $row->updated_at = now();
+            $row->save();
+
+            return $row;
+        }
+
+        return Setting::create(['business_id' => null, 'key' => $key, 'value' => $value]);
+    }
+
+    private static function lockedRow(string $key): ?Setting
+    {
+        return Setting::whereNull('business_id')->where('key', $key)->orderByDesc('id')->lockForUpdate()->first();
+    }
+
+    /** ‏‏الأحدثُ إن وُجد اثنان (كتابتان متسابقتان قبل أوّل صفّ) */
+    private static function row(string $key): ?Setting
+    {
+        return Setting::whereNull('business_id')->where('key', $key)->orderByDesc('id')->first(['id', 'value', 'updated_at']);
+    }
+}

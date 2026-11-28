@@ -156,7 +156,7 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         $cancelled = $this->manual('2025-09-12', 1, 40);                          // يدويّة تُلغى في الشهر نفسه: 40 + 2
         CustomerInvoices::cancel($cancelled, 'خطأ في الكمية', $this->owner->id);
 
-        $note = CustomerInvoices::creditNote($manual, 21, 1, 'مرتجع', $this->owner->id); // إشعار: −(20 + 1)
+        $note = CustomerInvoices::creditNote($manual, 21, 1, 'مرتجع', $this->owner->id, basis: 'return'); // إشعار: −(20 + 1)
 
         // ومتجرُ الجار لا يدخل شيئًا — لا بيعتُه ولا فاتورتُه اليدويّة ولا إشعارُها
         $this->sale('2025-09-09 10:00', 9000, null, $this->other);
@@ -164,7 +164,7 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         $theirs = CustomerInvoices::issue(CustomerInvoices::create($this->other->id, $stranger, ['issued_at' => '2025-09-10'], [
             ['description' => 'توريد', 'quantity' => 1, 'unit_price' => 7000],
         ]));
-        CustomerInvoices::creditNote($theirs, 105, 5, 'مرتجع');
+        CustomerInvoices::creditNote($theirs, 105, 5, 'مرتجع', basis: 'return');
 
         return compact('fromOrder', 'monthly', 'manual', 'cancelled', 'note');
     }
@@ -200,7 +200,7 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         $this->assertEquals(100.0, $this->vat()['summary']['taxable']);
         $this->assertEquals(5.0, $this->vat()['summary']['output']);
 
-        CustomerInvoices::creditNote($invoice, 21, 1, 'مرتجع', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 21, 1, 'مرتجع', $this->owner->id, basis: 'return');
 
         $this->assertEquals(80.0, $this->vat()['summary']['taxable']);
         $this->assertEquals(4.0, $this->vat()['summary']['output']);
@@ -301,7 +301,7 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         CustomerInvoices::consolidate($this->ministry, [$a->id, $b->id], [], $this->owner->id);
 
         // مرتجعٌ يدويٌّ على فاتورة الطلب: حدثٌ جديدٌ يُقيَّد ويُنقص
-        CustomerInvoices::creditNote($invoice, 42, 2, 'مرتجع جزئي', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 42, 2, 'مرتجع جزئي', $this->owner->id, basis: 'return');
 
         // وإلغاءُ طلبٍ في ورقة الشهر: قيدُه يُعكس، وإشعارُه لا قيدَ له
         $b->update(['status' => Order::CANCELLED]);

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PrepDetails from '@/Pages/Admin/Preparation/partials/PrepDetails';
+import useChangedPapersForgotten from '@/hooks/useChangedPapersForgotten';
 import type { PrepOrder } from '@/Pages/Admin/Preparation/partials/types';
 import type { PreparationData } from '@/Components/CustomerInvoicePreparationFields';
 import { forgetPreparedReceipts, preparedReceipt, prepareReceipt } from '@/lib/printing/share-print';
@@ -223,5 +224,43 @@ describe('ما جُهّز وهو يتنزّل ثمّ نُسي', () => {
         // والتنزيلُ التالي يُحفظ كما كان
         await prepareReceipt(url, 'CINV-000012');
         expect(preparedReceipt(url)).not.toBeNull();
+    });
+});
+
+describe('مهمّةٌ عُدّلت من جهازٍ آخر', () => {
+    const mine = '/admin/preparation/customer-invoices/12/delivery-note/thermal';
+    const neighbour = '/admin/preparation/customer-invoices/120/delivery-note/thermal';
+
+    it('تُنسى أوراقُها المجهَّزةُ هنا حين يقول الاستطلاعُ إنّ ما يُطبع تبدّل — وغيرُها يبقى', async () => {
+        for (const url of [mine, neighbour]) await prepareReceipt(url, 'CINV-000012');
+
+        const other = task({ key: 'customer-invoice:120', prep_id: 120 });
+        const { rerender } = renderHook(({ orders }) => useChangedPapersForgotten(orders), {
+            initialProps: { orders: [task(), other] },
+        });
+        // أوّلُ ما تراه الشاشةُ خطُّ أساس
+        expect(preparedReceipt(mine)).not.toBeNull();
+
+        // استطلاعٌ لم يتبدّل فيه إلّا ما لا يُطبع — الحالُ وورقةُ الصندوق والوقت
+        rerender({ orders: [task({ status: 'قيد التجهيز', print: null, overdue: true }), other] });
+        expect(preparedReceipt(mine)).not.toBeNull();
+
+        // زميلٌ غيّر المستلِمَ من المكتب
+        rerender({ orders: [task({ recipient: 'نورة' }), other] });
+        expect(preparedReceipt(mine)).toBeNull();
+        expect(preparedReceipt(neighbour)).not.toBeNull();
+    });
+
+    it('والمهمّةُ التي غابت عن المرشّح ثمّ عادت معدَّلةً تُنسى كذلك', async () => {
+        await prepareReceipt(mine, 'CINV-000012');
+
+        const { rerender } = renderHook(({ orders }) => useChangedPapersForgotten(orders), {
+            initialProps: { orders: [task()] },
+        });
+        rerender({ orders: [] });
+        expect(preparedReceipt(mine)).not.toBeNull();
+
+        rerender({ orders: [task({ scheduled_for: '2026-10-20 18:30' })] });
+        expect(preparedReceipt(mine)).toBeNull();
     });
 });

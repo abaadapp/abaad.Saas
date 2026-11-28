@@ -40,7 +40,7 @@ class FinancialCorrectionController extends Controller
 
         $rows = FinancialCorrection::where('business_id', $this->bid())
             ->when(! $readsAll, fn ($q) => $q->where('requested_by', $user->id))
-            ->with(['invoice:id,number', 'requester:id,name', 'decider:id,name', 'revision:id,revision'])
+            ->with(['invoice:id,number', 'requester:id,name', 'decider:id,name', 'revision:id,revision', 'replacement:id,number'])
             ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
             ->latest('id')
             ->limit(200)
@@ -58,7 +58,7 @@ class FinancialCorrectionController extends Controller
         // من لا يعتمد يُردّ قبل أن يُسأل عن الطلب — فلا يعرف أيّ الأرقام موجود
         abort_unless($request->user()->may(Permissions::FINANCIAL_CORRECTION_APPROVE), 403);
         $row = $this->find($correction);
-        $data = $request->validate(['note' => ['nullable', 'string', 'max:255']]);
+        $data = $request->validate(['note' => ['nullable', 'string', 'max:255']], [], ['note' => __('ملاحظة الاعتماد')]);
 
         return $this->decide(fn () => FinancialCorrections::approve($row, $request->user(), $data['note'] ?? null),
             __('اعتُمد التصحيح ونُفّذ على الفاتورة.'), $row);
@@ -70,7 +70,7 @@ class FinancialCorrectionController extends Controller
         $row = $this->find($correction);
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:255']], [
             'reason.required' => __('اكتب سبب رفض التصحيح — يراه مقدّم الطلب.'),
-        ]);
+        ], ['reason' => __('سبب الرفض')]);
 
         return $this->decide(fn () => FinancialCorrections::reject($row, $request->user(), $data['reason']),
             __('رُفض طلب التصحيح، ولم تتغيّر الفاتورة.'), $row);

@@ -3,7 +3,7 @@ import { whatsappUrl } from './commerce';
 import { mapEmbed, videoEmbed } from './embed';
 import { AtSign, Mail, MapPin, Phone, Play, Star, BENEFIT_ICONS } from './icons';
 import { layoutOf, RATIO, variant } from './layout';
-import { gridOf, ProductCard } from './ProductCard';
+import { cardSizes, gridOf, ProductCard } from './ProductCard';
 import { Band, Cta, Empty, Grid, Heading, Link, Media, Stars } from './primitives';
 import { filled, num, rows, str } from './read';
 import type { DocCategory, DocProduct, DocReview, DocSection, Mode, SiteDocument } from './types';
@@ -808,6 +808,13 @@ function Products({ section: s, doc, mode, first }: BlockProps) {
                             card={layout.card}
                             ratio={ratio}
                             eager={first && i < 4}
+                            sizes={cardSizes(
+                                g,
+                                layout,
+                                shape === 'classic' && layout.heading === 'center',
+                                items.length,
+                                shape === 'editorial' && i === 0 ? 2 : 1,
+                            )}
                         />
                     ))}
                 </Grid>
@@ -831,6 +838,7 @@ function ProductCatalog({ section: s, doc, mode }: BlockProps) {
             grid={variant(s, 'grid', layout.grid)}
             ratio={RATIO[layout.ratio]}
             columns={num(s, 'columns', 4)}
+            layout={layout}
         />
     );
 }

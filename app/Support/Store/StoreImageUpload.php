@@ -2,6 +2,7 @@
 
 namespace App\Support\Store;
 
+use App\Support\ImageFingerprints;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -93,17 +94,36 @@ final class StoreImageUpload
     /**
      * يحفظ الصورةَ في مجلّد المتجر — ويردّ رابطَها وأبعادَها.
      *
-     * @return array{url: string, w: int, h: int}
+     * ونسخُها الأخفّ تُصنع معها (`ImageVariants::makeQuietly`): WebP بضلع
+     * الواجهة ومصغّرةٌ للبطاقات، بشفافيّتها واتّجاهها — ولا تُحفظ نسخةٌ لا
+     * تنقص عن أصلها عُشرًا. والأصلُ والرابطُ المحفوظُ لا يتغيّران، والصفحةُ
+     * تختار النسخة لحظةَ الرسم (`ImageVariants::link`). وما لا تتّسع له
+     * الذاكرةُ الآن يبقى بلا نسخ، والرفعُ ينجح.
+     *
+     * ═══ والصورةُ نفسُها لا تُحفظ مرّتين في موقع المتجر ═══
+     *
+     * مطابقةٌ تامّةٌ لصورةٍ في مجلّد موقعه، أو هي نفسُها بكسلًا بكسلًا بصيغةٍ
+     * أخرى (`ImageFingerprints`): يُعاد رابطُ الموجودة ولا يُكتب ملفّ، ويُقال
+     * ذلك في `found` (`exact` أو `pixels`). وصورُ الموقع لا يمحوها شيءٌ بعد
+     * رفعها، فرابطٌ واحدٌ في وحدتين لا يفقده أحدهما. و`$original` بصمةُ الأصل
+     * قبل أن يصغّره المتصفّح.
+     *
+     * @return array{url: string, w: int, h: int, found?: string}
      */
-    public static function store(int $businessId, UploadedFile $file): array
+    public static function store(int $businessId, UploadedFile $file, mixed $original = null): array
     {
         $path = (string) $file->getRealPath();
         $head = (string) @file_get_contents($path, false, null, 0, 64);
+        $print = ImageFingerprints::of($path, $original);
+
+        if (($hit = ImageFingerprints::find($businessId, ImageFingerprints::WEBSITE, $print)) !== null) {
+            return self::existing($hit);
+        }
 
         if (self::isHeif($head)) {
             [$bytes, $w, $h] = self::fromHeif($path);
 
-            return self::put($businessId, $bytes, 'jpg', $w, $h);
+            return self::put($businessId, $bytes, 'jpg', $w, $h, $print);
         }
 
         $info = @getimagesize($path);
@@ -118,16 +138,98 @@ final class StoreImageUpload
             self::refuse(__('الصورة كبيرة الأبعاد جدًّا — صغّرها إلى أقلّ من :mp ميغابكسل ثمّ ارفعها.', ['mp' => self::MAX_PIXELS / 1_000_000]));
         }
 
-        $original = (string) file_get_contents($path);
-        $done = self::normalized($path, $type, $w, $h);
+        $bytesAsUploaded = (string) file_get_contents($path);
+        $hit = null;
+        // ‏والصورةُ نفسُها بصيغةٍ أخرى تُعرف ببكسلاتها قبل أن يُكتب منها شيء
+        $known = function (string $pixels) use (&$print, &$hit, $businessId) {
+            $print['px'] = $pixels;
+            $hit = ImageFingerprints::find($businessId, ImageFingerprints::WEBSITE, ['px' => $pixels]);
+
+            return $hit !== null;
+        };
+        $done = self::kept($path, $type, $w, $h, self::MAX_SIDE, $known);
+
+        if ($hit !== null) {
+            return self::existing($hit);
+        }
 
         if ($done !== null) {
             [$bytes, $w, $h] = $done;
 
-            return self::put($businessId, $bytes, self::TYPES[$type], $w, $h);
+            return self::put($businessId, $bytes, self::TYPES[$type], $w, $h, $print);
         }
 
-        return self::put($businessId, $original, self::TYPES[$type], $w, $h);
+        return self::put($businessId, $bytesAsUploaded, self::TYPES[$type], $w, $h, $print);
+    }
+
+    /**
+     * صورةٌ في موقع المتجر من قبل — رابطُها وأبعادُها كما على القرص.
+     *
+     * @param  array{path: string, kind: string}  $hit
+     * @return array{url: string, w: int, h: int, found: string}
+     */
+    private static function existing(array $hit): array
+    {
+        $info = @getimagesize(Storage::disk('public')->path($hit['path']));
+
+        return [
+            'url' => Storage::url($hit['path']),
+            'w' => is_array($info) ? (int) $info[0] : 0,
+            'h' => is_array($info) ? (int) $info[1] : 0,
+            'found' => $hit['kind'],
+        ];
+    }
+
+    /**
+     * يحفظ صورةً في مجلّدٍ عامّ بنوعها — مُصغَّرةً مُدارة، أو كما رُفعت.
+     *
+     * للشعار وغلاف المستند والصورة الرمزيّة: تدخل الفاتورةَ والمستندَ وإيصالَ
+     * الطابعة، فتبقى بنوعها — PNG بشفافيّتها، وJPEG — ولا تصير WebP. وتُصغَّر
+     * إلى ما تُطبع به لا إلى ما صوّرها به الهاتف.
+     *
+     * ولا يُردّ رفعٌ هنا: ما لا يُفكّ (SVG أو نوعٌ آخر) يُحفظ كما رُفع، كما
+     * كان قبلُ — فالتحقّقُ من نوعه بابُ من يناديه.
+     */
+    public static function storeShrunk(UploadedFile $file, string $folder, int $side): string|false
+    {
+        $path = (string) $file->getRealPath();
+        $info = $path === '' ? false : @getimagesize($path);
+
+        $decodable = is_array($info) && in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true);
+
+        // ‏أبعادٌ فوق السقف تُحفظ كما رُفعت — ويُكتب لماذا لم تُصغَّر
+        if ($decodable && $info[0] * $info[1] > self::MAX_PIXELS) {
+            \App\Support\ImageMemory::note('shrunk_upload', 'too_large', $info[0], $info[1]);
+        }
+
+        if ($decodable && $info[0] * $info[1] <= self::MAX_PIXELS) {
+            $done = self::kept($path, $info[2], $info[0], $info[1], $side);
+
+            if ($done !== null) {
+                $target = $folder.'/'.Str::random(40).'.'.self::TYPES[$info[2]];
+
+                if (Storage::disk('public')->put($target, $done[0])) {
+                    return $target;
+                }
+            }
+        }
+
+        return $file->store($folder, 'public');
+    }
+
+    /**
+     * المعالجةُ تحت قفل الفكّ — أو `null` فيُحفظ الأصل: لا تُفكّ، أو لا تتّسع الذاكرة، أو
+     * صورةٌ أخرى تُفكّ وطال الدور (لا تُفكّ صورتان معًا).
+     *
+     * وتُعاد الكتابةُ ولو لم تُصغَّر الصورة: هي التي تمحو من رأسها موقعَ
+     * التصوير والجهاز (EXIF). وPNG قد يخرج أثقلَ قليلًا — ثمنٌ لا تُدفع به
+     * خصوصيّةُ صاحب الصورة.
+     *
+     * @return array{0: string, 1: int, 2: int}|null
+     */
+    private static function kept(string $path, int $type, int $w, int $h, int $side, ?\Closure $known = null): ?array
+    {
+        return \App\Support\ImageVariants::exclusive(fn () => self::normalized($path, $type, $w, $h, $side, $known), fn () => null);
     }
 
     /* ═══════════ المعالجة ═══════════ */
@@ -137,7 +239,7 @@ final class StoreImageUpload
      *
      * @return array{0: string, 1: int, 2: int}|null
      */
-    private static function normalized(string $path, int $type, int $w, int $h): ?array
+    private static function normalized(string $path, int $type, int $w, int $h, int $side = self::MAX_SIDE, ?\Closure $known = null): ?array
     {
         // وGIF وAVIF كما رُفعتا: الأولى قد تتحرّك، والثانيةُ خفيفةٌ أصلًا
         if (! in_array($type, [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true) || ! self::decodes($type)) {
@@ -145,6 +247,13 @@ final class StoreImageUpload
         }
 
         if (! self::roomFor($w * $h)) {
+            return null;
+        }
+
+        // ‏وذاكرةُ الخادم لا حدُّ PHP: ما لا يتّسع له الآن يُحفظ كما رُفع، والرفعُ ينجح
+        if (\App\Support\ImageMemory::shortFor($w * $h) !== null) {
+            \App\Support\ImageMemory::note('store_upload', 'low_memory', $w, $h);
+
             return null;
         }
 
@@ -162,7 +271,12 @@ final class StoreImageUpload
             $image = self::oriented($image, self::orientation($path));
         }
 
-        $image = self::fitted($image);
+        // ‏وصورةٌ هي نفسُها في الموقع بصيغةٍ أخرى — لا يُكتب منها شيء (`store`)
+        if ($known !== null && ($pixels = ImageFingerprints::pixels($image)) !== null && $known($pixels)) {
+            return null;
+        }
+
+        $image = self::fitted($image, $side);
         $w = imagesx($image);
         $h = imagesy($image);
 
@@ -469,10 +583,15 @@ final class StoreImageUpload
     /* ═══════════ أدوات ═══════════ */
 
     /** @return array{url: string, w: int, h: int} */
-    private static function put(int $businessId, string $bytes, string $ext, int $w, int $h): array
+    private static function put(int $businessId, string $bytes, string $ext, int $w, int $h, ?array $print = null): array
     {
         $path = 'website/'.$businessId.'/'.Str::random(40).'.'.$ext;
-        Storage::disk('public')->put($path, $bytes);
+
+        if (Storage::disk('public')->put($path, $bytes) && $print !== null) {
+            ImageFingerprints::remember($businessId, $path, $print);
+        }
+
+        \App\Support\ImageVariants::makeQuietly($path);
 
         return ['url' => Storage::url($path), 'w' => $w, 'h' => $h];
     }

@@ -9,6 +9,7 @@ use App\Models\Review;
 use App\Support\Activity;
 use App\Support\BranchGoogle;
 use App\Support\Demo;
+use App\Support\GoogleBusiness;
 use App\Support\GooglePlaces;
 use App\Support\GoogleReviews;
 use App\Support\Integrations;
@@ -130,6 +131,8 @@ class IntegrationsController extends Controller
              */
             'branches' => BranchGoogle::branches($bid),
             'searchMin' => GooglePlaces::MIN_QUERY,
+            /* خطوةُ إدارة التقييمات — إذنٌ مستقلٌّ لا يأتي مع مفتاح الخرائط */
+            'reviewsManagement' => GoogleBusiness::state($bid),
         ]);
     }
 

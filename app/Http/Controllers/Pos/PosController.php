@@ -37,9 +37,9 @@ use App\Support\PaymentMethods;
 use App\Support\FlowerOrder;
 use App\Support\Loyalty;
 use App\Support\Money;
+use App\Support\RedemptionChanged;
 use App\Support\OrderNumbers;
 use App\Support\OrderStatus;
-use App\Support\PlanFeatures;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\ProductAddons;
@@ -49,20 +49,21 @@ use App\Support\SaleLines;
 use App\Support\SalesChannel;
 use App\Support\SeasonSales;
 use App\Support\Stock;
+use App\Support\TillStock;
 use App\Support\StockLedger;
+use App\Support\TillRedemption;
+use App\Support\TotalChanged;
 use App\Support\Vat;
 use App\Support\WhatsAppEvent;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
-    /** صرفُ النقاط إلى مال — من بابه الواحد (انظر Support\Loyalty) */
-    private const POINTS_PER_UNIT = Loyalty::POINTS_PER_UNIT;
-
     private function bid(): int
     {
         return auth()->user()->business_id ?? Demo::bid();
@@ -127,28 +128,31 @@ class PosController extends Controller
      * عشرين ثانية، والكمية هي وحدها المتحرّكة. حمولة أخفّ عشرات المرّات
      * على شبكة متجر قد تكون بطيئة.
      */
-    public function stockFeed()
+    public function stockFeed(Request $request)
     {
         // نفس مصدر الشاشة عند فتحها: رصيد الفرع النشط. تغذيةٌ تقيس شيئًا
         // آخر غير ما عُرض أول مرّة تجعل الرقم يقفز بلا سبب ظاهر.
-        $available = Stock::availabilityResolver($this->bid(), Demo::activeBranchId());
+        $branch = Demo::activeBranchId();
+        $scope = TillStock::scope($this->bid(), $branch);
 
-        $products = Product::where('business_id', $this->bid())
-            ->orderBy('id')->get(['id', 'quantity', 'alert_qty', 'tracks_stock'])
-            ->map(function ($p) use ($available) {
-                $qty = $available($p->id, (int) $p->quantity);
+        /*
+         * ‏‏وما يعرفه الصندوق يُرسَل معه — فيُجاب بما تغيّر وحده (`TillStock`).
+         *
+         * وصندوقٌ فُتح لمتجرٍ أو فرعٍ غيرِ ما في الجلسة الآن (بُدّل في تبويبٍ
+         * آخر) يُقال له ذلك ولا يُعطى كميّاتٍ ليست لما على شاشته. والجلسةُ
+         * وحدها تختار ما يُقرأ: ما يرسله الصندوقُ يُقارَن به لا غير.
+         *
+         * وGET بلا شيء — صندوقٌ بنسخةٍ أقدم — يأخذ القائمةَ كلَّها كما كان.
+         */
+        $known = $request->isMethod('post') ? $request->only(['v', 'b', 'h', 'scope']) : [];
+        if (isset($known['scope']) && $known['scope'] !== $scope) {
+            return response()->json(['scope_changed' => true, 'scope' => $scope], 409);
+        }
 
-                return [
-                    'id' => $p->id,
-                    'qty' => $qty,
-                    'stock_status' => $p->stockStatusAt($qty),
-                ];
-            })->values();
-
-        return response()->json([
-            'products' => $products,
-            'updated_at' => now()->format('H:i:s'),
-        ]);
+        return response()->json(
+            TillStock::answer(TillStock::rows($this->bid(), $branch), $known, $scope)
+            + ['updated_at' => now()->format('H:i:s')],
+        );
     }
 
     /**
@@ -397,6 +401,21 @@ class PosController extends Controller
             'client_uuid' => ['nullable', 'string', 'max:64'],
             'redeem_points' => ['nullable', 'integer', 'min:0'],
             /*
+             * وما وافق عليه الكاشيرُ من خصم النقاط، وأهي بيعةٌ تُرسل الآن أم
+             * بيعةٌ اكتملت ووصلت من الطابور بعد انقطاع — انظر `resolveRedemption`.
+             */
+            'redeem_discount' => ['nullable', 'numeric', 'min:0'],
+            'replay' => ['nullable', 'boolean'],
+            /*
+             * وما قرأه الكاشيرُ إجماليًّا على الشاشة، ومتى اكتملت البيعةُ عنده،
+             * وبأيّ قواعد نقاطٍ حسب — انظر `assertScreenTotal` و`reviewOffline`.
+             * اختياريّةٌ كلُّها: بيعةٌ في طابور شاشةٍ أقدم لا تحملها، ورفضُها
+             * يُسقط بيعةً قُبض ثمنُها.
+             */
+            'expected_total' => ['nullable', 'numeric', 'min:0'],
+            'queued_at' => ['nullable', 'integer', 'min:0'],
+            'loyalty_rules' => ['nullable', 'array'],
+            /*
              * تفاصيل طلب الورد — اختياريّةٌ كلّها.
              *
              * بيعةُ المارّ يجب أن تبقى ثلاث نقرات: يضع الباقة، يضغط الدفع،
@@ -440,6 +459,30 @@ class PosController extends Controller
          */
         try {
             $result = $this->completeSale($data);
+        } catch (TotalChanged $e) {
+            /*
+             * والمبلغُ الصحيح يُردّ مع الرفض — يؤكّده الكاشيرُ ثمّ يدفع.
+             *
+             * لم يُكتب شيء. والشاشةُ الجديدة تعيد الإرسالَ بالمبلغ الذي أكّده
+             * (`expected_total`)؛ والقديمةُ تعرض الرسالة فيُعاد تحميلها.
+             */
+            return response()->json([
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+                'totals' => $e->totals,
+            ], 422);
+        } catch (RedemptionChanged $e) {
+            /*
+             * والعرضُ الصحيح يُردّ مع الرفض — لا رسالةٌ وحدها.
+             *
+             * الصندوقُ يكتب الرصيدَ والقواعدَ الجديدة في شاشته، ويُعيد السؤال
+             * «استخدام النقاط» أو «بدون خصم» بالأرقام الصحيحة. ولم يُكتب شيء.
+             */
+            return response()->json([
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+                'loyalty' => $e->offer,
+            ], 422);
         } catch (QueryException $e) {
             // وأيّ صنفٍ كان الاستثناء: الشاهد وجودُ التوأم لا اسمُ الخطأ
             $twin = filled($data['client_uuid'] ?? null)
@@ -482,7 +525,8 @@ class PosController extends Controller
              * أرخصُ من جلب قائمة العملاء كلِّها بعد كلّ بيعة.
              */
             'points_balance' => $result['loyalty']['balance'],
-        ]);
+            // الرابطُ الواحد واعتمادُ جهاز عميل البيعة — لمتجر سعود ومن يعمل على بوابته، ولبيعةٍ لها عميلٌ مسجَّل
+        ] + \App\Support\RibbonPortal\Portal::sale($request->user(), $order));
     }
 
     /**
@@ -620,12 +664,17 @@ class PosController extends Controller
                 }
                 $customer->forceFill(['language' => $data['customer_language']])->save();
             }
-            $redeem = $this->resolveRedemption($customer, $subtotal, $couponDiscount, (int) ($data['redeem_points'] ?? 0));
+            $redeem = $this->resolveRedemption(
+                $customer, $subtotal, $couponDiscount, (int) ($data['redeem_points'] ?? 0),
+                isset($data['redeem_discount']) ? (float) $data['redeem_discount'] : null,
+                (bool) ($data['replay'] ?? false),
+            );
 
             $discount = round(min($couponDiscount + $redeem['discount'], $subtotal), 3);
             // والمتجرُ يتحمّل خصمَه: لا يُباع بأقلّ ممّا للبوتيكات فيه
             BoutiqueDues::assertCovered($bid, $lines, $subtotal, $discount);
             $delivery = (float) ($data['delivery_fee'] ?? 0);
+            $gross = $subtotal;
             $tax = $this->taxFor($lines, $subtotal, $discount);
 
             /*
@@ -639,6 +688,7 @@ class PosController extends Controller
             }
 
             $total = round($subtotal - $discount + $tax + $delivery, 3);
+            $this->assertScreenTotal($data, $lines, $gross, $discount, $delivery, $total);
 
             /*
              * البيعُ الآجل — وشروطُه تُفحص قبل أن يُكتب صفٌّ واحد.
@@ -927,7 +977,12 @@ class PosController extends Controller
                 }
             }
 
-            $loyalty = $this->recordLoyalty($order, $customer, $redeem['points']);
+            $loyalty = $this->recordLoyalty($order, $customer, $redeem);
+
+            // وبيعةٌ اكتملت بلا اتصال (أو من شاشةٍ لم تقل ما خصمت): ما خالف قواعدَ اليوم يُكتب لصاحب المحلّ بسببه
+            if ($redeem['replay'] || (bool) ($data['replay'] ?? false)) {
+                $this->reviewOffline($order, $redeem, (int) $loyalty['redeemed'], $data);
+            }
 
             /*
              * والبيعة تصل إلى دفتر الأستاذ — لا إلى دفتر الصندوق وحده.
@@ -1023,6 +1078,8 @@ class PosController extends Controller
             'coupon_code' => ['nullable', 'string', 'max:40'],
             // معلّق = بانتظار الاستكمال الآن · محفوظ = مسودّة للرجوع إليها لاحقًا
             'kind' => ['nullable', 'in:hold,save'],
+            // ‏السلّةُ المعلّقة المستأنفة تُعلَّق في مكانها — انظر أدناه
+            'resume_id' => ['nullable', 'integer'],
             // والطلبُ المخصَّص يُعلَّق بموادّه — وإلّا عاد سطرًا بسعرٍ بلا مواد
         ] + CustomArrangement::rules('items.*.custom'));
         $saved = ($data['kind'] ?? 'hold') === 'save';
@@ -1039,25 +1096,58 @@ class PosController extends Controller
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
             $branch = $this->branch();
 
-            $order = $this->createNumbered([
-                'business_id' => $this->bid(),
-                'customer_name' => $data['customer'] ?? 'عميل نقدي',
-                'employee_name' => PosCashier::name(),
-                // المعرّف لا الاسم وحده: لوحة أداء الموظفين تجمع المبيعات
-                // على user_id، وكان لا يُكتب أصلًا فتظهر الأرقام أصفارًا
-                'user_id' => PosCashier::id(),
-                'branch_id' => $branch['id'],
-                'branch' => $branch['name'],
-                'status' => $saved ? 'محفوظ' : 'معلّق',
-                'is_held' => true,
-                'subtotal' => $subtotal,
-                'total' => $subtotal,
-                // الكود وحده يُحفظ لا قيمة خصمه: الطلب قد يُستكمل غدًا وقد
-                // يكون الكوبون انتهى أو نفدت مرات استخدامه، فيُعاد التحقق
-                // منه وقت الدفع لا وقت التعليق.
-                'coupon_code' => $data['coupon_code'] ?? null,
-                'ordered_at' => now(),
-            ], $saved ? 'SAVE-' : 'HOLD-');
+            /*
+             * ═══ والسلّةُ المستأنفة تُعلَّق في مكانها — لا نسخةً ثانية ═══
+             *
+             * كان «تعليق» سلّةٍ استُؤنفت يكتب طلبًا معلّقًا جديدًا، ويبقى الأصليُّ
+             * كما هو. فطلبُ الزبون الواحد صار طلبين في «الطلبات المعلّقة»،
+             * يُستكمل كلٌّ منهما فاتورةً: بضاعةٌ تُخصم مرّتين، وزبونٌ يُطالَب مرّتين.
+             *
+             * فتُكتب أصنافُه الجديدة على الطلب نفسِه، برقمه ومعرّفه ووقته. ويُحجز
+             * بقفلٍ كما يحجزه الدفع (`completeSale`): جهازان يستأنفانه معًا
+             * يصطفّان، فلا يصير طلبين. وإن لم يبقَ معلّقًا — دُفع أو حُذف من جهازٍ
+             * آخر — يُردّ التعليق ولا يُكتب شيء: طلبٌ جديدٌ بأصناف طلبٍ دُفع هو
+             * البيعةُ الثانية نفسُها. والسلّةُ تبقى على الشاشة.
+             */
+            if (! empty($data['resume_id'])) {
+                $order = $this->heldScope()->lockForUpdate()->find($data['resume_id']);
+
+                if (! $order) {
+                    throw ValidationException::withMessages([
+                        'resume_id' => __('هذه السلّة المعلّقة لم تعد معلّقة: أُتمّت أو حُذفت من جهازٍ آخر. لم يُعلَّق شيء، والسلّة باقية.'),
+                    ]);
+                }
+
+                // ‏وأصنافُه القديمة تُمحى بإضافاتها وموادّها (`cascadeOnDelete`) — كما يمحوها الدفعُ والحذف
+                $order->items()->delete();
+                $order->update([
+                    'customer_name' => $data['customer'] ?? 'عميل نقدي',
+                    'status' => $saved ? 'محفوظ' : 'معلّق',
+                    'subtotal' => $subtotal,
+                    'total' => $subtotal,
+                    'coupon_code' => $data['coupon_code'] ?? null,
+                ]);
+            } else {
+                $order = $this->createNumbered([
+                    'business_id' => $this->bid(),
+                    'customer_name' => $data['customer'] ?? 'عميل نقدي',
+                    'employee_name' => PosCashier::name(),
+                    // المعرّف لا الاسم وحده: لوحة أداء الموظفين تجمع المبيعات
+                    // على user_id، وكان لا يُكتب أصلًا فتظهر الأرقام أصفارًا
+                    'user_id' => PosCashier::id(),
+                    'branch_id' => $branch['id'],
+                    'branch' => $branch['name'],
+                    'status' => $saved ? 'محفوظ' : 'معلّق',
+                    'is_held' => true,
+                    'subtotal' => $subtotal,
+                    'total' => $subtotal,
+                    // الكود وحده يُحفظ لا قيمة خصمه: الطلب قد يُستكمل غدًا وقد
+                    // يكون الكوبون انتهى أو نفدت مرات استخدامه، فيُعاد التحقق
+                    // منه وقت الدفع لا وقت التعليق.
+                    'coupon_code' => $data['coupon_code'] ?? null,
+                    'ordered_at' => now(),
+                ], $saved ? 'SAVE-' : 'HOLD-');
+            }
 
             // حفظ الأصناف — بدونها لا يمكن استكمال الطلب لاحقًا. والمقاس
             // والإضافات معها: طلبٌ عُلّق بمقاسٍ وشوكولاتة يجب أن يعود كما
@@ -1128,7 +1218,7 @@ class PosController extends Controller
                 }
             }
 
-            return response()->json(['ok' => true, 'number' => $order->number]);
+            return response()->json(['ok' => true, 'number' => $order->number, 'id' => $order->id]);
         });
     }
 
@@ -1146,9 +1236,14 @@ class PosController extends Controller
      */
     private function heldOrder(int $id): Order
     {
+        return $this->heldScope()->with('items.addons')->findOrFail($id);
+    }
+
+    /** ‏السلالُ المعلّقة التي تراها هذه الجلسة: متجرُها، وفرعُها إن كان لها فرع */
+    private function heldScope(): \Illuminate\Database\Eloquent\Builder
+    {
         return Order::where('business_id', $this->bid())->where('is_held', true)
-            ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()))
-            ->with('items.addons')->findOrFail($id);
+            ->when(Demo::currentBranchId(), fn ($q) => $q->where('branch_id', Demo::currentBranchId()));
     }
 
     public function resume($id)
@@ -1157,6 +1252,8 @@ class PosController extends Controller
 
         session()->flash('resume_cart', [
             'id' => $order->id,
+            // ‏رقمُه يُعرض فوق السلّة: الكاشير يعرف أيَّ طلبٍ يُعدّل، وأنّ «إلغاء» لا يمحوه
+            'number' => $order->number,
             'customer' => $order->customer_name,
             'items' => $order->items->load('components')->map(fn ($i) => [
                 'id' => $i->product_id,
@@ -1335,47 +1432,106 @@ class PosController extends Controller
      */
     private function loyaltyOn(): bool
     {
-        if ((string) $this->setting('loyalty_enabled', '1') === '0') {
-            return false;
-        }
-
-        return PlanFeatures::allows(auth()->user()?->business, 'loyalty');
+        return Loyalty::on($this->bid());
     }
 
     /**
-     * كم نقطة تُستبدَل فعلًا وكم تساوي خصمًا — يُحتسب قبل بناء الفاتورة.
+     * كم نقطة تُستبدَل وكم تساوي خصمًا — يُحتسب قبل بناء الفاتورة.
      *
-     * يطابق سقف usePosCart: نسبة من المجموع الفرعي، ولا يتجاوز المتبقّي بعد الكوبون،
-     * ولا رصيد العميل. النقاط مالٌ فعلي، فلا تُؤخذ قيمة الخصم من العميل.
+     * ═══ بيعةٌ تُرسل الآن: ما وافق عليه الكاشيرُ أو لا شيء ═══
+     *
+     * الشاشةُ ترسل النقاطَ وقيمتَها كما عرضتهما (`redeem_discount`). فإن
+     * حسب الخادمُ غيرَهما — رصيدٌ صُرف في صندوقٍ آخر، أو قواعدُ تغيّرت —
+     * رُدّت البيعةُ بلا كتابة ومعها العرضُ الصحيح (`RedemptionChanged`).
+     * كان يُنقص الخصمَ صامتًا، فيُقبض من الزبون ما عُرض ويُكتب غيرُه.
+     *
+     * ═══ وبيعةٌ اكتملت ووصلت بعد انقطاع: لا تُردّ ولا يتغيّر مبلغُها ═══
+     *
+     * `replay` من طابور الشاشة: الزبونُ دفع وانصرف. فيُكتب الخصمُ الذي قُبض
+     * عليه — ولا يُزاد عليه، ولا يتجاوز ما بعد الكوبون — ويُصرف من الرصيد ما
+     * وُجد فيه لا أكثر، والفرقُ يُكتب للمراجعة (`recordLoyalty`). وطلبٌ بلا
+     * `redeem_discount` (شاشةٌ أقدم من هذا) يُعامَل كذلك: لا يُعرف أكانت
+     * البيعةُ قد اكتملت، ورفضُها يُسقطها من طابورها.
+     *
+     * @return array{points: int, discount: float, replay: bool, base: float, coupon: float}
      */
-    private function resolveRedemption(?Customer $customer, float $subtotal, float $couponDiscount, int $requested): array
+    private function resolveRedemption(?Customer $customer, float $subtotal, float $couponDiscount, int $requested, ?float $agreed, bool $replay): array
     {
-        $none = ['points' => 0, 'discount' => 0.0];
+        $none = ['points' => 0, 'discount' => 0.0, 'replay' => false, 'base' => $subtotal, 'coupon' => $couponDiscount];
 
-        if (! $customer || $requested <= 0 || ! $this->loyaltyOn()) {
+        if (! $customer || $requested <= 0) {
             return $none;
         }
 
-        // الحد الأدنى لبدء الاستبدال: تحته تتراكم النقاط فقط
-        $redeemMin = max(0, (int) $this->setting('loyalty_redeem_min', 100));
-        if ((int) $customer->points < $redeemMin) {
-            return $none;
+        $rules = Loyalty::rules($this->bid());
+
+        if ($agreed !== null && ! $replay) {
+            $quote = Loyalty::quote($rules, (int) $customer->points, $subtotal, $couponDiscount, $requested);
+
+            if ($quote['points'] !== $requested || abs($quote['discount'] - round($agreed, 3)) > 0.0005) {
+                throw $this->redemptionChanged($customer, $subtotal, $couponDiscount);
+            }
+
+            return ['points' => $requested, 'discount' => $quote['discount'], 'replay' => false] + $none;
         }
 
-        $maxPct = max(0, min(100, (int) $this->setting('loyalty_redeem_max_pct', 50)));
-        $cap = min($subtotal * $maxPct / 100, max(0.0, $subtotal - $couponDiscount));
+        /*
+         * وشاشةٌ أقدم لم تقل ما خصمت: كانت تحسب بالقواعد نفسِها على الرصيد
+         * الذي رأته، فيُقدَّر ما قُبض بقيمة النقاط المطلوبة بقواعد اليوم —
+         * حدُّها الأدنى وسقفُها وإطفاؤها — كأنّ الرصيدَ كان يحملها. وما لا
+         * تُجيزه القواعدُ أصلًا لا خصمَ له ولا صرف، كما كان.
+         */
+        if ($agreed === null) {
+            $estimate = Loyalty::quote($rules, $requested, $subtotal, $couponDiscount, $requested);
 
-        $points = min($requested, (int) $customer->points, (int) floor($cap * self::POINTS_PER_UNIT));
-        if ($points <= 0) {
-            return $none;
+            return $estimate['points'] > 0
+                ? ['points' => $estimate['points'], 'discount' => $estimate['discount'], 'replay' => true] + $none
+                : $none;
         }
 
-        return ['points' => $points, 'discount' => $points / self::POINTS_PER_UNIT];
+        // وما قالته الشاشةُ لا يتجاوز ما بقي بعد الكوبون: لا فاتورةَ بإجماليٍّ سالب
+        $charged = round(max(0.0, min(round($agreed, 3), round($subtotal - $couponDiscount, 3))), 3);
+
+        return ['points' => $requested, 'discount' => $charged, 'replay' => true] + $none;
     }
 
-    /** يقيّد الاستبدال والاكتساب على العميل بعد اكتمال الفاتورة */
-    private function recordLoyalty(Order $order, ?Customer $customer, int $redeemPoints): array
+    /** الرفضُ ومعه العرضُ الصحيح الآن — الرصيدُ كما في القاعدة، والقواعدُ كما تقرؤها الشاشة */
+    private function redemptionChanged(Customer $customer, float $subtotal, float $couponDiscount): RedemptionChanged
     {
+        $bid = $this->bid();
+        $balance = (int) Customer::whereKey($customer->id)->where('business_id', $bid)->value('points');
+        $offer = Loyalty::quote(Loyalty::rules($bid), $balance, $subtotal, $couponDiscount, null);
+        $currency = Money::of($bid);
+
+        $e = RedemptionChanged::withMessages([
+            'redeem_points' => $offer['points'] > 0
+                ? __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، والخصم المتاح :discount مقابل :points نقطة. أكّد من جديد قبل الدفع.', [
+                    'balance' => $balance, 'discount' => Money::format($offer['discount'], $currency), 'points' => $offer['points'],
+                ])
+                : __('تغيّر رصيد نقاط العميل أو قواعد الاستبدال — الرصيد الآن :balance نقطة، ولا خصمَ بالنقاط على هذه الفاتورة. أكمل البيع بلا خصم.', [
+                    'balance' => $balance,
+                ]),
+        ]);
+        $e->offer = [
+            'balance' => $balance,
+            'points' => $offer['points'],
+            'discount' => $offer['discount'],
+            'reason' => $offer['reason'],
+            'settings' => Loyalty::tillSettings($bid),
+        ];
+
+        return $e;
+    }
+
+    /**
+     * يقيّد الاستبدال والاكتساب على العميل بعد اكتمال الفاتورة.
+     *
+     * @param  array{points: int, discount: float, replay: bool, base: float, coupon: float}  $redeem
+     */
+    private function recordLoyalty(Order $order, ?Customer $customer, array $redeem): array
+    {
+        $requested = (int) $redeem['points'];
+
         /*
          * ولا رصيدَ يُقال حين لا يُسأل عنه — و`null` ليست صفرًا.
          *
@@ -1384,10 +1540,22 @@ class PosController extends Controller
          * هي تنتظر أن يُشغّل صاحبُ المحلّ البرنامج.
          */
         if (! $customer || ! $this->loyaltyOn()) {
+            // وبيعةٌ اكتملت بخصم نقاطٍ ثمّ وجدت البرنامجَ مُطفأً: لا تُصرف نقاط، وتُكتب للمراجعة (`reviewOffline`)
             return ['earned' => 0, 'redeemed' => 0, 'balance' => null];
         }
 
-        if ($redeemPoints > 0) {
+        $spent = 0;
+        if ($requested > 0 && $redeem['replay']) {
+            /*
+             * ما وُجد لا أكثر — ولا رصيدَ سالب (`Loyalty::spendUpTo`).
+             *
+             * واستبدالٌ أطفأه صاحبُ المحلّ بعد البيعة لا تُصرف فيه نقطة: لا
+             * حركةَ نقاطٍ تحت قاعدةٍ مُطفأة. يبقى الخصمُ كما قُبض، والقرارُ له.
+             */
+            if (Loyalty::rules($this->bid())['redeem']) {
+                $spent = Loyalty::spendUpTo($customer, $requested, 'استبدال عند البيع — فاتورة '.$order->number, ['order_id' => $order->id]);
+            }
+        } elseif ($requested > 0) {
             /*
              * الرصيد يُخصم بشرطه لا بطرحٍ أعمى.
              *
@@ -1396,26 +1564,20 @@ class PosController extends Controller
              * نقطة، وكلتاهما تطرح خمسمئة — فيصير رصيده سالبًا، ويكون قد اشترى
              * بخصمٍ لم يدفع ثمنه. والنقاط مالٌ لا عدّاد.
              *
-             * فالشرط في جملة التحديث نفسها: من سبق أخذ، ومن تأخّر يُردّ بلا
-             * فاتورةٍ ناقصة الثمن.
+             * فالشرط في جملة التحديث نفسها: من سبق أخذ، ومن تأخّر يُردّ — ومعه
+             * العرضُ الصحيح، فيسأل الكاشيرُ من جديد (`RedemptionChanged`).
              */
-            $taken = Customer::whereKey($customer->id)
-                ->where('points', '>=', $redeemPoints)
-                ->update(['points' => \DB::raw('points - '.$redeemPoints), 'updated_at' => now()]);
-
-            if (! $taken) {
-                throw ValidationException::withMessages([
-                    'redeem_points' => __('تغيّر رصيد نقاط العميل — أعد احتساب الاستبدال.'),
-                ]);
+            try {
+                Loyalty::spend($customer, $requested, 'استبدال عند البيع — فاتورة '.$order->number, ['order_id' => $order->id]);
+            } catch (ValidationException) {
+                throw $this->redemptionChanged($customer, $redeem['base'], $redeem['coupon']);
             }
-
-            $customer->refresh();
-            PointTransaction::record($customer, 'redeem', $redeemPoints, (int) $customer->points, $order->id, 'استبدال عند البيع — فاتورة '.$order->number);
+            $spent = $requested;
         }
 
         // اكتساب نقاط الشراء (على الإجمالي بعد الخصم)
         $earned = 0;
-        $rate = (float) $this->setting('loyalty_earn_rate', 5);
+        $rate = Loyalty::rules($this->bid())['earn_rate'];
         if ($rate > 0) {
             $earned = (int) floor((float) $order->total * $rate);
             if ($earned > 0) {
@@ -1425,7 +1587,15 @@ class PosController extends Controller
         }
 
         $order->points_earned = $earned;
-        $order->redeemed_points = $redeemPoints;
+        // وما صُرف فعلًا لا ما طُلب — فإلغاءُ البيعة يُعيد ما أُخذ لا أكثر (`OrderCorrection`)
+        $order->redeemed_points = $spent;
+        /*
+         * وما اشترته هذه النقاطُ يومَ بيعت: عددُها وخصمُها ومجموعُ البنود.
+         *
+         * منه يُقاس ما يعود منها إن أُرجع بعضُ البنود في يومها
+         * (`TillRedemption`) — ولا يُستنتج بعد أوّل تصحيح.
+         */
+        $order->loyalty_basis = TillRedemption::atSale($spent, $order->loyaltyDiscount(), (float) $redeem['base']);
         $order->save();
 
         /*
@@ -1435,18 +1605,193 @@ class PosController extends Controller
          * يكتب. وبين فتحِ البيعة وهذا السطر قد تقع بيعةٌ للزبون نفسه على
          * صندوقٍ آخر، فيصير المحفوظُ في الذاكرة غيرَ ما في القاعدة — والرقمُ
          * الذي يُعرض للكاشير هو ما يُستبدَل به غدًا.
-         *
-         * ولا حارسَ لهذه الحالة بعينها: تشابكُ صندوقين في لحظةٍ واحدة لا
-         * يُصطنع في اختبارٍ وظيفيّ. وهو مُصرَّحٌ به هنا لا مسكوتٌ عنه.
+         * يحرس التشابكَ `TwoHandsOnOneCustomersPointsAtOnceTest` على PostgreSQL.
          */
         return [
             'earned' => $earned,
-            'redeemed' => $redeemPoints,
+            'redeemed' => $spent,
             'balance' => (int) $customer->refresh()->points,
         ];
     }
 
+    /**
+     * بيعةٌ اكتملت بلا اتصال وفيها ما يخالف قواعدَ اليوم — تُكتب مخالفةً ماليّةً بسببها.
+     *
+     * ═══ ولا تُردّ ولا يُغيَّر مبلغُها، ولا دينَ على الزبون ═══
+     *
+     * الزبونُ دفع ما قيل له وانصرف (قرار المالك، المراجعة الثامنة). فيُكتب
+     * على الطلب ما طُلب وما صُرف، والخصمُ الذي قُبض عليه، وسقفُ اليوم، وما
+     * قُبض وما كُتب — وأسبابُ المخالفة واحدًا واحدًا:
+     *
+     *   - `program_off`    البرنامجُ أو الاستبدالُ مُطفأٌ حين وصلت.
+     *   - `balance_short`  رصيدُ الزبون حين وصلت لم يكفِ — صُرف من الرصيد ما وُجد فيه لا أكثر.
+     *   - `over_cap`       الخصمُ فوق سقف صاحب النشاط اليوم.
+     *   - `not_covered`    النقاطُ المصروفة لا تشتري اليوم الخصمَ كلَّه.
+     *   - `amount_mismatch` ما قُبض عند الصندوق غيرُ ما كتبه الخادم.
+     *
+     * ═══ وضوابطُ التحقّق: أتتّبع أرقامُ الشاشة القواعدَ التي قالت إنّها حسبت بها؟ ═══
+     *
+     * الشاشةُ ترسل قواعدَ النقاط التي حسبت بها (`loyalty_rules`). فيُعاد الحسابُ
+     * بها في الخادم:
+     *
+     *   - `rules_changed` أرقامُها تتّبع قواعدَها، وقواعدُها غيرُ قواعد اليوم —
+     *     تغيّرت بين فتح الشاشة والمزامنة. المخالفةُ مفهومةُ السبب.
+     *   - `suspected`     أرقامُها لا تتّبع حتى قواعدَها — لا تفسيرَ لها إلّا عبثٌ
+     *     أو عطب. لا تُعتمد قبل أن يتحقّق صاحبُ المحلّ.
+     *   - `unverified`    لم ترسل قواعدَها (طابورُ شاشةٍ أقدم)، أو تغيّرت الأسعارُ
+     *     معها فلا يُعاد حسابُها — لا يُعرف السبب.
+     *
+     * ويرنّ جرسُ صاحب المحلّ (`loyalty-review-`) بالسبب مكتوبًا، ويبقى مهمّةً حتى
+     * يُنجزها أحدٌ بيده — ويُحفظ من أنجزها ومتى (`notification_states`). ويُقيَّد
+     * في سجلّ النشاط.
+     *
+     * @param  array{points: int, discount: float, replay: bool, base: float, coupon: float}  $redeem
+     */
+    private function reviewOffline(Order $order, array $redeem, int $spent, array $data): void
+    {
+        $rules = Loyalty::rules($this->bid());
+        $requested = (int) $redeem['points'];
+        $discount = round((float) $redeem['discount'], 3);
+        $live = $rules['on'] && $rules['redeem'];
+        $reasons = [];
+        $covered = 0.0;
+        $gap = 0.0;
+        $cap = null;
+
+        if ($requested > 0) {
+            $covered = $spent > 0 && $live ? Loyalty::quote($rules, $spent, $redeem['base'], $redeem['coupon'], $spent)['discount'] : 0.0;
+            $gap = round($discount - $covered, 3);
+            $cap = Loyalty::cap($rules, $redeem['base'], max(0.0, round($redeem['base'] - $redeem['coupon'], 3)));
+
+            if (! $live) {
+                $reasons[] = 'program_off';
+            }
+            if ($spent < $requested) {
+                $reasons[] = 'balance_short';
+            }
+            if ($live && $discount - $cap > 0.0005) {
+                $reasons[] = 'over_cap';
+            }
+            if ($gap > 0.0005 && $reasons === []) {
+                $reasons[] = 'not_covered';
+            }
+        }
+
+        $collected = isset($data['expected_total']) ? round((float) $data['expected_total'], 3) : null;
+        if ($collected !== null && abs($collected - (float) $order->total) >= 0.0005) {
+            $reasons[] = 'amount_mismatch';
+        }
+
+        if ($reasons === []) {
+            return;
+        }
+
+        $claimed = Loyalty::claimedRules($data['loyalty_rules'] ?? null);
+        $agreed = isset($data['redeem_discount']) ? round((float) $data['redeem_discount'], 3) : null;
+        $context = match (true) {
+            $requested <= 0 => null,
+            $claimed === null || $agreed === null || in_array('amount_mismatch', $reasons, true) => 'unverified',
+            ! Loyalty::follows($claimed, $requested, $agreed, $redeem['base'], $redeem['coupon']) => 'suspected',
+            ! Loyalty::sameRules($claimed, $rules) => 'rules_changed',
+            default => null,
+        };
+
+        $order->loyalty_review = [
+            'requested_points' => $requested,
+            'spent_points' => $spent,
+            'discount' => $discount,
+            'covered' => $covered,
+            'gap' => max(0.0, $gap),
+            'program_on' => $live,
+            'at' => now()->toIso8601String(),
+            'reasons' => $reasons,
+            'context' => $context,
+            'cap' => $cap,
+            'collected' => $collected,
+            'recorded' => round((float) $order->total, 3),
+            'queued_at' => isset($data['queued_at']) ? Carbon::createFromTimestampMs((int) $data['queued_at'])->toIso8601String() : null,
+            'cashier' => $order->employee_name,
+        ];
+        $order->save();
+
+        Activity::log('updated', 'بيعة '.$order->number.' وصلت بعد انقطاع وفيها مخالفةٌ ماليّة تحتاج مراجعة ('
+            .implode('، ', $reasons).($context ? ' — '.$context : '').')', [
+                'subject_id' => $order->id, 'subject_type' => 'order',
+            ]);
+    }
+
+    /**
+     * ═══ ما قرأه الكاشيرُ على الشاشة هو ما يُكتب — أو تقف البيعةُ ويُسأل ═══
+     *
+     * الشاشةُ تحسب المبلغَ لتقبضه، والخادمُ يحسبه ليكتبه. فإن افترقا — سعرٌ
+     * تغيّر منذ فُتحت الشاشة، أو شاشةٌ أقدم من قاعدة الضريبة الواحدة
+     * (`VatLines`) — لا يُكتب رقمٌ غيرُ الذي قُبض: تُردّ البيعةُ بلا كتابة
+     * ومعها المبلغُ الصحيح، فيؤكّده الكاشيرُ ثمّ يدفع.
+     *
+     * والشاشةُ الجديدة ترسل ما قرأته (`expected_total`). والأقدمُ لا ترسله،
+     * فيُحسب ما كانت تقرؤه (`SaleLines::legacyTotal`): لا تقف إلّا حين كان
+     * مبلغُها سيفترق فعلًا — في سلّةٍ تقع ضريبتُها على نصف بيسة.
+     *
+     * وبيعةٌ اكتملت بلا اتصال لا تُردّ: قُبض ثمنُها، فيُكتب الفرقُ للمراجعة.
+     */
+    private function assertScreenTotal(array $data, array $lines, float $gross, float $discount, float $delivery, float $total): void
+    {
+        if ((bool) ($data['replay'] ?? false)) {
+            return;
+        }
+
+        $screen = isset($data['expected_total']);
+        $shown = $screen
+            ? round((float) $data['expected_total'], 3)
+            : $this->lines()->legacyTotal($lines, $gross, $discount, $delivery);
+
+        if (abs($shown - $total) < 0.0005) {
+            return;
+        }
+
+        $currency = Money::of($this->bid());
+        $words = ['total' => Money::format($total, $currency), 'shown' => Money::format($shown, $currency)];
+        $e = TotalChanged::withMessages([
+            'expected_total' => $screen
+                ? __('تغيّر مبلغ البيعة منذ فُتحت الشاشة: الصحيح :total لا :shown. راجعه مع العميل ثمّ اضغط الدفع مرّةً أخرى لتأكيده.', $words)
+                : __('شاشة الصندوق قديمة وتحسب :shown، والصحيح :total. أعد تحميل الصفحة ثمّ أكمل البيع.', $words),
+        ]);
+        $e->totals = ['total' => $total, 'shown' => $shown, 'stale_screen' => ! $screen];
+
+        throw $e;
+    }
+
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */
+    /**
+     * ‏سجلُّ المتجر بمعرّفات بيعات الطابور: أيُّها كتبه، وبأيّ فاتورةٍ ومبلغ.
+     *
+     * ═══ لماذا ═══
+     *
+     * بيعةُ الطابور اكتملت عند الصندوق وقُبض ثمنُها. وحين يردّ الخادمُ عليها
+     * بخطأ (500 بعد الحفظ، أو انقطاعٌ بعد أن كُتبت) لا يُعرف أكتبها أم لا. فيسأل
+     * الصندوقُ هنا قبل أن يعيدها أو يحكم عليها بأنّها مردودة — والمعرّفُ فريدٌ في
+     * المتجر (`orders_business_client_uuid_unique`)، فالجوابُ قاطع.
+     *
+     * قراءةٌ لا كتابة، ومن متجر الجلسة وحده: معرّفُ متجرٍ آخر لا يُرى ولو أُرسل.
+     * والمحذوفُ والملغى «مكتوبٌ» أيضًا — لا يُعاد إرسالُه فيُكتب ثانيةً.
+     */
+    public function outboxStatus(Request $request)
+    {
+        $data = $request->validate([
+            'uuids' => ['required', 'array', 'max:100'],
+            'uuids.*' => ['required', 'string', 'max:64'],
+        ]);
+
+        $saved = DB::table('orders')
+            ->where('business_id', $this->bid())
+            ->whereIn('client_uuid', array_values(array_unique($data['uuids'])))
+            ->get(['client_uuid', 'number', 'total'])
+            ->mapWithKeys(fn ($row) => [$row->client_uuid => ['invoice' => $row->number, 'total' => round((float) $row->total, 3)]]);
+
+        return response()->json(['saved' => (object) $saved->all()], 200, [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     private function notifyNewOrder(Order $order): void
     {
         $business = Business::find($this->bid());

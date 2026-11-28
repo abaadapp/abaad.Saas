@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Plan extends Model
@@ -27,6 +28,32 @@ class Plan extends Model
     protected $guarded = [];
 
     protected $casts = ['features' => 'array', 'capabilities' => 'array', 'is_popular' => 'boolean', 'monthly_price' => 'decimal:3', 'yearly_price' => 'decimal:3'];
+
+    /**
+     * قطاعُ الباقة يُختم عند إنشائها ولا يتبدّل وعليها شركات.
+     *
+     * باقةٌ تُنقل إلى قطاعٍ آخر تأخذ معها شركاتٍ من غير قطاعها — فتصير
+     * باقةُ الشركة من قطاعٍ ليس قطاعها بلا أن يمسّ أحدٌ الشركة.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Plan $plan) {
+            if (blank($plan->sector_id)) {
+                $plan->sector_id = \App\Support\Sectors::retail()->id;
+            }
+        });
+
+        static::updating(function (Plan $plan) {
+            if ($plan->isDirty('sector_id') && $plan->businesses()->exists()) {
+                throw new \DomainException(__('على هذه الباقة شركات — لا تُنقل إلى قطاعٍ آخر.'));
+            }
+        });
+    }
+
+    public function sector(): BelongsTo
+    {
+        return $this->belongsTo(Sector::class);
+    }
 
     public function businesses(): HasMany
     {

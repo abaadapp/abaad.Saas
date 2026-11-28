@@ -43,6 +43,8 @@ export interface BoutiqueReturnsPart {
     /** أوراقٌ لم تُسدَّد قُيّدت يومَ صدورها — منها وحدها يُخصم */
     targets: { id: number; number: string; payable: number }[];
     can_decide: boolean;
+    /** استلامُ المال ومقاصّتُه — بإذن السداد لا بالقراءة */
+    can_receive?: boolean;
 }
 
 const METHODS = ['نقدي', 'تحويل', 'بطاقة', 'شيك'];
@@ -146,7 +148,7 @@ export default function ReturnsPanel({ boutiqueId, terms, termsRef, part, curren
                 </ul>
             )}
 
-            {part.open > 0 && part.can_decide && (
+            {part.open > 0 && part.can_decide && (part.can_receive ?? part.can_decide) && (
                 <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3">
                     <p className="text-[12px] text-[#6b7280]">{t('للمتجر على البوتيك عن مرتجعات بعد السداد')}</p>
                     <p className="text-[20px] font-bold tabular-nums text-[#047857]" data-testid="boutique-returns-open">{m(part.open)}</p>

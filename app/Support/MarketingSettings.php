@@ -145,6 +145,14 @@ class MarketingSettings
              * والنصُّ نفسُه في نسخه (`store_terms_versions`) لا هنا. انظر `Store\StoreTerms`.
              */
             'store_terms_on' => '0',
+            /*
+             * والصفحاتُ القانونيّة — الاسمُ القانونيّ وبريدُ التواصل يُملأ بهما
+             * قالبُها، و«الشروطُ صفحةٌ عامّة» حين نُشرت من شاشتها. والنصُّ في
+             * نسخه (`store_legal_versions`) لا هنا. انظر `Store\StoreLegal`.
+             */
+            'store_legal_name' => '',
+            'store_legal_email' => '',
+            'store_terms_public' => '0',
             'store_pay_cod' => '1',
             'store_pay_transfer' => '0',
             'store_bank' => '',
@@ -442,6 +450,13 @@ class MarketingSettings
             'store_seo_title_en' => '',
             'store_seo_desc_en' => '',
             'store_seo_index' => '1',
+            /*
+             * ووقتُ آخرِ حفظٍ من «الظهور في البحث» — يُقال تحت زرّ الحفظ.
+             *
+             * فارغُه يعني أنّ صاحبه لم يحفظ من الشاشة بعد، لا أنّ شيئًا نقص:
+             * قيمُه الأخرى قائمةٌ كما كانت. انظر `Store\StoreSeo::save`.
+             */
+            'store_seo_saved_at' => '',
         ],
         /*
          * ولا مقبضَ هنا لا يقرؤه المُرسِل — ولا حدثَ يقرؤه ولا مقبضَ له.
@@ -584,12 +599,11 @@ class MarketingSettings
         'seo' => [
             'ga_measurement_id' => '',
         ],
-        'loyalty' => [
-            'loyalty_enabled' => '1',
-            'loyalty_earn_rate' => '5',
-            'loyalty_redeem_max_pct' => '50',
-            'loyalty_redeem_min' => '100',
-        ],
+        /*
+         * والولاءُ يقرأ افتراضاتِه من بابه (`Loyalty::DEFAULTS`) — وهي ما كان
+         * يعمل به كلُّ متجرٍ قبل أن يصير الصرفُ والحدُّ إعدادًا.
+         */
+        'loyalty' => Loyalty::DEFAULTS,
     ];
 
     /**

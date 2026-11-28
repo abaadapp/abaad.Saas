@@ -20,6 +20,8 @@ window.RBGallery = (function () {
 
         function pick(i) {
             var b = thumbs[i]; if (!b) return;
+            // ‏وأحجامُها معها — `srcset` يسبق `src`، فصورةٌ بقي لها ما قبلها لا تتبدّل
+            if (b.dataset.srcset) main.srcset = b.dataset.srcset; else main.removeAttribute('srcset');
             main.src = b.dataset.src;
             thumbs.forEach(function (t, j) {
                 t.classList.toggle('is-on', j === i);

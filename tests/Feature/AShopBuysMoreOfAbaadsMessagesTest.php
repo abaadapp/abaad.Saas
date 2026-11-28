@@ -12,7 +12,6 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WhatsAppMessagePack;
 use App\Support\Billing;
-use App\Support\SectionActions;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppPacks;
@@ -276,8 +275,7 @@ class AShopBuysMoreOfAbaadsMessagesTest extends TestCase
      */
     public function test_a_clerk_granted_the_integrations_section_still_cannot_commit_to_money(): void
     {
-        // موظّفٌ قائمٌ مُنح القسم: معه ما كان القسمُ يبيحه — `SectionActions::withActionsOf`
-        $this->cashier->update(['permissions' => SectionActions::withActionsOf(['integrations'])]);
+        $this->cashier->update(['permissions' => ['integrations']]);
 
         $this->actingAs($this->cashier->fresh())
             ->post(route('admin.integrations.whatsapp.packs.request'))

@@ -144,18 +144,28 @@ final class PrintJobs
         return $job;
     }
 
+    /** ما يتبع مهمّتَه إلى فرعها الجديد — لم يخرج ولا يحجزه صندوقٌ الآن */
+    public const FOLLOWS = [PrintJob::PENDING, PrintJob::FAILED, PrintJob::CANCELLED];
+
     /**
-     * ورقةٌ تنتظر وقد نُقلت مهمّتُها إلى فرعٍ آخر — تتبعها إلى صندوقه.
+     * ورقةٌ لم تخرج وقد نُقلت مهمّتُها إلى فرعٍ آخر — تتبعها إلى صندوقه.
      *
-     * المنتظِرةُ وحدها: ما يحجزه صندوقٌ الآن قد يخرج في هذه اللحظة، وما خرج
-     * تُكتب له ورقةٌ جديدة. والشرطُ في الكتابة نفسِها — حجزٌ سبق لا يُنتزع.
+     * المنتظِرةُ تُطبع هناك. والتي فشلت أو أُلغيت تبقى بحالها، وإن أُعيدت بيد
+     * (`requeue`) ذهبت إلى صندوق الفرع الجديد لا القديم: `target` يقرأ فرعَ
+     * الورقة. وما يحجزه صندوقٌ الآن قد يخرج في هذه اللحظة، وما خرج تُكتب له
+     * ورقةٌ جديدة. والشرطُ في الكتابة نفسِها، على الحال كما قُرئت — حجزٌ سبق
+     * لا يُنتزع.
      */
     public static function followBranch(PrintJob $job, int $branchId): bool
     {
+        if (! in_array($job->status, self::FOLLOWS, true)) {
+            return false;
+        }
+
         $device = self::designatedDevices((int) $job->business_id, $branchId)->first();
 
         $done = PrintJob::whereKey($job->id)
-            ->where('status', PrintJob::PENDING)
+            ->where('status', $job->status)
             ->update(['branch_id' => $branchId, 'pos_device_id' => $device?->id, 'updated_at' => now()]);
 
         if ($done === 1) {

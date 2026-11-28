@@ -9,7 +9,6 @@ use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
-use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -185,7 +184,7 @@ class TrashRestoreTest extends TestCase
         $clerk = User::create([
             'business_id' => $this->business->id, 'name' => 'موظف', 'email' => 'clerk@abaad.om',
             'role' => 'cashier', 'job_title' => 'كاشير', 'status' => 'نشط', 'password' => 'x',
-            'permissions' => SectionActions::withActionsOf(['products']),
+            'permissions' => ['products'],
         ]);
 
         $this->actingAs($clerk)

@@ -16,7 +16,8 @@
         <div data-testid="rb-gallery">
             <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
                 @if (count($gallery))
-                    <img src="{{ $gallery[0] }}" alt="{{ $product['name'] }}" class="rb-pfit" style="width:100%;height:100%;display:block" data-rb-main data-testid="rb-main-image">
+                    @php($rbSet = \App\Support\ImageVariants::srcset($gallery[0]))
+                    <img src="{{ $gallery[0] }}" @if ($rbSet) srcset="{{ $rbSet }}" sizes="(min-width: 1024px) 50vw, 100vw" @endif alt="{{ $product['name'] }}" fetchpriority="high" decoding="async" class="rb-pfit" style="width:100%;height:100%;display:block" data-rb-main data-testid="rb-main-image">
                 @else
                     <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
                 @endif
@@ -24,8 +25,9 @@
             @if (count($gallery) > 1)
                 <div class="rb-thumbs" role="group" aria-label="{{ $t['photos'] }}" data-rb-thumbs data-testid="rb-thumbs">
                     @foreach ($gallery as $i => $src)
-                        <button type="button" class="rb-thumb{{ $i === 0 ? ' is-on' : '' }}" data-src="{{ $src }}" aria-pressed="{{ $i === 0 ? 'true' : 'false' }}" aria-label="{{ strtr($t['showPhoto'], [':n' => $i + 1, ':total' => count($gallery)]) }}" data-testid="rb-thumb">
-                            <img src="{{ $src }}" alt="" loading="lazy">
+                        <button type="button" class="rb-thumb{{ $i === 0 ? ' is-on' : '' }}" data-src="{{ $src }}" aria-pressed="{{ $i === 0 ? 'true' : 'false' }}" aria-label="{{ strtr($t['showPhoto'], [':n' => $i + 1, ':total' => count($gallery)]) }}" data-testid="rb-thumb" @if ($rbThumbSet = \App\Support\ImageVariants::srcset($src)) data-srcset="{{ $rbThumbSet }}" @endif>
+                            {{-- المصغّرةُ في الشريط — والصورةُ بحجمها تُفتح في الإطار (`data-src`) --}}
+                            <img src="{{ \App\Support\ImageVariants::link($src, \App\Support\ImageVariants::THUMB) }}" alt="" loading="lazy" decoding="async">
                         </button>
                     @endforeach
                 </div>
@@ -187,7 +189,7 @@
                     <button type="button" class="rb-btn" style="flex:1;min-width:200px;height:48px" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
                 </div>
             @else
-                <div style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">{{ $t['soldOut'] }}</div>
+                <div style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">@if ($product['sold_out'] ?? false)<strong data-testid="rb-soldout-manual">{{ $t['soldOutTag'] }}</strong> — {{ $t['notOrderable'] }}@else{{ $t['soldOut'] }}@endif</div>
             @endif
             {{--
                 ═══ تنبيهُ الصورة تحت زرّ الإضافة مباشرةً ═══

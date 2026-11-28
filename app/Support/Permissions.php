@@ -153,45 +153,48 @@ class Permissions
     public const CUSTOMER_CREDIT_NOTE = 'customerCreditNote.create';
 
     /*
-     * ═══ وتعديلُ الفاتورة بعد كتابتها — أربعةُ أفعالٍ بحال الورقة ═══
+     * ═══ وتعديلُ الفاتورة وتصحيحُها — أربعةُ أفعالٍ بحال الورقة ═══
      *
-     * المسودّةُ لا ذمّةَ لها ولا قيد، فتعديلُها كتابتُها. والصادرةُ تعديلُها
-     * عكسُ قيدٍ وترحيلُ غيره وذمّةٌ تتغيّر. والمدفوعةُ يقع تعديلُها على مالٍ
-     * قُبض: يصير باقيًا أو فائضًا للعميل. والفترةُ السابقةُ أو المقفلةُ يُكتب
-     * تصحيحُها في فترةٍ غير فترتها. فهي أربعةُ قراراتٍ لا قرارٌ واحد، ولا
-     * يُورَث أحدُها بقسم «المبيعات» ولا بفعل الإصدار (`CustomerInvoiceEdits`).
+     * المسودّةُ لا ذمّةَ لها ولا قيد، فتعديلُها كتابتُها. والصادرةُ لا تُعاد
+     * كتابتُها: تصحيحُها مستندٌ ضريبيٌّ مستقلّ — إشعارٌ دائنٌ لما نقص ومدينٌ لما
+     * زاد — بقيده في يومه وذمّةٍ تتغيّر. والمدفوعةُ يقع تصحيحُها على مالٍ قُبض:
+     * يصير باقيًا أو رصيدًا للعميل. والفاتورةُ من فترةٍ سابقةٍ أو مقفلة يقع
+     * أثرُ تصحيحها الضريبيُّ في فترة المستند لا فترتها. فهي أربعةُ قراراتٍ لا
+     * قرارٌ واحد، ولا يُورَث أحدُها بقسم «المبيعات» ولا بفعل الإصدار
+     * (`CustomerInvoiceEdits`).
      */
 
     /** تعديلُ مسودّة — لا ذمّةَ ولا قيد */
     public const CUSTOMER_INVOICE_EDIT_DRAFT = 'customerInvoice.editDraft';
 
-    /** تعديلُ فاتورةٍ صادرةٍ لم يُدفع منها شيء — قيدُها يُعكس ويُرحَّل غيرُه */
+    /** تصحيحُ فاتورةٍ صادرةٍ لم يُدفع منها شيء — بإشعارٍ دائنٍ أو مدين، والفاتورةُ كما صدرت */
     public const CUSTOMER_INVOICE_EDIT_ISSUED = 'customerInvoice.editIssued';
 
-    /** تعديلُ فاتورةٍ دُفع منها شيءٌ أو كلُّها — والمقبوضُ لا يُمسّ */
+    /** تصحيحُ فاتورةٍ دُفع منها شيءٌ أو كلُّها — والمقبوضُ لا يُمسّ */
     public const CUSTOMER_INVOICE_EDIT_PAID = 'customerInvoice.editPaid';
 
-    /** تصحيحُ فاتورةٍ قيدُها في شهرٍ مضى أو فترةٍ مقفلة — يُكتب في فترةٍ مفتوحة */
+    /** تصحيحُ فاتورةٍ من شهرٍ مضى أو فترةٍ مقفلة — مستندُه في الفترة الحاليّة */
     public const CUSTOMER_INVOICE_CORRECT_PERIOD = 'customerInvoice.correctPeriod';
 
-    /** قراءةُ سجلّ تعديلات الفواتير — ما كانت عليه الورقةُ ومن غيّرها ولماذا */
+    /** قراءةُ سجلّ تعديلات الفواتير — ما كانت عليه الورقةُ ومن صحّحها ولماذا وبأيّ مستند */
     public const CUSTOMER_INVOICE_HISTORY = 'customerInvoice.history';
 
     /**
-     * تعديلُ بيانات التجهيز والتسليم من لوحة التجهيز — الموعدُ والمستلِمُ والعنوانُ
-     * والفرعُ والبطاقة، لمهمّةٍ لم تُسلَّم. لا مالَ فيه: لا بندَ ولا سعرَ ولا ضريبةَ
-     * ولا تحصيل (`CustomerInvoicePreparations::save`).
-     */
-    public const CUSTOMER_INVOICE_PREPARATION_EDIT = 'customerInvoice.preparation.edit';
-
-    /**
-     * اعتمادُ تصحيحٍ ماليّ طلبه غيرُه — حين يفتح صاحبُ النشاط الاعتمادَ الثنائيّ.
+     * اعتمادُ تصحيحٍ ماليّ طلبه غيرُه — حين يُشعل صاحبُ النشاط الاعتمادَ الثنائيّ.
      *
      * فعلٌ جديد لا ينفصل عن قسم: لم يكن أحدٌ يعتمد شيئًا قبله. فلا يرثه إلّا
-     * صاحبُ النشاط، ولا تمنحه هجرة، ولا يعتمد به أحدٌ طلبَه هو
+     * صاحبُ النشاط بدوره، ولا تمنحه هجرة، ولا يعتمد به أحدٌ طلبَه هو
      * (`FinancialCorrections::approve`).
      */
     public const FINANCIAL_CORRECTION_APPROVE = 'financialCorrection.approve';
+    /**
+     * تصحيحُ رصيد نقاط العميل بيدٍ إداريّة — زيادةً أو نقصًا، بسببٍ مكتوب.
+     *
+     * ليس استبدالًا: لا يُنتج خصمًا ولا مالًا. الاستبدالُ مقابل خصمٍ بابُه
+     * الصندوقُ وفاتورةُ العميل وحدهما، بقواعد التاجر (`Loyalty::quote`).
+     * ولهذا الفعل اسمُه: يُمنح للمالك افتراضًا، ولغيره باسمه.
+     */
+    public const CUSTOMER_POINTS_ADJUST = 'customerPoints.adjust';
 
     /** تسجيلُ تحصيل — مالٌ يدخل، وهو فعلٌ غيرُ الإصدار */
     public const CUSTOMER_PAYMENT_CREATE = 'customerPayment.create';
@@ -278,6 +281,16 @@ class Permissions
     public const PREPARATION_CANCEL = 'preparation.cancel';
 
     /**
+     * تعديلُ بيانات التجهيز والتسليم من لوحة التجهيز — الموعدُ والمستلِمُ والعنوانُ
+     * والفرعُ والبطاقة، لمهمّة فاتورة عميلٍ لم تُسلَّم. لا مالَ فيه: لا بندَ ولا
+     * سعرَ ولا ضريبةَ ولا تحصيل (`CustomerInvoicePreparations::save`).
+     *
+     * فعلٌ جديد لم يملكه أحدٌ قبله: فلا يُورَث بقسم «لوحة التجهيز» ولا بدور
+     * مدير الفرع، ولا تمنحه هجرة. لصاحب النشاط بدوره، ومن سواه يُمنحه باسمه.
+     */
+    public const CUSTOMER_INVOICE_PREPARATION_EDIT = 'customerInvoice.preparation.edit';
+
+    /**
      * قيدٌ مبسّط من نقطة البيع — مالٌ يخرج من الدرج أو يدخله بغير بيع.
      *
      * فعلٌ لا قسم: من يفتح «نقطة البيع» ليبيع لا يعني أنّه يُخرج من الدرج
@@ -351,6 +364,7 @@ class Permissions
         self::WEBSITE_CONFIGURE => 'ضبط الموقع: التصميم والصفحات والنطاق',
         self::ORDER_WEBSITE_NOTIFY => 'تنبيهُ طلبات الموقع الإلكتروني',
         self::PREPARATION_CANCEL => 'إلغاء طلب مبيعات',
+        self::CUSTOMER_INVOICE_PREPARATION_EDIT => 'تعديل بيانات التجهيز والتسليم',
         self::POS_MOVEMENT => 'قيد مبسّط من نقطة البيع',
         /*
          * ائتمانُ العميل: وضعُ حدّه وتجاوزُه — فعلٌ واحدٌ لا فعلان.
@@ -428,12 +442,13 @@ class Permissions
         self::CUSTOMER_INVOICE_ISSUE => 'إصدار فاتورة عميل',
         self::CUSTOMER_INVOICE_CANCEL => 'إلغاء فاتورة عميل صادرة',
         self::CUSTOMER_INVOICE_EDIT_DRAFT => 'تعديل فاتورة عميل مسودة',
-        self::CUSTOMER_INVOICE_EDIT_ISSUED => 'تعديل فاتورة عميل صادرة غير مدفوعة',
-        self::CUSTOMER_INVOICE_EDIT_PAID => 'تعديل فاتورة عميل مدفوعة جزئيًا أو كليًا',
+        self::CUSTOMER_INVOICE_EDIT_ISSUED => 'تصحيح فاتورة عميل صادرة غير مدفوعة',
+        self::CUSTOMER_INVOICE_EDIT_PAID => 'تصحيح فاتورة عميل مدفوعة جزئيًا أو كليًا',
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة عميل من فترة سابقة أو مقفلة',
-        self::CUSTOMER_INVOICE_HISTORY => 'عرض سجل تعديلات فواتير العملاء',
-        self::CUSTOMER_INVOICE_PREPARATION_EDIT => 'تعديل بيانات التجهيز والتسليم',
+        self::CUSTOMER_INVOICE_HISTORY => 'عرض سجل تعديلات وتصحيحات فواتير العملاء',
+        self::FINANCIAL_CORRECTION_APPROVE => 'اعتماد تصحيح مالي طلبه موظف آخر',
         self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
+        self::CUSTOMER_POINTS_ADJUST => 'تصحيح رصيد نقاط العميل',
         self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
         self::CUSTOMER_PAYMENT_CANCEL => 'إلغاء تحصيل عميل',
         self::PAYMENT_LINK_CREATE => 'إنشاء روابط الدفع',
@@ -446,9 +461,6 @@ class Permissions
         self::TRANSFER_RECEIVE => 'تأكيد استلام التحويل',
         self::TRANSFER_RESOLVE => 'معالجة فرق الاستلام',
         self::SUPPLY_CREATE => 'إنشاء طلب تزويد',
-        self::FINANCIAL_CORRECTION_APPROVE => 'اعتماد تصحيح مالي طلبه موظف آخر',
-        // وما يُفعل داخل كلّ قسم — انفصل عن القسم ولم يُضَف إليه (`SectionActions`)
-        ...SectionActions::LABELS,
     ];
 
     /**
@@ -477,6 +489,8 @@ class Permissions
         self::ORDER_WEBSITE_NOTIFY => ['admin', 'manager', 'sales', 'delivery'],
         // والإلغاءُ من اللوحة للمالك والمدير — ومن يجهّز يُمنحه باسمه إن أُريد
         self::PREPARATION_CANCEL => ['admin', 'manager'],
+        // وتعديلُ التسليم من اللوحة لصاحب النشاط وحده — ومن يجهّز يُمنحه باسمه
+        self::CUSTOMER_INVOICE_PREPARATION_EDIT => ['admin'],
         // والقيدُ من الدرج للمالك والمدير — والكاشيرُ يُمنحه باسمه
         self::POS_MOVEMENT => ['admin', 'manager'],
         // والكاشير لا يتجاوز حدًّا وضعه صاحبُ المتجر: يطلبه ممّن وضعه
@@ -547,6 +561,8 @@ class Permissions
          */
         self::PAYMENT_LINK_CREATE => ['admin', 'manager', 'accountant'],
         self::CUSTOMER_CREDIT_NOTE => ['admin', 'manager', 'accountant'],
+        // وتصحيحُ رصيد النقاط للمالك وحده بدوره — وغيرُه يُمنحه باسمه
+        self::CUSTOMER_POINTS_ADJUST => ['admin'],
         self::CUSTOMER_INVOICE_CANCEL => ['admin', 'manager'],
         /*
          * وتعديلُ الفاتورة: المسودّةُ لمن يكتبها بقسمه — والبائعُ يكتبها اليوم.
@@ -561,8 +577,8 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => ['admin'],
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => ['admin'],
         self::CUSTOMER_INVOICE_HISTORY => ['admin', 'manager', 'accountant'],
-        // ومن يجهّز يُمنحه باسمه — لا يُورَث مع اللوحة ولا يمنحه ترحيل
-        self::CUSTOMER_INVOICE_PREPARATION_EDIT => ['admin', 'manager'],
+        // والاعتمادُ لصاحب النشاط وحده بدوره — وغيرُه يُمنحه باسمه، ولا يعتمد أحدٌ طلبَه
+        self::FINANCIAL_CORRECTION_APPROVE => ['admin'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
         self::PAYROLL_PAY => ['admin', 'manager'],
@@ -575,8 +591,6 @@ class Permissions
         self::TRANSFER_RECEIVE => ['admin', 'manager', 'inventory'],
         self::TRANSFER_RESOLVE => ['admin'],
         self::SUPPLY_CREATE => ['admin', 'manager'],
-        self::FINANCIAL_CORRECTION_APPROVE => ['admin'],
-        ...SectionActions::ROLES,
     ];
 
     /**
@@ -713,10 +727,22 @@ class Permissions
         };
     }
 
-    /** أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط وحده */
+    /**
+     * أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط، أو مديرُه المخوَّل.
+     *
+     * والمخوَّلُ من خوّله صاحبُ النشاط: مديرٌ (`isAdmin`) يملك قسمَ الموظّفين،
+     * ومنحه صاحبُ النشاط الردَّ على المحادثات بنفسه. فالمالكُ يقرّر من يدير
+     * المحادثات بقرارٍ واحد يُرى في ملفّ ذلك المدير — ولا يمنحها مديرٌ لا يملكها،
+     * ولا يرفع أحدٌ صلاحيته هو (`EmployeeController::inboxGrant`).
+     */
     public static function grantsInbox(?User $actor): bool
     {
-        return self::isOwner($actor);
+        if (self::isOwner($actor)) {
+            return true;
+        }
+
+        return $actor !== null && $actor->business_id !== null && $actor->isAdmin()
+            && $actor->allows('employees') && self::inboxMay($actor, self::INBOX_REPLY);
     }
 
     /**
@@ -848,13 +874,14 @@ class Permissions
         self::BUSINESS_EXPORT => 'تنزيل النسخة الاحتياطية الكاملة وأرشيف الشهر والأسبوع: فيها كلّ الفروع والرواتب وأسعار الشراء والعملاء والدفتر. لصاحب النشاط وحده، ولا يُمنح بقسم «الإعدادات» ولا بالدور.',
         self::CUSTOMER_PAYMENT_CANCEL => 'إلغاء سند قبض مسجَّل بسببٍ يُكتب، وتسجيل ارتداد الشيك: يُعكس قيدُه ويعود الدَّين على العميل. لا يُمنح بقسم «المالية» ولا بتسجيل التحصيل.',
         self::PAYMENT_LINK_CREATE => 'إنشاء رابط دفع Paymob لفاتورة عميل أو لعميل، ونسخه وإرساله. لا يسجّل تحصيلًا ولا يفتح شاشات المالية ولا إعدادات Paymob ولا يلغي رابطًا — والمال يُسجَّل حين تؤكّد Paymob الدفع وحدها.',
+        self::CUSTOMER_INVOICE_PREPARATION_EDIT => 'من لوحة التجهيز: تعديل موعد التسليم والمستلم وهاتفه والعنوان والفرع ونوع التسليم والتعليمات والملاحظات وبطاقة الهدية لمهمة فاتورة عميل لم تُسلَّم، ولو بعد سدادها. لا يغيّر بندًا ولا سعرًا ولا ضريبة ولا تحصيلًا.',
         self::PREPARATION_CANCEL => 'إلغاء الطلب من صفحته في «المبيعات» أو من لوحة التجهيز: يعيد المخزون والنقاط والكوبون ويعكس قيد الإيراد.',
         self::CUSTOMER_INVOICE_EDIT_DRAFT => 'تعديل بنود المسودة وعميلها وتواريخها قبل الإصدار. لا قيد ولا ذمة.',
-        self::CUSTOMER_INVOICE_EDIT_ISSUED => 'تعديل فاتورة صادرة لم يُدفع منها شيء: يُعكس قيدها ويُرحّل بالمبلغ الجديد، ويُكتب السبب في سجل التعديلات. رقم الفاتورة لا يتغير.',
-        self::CUSTOMER_INVOICE_EDIT_PAID => 'تعديل فاتورة دُفع منها جزء أو كلها: المقبوض لا يُمس، والفرق يصير باقيًا على العميل أو رصيدًا دائنًا له. لا يُرد مال تلقائيًا.',
-        self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة قيدها في شهر مضى أو فترة مقفلة: يُكتب التصحيح في الفترة الحالية بسبب مكتوب، ولا تُمس الفترة المقفلة.',
-        self::CUSTOMER_INVOICE_HISTORY => 'قراءة ما كانت عليه الفاتورة قبل كل تعديل ومن عدّلها ومتى ولماذا، وقيود التصحيح.',
-        self::CUSTOMER_INVOICE_PREPARATION_EDIT => 'من لوحة التجهيز: تعديل موعد التسليم والمستلم وهاتفه والعنوان والفرع ونوع التسليم والتعليمات والملاحظات وبطاقة الهدية لمهمة فاتورة عميل لم تُسلَّم، ولو بعد سدادها. لا يغيّر بندًا ولا سعرًا ولا ضريبة ولا تحصيلًا.',
+        self::CUSTOMER_INVOICE_EDIT_ISSUED => 'تصحيح فاتورة صادرة لم يُدفع منها شيء: تبقى الفاتورة كما صدرت، ويصدر إشعار دائن لما نقص أو إشعار مدين لما زاد برقمه وتاريخه وقيده. وإلغاؤها وإصدار بديلة لعميل آخر يحتاج معه «إلغاء فاتورة عميل صادرة».',
+        self::CUSTOMER_INVOICE_EDIT_PAID => 'تصحيح فاتورة دُفع منها جزء أو كلها بإشعار دائن أو مدين: المقبوض لا يُمس، والفرق يصير باقيًا على العميل أو رصيدًا دائنًا له. لا يُرد مال تلقائيًا.',
+        self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة من شهر مضى أو فترة مقفلة: يصدر مستند التصحيح بتاريخ اليوم وأثره في الفترة الحالية، ولا تُمس الفترة المقفلة.',
+        self::CUSTOMER_INVOICE_HISTORY => 'قراءة ما كانت عليه الفاتورة قبل كل تعديل وتصحيح، ومن صحّحها ومتى ولماذا، ومستندات التصحيح.',
+        self::FINANCIAL_CORRECTION_APPROVE => 'حين يفعّل صاحب النشاط «الاعتماد الثنائي»: مراجعة تصحيح فاتورة صادرة أو مدفوعة، أو استبدالها لعميل آخر، طلبه موظف آخر، واعتماده أو رفضه بسبب. لا يعتمد أحد طلبه.',
         'order.edit' => 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني. وحيث فُتحت الميزة للنشاط: إضافة صنف أو استبداله في يوم البيع، وتعديل ملاحظة المنتج، وتحصيل المتبقّي.',
         self::TRANSFER_VIEW => 'سندات النقل وطلبات التزويد التي تخصّ الفروع المسندة إليه.',
         self::TRANSFER_VIEW_ALL => 'سندات النقل وطلبات التزويد في كل فروع النشاط، ولو لم يُسنَد إليها.',
@@ -864,8 +891,6 @@ class Permissions
         self::TRANSFER_RECEIVE => 'تأكيد الكميات التي وصلت إلى فرعٍ مسند إليه: تدخل رفّه، وما نقص يبقى فرقًا معلّقًا.',
         self::TRANSFER_RESOLVE => 'تسوية فرق الاستلام بسببٍ يُكتب: فُقد أو تلف (يُقيَّد خسارة)، أو أُعيد إلى المصدر، أو وصل متأخرًا.',
         self::SUPPLY_CREATE => 'طلب بضاعة لفرعٍ مسند إليه من الإدارة. لا يحرّك المخزون.',
-        self::FINANCIAL_CORRECTION_APPROVE => 'حين يفتح صاحب النشاط «الاعتماد الثنائي»: مراجعة تصحيح فاتورة صادرة أو مدفوعة طلبه موظف آخر، واعتماده أو رفضه بسبب. لا يعتمد أحدٌ طلبه.',
-        ...SectionActions::HINTS,
     ];
 
     /** @return array<string, string> */

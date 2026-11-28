@@ -7,9 +7,7 @@ use App\Models\Business;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessagePack;
 use App\Support\Activity;
-use App\Support\Addons\Catalog;
-use App\Support\Addons\Entitlements;
-use App\Support\Addons\PricingPolicy;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppInbox;
@@ -257,7 +255,7 @@ class WhatsAppController extends Controller
         }
 
         return [['waba_id' => $check['waba'], 'token_expires_at' => $check['expires_at']]
-            + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state']), null];
+            + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state']), null];
     }
 
     /**
@@ -358,14 +356,10 @@ class WhatsAppController extends Controller
              */
             'whatsapp_monthly_limit' => ['sometimes', 'nullable', 'integer', 'min:-1', 'max:1000000'],
             'whatsapp_mode' => ['sometimes', Rule::in(WhatsAppMode::ALL)],
-            /*
-             * وصندوقُ المحادثات — يفتحه فريقُ أبعاد وحده، ولا يفتحه التاجرُ
-             * بنفسه. والأهليّةُ للرقم المستقلّ من الباقة والإضافات أدناه.
-             */
-            'whatsapp_inbox_enabled' => ['sometimes', 'boolean'],
+            // ولا مقبضَ لصندوق المحادثات: يُفتح لكلّ متجرٍ يملك واتساب (`WhatsAppInbox::available`)
         ]);
 
-        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode', 'whatsapp_inbox_enabled']);
+        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode']);
 
         /*
          * وضعٌ خاصٌّ بلا إذنٍ لا يُكتب.
@@ -383,19 +377,39 @@ class WhatsAppController extends Controller
          * ═══ و«API مستقلّ» لمتجر سياسة الإضافات إضافةٌ تُباع ═══
          *
          * لا يُختار له رقمُه قبل أن تسري إضافةُ «ربط واتساب برقم المتجر» —
-         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». ومتجرُ السياسة
-         * السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
+         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». وباقةٌ تشمل واتساب
+         * لا تُطلب فوقها الإضافة: شراءٌ واحدٌ يكفي (`needsOwnNumberAddon`).
+         * ومتجرُ السياسة السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
          */
         if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
             && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
-            && PricingPolicy::isAddons($business)
-            && ! Entitlements::has($business, Catalog::OWN_NUMBER)) {
+            && WhatsAppFeature::needsOwnNumberAddon($business)) {
             return back()->withErrors([
                 'whatsapp_mode' => __('API المستقلّ إضافةٌ لهذا المتجر — اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.'),
             ]);
         }
 
+        /*
+         * ولا يُحوَّل متجرٌ إلى رقمه قبل أن تكون وصلتُه جاهزة: تُرسل، ورُوجع دليلُ
+         * فوترتها، ويُعرف حسابُ رسائلها (`WhatsAppOwnApp::readyForOwnMode`). ومن
+         * يُحوَّل قبل ذلك تقف رسائلُه — ومن بقي ينتظر يُرسل كما كان.
+         */
+        if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
+            && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
+            && ! \App\Support\WhatsAppSender::mayOwn(WhatsAppConnections::forBusiness($business->id))) {
+            return back()->withErrors([
+                'whatsapp_mode' => \App\Support\WhatsAppSender::checking((int) $business->id)
+                    ? __('رقم المتجر قيد التحقّق — يصير رقم إرساله تلقائيًّا حين تكتمل مراحله، ويبقى إرساله كما هو حتى ذلك.')
+                    : __('لا يُحوَّل هذا المتجر إلى رقمه قبل أن تكتمل وصلته ويُراجَع دليل فوترتها ويُعرف حساب رسائلها — يبقى إرساله كما هو.'),
+            ]);
+        }
+
         $business->update($data);
+
+        // ‏‏وما اختاره الفريقُ بيده لا يُبدَّل عليه آليًّا
+        if (isset($data['whatsapp_mode'])) {
+            \App\Support\WhatsAppSender::chosen((int) $business->id, $data['whatsapp_mode']);
+        }
 
         $this->logChanges($business, $before, $business->only(array_keys($before)));
 
@@ -411,7 +425,6 @@ class WhatsAppController extends Controller
             'whatsapp_shared_allowed' => 'الإرسال عبر رقم أبعاد',
             'whatsapp_monthly_limit' => 'حدّ الرسائل الشهري',
             'whatsapp_mode' => 'وضع الإرسال',
-            'whatsapp_inbox_enabled' => 'صندوق محادثات واتساب',
         ];
 
         foreach ($labels as $field => $label) {
@@ -486,13 +499,106 @@ class WhatsAppController extends Controller
         }
 
         WhatsAppLinkCheck::recheck($own);
+        \App\Support\WhatsAppSender::soon((int) $business->id);
         $health = WhatsAppLinkHealth::state($own->refresh());
 
         Activity::log('settings', 'واتساب — فحص ربط «'.$business->name.'»: '.WhatsAppLinkHealth::label($health));
 
         return back()->with('toast', [
             'msg' => WhatsAppLinkHealth::label($health).' — '.WhatsAppLinkHealth::hint($health, $own),
-            'type' => in_array($health, [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true) ? 'success' : 'warning',
+            'type' => in_array($health, WhatsAppLinkHealth::HEALTHY, true) ? 'success' : 'warning',
+        ]);
+    }
+
+    /**
+     * يؤكّد فريقُ أبعاد أنّ فوترة ميتا على التاجر — بعد أن راجع دليلًا من ميتا نفسها.
+     *
+     * لا زرٌّ يُضغط: يُسمّى الدليلُ ومرجعُه، ويُقرّ المراجعُ أنّه رأى اسمَ نشاط
+     * التاجر ومعرّفَ هذا الحساب فيه. ويُقرأ الحسابُ عند ميتا لحظتها، فوقائعُ
+     * تنقضه تردّه (`WhatsAppOwnApp::confirmBilling`). ولا يمسّ رمزًا ولا رقمًا.
+     */
+    public function confirmBilling(Request $request, int $id)
+    {
+        $business = Business::findOrFail($id);
+        $own = WhatsAppConnections::forBusiness($business->id);
+
+        // ‏‏ووصلةٌ عبر تطبيق أبعاد لها قفلُها وسجلُّها (`WhatsAppBillingLock`)
+        $locked = WhatsAppBillingLock::applies($own);
+
+        if ($locked ? ! WhatsAppBillingLock::reviewable($own) : ! \App\Support\WhatsAppOwnApp::mayConfirm($own)) {
+            return back()->withErrors(['whatsapp' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')]);
+        }
+
+        if ($locked) {
+            $data = $request->validate([
+                'evidence_kind' => ['required', Rule::in(array_keys(WhatsAppBillingLock::EVIDENCE))],
+                'evidence_reference' => ['required', 'string', 'min:3', 'max:120'],
+                'evidence_waba_id' => ['required', 'string', 'max:40'],
+                'evidence_checked' => ['accepted'],
+                // ‏‏ومالكُ الحساب عند Meta نشاطُ التاجر — لا أبعاد ولا شريك
+                'evidence_owner' => ['accepted'],
+                'evidence_card' => ['accepted'],
+            ], [
+                'evidence_checked.accepted' => __('أقرّ أنك رأيت معرّف هذا الحساب في الدليل.'),
+                'evidence_owner.accepted' => __('أقرّ أن مالك الحساب نشاط التاجر.'),
+                'evidence_card.accepted' => __('أقرّ أن وسيلة الدفع للتاجر لا لأبعاد ولا لشريك.'),
+            ], ['evidence_kind' => __('نوع الدليل'), 'evidence_reference' => __('مرجع الدليل'), 'evidence_waba_id' => __('معرّف الحساب')]);
+
+            $r = WhatsAppBillingLock::confirm($own, $request->user(), [
+                'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'], 'waba_id' => $data['evidence_waba_id'],
+            ]);
+
+            return $r['ok'] ? back()->with('toast', ['msg' => $r['message'], 'type' => 'success']) : back()->withErrors([$r['field'] => $r['message']]);
+        }
+
+        $data = $request->validate([
+            'evidence_kind' => ['required', Rule::in(array_keys(\App\Support\WhatsAppOwnApp::EVIDENCE))],
+            'evidence_reference' => ['required', 'string', 'min:3', 'max:120'],
+            'evidence_checked' => ['accepted'],
+            // ومعرّفُ الحساب كما في صفحة ميتا — يُطابَق بالمربوط لا باسم النشاط
+            'evidence_waba_id' => ['required', 'string', 'max:40'],
+        ]);
+
+        $result = \App\Support\WhatsAppOwnApp::confirmBilling($own, $request->user(), [
+            'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'], 'waba_id' => $data['evidence_waba_id'],
+        ]);
+
+        if (! $result['ok']) {
+            return back()->withErrors(['whatsapp' => $result['message']]);
+        }
+
+        Activity::log('settings', 'واتساب — مراجعة دليل أنّ فوترة ميتا على «'.$business->name.'» ('.$data['evidence_kind'].')',
+            ['business_id' => $business->id]);
+
+        return back()->with('toast', ['msg' => $result['message'], 'type' => 'success']);
+    }
+
+    /**
+     * «فحص إعداد تطبيق أبعاد» — عنوانُ الإشعارات وحقلُ `messages` في التطبيق نفسه.
+     *
+     * واحدٌ لكلّ المتاجر: لو أُطفئ `messages` في لوحة التطبيق أو تبدّل العنوان
+     * لَما وصل من أيّ متجرٍ حرف، وكلُّها تقرأ «مشترك». قراءةٌ لا غير
+     * (`WhatsAppLinkCheck::appWebhook`) — ولا يُغيَّر من هنا إعدادٌ عند ميتا.
+     */
+    public function checkAppWebhook()
+    {
+        $app = WhatsAppLinkCheck::appWebhook();
+        // ‏‏وما يستقبل الرسائل قد ينقصه خبرُ قالبٍ اعتُمد أو حسابٍ قُيّد
+        $needed = array_unique([...WhatsAppLinkCheck::APP_FIELDS, ...(\App\Support\WhatsAppMerchantLink::coexistence() ? \App\Support\WhatsAppCoexistence::FIELDS : [])]);
+        $missing = $app['state'] === WhatsAppLinkCheck::APP_LISTENING ? array_values(array_diff($needed, $app['fields'])) : [];
+
+        Activity::log('settings', 'واتساب — فحص إعداد إشعارات تطبيق أبعاد: '.$app['state'].($missing !== [] ? ' · ينقصه '.implode('، ', $missing) : ''));
+
+        return back()->with('toast', [
+            'msg' => match ($app['state']) {
+                WhatsAppLinkCheck::APP_LISTENING => $missing === []
+                    ? __('تطبيق أبعاد يستقبل: عنوان الإشعارات عنوان أبعاد، وحقل messages مُفعّل.')
+                    : __('تطبيق أبعاد يستقبل الرسائل، وتنقصه حقول إشعارات فعّلها في لوحة Meta: :fields', ['fields' => implode(' · ', $missing)]),
+                WhatsAppLinkCheck::APP_CALLBACK_ELSEWHERE => __('عنوان الإشعارات في تطبيق أبعاد ليس عنوان أبعاد — لا يصل من أيّ متجر شيء.'),
+                WhatsAppLinkCheck::APP_MESSAGES_OFF => __('حقل messages غير مُفعّل في تطبيق أبعاد — رسائل الزبائن لا تصل من أيّ متجر.'),
+                default => __('تعذّرت قراءة إعداد الإشعارات في تطبيق أبعاد من ميتا — أعد المحاولة.'),
+            },
+            'type' => $app['state'] === WhatsAppLinkCheck::APP_LISTENING ? 'success' : 'warning',
         ]);
     }
 
@@ -527,12 +633,23 @@ class WhatsAppController extends Controller
                 // متّصلٌ أم مشتركٌ أم يستقبل فعلًا — بلا رمزٍ ولا معرّفِ تطبيقٍ آخر
                 'link' => WhatsAppLinkHealth::view($own),
                 'can_check' => filled($own->phone_number_id) && filled($own->access_token),
+                // وربطُ التاجر بتطبيقه: على من تُحتسب رسائلُه، وأينتظر إثباتَها
+                'own_app' => \App\Support\WhatsAppOwnApp::is($own) || (! WhatsAppBillingLock::applies($own) && \App\Support\WhatsAppOwnApp::mayConfirm($own))
+                    ? \App\Support\WhatsAppOwnApp::reviewView($own) : null,
             ] : null,
+            // ‏‏وعلى من رسومُه عند Meta: إحدى خمسِ حالات، ومراجعتُها وسجلُّها (`WhatsAppBillingLock`)
+            'billing' => WhatsAppBillingLock::brief($own),
+            'billing_review' => WhatsAppBillingLock::platformView($own),
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),
-            'own_needs_addon' => PricingPolicy::isAddons($business) && ! Entitlements::has($business, Catalog::OWN_NUMBER),
-            'inbox_enabled' => (bool) $business->whatsapp_inbox_enabled,
+            // وشراءٌ واحدٌ يكفي: باقةٌ تشمل واتساب لا تُطلب فوقها الإضافة
+            'own_needs_addon' => WhatsAppFeature::needsOwnNumberAddon($business),
+            // مفتوحٌ تلقائيًّا لمن تشمل باقتُه واتساب ولم يُطفأ عنه — قراءةٌ لا مقبض
             'inbox_available' => WhatsAppInbox::available($business),
+            // ‏‏«أرسل رابطًا لعميلك» — حالُ آخر رابط، ولا رمزَ فيه (`WhatsAppClientLinks`)
+            'client_link' => \App\Support\WhatsAppClientLinks::view($business),
+            // ‏‏ورقمُ الإرسال كما يراه التاجر — ينتظر ماذا، أو صار، أو تعطّل (`WhatsAppSender`)
+            'sender' => \App\Support\WhatsAppSender::view($business),
         ];
     }
 }

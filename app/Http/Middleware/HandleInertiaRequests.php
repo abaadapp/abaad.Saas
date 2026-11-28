@@ -17,7 +17,6 @@ use App\Support\ShopIdentity;
 use App\Support\Support;
 use App\Support\Tenancy;
 use App\Support\WebsiteConfirmPrint;
-use App\Support\WhatsAppConversations;
 use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -76,6 +75,8 @@ class HandleInertiaRequests extends Middleware
                  * غيره يعدّل بيانات تاجرٍ ظنًّا أنها بياناته.
                  */
                 'impersonating' => $request->session()->has('impersonator_id'),
+                // وإن كان الحسابُ ممنوعًا على صاحبه فالدعمُ فيه للعرض وحده — والسببُ من قاعدة الحارس نفسِها
+                'impersonationLimit' => $request->session()->has('impersonator_id') ? \App\Support\Tenancy::supportViewOnly($user) : null,
                 // الأقسام المسموح بها — الواجهة تخفي ما لا يُسمح به بدل تخمينه
                 'abilities' => collect(Permissions::sections())
                     ->filter(fn ($section) => $user->allows($section))
@@ -125,9 +126,7 @@ class HandleInertiaRequests extends Middleware
                  */
                 'hosted' => array_values(array_filter([
                     Boutiques::holds($user->business) ? 'boutiques' : null,
-                    // «محادثات واتساب» بدل «سجلّ رسائل واتساب» في الشريط — والخادمُ هو الحارس
-                    $user->business && WhatsAppConversations::enabled($user->business) ? 'whatsapp_conversations' : null,
-                    // وصندوقُ المحادثات — يفتحه فريقُ أبعاد للنشاط، ويُرى بصلاحية الموظّف (`WhatsAppInbox`)
+                    // وصندوقُ المحادثات — لكلّ متجرٍ يملك واتساب، ويُرى بصلاحية الموظّف (`WhatsAppInbox::available`)
                     WhatsAppInbox::available($user->business) ? 'whatsapp_inbox' : null,
                 ])),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
@@ -354,6 +353,8 @@ class HandleInertiaRequests extends Middleware
                  * صفٌّ للعرض (`PaymentLinks::row`) لا سرَّ فيه.
                  */
                 'paymentLink' => $request->session()->get('paymentLink'),
+                // ‏‏رابطُ ربط واتساب الذي أُنشئ الآن — يمرّ مرّةً ولا يُحفظ (`WhatsAppClientLinks`)
+                'whatsappClientLink' => $request->session()->get('whatsappClientLink'),
                 // وأكان مع إصدار الفاتورة نفسِه — «تم إصدار الفاتورة وإنشاء رابط الدفع»
                 'paymentLinkIssued' => (bool) $request->session()->get('paymentLinkIssued'),
             ],

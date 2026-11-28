@@ -272,7 +272,15 @@ class Storefront
      */
     public static function open(string $slug): ?Business
     {
-        $business = Business::where('site_slug', $slug)->first();
+        /*
+         * ونطاقٌ ثُبّت لمتجرٍ بمعرّفه (`Domains::pinnedBusiness`) يُخدم صاحبَه وإن
+         * غيّر اسمَه — `ribbon.abaadapp.om` لـRIBBON أبدًا. وما سواه بالاسم كما كان،
+         * بلا استعلامٍ زائد.
+         */
+        $pinned = \App\Support\Website\Domains::pinnedBusiness($slug);
+        $business = $pinned !== null
+            ? Business::find($pinned)
+            : Business::where('site_slug', $slug)->first();
 
         return $business !== null && self::serving($business) ? $business : null;
     }
@@ -484,6 +492,8 @@ class Storefront
              * والفرعُ أقدمُ فرعٍ مربوط: صفحةُ المتجر واحدةٌ لا صفحةَ لكلّ فرع.
              */
             'google' => self::googleRating($bid),
+            // وما يقرؤه غوغل — من «الظهور في البحث»، وفراغُه ما كان (`StoreSeo::simple`)
+            'seo' => \App\Support\Store\StoreSeo::simple($business),
         ];
     }
 
@@ -667,7 +677,10 @@ class Storefront
                     'category_id' => $p->category_id,
                     // الخام لا المقروء: `getImageAttribute` يردّ صورةً بديلة من
                     // الإنترنت لمنتجٍ بلا صورة — ولا تُعرض صورةُ غريبٍ بضاعةً للتاجر
-                    'image' => ProductImages::hasRealMain($p) ? $p->image : null,
+                    // ‏المصغّرةُ للرفّ — والصورةُ بحجمها في صفحة الصنف
+                    'image' => ProductImages::hasRealMain($p) ? ImageVariants::url($p->getRawOriginal('image'), ImageVariants::THUMB) : null,
+                    // ‏وأحجامُها من الأصل — يختار المتصفّحُ بعرض البطاقة وكثافة الشاشة
+                    'srcset' => ProductImages::hasRealMain($p) ? ImageVariants::srcset($p->getRawOriginal('image')) : null,
                     'price' => $price,
                     // «من ١٨٫٠٠٠» حين تختلف أسعار المقاسات — انظر price()
                     'from' => $from,

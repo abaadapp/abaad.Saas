@@ -102,7 +102,9 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
          * البادئة يُقرأ فاتورةً، فيُفتح بمعرّفٍ لا يخصّه ويُردّ ٤٠٤ —
          * ولا يقول أحدٌ إنّ العطبَ في الاسم.
          */
-        $note = CustomerInvoices::creditNote($invoice, 10.0, 0.0, 'ردّ صنف', $this->owner->id);
+        $note = CustomerInvoices::creditNote($invoice, 10.0, 0.0, 'ردّ صنف', $this->owner->id, basis: 'return');
+        // وإشعارٌ مدينٌ حقيقيّ — `{note}` تحت `debit-notes` يُقرأ منه لا من الدائن
+        $debit = CustomerInvoices::debitNote($invoice, 5.0, 0.0, 'زيادة صنف', [], null, null, $this->owner->id);
 
         $bindings = [
             'id' => $invoice->id,
@@ -121,7 +123,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
 
             $params = [];
             foreach ($route->parameterNames() as $p) {
-                $params[$p] = $bindings[$p] ?? 1;
+                $params[$p] = $p === 'note' && str_contains($name, 'debitNotes') ? $debit->id : ($bindings[$p] ?? 1);
             }
 
             // وملفُّ النشاط كلِّه يحمل توقُّعَ نشاطه كما يحمله من الشاشة (`TenantExportGuard::REQUIRED`)
@@ -231,6 +233,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $invoice = $this->invoice();
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-1',
             'amount' => 30, 'tax_amount' => 0, 'reason' => 'بضاعة مردودة',
         ])->assertSessionHasNoErrors();
 
@@ -248,6 +251,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $invoice = $this->invoice();
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-2',
             'amount' => 21, 'tax_amount' => 1, 'reason' => 'رُدّت باقة',
         ])->assertSessionHasNoErrors();
 
@@ -263,14 +267,17 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $invoice = $this->invoice();
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-3',
             'amount' => 200, 'tax_amount' => 0, 'reason' => 'مبالغة',
         ])->assertSessionHasErrors('amount');
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-4',
             'amount' => 100, 'tax_amount' => 0, 'reason' => 'مرتجع',
         ])->assertSessionHasNoErrors();
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-5',
             'amount' => 10, 'tax_amount' => 0, 'reason' => 'مرتجع ثانٍ',
         ])->assertSessionHasErrors('amount');
 
@@ -288,6 +295,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $invoice = $this->invoice(issued: false);
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-6',
             'amount' => 10, 'tax_amount' => 0, 'reason' => 'مرتجع',
         ])->assertSessionHasErrors('amount');
 
@@ -300,6 +308,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         $invoice = $this->invoice();
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-7',
             'amount' => 10, 'tax_amount' => 0,
         ])->assertSessionHasErrors('reason');
     }
@@ -374,6 +383,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         ]);
 
         $this->actingAs($this->owner)->post('/admin/customer-invoices/'.$invoice->id.'/credit-note', [
+            'basis' => 'return', 'token' => 'every-button-8',
             'amount' => 15, 'tax_amount' => 0, 'reason' => 'خصم متأخر',
         ]);
 

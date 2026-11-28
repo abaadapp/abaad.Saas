@@ -366,7 +366,7 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
         $this->collect(40, [$invoice->id => 40]);
 
         Carbon::setTestNow(Carbon::parse('2026-10-28 10:00:00', 'Asia/Muscat'));
-        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'مردود', $this->owner->id, basis: 'return');
 
         $this->says('مبيعات اليوم', -10, 'الإشعارُ لم يُنقص يومَه');
         $this->assertSame(40.0, $this->sold('2026-10-27'), 'الإشعارُ غيّر يومَ البيع');

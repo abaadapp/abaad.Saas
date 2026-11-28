@@ -248,8 +248,13 @@
 
 <table class="tot">
     <tr><td class="k">{{ __('المجموع الفرعي') }}</td><td class="l"><span dir="ltr">{{ $money($order->subtotal) }}</span></td></tr>
-    @if ((float) $order->discount > 0)
-        <tr><td class="k">{{ __('الخصم') }}</td><td class="l"><span dir="ltr">{{ $money($order->discount) }}</span></td></tr>
+    {{-- وخصمُ النقاط سطرٌ وحده بعدده — والسطران مجموعُهما خصمُ البيعة (`Order::loyaltyDiscount`) --}}
+    @php($loyaltyOff = $order->loyaltyDiscount())
+    @if (round((float) $order->discount - $loyaltyOff, 3) > 0)
+        <tr><td class="k">{{ __('الخصم') }}</td><td class="l"><span dir="ltr">{{ $money((float) $order->discount - $loyaltyOff) }}</span></td></tr>
+    @endif
+    @if ($loyaltyOff > 0)
+        <tr data-loyalty><td class="k">{{ __('خصم نقاط الولاء') }} (<span dir="ltr">{{ (int) $order->redeemed_points }}</span> {{ __('نقطة') }})</td><td class="l"><span dir="ltr">{{ $money($loyaltyOff) }}</span></td></tr>
     @endif
     @if ((float) $order->tax > 0)
         <tr><td class="k">{{ __('الضريبة') }}</td><td class="l"><span dir="ltr">{{ $money($order->tax) }}</span></td></tr>

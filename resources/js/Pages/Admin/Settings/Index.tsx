@@ -44,6 +44,7 @@ import CustomAlerts, {
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
 import BackToSettings from './partials/BackToSettings';
+import { PortalSettingsCard } from '@/Components/RibbonPortal';
 import { PaymobStatus, type GatewayState } from '@/Pages/Admin/Website/theme/sections/Gateway';
 import DomainChooser, {
     DomainPathStrip,
@@ -128,6 +129,8 @@ const SECTIONS = [
 const SECTION_KEYS = SECTIONS.map((s) => s.key);
 
 interface Props {
+    /** «بوابة العملاء» — يصل لمتجر RIBBON ولمن يديرها وحدهم */
+    portalUrl?: string;
     settings: Settings;
     /** حقولُ كل قسم — من `SettingController::fieldsBySection` لا مكتوبةً هنا */
     settingsFields: Record<string, string[]>;
@@ -194,7 +197,7 @@ interface Props {
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
-    /** الاعتمادُ الثنائيّ — يُشعله صاحبُ النشاط وحده، ومعه عددُ من يعتمد */
+    /** الاعتمادُ الثنائيّ: هل الناظرُ صاحبُ النشاط، وكم موظّفًا غيرَه يعتمد */
     dualApproval?: { owner: boolean; others: number };
     alertMetrics: AlertMetric[];
     alertSections: Record<string, string>;
@@ -335,7 +338,7 @@ const NOTIF_COLORS: Record<string, string> = {
 export default function SettingsIndex() {
     const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, dualApproval, locale, branches, storeBranches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
-        accounts, trial, types, archive, backups } =
+        accounts, trial, types, archive, backups, portalUrl } =
         usePage<PageProps<Props>>().props;
     const { auth, context } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -824,6 +827,8 @@ export default function SettingsIndex() {
                                         </button>
                                     );
                                 })}
+                                {/* تخصيصٌ لمتجر RIBBON — بلا رابطٍ من الخادم لا بطاقة */}
+                                {g.group === 'العملاء' && portalUrl && <PortalSettingsCard href={portalUrl} />}
                             </div>
                         </section>
                     ))}
@@ -959,16 +964,31 @@ export default function SettingsIndex() {
                         }
                         action={
                             store.slug && (store.serves !== 'none' || storeForm.data.store_on) && (
-                                <Button variant="outline" size="sm" asChild>
-                                    <a
-                                        href={`https://${store.slug}.${store.domain}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        <ExternalLink />
-                                        {t('افتح متجري')}
-                                    </a>
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {/*
+                                        و«الظهور في البحث» لصفحته المنشورة — عنوانُها في غوغل ووصفُها
+                                        وإذنُ فهرستها، يسري بالحفظ (`SettingsController::simpleSeo`).
+                                    */}
+                                    {store.serves !== 'none' && (
+                                        <Button variant="outline" size="sm" asChild>
+                                            {/* والبسيطةُ المنشورة إلى شاشتها — ولو كان موقعٌ مبنيٌّ قيد الإنشاء */}
+                                            <Link href={route(store.serves === 'simple' ? 'admin.website.seo.store' : 'admin.website.seo')} data-testid="store-card-seo">
+                                                <Search />
+                                                {t('الظهور في البحث')}
+                                            </Link>
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" size="sm" asChild>
+                                        <a
+                                            href={`https://${store.slug}.${store.domain}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            <ExternalLink />
+                                            {t('افتح متجري')}
+                                        </a>
+                                    </Button>
+                                </div>
                             )
                         }
                         divided
@@ -2220,22 +2240,20 @@ export default function SettingsIndex() {
                                 />
 
                                 {/*
-                                    الاعتمادُ الثنائيّ: من يصحّح مالَ فاتورةٍ صادرة لا يعتمد تصحيحه.
-                                    يُشعله صاحبُ النشاط وحده (`SettingController::GUARDED`)،
-                                    ويُقال له كم موظّفًا يعتمد — مفتاحٌ يُشعل ولا معتمدَ غيرُه
-                                    يُوقف تصحيحاته هو.
+                                    الاعتمادُ الثنائيّ — مطفأٌ لكلّ نشاط، ويُشعله صاحبه وحده.
+                                    والخادمُ يردّ غيرَه ويردّ إشعالًا لا معتمدَ فيه غيرُه
+                                    (`SettingController::dualApprovalRefusal`)؛ والشاشةُ تقوله قبله.
                                 */}
                                 <div data-testid="dual-approval">
                                     <Toggle
                                         on={form.data.dual_approval_corrections}
                                         onChange={(v) => dualApproval?.owner && form.setData('dual_approval_corrections', v)}
                                         label="الاعتماد الثنائي لتصحيح الفواتير الصادرة والمدفوعة"
-                                        hint="من يعدّل مبلغ فاتورة صادرة أو عميلها يرسل التصحيح للاعتماد، ولا يتغيّر شيء حتى يعتمده موظف آخر يملك «اعتماد تصحيح مالي». ولا يعتمد أحدٌ طلبه."
+                                        hint="تصحيح فاتورة صادرة أو مدفوعة يصدر به إشعار دائن أو مدين، أو استبدالها لعميل آخر، يُرسل للاعتماد، ولا يتغيّر شيء حتى يعتمده موظف آخر يملك «اعتماد تصحيح مالي». ولا يعتمد أحدٌ طلبه."
                                     />
                                     {! dualApproval?.owner && (
-                                        <p className="mt-1 text-[12px] text-[#6b7280]">{t('يغيّره صاحب النشاط وحده.')}</p>
+                                        <p className="mt-1 text-[12px] text-[#6b7280]" data-testid="dual-approval-owner-only">{t('يغيّره صاحب النشاط وحده.')}</p>
                                     )}
-                                    {/* ويُقال قبل الإشعال لا بعده: الخادمُ يردّ إشعالًا لا معتمدَ فيه غيرُه */}
                                     {dualApproval?.owner && (dualApproval?.others ?? 0) === 0 && (
                                         <p className="mt-1 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]" data-testid="dual-approval-alone">
                                             {t('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه قبل إشعال الاعتماد الثنائي. وإن كان مفعّلًا، فتصحيحاتك المالية لا تُرسل حتى يوجد من يعتمدها أو تطفئه.')}

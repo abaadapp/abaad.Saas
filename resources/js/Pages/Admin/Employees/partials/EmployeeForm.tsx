@@ -22,7 +22,7 @@ import { useTranslate } from '@/lib/i18n';
 import { usePlanFeature } from '@/lib/plan';
 import type { Branch } from '@/types/models';
 import InboxAccessField, { type InboxAccess } from './InboxAccessField';
-import PermissionGroups, { type PermissionGroup } from './PermissionGroups';
+import PermissionBoard from './PermissionBoard';
 
 export interface EmployeeFormValues {
     id?: number;
@@ -61,12 +61,6 @@ interface Props {
     actions?: Record<string, string>;
     /** سطرٌ يشرح الفعلَ تحت اسمه — انظر Permissions::ACTION_HINTS */
     actionHints?: Record<string, string>;
-    /**
-     * كلُّ قسمٍ وتحته ما يُفعل فيه — `SectionActions::groups()`.
-     *
-     * حين تصل تُرسم الصلاحياتُ بطاقاتٍ لكلّ قسم بدل قائمتَي الأقسام والأفعال.
-     */
-    permissionGroups?: PermissionGroup[];
     /**
      * ما يملك الفاعلُ منحَه — وسواه يُعطَّل بسببه مكتوبًا.
      *
@@ -155,7 +149,6 @@ export default function EmployeeForm({
     sections,
     actions,
     actionHints = {},
-    permissionGroups,
     grantable,
     blockedTitles,
     titleGrants,
@@ -299,6 +292,21 @@ export default function EmployeeForm({
             form.data.permissions.includes(key)
                 ? form.data.permissions.filter((k) => k !== key)
                 : [...form.data.permissions, key],
+        );
+
+    /*
+     * «تحديد الكل» و«إلغاء التحديد» في مجموعة: تُضاف المفاتيحُ أو تُنزع هي وحدها.
+     *
+     * وما سواها في القائمة يبقى بترتيبه — مفتاحٌ لا تعرضه الشاشةُ اليوم يُرسَل
+     * كما جاء، فلا يُنزع عن موظّفٍ شيءٌ لم يره أحد. وما يمسّه هذا تختاره
+     * اللوحة: أقسامٌ يملك الفاعلُ منحَها، لا فعلٌ حسّاس (`PermissionBoard`).
+     */
+    const setPermissions = (keys: string[], on: boolean) =>
+        form.setData(
+            'permissions',
+            on
+                ? [...form.data.permissions, ...keys.filter((k) => !form.data.permissions.includes(k))]
+                : form.data.permissions.filter((k) => !keys.includes(k)),
         );
 
     // الاسم وحده: الصلاحيات تُحدَّد لهذا الموظف بعينه في القسم أدناه، فلا معنى
@@ -762,93 +770,21 @@ export default function EmployeeForm({
                                 </p>
                             )}
 
-                            {permissionGroups && actions ? (
-                                <PermissionGroups
-                                    groups={permissionGroups}
-                                    sections={sections}
-                                    actions={actions}
-                                    hints={actionHints}
-                                    shown={shown}
-                                    roleGrants={roleGrants}
-                                    manual={form.data.manual_permissions}
-                                    live={boxesLive}
-                                    mayGrant={mayGrant}
-                                    onChange={(next) => form.setData('permissions', next)}
-                                />
-                            ) : (
-                            <>
-                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                {Object.entries(sections).map(([key, label]) => (
-                                    <label
-                                        key={key}
-                                        title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
-                                        className={cn(
-                                            'flex items-center gap-2.5',
-                                            boxesLive && mayGrant(key)
-                                                ? 'cursor-pointer'
-                                                : 'cursor-not-allowed opacity-60',
-                                        )}
-                                    >
-                                        {/* والمعروضُ من المصدر المختار: قائمتُه هو، أو قائمةُ وظيفته */}
-                                        <input
-                                            type="checkbox"
-                                            checked={shown.includes(key)}
-                                            onChange={() => togglePermission(key)}
-                                            disabled={! boxesLive || ! mayGrant(key)}
-                                            className="size-4 rounded border-[#d1d5db] accent-[#111]"
-                                        />
-                                        <span className="text-sm text-[#374151]">{label}</span>
-                                    </label>
-                                ))}
-                            </div>
-
-                            {actions && Object.keys(actions).length > 0 && (
-                                <div className="space-y-2.5 border-t border-[#e5e7eb] pt-4">
-                                    {/*
-                                        والفعلُ يُعرض تحت عنوانه لا مع الأقسام: «المبيعات»
-                                        تفتح شاشة، و«تعديل فواتير المبيعات» تعيد كتابة مستندٍ
-                                        ضريبيّ — وصفٌّ واحد يجمعهما يجعل الثانية تُعلَّم سهوًا.
-                                    */}
-                                    <p className="text-[13px] font-semibold text-[#374151]">
-                                        {t('أفعالٌ حسّاسة')}
-                                    </p>
-                                    <p className="text-[12px] text-[#6b7280]">
-                                        {t('تُمنح بالاسم — ولا يفتح أيٌّ منها شاشةً بنفسه.')}
-                                    </p>
-
-                                    {Object.entries(actions).map(([key, label]) => (
-                                        <label
-                                            key={key}
-                                            title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
-                                            className={cn(
-                                                'flex gap-2.5',
-                                                actionHints[key] ? 'items-start' : 'items-center',
-                                                boxesLive && mayGrant(key)
-                                                    ? 'cursor-pointer'
-                                                    : 'cursor-not-allowed opacity-60',
-                                            )}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={shown.includes(key)}
-                                                onChange={() => togglePermission(key)}
-                                                disabled={! boxesLive || ! mayGrant(key)}
-                                                className={cn('size-4 rounded border-[#d1d5db] accent-[#111]', actionHints[key] && 'mt-0.5')}
-                                            />
-                                            <span>
-                                                <span className="block text-sm text-[#374151]">{label}</span>
-                                                {actionHints[key] && (
-                                                    <span className="mt-0.5 block text-[12px] leading-5 text-[#6b7280]" data-testid={`action-hint-${key}`}>
-                                                        {actionHints[key]}
-                                                    </span>
-                                                )}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            </>
-                            )}
+                            {/*
+                                بطاقةٌ لكلّ مجموعة، وبحثٌ وتصفية — والمعروضُ من المصدر
+                                المختار: قائمتُه هو، أو قائمةُ وظيفته. والمجموعاتُ عرضٌ
+                                لا يُرسَل؛ القائمةُ هي هي (`permissionGroups`).
+                            */}
+                            <PermissionBoard
+                                sections={sections}
+                                actions={actions}
+                                actionHints={actionHints}
+                                checked={shown}
+                                live={boxesLive}
+                                mayGrant={mayGrant}
+                                onToggle={togglePermission}
+                                onSetMany={setPermissions}
+                            />
 
                             {form.errors.permissions && (
                                 <p className="text-[12px] text-[#b91c1c]">{form.errors.permissions}</p>

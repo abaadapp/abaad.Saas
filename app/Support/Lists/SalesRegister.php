@@ -295,6 +295,8 @@ final class SalesRegister
                 "CASE WHEN o.status = {$cancelled} THEN 0 WHEN {$live} THEN NULL"
                     ." WHEN {$unpaid} THEN o.total ELSE COALESCE(o.balance_due, 0) END as due",
                 "CASE WHEN {$live} AND o.status <> {$cancelled} THEN NULL ELSE 0 END as credited",
+                // والطلبُ لا إشعارَ مدينًا عليه — يُصحَّح الطلبُ نفسُه (`OrderCorrection`)
+                '0 as debited',
             ]));
 
         if ($source !== null) {
@@ -354,6 +356,8 @@ final class SalesRegister
                 "CASE WHEN {$issued} THEN {$paid} ELSE 0 END as paid",
                 "CASE WHEN {$issued} AND {$out} > 0 THEN {$out} ELSE 0 END as due",
                 "CASE WHEN {$issued} THEN ".CustomerInvoice::creditedSql().' ELSE 0 END as credited',
+                // وما زادته الإشعاراتُ المدينة — الفاتورةُ بمبلغها كما صدرت، والزيادةُ مستندُها
+                "CASE WHEN {$issued} THEN ".CustomerInvoice::debitedSql().' ELSE 0 END as debited',
             ]));
 
         return $period->bound($q, 'customer_invoices.issued_at', date: true);
@@ -439,6 +443,7 @@ final class SalesRegister
             'date' => self::date($r->sold_at, $order),
             'amount' => round((float) $r->amount, 3),
             'credited' => $r->credited !== null ? round((float) $r->credited, 3) : null,
+            'debited' => round((float) ($r->debited ?? 0), 3),
             'pay_state' => $r->pay_state,
             // والمستندُ الذي يُحصَّل عليه — فاتورةٌ تغطّي الطلب
             'cover' => $order && $r->cover_id ? ['id' => (int) $r->cover_id, 'number' => $r->cover_number] : null,
@@ -516,6 +521,7 @@ final class SalesRegister
             'COUNT(*) as n',
             "SUM(CASE WHEN r.status IN ({$void}) THEN 0 ELSE r.amount END) as gross",
             'SUM(COALESCE(r.credited, 0)) as credited',
+            'SUM(COALESCE(r.debited, 0)) as debited',
             'SUM(COALESCE(r.paid, 0)) as paid',
             'SUM(COALESCE(r.due, 0)) as due',
             "SUM(CASE WHEN r.status IN ({$void}) THEN 1 ELSE 0 END) as voided",
@@ -538,7 +544,7 @@ final class SalesRegister
 
         return [
             'count' => (int) ($agg->n ?? 0),
-            'sales' => round((float) ($agg->gross ?? 0) - $credited, 3),
+            'sales' => round((float) ($agg->gross ?? 0) - $credited + (float) ($agg->debited ?? 0), 3),
             'collected' => round($paid, 3),
             'outstanding' => round($due, 3),
             'cancelled' => (int) ($agg->voided ?? 0),

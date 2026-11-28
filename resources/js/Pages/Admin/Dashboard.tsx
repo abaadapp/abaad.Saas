@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -24,6 +24,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
+import { CustomerPhoneReviewBanner } from '@/Components/CustomerPhoneReview';
 
 interface Order {
     id: string;
@@ -50,6 +51,8 @@ interface Order {
  */
 interface DashboardProps {
     stats: Stat[];
+    /** عملاءُ تحتاج أرقامُهم مراجعة — صفرٌ لمن لا يدخل قسم العملاء، ولمن أغلقه في جلسته */
+    customerPhoneReview?: number;
     statCatalog: CatalogStat[];
     salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[] };
     paymentDistribution: { labels: string[]; series: number[] };
@@ -86,6 +89,38 @@ export default function Dashboard() {
     const { data: live, updatedAt } = useLiveFeed<LiveSnapshot>(route('admin.dashboard.stats'), 15000);
     const { stats: liveStats, salesSeries, paymentDistribution } = live ?? server;
 
+    /*
+     * إغلاقُ التنبيه: يختفي لحظتَه، والخادمُ يحفظه في الجلسة ويردّ اللوحةَ بما حفظ
+     * — ولا شيءَ في المتصفّح. وإن لم يُحفظ (انقطاع، جلسةٌ انتهت) عاد كما كان.
+     *
+     * و`replaceProp` تكتبه في سجلّ المتصفّح كذلك: من غادر قبل الردّ ثمّ رجع
+     * بزرّ «رجوع» يقرأ ما في السجلّ لا ما في الخادم. وبها يُردّ أيضًا: كتابتُها
+     * مؤجَّلة، فتراجعٌ من غير طابورها يسبقها فتطمسه.
+     *
+     * ويُعاد السؤالُ إن ردّ الخادمُ به: نبضةٌ بدأت قبل الضغط تكتب الجلسةَ كما
+     * قرأتها فتمحو ما كُتب أثناءها — وقد انتهت حين وصل الردّ.
+     */
+    const dismissPhoneReview = (tries = 3) => {
+        const restore = () => {
+            router.replaceProp('customerPhoneReview', server.customerPhoneReview ?? 0);
+
+            return false;
+        };
+
+        router
+            .optimistic<DashboardProps>(() => ({ customerPhoneReview: 0 }))
+            .post(route('admin.dashboard.phoneReview.dismiss'), {}, {
+                preserveScroll: true,
+                showProgress: false,
+                onSuccess: ({ props }) => {
+                    if (tries > 1 && Number(props.customerPhoneReview ?? 0) > 0) dismissPhoneReview(tries - 1);
+                },
+                onHttpException: restore,
+                onNetworkError: restore,
+            });
+        router.replaceProp('customerPhoneReview', 0);
+    };
+
     return (
         <AdminLayout title="لوحة التحكم">
             {/* زرّا «نقطة البيع» و«الموقع الإلكتروني» انتقلا إلى الهيدر ثابتين
@@ -94,6 +129,9 @@ export default function Dashboard() {
                 title="لوحة التحكم"
                 subtitle={t('نظرة عامة على أداء :name', { name: context?.businessName ?? t('متجرك') })}
             />
+
+            {/* تنبيهُ بيانات العملاء — في الصفحة لا في الجرس، ويختفي بلا أرقامٍ ناقصة */}
+            <CustomerPhoneReviewBanner count={server.customerPhoneReview ?? 0} onDismiss={() => dismissPhoneReview()} />
 
             <StatGrid stats={liveStats} storageKey="admin" catalog={statCatalog} />
             {updatedAt && (

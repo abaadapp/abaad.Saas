@@ -2,10 +2,16 @@ import { router, useForm } from '@inertiajs/react';
 import { Check, MessageCircle, RefreshCw, Save, X } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
+import WhatsappSender, { type SenderView } from '@/Components/WhatsappSender';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import StatusPill from '@/Components/StatusPill';
+import { BILLING_PILL, type BillingState } from '@/Components/WhatsappBilling';
+import WhatsAppBillingReview, { type PlatformBilling } from '@/Pages/Platform/Businesses/partials/WhatsAppBillingReview';
+import ClientLinkBox, { type ClientLinkView } from '@/Pages/Platform/Businesses/partials/ClientLinkBox';
+import type { LinkHealth } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 
 /** ما يصل من الخادم — بلا رمزٍ ولا سرّ (انظر SuperAdmin\WhatsAppController::businessView) */
 export interface BusinessWhatsApp {
@@ -52,17 +58,216 @@ export interface BusinessWhatsApp {
         last_error: string | null;
         last_error_at: string | null;
         /** متّصلٌ أم مشتركٌ أم يستقبل فعلًا — `WhatsAppLinkHealth::view` */
-        link?: { key: string; label: string; hint: string; tone: string; checked_at: string | null };
+        link?: LinkHealth;
         can_check?: boolean;
+        /** فوترةُ ميتا لوصلة المتجر: وقائعُها، وما يمنع تأكيدها، وما رُوجع — `WhatsAppOwnApp::reviewView` */
+        own_app?: BillingReview | null;
     } | null;
     /** أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`WhatsAppFeature::canUseOwnNumber`) */
     own_eligible?: boolean;
     /** متجرُ سياسة الإضافات بلا إضافة «ربط واتساب برقم المتجر» */
     own_needs_addon?: boolean;
-    /** صندوقُ محادثات واتساب — يفتحه فريقُ أبعاد (`WhatsAppInbox::available`) */
-    inbox_enabled?: boolean;
-    /** مفتوحٌ فعلًا: المفتاحُ والباقةُ تشمل واتساب */
+    /** صندوقُ محادثات واتساب مفتوحٌ له — تلقائيًّا: الباقةُ تشمل واتساب ولم يُطفأ (`WhatsAppInbox::available`) */
     inbox_available?: boolean;
+    /** «أرسل رابطًا لعميلك» — حالُ آخر رابط (`WhatsAppClientLinks::view`) */
+    client_link?: ClientLinkView;
+    /** رقمُ الإرسال: ينتظر ماذا، أو صار، أو تعطّل (`WhatsAppSender::view`) */
+    sender?: SenderView;
+    /** على من رسومُه عند Meta — بإحدى خمس (`WhatsAppBillingLock::brief`) */
+    billing?: { state: BillingState; label: string; locked: boolean; own_app: boolean; text: string | null } | null;
+    /** ومراجعتُها لوصلةٍ عبر تطبيق أبعاد (`WhatsAppBillingLock::platformView`) */
+    billing_review?: PlatformBilling | null;
+}
+
+/** ما يراه فريقُ أبعاد قبل أن يؤكّد أنّ فوترة ميتا على التاجر */
+export interface BillingReview {
+    own_app: boolean;
+    /** معرّفُ حساب الرسائل المربوط — به يُطابَق الدليل، لا باسم النشاط */
+    waba_id?: string | null;
+    /** ثلاثةُ أسئلةٍ على حدة: أعليه وسيلةُ دفع؟ ومن يدفع؟ وهل يُرسل؟ */
+    stages?: {
+        payment_method: 'present' | 'absent' | 'unknown';
+        responsibility: 'confirmed' | 'unproven' | 'abaad';
+        sending: 'allowed' | 'blocked';
+        sending_reason: string | null;
+    };
+    billing_state: string | null;
+    billing_owner: string | null;
+    awaits_billing: boolean;
+    may_confirm: boolean;
+    facts: {
+        ownership: string | null;
+        funding: string | null;
+        abaad_access: string | null;
+        partner_owned: boolean;
+        /** أيُرسل الرمزُ من هذا الحساب، وأفيه الرقم، وكم حسابَ رسائل يصله الرمزُ على الرقم */
+        token_sends?: boolean | null;
+        phone_in_account?: boolean | null;
+        reach?: number | null;
+        read_at: string | null;
+    } | null;
+    blocker: string | null;
+    stopped: string | null;
+    evidence: { kind: string; reference: string | null; reviewed_by: string | null; reviewed_at: string | null } | null;
+    kinds: { key: string; label: string }[];
+    /** يُسمّى حسابُ الرسائل في كلّ رسالة (`messaging_account_id`) على إصدار الواجهة الحاليّ */
+    names_account?: boolean;
+}
+
+const yesNo = (v: boolean | null | undefined) => (v === true ? 'نعم' : v === false ? 'لا' : 'تعذّرت القراءة');
+
+const FUNDING: Record<string, string> = {
+    present: 'عليه وسيلة دفع (لا نعرف لمن)',
+    absent: 'بلا وسيلة دفع',
+    unreadable: 'لا تُطلعنا ميتا عليها',
+};
+
+const PAYMENT: Record<string, string> = {
+    present: 'موجودة (لا تقول لمن تُحتسب)',
+    absent: 'ميتا تقول لا وسيلة دفع',
+    unknown: 'لا تُطلعنا ميتا عليها — تُرى في دليل التاجر',
+};
+
+const RESPONSIBILITY: Record<string, string> = {
+    confirmed: 'على التاجر — رُوجع دليلها',
+    unproven: 'غير مثبتة بعد — تنتظر مراجعة دليل',
+    abaad: 'على أبعاد — يُردّ الربط',
+};
+
+const ACCESS: Record<string, string> = {
+    none: 'لا يملكه ولا يشاركه',
+    shared: 'مشارَكٌ معه',
+    owned: 'يملكه',
+    unknown: 'تعذّرت القراءة',
+};
+
+/**
+ * مراجعةُ دليل الفوترة — لا زرٌّ يُضغط.
+ *
+ * ميتا لا تُطلع تطبيقًا ليس لـ«مزوّد حلول أعمال» على وسيلة الدفع، فلا يثبت
+ * آليًّا على من تُحتسب الرسائل. فيُسمّى الدليلُ ومرجعُه، ويُقرّ المراجعُ أنّه
+ * رأى فيه اسمَ نشاط التاجر ومعرّفَ هذا الحساب — والخادمُ يقرأ ميتا لحظتها.
+ */
+export function BillingReviewBlock({ businessId, review }: { businessId: number; review: BillingReview }) {
+    const t = useTranslate();
+    const confirm = useForm({ evidence_kind: '', evidence_reference: '', evidence_waba_id: '', evidence_checked: false });
+    const facts = review.facts;
+    const ready = confirm.data.evidence_kind !== '' && confirm.data.evidence_reference.trim().length >= 3
+        && confirm.data.evidence_waba_id.trim() !== '' && confirm.data.evidence_checked;
+    const stages = review.stages;
+
+    return (
+        <div className="mt-2 border-t border-[#f0f0f0] pt-2" data-testid="whatsapp-billing" data-state={review.billing_state ?? ''}>
+            <div className="flex justify-between gap-3">
+                <dt className="text-[#6b7280]">{t('فوترة ميتا')}</dt>
+                <dd className="font-medium text-[#111]">
+                    {review.billing_state === 'confirmed'
+                        ? `${t('رُوجع دليلها — على التاجر')}${review.billing_owner ? ` — ${review.billing_owner}` : ''}`
+                        : review.own_app
+                          ? t('لم يُراجَع دليلها — لا يُرسل الربط')
+                          : t('لم يُراجَع دليلها — يُراجَع قبل أن ينتقل إلى تطبيقه')}
+                </dd>
+            </div>
+            {review.waba_id && (
+                <p className="mt-1 text-[11px] text-[#374151]" data-testid="whatsapp-billing-account">
+                    {t('حساب الرسائل المربوط')}: <bdi dir="ltr">{review.waba_id}</bdi>
+                </p>
+            )}
+            {stages && (
+                <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="whatsapp-billing-stages">
+                    <li data-testid="whatsapp-billing-stage-payment">
+                        {t('وسيلة الدفع على هذا الحساب')}: {t(PAYMENT[stages.payment_method])}
+                    </li>
+                    <li data-testid="whatsapp-billing-stage-responsibility">
+                        {t('مسؤولية الرسوم')}: {t(RESPONSIBILITY[stages.responsibility])}
+                    </li>
+                    <li data-testid="whatsapp-billing-stage-sending" className={stages.sending === 'allowed' ? 'text-[#047857]' : 'text-[#b91c1c]'}>
+                        {t('الإرسال')}: {stages.sending === 'allowed' ? t('مسموح') : t('محظور')}
+                        {stages.sending_reason ? ` — ${stages.sending_reason}` : ''}
+                    </li>
+                </ul>
+            )}
+            {review.stopped && <p className="mt-1 text-[11px] text-[#b91c1c]">{review.stopped}</p>}
+            {facts && (
+                <ul className="mt-1 space-y-0.5 text-[11px] text-[#6b7280]" data-testid="whatsapp-billing-facts">
+                    <li>{t('الملكيّة عند ميتا')}: {facts.ownership ?? t('تعذّرت القراءة')}{facts.partner_owned ? ` — ${t('لشريكٍ نيابةً عن التاجر')}` : ''}</li>
+                    <li>{t('وسيلة الدفع')}: {t(FUNDING[facts.funding ?? 'unreadable'] ?? FUNDING.unreadable)}</li>
+                    <li>{t('نشاط أبعاد')}: {t(ACCESS[facts.abaad_access ?? 'unknown'] ?? ACCESS.unknown)}</li>
+                    <li>{t('الرمز يُرسل من هذا الحساب')}: {t(yesNo(facts.token_sends))}</li>
+                    <li>{t('الرقم في هذا الحساب')}: {t(yesNo(facts.phone_in_account))}</li>
+                    <li>
+                        {t('حسابات الرسائل التي يصلها الرمز على الرقم')}: {facts.reach ?? t('تعذّرت القراءة')}
+                        {review.names_account ? ` — ${t('يُسمّى حساب التاجر في كلّ رسالة')}` : ''}
+                    </li>
+                    {facts.read_at && <li>{t('قُرئت')}: {facts.read_at}</li>}
+                </ul>
+            )}
+            {review.blocker && <p className="mt-1 text-[11px] font-medium text-[#b91c1c]" data-testid="whatsapp-billing-blocker">{review.blocker}</p>}
+            {review.evidence && (
+                <p className="mt-1 text-[11px] text-[#6b7280]" data-testid="whatsapp-billing-evidence">
+                    {review.evidence.kind} — {review.evidence.reference} · {review.evidence.reviewed_by} · {review.evidence.reviewed_at}
+                </p>
+            )}
+            {review.may_confirm && (
+                <form
+                    className="mt-2 space-y-2"
+                    data-testid="whatsapp-billing-review"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        confirm.post(route('super-admin.businesses.whatsapp.billing', businessId), { preserveScroll: true });
+                    }}
+                >
+                    <p className="text-[11px] leading-relaxed text-[#6b7280]">
+                        {t('ميتا لا تُطلعنا على وسيلة الدفع، وإقرار التاجر لا يكفي. أكّد بعد أن ترى دليلًا من ميتا نفسها:')}
+                    </p>
+                    <select
+                        className="w-full rounded-[8px] border border-[#e5e7eb] p-2 text-[12px]"
+                        value={confirm.data.evidence_kind}
+                        onChange={(e) => confirm.setData('evidence_kind', e.target.value)}
+                        data-testid="whatsapp-billing-kind"
+                    >
+                        <option value="">{t('ما الدليل؟')}</option>
+                        {review.kinds.map((k) => (
+                            <option key={k.key} value={k.key}>
+                                {k.label}
+                            </option>
+                        ))}
+                    </select>
+                    <Input
+                        value={confirm.data.evidence_reference}
+                        onChange={(e) => confirm.setData('evidence_reference', e.target.value)}
+                        placeholder={t('مرجعه: رقم الفاتورة أو تاريخ الصورة')}
+                        data-testid="whatsapp-billing-reference"
+                    />
+                    <Input
+                        value={confirm.data.evidence_waba_id}
+                        onChange={(e) => confirm.setData('evidence_waba_id', e.target.value)}
+                        placeholder={t('معرّف الحساب كما في صفحة ميتا (WABA ID)')}
+                        dir="ltr"
+                        inputMode="numeric"
+                        data-testid="whatsapp-billing-waba"
+                    />
+                    <label className="flex items-start gap-2 text-[11px] leading-relaxed text-[#374151]">
+                        <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={confirm.data.evidence_checked}
+                            onChange={(e) => confirm.setData('evidence_checked', e.target.checked)}
+                            data-testid="whatsapp-billing-checked"
+                        />
+                        <span>{t('رأيت في الدليل معرّفَ هذا الحساب نفسه — لا اسمَ النشاط وحده — ووسيلةَ دفعٍ ليست لأبعاد.')}</span>
+                    </label>
+                    {(confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_waba_id || confirm.errors.evidence_checked) && (
+                        <p className="text-[11px] text-[#b91c1c]">{confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_waba_id || confirm.errors.evidence_checked}</p>
+                    )}
+                    <Button type="submit" variant="outline" size="sm" loading={confirm.processing} disabled={! ready} data-testid="whatsapp-billing-confirm">
+                        <Check />
+                        {t('راجعتُ الدليل — الفوترة على التاجر')}
+                    </Button>
+                </form>
+            )}
+        </div>
+    );
 }
 
 const MODES = [
@@ -85,7 +290,6 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
         whatsapp_own_allowed: data.own_allowed,
         whatsapp_shared_allowed: data.shared_allowed,
         whatsapp_mode: data.mode,
-        whatsapp_inbox_enabled: data.inbox_enabled ?? false,
         // فارغٌ يعني «افتراضي المنصّة» — لا صفرًا، والصفر يعني المنع
         whatsapp_monthly_limit: data.limit_override === null ? '' : String(data.limit_override),
     });
@@ -119,6 +323,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                         {t(data.effective_mode === 'business_own' ? 'رقم المتجر' : 'رقم أبعاد')}
                     </dd>
                 </div>
+                {data.billing && (
+                    <div className="flex items-center justify-between gap-3" data-testid="wa-billing-state" data-state={data.billing.state}>
+                        <dt className="text-[#6b7280]">{t('رسوم واتساب عند Meta')}</dt>
+                        <dd><StatusPill state={BILLING_PILL[data.billing.state]} label={data.billing.label} /></dd>
+                    </div>
+                )}
                 <div className="flex justify-between gap-3">
                     <dt className="text-[#6b7280]">{t('رسائل هذا الشهر')}</dt>
                     <dd className="font-medium text-[#111]" dir="ltr">
@@ -185,6 +395,19 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                             {data.own_health.link.checked_at && (
                                 <p className="mt-0.5 text-[11px] text-[#9ca3af]">{t('آخر فحص')}: <span dir="ltr">{data.own_health.link.checked_at}</span></p>
                             )}
+                            {/* حالةُ التسليم ليست رسالةَ زبون — لكلٍّ ختمُه */}
+                            <div className="mt-2 flex justify-between gap-3" data-testid="whatsapp-last-status">
+                                <dt className="text-[#6b7280]">{t('آخر حالة تسليم')}</dt>
+                                <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_status_at ?? '—'}</dd>
+                            </div>
+                            <div className="flex justify-between gap-3" data-testid="whatsapp-last-inbound">
+                                <dt className="text-[#6b7280]">{t('آخر رسالة عميل وصلت')}</dt>
+                                <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_inbound_at ?? t('لم تصل بعد')}</dd>
+                            </div>
+                            <div className="flex justify-between gap-3" data-testid="whatsapp-last-saved">
+                                <dt className="text-[#6b7280]">{t('آخر رسالة حُفظت في المحادثات')}</dt>
+                                <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_inbound_saved_at ?? '—'}</dd>
+                            </div>
                             {data.own_health.can_check && (
                                 <Button
                                     type="button"
@@ -199,9 +422,28 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                                 </Button>
                             )}
                             <p className="mt-1 text-[11px] text-[#9ca3af]">{t('الفحص قراءة عند ميتا فقط — لا يغيّر الرقم ولا الرمز ولا الاشتراك.')}</p>
+                            {/* وفوترةُ ميتا: لا تُرسل وصلةُ تطبيق التاجر قبل أن يُراجَع دليلُها */}
+                            {data.own_health.own_app && <BillingReviewBlock businessId={businessId} review={data.own_health.own_app} />}
                         </div>
                     )}
                 </dl>
+            )}
+
+            {data.billing_review && <div className="mb-5"><WhatsAppBillingReview businessId={businessId} review={data.billing_review} /></div>}
+
+            {data.sender && (
+                <div className="mb-5 empty:hidden">
+                    <WhatsappSender sender={data.sender} audience="platform" />
+                </div>
+            )}
+
+            {data.client_link && (
+                <ClientLinkBox
+                    businessId={businessId}
+                    data={data.client_link}
+                    stillShared={data.own_connection?.usable === true && data.effective_mode !== 'business_own'}
+                    switchesItself={data.sender?.state === 'checking'}
+                />
             )}
 
             <div className="space-y-5">
@@ -243,12 +485,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     {form.errors.whatsapp_mode && <p className="text-[12px] text-[#b91c1c]">{form.errors.whatsapp_mode}</p>}
                 </div>
 
-                <Toggle
-                    on={form.data.whatsapp_inbox_enabled}
-                    onChange={(v) => form.setData('whatsapp_inbox_enabled', v)}
-                    label="صندوق محادثات واتساب"
-                    hint="يستقبل رسائل زبائنه ويردّ موظّفوه المخوَّلون من لوحته — على رقمه المستقل، أو على رقم أبعاد لما ثبت أنه له وحده. إطفاؤه يخفي الصندوق ولا يحذف محادثاته"
-                />
+                {/* لا مقبضَ للصندوق: يُفتح وحده لمن يملك واتساب — يُقرأ هنا ولا يُبدَّل */}
+                <p className="rounded-[10px] bg-[#fafafa] px-3 py-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="inbox-status">
+                    {data.inbox_available
+                        ? t('صندوق محادثات واتساب مفتوحٌ له تلقائيًا — باقته تشمل واتساب. موظّفوه بصلاحيةٍ يمنحها صاحب المتجر.')
+                        : t('صندوق محادثات واتساب مغلقٌ له — باقته لا تشمل واتساب، أو واتساب مطفأ لحسابه.')}
+                </p>
                 <Toggle
                     on={form.data.whatsapp_enabled}
                     onChange={(v) => form.setData('whatsapp_enabled', v)}

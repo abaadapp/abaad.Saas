@@ -1,24 +1,35 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * تعديلُ فاتورة العميل بعد كتابتها — وسجلُّه الذي لا يُمحى.
+ * تصحيحُ فاتورة العميل بعد كتابتها — بمستنداتٍ تُضاف لا بورقةٍ تُعاد كتابتُها.
  *
  * ═══ ما يُضاف — وكلُّه إضافة ═══
  *
  * - `customer_invoices.revision`: عدّادُ تعديلات الورقة. يُرسَل مع شاشة التعديل
  *   ويُقارَن تحت قفل الصفّ عند الحفظ: موظّفان فتحا الورقةَ نفسَها لا يمحو
  *   ثانيهما ما حفظه الأوّل في صمت (`CustomerInvoiceEdits::apply`).
- * - `customer_invoice_revisions`: صفٌّ لكلّ تعديل — الورقةُ قبله وبعده بنودًا
- *   ورأسًا، وما تغيّر، والسبب، ومن، ومتى، والمدفوعُ ساعتَها، والفترةُ التي
- *   كُتب فيها التصحيح، وقيدا العكس والترحيل اللذان كتبهما. ولا يُعدَّل ولا
- *   يُحذف من النظام (`CustomerInvoiceRevision`).
+ * - `customer_invoices.replaces_invoice_id`: الفاتورةُ التي حلّت هذه محلَّها —
+ *   حين يتغيّر العميل فتُلغى غيرُ المدفوعة وتُكتب بديلتُها (`CustomerInvoiceEdits::replace`).
+ * - `customer_invoice_revisions`: صفٌّ لكلّ تعديل — حالُ الورقة قبله وبعده،
+ *   وما تغيّر، وأساسُ التصحيح، والسبب، ومن، ومتى، والمدفوعُ ساعتَها. ولا يُعدَّل
+ *   ولا يُحذف من النظام (`CustomerInvoiceRevision`).
+ * - `customer_debit_notes`: الإشعارُ المدين — زيادةٌ على فاتورةٍ صدرت برقمٍ
+ *   وتسلسلٍ وتاريخٍ وبنودٍ تخصّه، يشير إلى الفاتورة الأصليّة (م٥٠ و١٥٥ من
+ *   اللائحة التنفيذيّة لضريبة القيمة المضافة).
+ * - `customer_credit_notes.items` و`basis` و`revision_id`: بنودُ الإشعار الدائن
+ *   حين يولد من تصحيح، وأساسُه (خطأٌ أو إرجاع)، والتعديلُ الذي أصدره. والإشعارُ
+ *   القائم يبقى كما هو: بلا بنود، وبلا أساس.
  *
- * و`edit_token` فريدٌ مع المتجر: إرسالُ النموذج نفسِه مرّتين لا يكتب قيدين.
+ * ═══ والفاتورةُ الصادرة لا تُكتب ثانيةً ═══
+ *
+ * لا عمودَ هنا يحمل بنودًا «بعد التعديل» على الفاتورة نفسِها: بنودُها ومجاميعُها
+ * كما صدرت، والتصحيحُ مستندٌ مستقلّ. وحالُها بعد كلّ تصحيح لقطةٌ في سجلّه.
  *
  * ولا يُمسّ صفٌّ قائم: الفواتيرُ كلُّها تبدأ بعدّادٍ صفر، ولا سجلَّ لما قبل اليوم.
  */
@@ -26,60 +37,174 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasColumn('customer_invoices', 'revision')) {
-            Schema::table('customer_invoices', function (Blueprint $table) {
+        $this->briefly(fn () => $this->change());
+    }
+
+    private function change(): void
+    {
+        Schema::table('customer_invoices', function (Blueprint $table) {
+            if (! Schema::hasColumn('customer_invoices', 'revision')) {
                 $table->unsignedInteger('revision')->default(0);
+            }
+            if (! Schema::hasColumn('customer_invoices', 'replaces_invoice_id')) {
+                $table->foreignId('replaces_invoice_id')->nullable()->index()->constrained('customer_invoices')->nullOnDelete();
+            }
+        });
+
+        if (! Schema::hasTable('customer_invoice_revisions')) {
+            Schema::create('customer_invoice_revisions', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('business_id')->index()->constrained()->cascadeOnDelete();
+                $table->foreignId('customer_invoice_id')->constrained()->cascadeOnDelete();
+                // رقمُ التعديل داخل الورقة: ١ ثمّ ٢ — يقابل `customer_invoices.revision` بعده
+                $table->unsignedInteger('revision');
+                // حالُ الورقة ساعةَ عُدّلت: مسودة / صادرة / مدفوعة — ومنه الصلاحيةُ التي سُئلت
+                $table->string('kind', 12);
+                // أساسُ التصحيح بعد الإصدار: خطأٌ في الفاتورة أو إرجاع — وللمسودّة فراغ
+                $table->string('basis', 20)->nullable();
+                $table->string('reason', 255)->nullable();
+                $table->json('before');
+                $table->json('after');
+                $table->json('changes');
+                $table->decimal('total_before', 12, 3)->default(0);
+                $table->decimal('total_after', 12, 3)->default(0);
+                $table->decimal('tax_before', 12, 3)->default(0);
+                $table->decimal('tax_after', 12, 3)->default(0);
+                $table->decimal('paid_at_edit', 12, 3)->default(0);
+                $table->decimal('credited_at_edit', 12, 3)->default(0);
+                $table->string('edit_token', 64)->nullable();
+                $table->foreignId('created_by')->nullable()->index()->constrained('users')->nullOnDelete();
+                $table->timestamps();
+
+                $table->unique(['customer_invoice_id', 'revision'], 'cir_invoice_revision_unique');
+                $table->unique(['business_id', 'edit_token'], 'cir_edit_token_unique');
             });
         }
 
-        if (Schema::hasTable('customer_invoice_revisions')) {
-            return;
-        }
-
-        Schema::create('customer_invoice_revisions', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('business_id')->index()->constrained()->cascadeOnDelete();
-            $table->foreignId('customer_invoice_id')->constrained()->cascadeOnDelete();
-            // رقمُ التعديل داخل الورقة: ١ ثمّ ٢ — يقابل `customer_invoices.revision` بعده
-            $table->unsignedInteger('revision');
-            // حالُ الورقة ساعةَ عُدّلت: مسودة / صادرة / مدفوعة — ومنه الصلاحيةُ التي سُئلت
-            $table->string('kind', 12);
-            $table->string('reason', 255)->nullable();
-            $table->json('before');
-            $table->json('after');
-            $table->json('changes');
-            $table->decimal('total_before', 12, 3)->default(0);
-            $table->decimal('total_after', 12, 3)->default(0);
-            $table->decimal('tax_before', 12, 3)->default(0);
-            $table->decimal('tax_after', 12, 3)->default(0);
-            $table->decimal('paid_at_edit', 12, 3)->default(0);
-            $table->decimal('credited_at_edit', 12, 3)->default(0);
-            // أين وقع التصحيح في الدفتر: same (شهرُ القيد) / current (الفترة الحاليّة) / original (تاريخ القيد)
-            $table->string('period_mode', 12)->nullable();
-            $table->date('reversal_date')->nullable();
-            $table->date('entry_date')->nullable();
-            $table->foreignId('reversal_entry_id')->nullable()->index()->constrained('journal_entries')->nullOnDelete();
-            $table->foreignId('entry_id')->nullable()->index()->constrained('journal_entries')->nullOnDelete();
-            $table->string('edit_token', 64)->nullable();
-            $table->foreignId('created_by')->nullable()->index()->constrained('users')->nullOnDelete();
-            $table->timestamps();
-
-            $table->unique(['customer_invoice_id', 'revision'], 'cir_invoice_revision_unique');
-            $table->unique(['business_id', 'edit_token'], 'cir_edit_token_unique');
+        Schema::table('customer_credit_notes', function (Blueprint $table) {
+            if (! Schema::hasColumn('customer_credit_notes', 'items')) {
+                $table->json('items')->nullable();
+            }
+            if (! Schema::hasColumn('customer_credit_notes', 'basis')) {
+                $table->string('basis', 20)->nullable();
+            }
+            if (! Schema::hasColumn('customer_credit_notes', 'revision_id')) {
+                $table->foreignId('revision_id')->nullable()->index()->constrained('customer_invoice_revisions')->nullOnDelete();
+            }
         });
+
+        if (! Schema::hasTable('customer_debit_notes')) {
+            Schema::create('customer_debit_notes', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('business_id')->constrained()->cascadeOnDelete();
+                $table->foreignId('customer_invoice_id')->constrained()->cascadeOnDelete();
+                $table->string('number', 40);
+                // شاملٌ للضريبة — و`tax_amount` نصيبُها منه، كالإشعار الدائن
+                $table->decimal('amount', 12, 3);
+                $table->decimal('tax_amount', 12, 3)->default(0);
+                $table->date('issued_at');
+                $table->string('basis', 20)->nullable();
+                $table->string('reason')->nullable();
+                $table->json('items')->nullable();
+                $table->foreignId('revision_id')->nullable()->index()->constrained('customer_invoice_revisions')->nullOnDelete();
+                $table->foreignId('created_by')->nullable()->index()->constrained('users')->nullOnDelete();
+                $table->timestamps();
+
+                $table->unique(['business_id', 'number']);
+                $table->index('customer_invoice_id');
+            });
+        }
     }
 
     public function down(): void
     {
-        // سجلُّ تعديل مستندٍ ماليّ لا يُسقط وفيه صفوف — الرجوعُ بالكود وحده (Revert PR)
-        if (Schema::hasTable('customer_invoice_revisions') && DB::table('customer_invoice_revisions')->exists()) {
-            throw new RuntimeException('لا يُتراجع: في سجلّ تعديلات الفواتير صفوف. ارجع بالكود وحده (Revert PR) واترك الجدول — الكودُ القديم لا يقرؤه.');
+        // مستندٌ ماليٌّ صدر لا يُسقط جدولُه وفيه صفوف — الرجوعُ بالكود وحده (Revert PR)
+        foreach (['customer_debit_notes', 'customer_invoice_revisions'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("لا يُتراجع: في {$table} صفوف. ارجع بالكود وحده (Revert PR) واترك الجداول — الكودُ القديم لا يقرؤها.");
+            }
         }
+        if (Schema::hasColumn('customer_credit_notes', 'revision_id') && DB::table('customer_credit_notes')->whereNotNull('revision_id')->exists()) {
+            throw new RuntimeException('لا يُتراجع: إشعاراتٌ دائنة وُلدت من تصحيح. ارجع بالكود وحده (Revert PR).');
+        }
+
+        $this->briefly(fn () => $this->undo());
+    }
+
+    private function undo(): void
+    {
+        Schema::dropIfExists('customer_debit_notes');
+
+        Schema::table('customer_credit_notes', function (Blueprint $table) {
+            if (Schema::hasColumn('customer_credit_notes', 'revision_id')) {
+                $table->dropConstrainedForeignId('revision_id');
+            }
+            /*
+             * و`basis` و`items` لا يُسقطان هنا: السببُ عمودُ #202 المنشور
+             * (`2026_11_05_090000_a_manual_credit_note_says_why_it_was_issued`)
+             * تقرؤه إشعاراتُ الإنتاج، والبنودُ يكتبها إرجاعُ قطع البوتيك أيضًا.
+             * وكلاهما فارغٌ لما لا يخصّه — بقاؤهما لا يضرّ الكودَ القديم.
+             */
+        });
 
         Schema::dropIfExists('customer_invoice_revisions');
 
-        if (Schema::hasColumn('customer_invoices', 'revision')) {
-            Schema::table('customer_invoices', fn (Blueprint $t) => $t->dropColumn('revision'));
+        Schema::table('customer_invoices', function (Blueprint $table) {
+            if (Schema::hasColumn('customer_invoices', 'replaces_invoice_id')) {
+                $table->dropConstrainedForeignId('replaces_invoice_id');
+            }
+            if (Schema::hasColumn('customer_invoices', 'revision')) {
+                $table->dropColumn('revision');
+            }
+        });
+    }
+
+    /*
+     * ═══ والقفلُ لحظةٌ لا انتظار ═══
+     *
+     * إضافةُ عمودٍ فارغٍ أو بقيمةٍ ثابتة لا تعيد كتابةَ صفٍّ في PostgreSQL، لكنّها
+     * تطلب قفلَ الفواتير وإشعاراتها كلِّها لتلك اللحظة — ولو كان تقريرٌ طويلٌ يقرؤها
+     * انتظرَته، وكلُّ بيعةٍ تصل بعدها تنتظر خلفها. فتنتظر القفلَ ثلاثَ ثوانٍ لا أكثر
+     * ثمّ تتراجع وتعيد المحاولة بعد ثانية، خمسَ مرّات؛ وإن لم يُتَح سقطت الهجرة
+     * فيتوقّف النشرُ قبل إعادة تحميل PHP ويبقى الموقعُ على كوده القديم. والمعاملةُ
+     * تجمع التغييرَ كلَّه: يقع كلُّه أو لا شيء.
+     * (كما في `2026_11_11_090000_a_customer_invoice_remembers_the_points_it_spent`.)
+     */
+    public $withinTransaction = false;
+
+    public int $attempts = 5;
+
+    public string $lockTimeout = '3s';
+
+    public float $pause = 1.0;
+
+    private function briefly(callable $change): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            DB::transaction(fn () => $change());
+
+            return;
+        }
+
+        if (! preg_match('/^\d+(ms|s)$/', $this->lockTimeout)) {
+            throw new InvalidArgumentException('lock_timeout: '.$this->lockTimeout);
+        }
+
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                DB::transaction(function () use ($change) {
+                    DB::statement("SET LOCAL lock_timeout = '".$this->lockTimeout."'");
+                    $change();
+                });
+
+                return;
+            } catch (QueryException $e) {
+                // 55P03: لم يُتَح القفلُ في مهلته — وما سواه خطأٌ حقيقيٌّ لا يُعاد
+                if ((string) ($e->errorInfo[0] ?? $e->getCode()) !== '55P03' || $attempt >= $this->attempts) {
+                    throw $e;
+                }
+                usleep((int) ($this->pause * 1_000_000));
+            }
         }
     }
 };

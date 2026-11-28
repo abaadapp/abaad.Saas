@@ -339,15 +339,42 @@ describe('بطاقةُ الحال', () => {
         expect(screen.getByTestId('link-line').textContent).toContain('رقمك مربوط');
     });
 
-    it('ولا تقول «يستقبل» إلّا حين يقولها الخادم', () => {
+    it('ولا تقول «وصلت رسالة عميل» إلّا حين يقولها الخادم — وحالةُ التسليم والرفضُ ليسا استقبالًا', () => {
         const ready: LinkHealth = { key: 'ready', label: 'جاهز نظريًا لاستقبال الرسائل', hint: '…', tone: 'info', checked_at: null };
-        const { unmount } = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={ready} config={CONFIG} mayManage />);
-        expect(screen.getByTestId('link-health').textContent).not.toContain('تم إثبات استقبال');
-        unmount();
+        const first = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={ready} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
+        first.unmount();
 
-        const proven: LinkHealth = { key: 'receiving', label: 'تم إثبات استقبال Webhook فعلي', hint: '…', tone: 'success', checked_at: null };
+        const statuses: LinkHealth = {
+            key: 'status_received', label: 'تم استقبال Webhook لحالة تسليم', hint: '…', tone: 'info', checked_at: null,
+            last_status_at: '2026-10-28 15:00', last_inbound_at: null,
+        };
+        const second = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={statuses} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health')).toHaveAttribute('data-state', 'status_received');
+        expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
+        expect(screen.getByTestId('link-health-facts').textContent).toContain('2026-10-28 15:00');
+        second.unmount();
+
+        // وصلت ورُدّت: لا نجاح، والسببُ ظاهر
+        const refused: LinkHealth = {
+            key: 'inbound_refused', label: 'وصلت رسالة عميل ولم تُحفظ', hint: '…', tone: 'danger', checked_at: null,
+            last_status_at: null, last_inbound_at: '2026-10-28 15:30', last_inbound_saved_at: null,
+            inbound_problem: 'صندوق محادثات واتساب غير مفتوح لهذا المتجر',
+        };
+        const third = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={refused} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
+        expect(screen.getByTestId('link-health-refusal').textContent).toContain('صندوق محادثات واتساب غير مفتوح');
+        expect(screen.getByTestId('link-health-saved').textContent).toBe('—');
+        third.unmount();
+
+        const proven: LinkHealth = {
+            key: 'inbound_received', label: 'تم استقبال رسالة عميل فعلية', hint: '…', tone: 'success', checked_at: null,
+            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00', last_inbound_saved_at: '2026-10-28 16:00',
+        };
         render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={proven} config={CONFIG} mayManage />);
-        expect(screen.getByTestId('link-health').textContent).toContain('تم إثبات استقبال');
+        expect(screen.getByTestId('link-health').textContent).toContain('تم استقبال رسالة عميل فعلية');
+        expect(screen.getByTestId('link-health-saved').textContent).toBe('2026-10-28 16:00');
+        expect(screen.queryByTestId('link-health-refusal')).toBeNull();
     });
 
     /** والتعايشُ يُختار صراحةً — ومطفأٌ بسببه ما لم يُفتح على الخادم */
@@ -373,5 +400,33 @@ describe('بطاقةُ الحال', () => {
         card({ state: 'error', error_message: 'Phone number is not eligible for coexistence.' });
 
         expect(screen.getByTestId('meta-error').textContent).toContain('not eligible');
+    });
+
+    /** رقمٌ جديدٌ على Cloud API: خطوةُ التفعيل برمز التحقّق بخطوتين — لصاحب الحساب وحده */
+    it('تطلب رمز التحقّق بخطوتين لرقمٍ لم يُفعَّل، ولا تقبل غيرَ ستّة أرقام', async () => {
+        const user = userEvent.setup();
+        const { unmount } = card({ state: 'needs_registration', display_phone_number: '+968 9100 0001' });
+
+        expect(pillFor('needs_registration')).toBe('action');
+        expect(screen.getByTestId('link-line').textContent).toContain('اكتب رمز التحقّق بخطوتين');
+        expect(screen.getByTestId('link-facts').textContent).toContain('+968 9100 0001');
+
+        const pin = screen.getByTestId('register-pin');
+        expect(screen.getByTestId('register-submit')).toBeDisabled();
+        await user.type(pin, '48a29-15');
+        expect(pin).toHaveValue('482915');
+        expect(screen.getByTestId('register-submit')).toBeEnabled();
+        unmount();
+
+        card({ state: 'needs_registration' }, false);
+        expect(screen.queryByTestId('register-number')).toBeNull();
+    });
+
+    /** ومن يبدأ على رقمه لا يُقال له إنّ رسائله تخرج من رقم أبعاد */
+    it('لا تَعِد برقم أبعاد من لا يُرسل منه', () => {
+        render(<WhatsappLinkCard link={base} config={CONFIG} mayManage sharedAllowed={false} />);
+
+        expect(screen.getByTestId('link-line').textContent).toContain('لا رسالةَ تخرج قبل ذلك');
+        expect(screen.getByTestId('link-line').textContent).not.toContain('رقم أبعاد المشترك');
     });
 });

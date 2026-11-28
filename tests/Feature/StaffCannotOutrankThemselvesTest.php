@@ -11,7 +11,6 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
-use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -142,7 +141,7 @@ class StaffCannotOutrankThemselvesTest extends TestCase
          */
         $me = $this->staff('cashier', 'كاشير', [
             // و«الموظفون» فوقها: بها يفتح الشاشةَ أصلًا، ودورُ «مشرف» لا يحملها
-            'permissions' => SectionActions::withActionsOf([...Permissions::roleGrants('sales'), 'employees']),
+            'permissions' => [...Permissions::roleGrants('sales'), 'employees'],
         ]);
         $this->actingAs($me);
 

@@ -93,7 +93,6 @@ export default function ReportsStaff() {
                             {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل */}
                             {period && <PeriodButton period={period} onClick={() => setPicking(true)} />}
                             <ExportMenu
-                                action="report.export"
                                 feature="reports_advanced"
                                 xlsx={route('admin.reports.export.xlsx', 'staff')}
                                 pdf={route('admin.reports.export.pdf', 'staff')}

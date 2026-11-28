@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import ProductForm from './partials/ProductForm';
+import ProductForm, { type WebsiteStatus } from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { BoutiqueLinks, CompositionData } from './partials/addons';
@@ -29,10 +29,12 @@ interface Props {
     boutiqueParts?: BoutiquePartsData | null;
     /** أيُربط صنفُ بوتيكٍ بإضافة — انظر `AddonController::boutiqueLinks` */
     addonBoutiqueLinks?: BoutiqueLinks;
+    /** حالُه في الموقع بثلاثٍ — `null` لمن لا يرسم موقعُه «نفدت الكمية». انظر `WebsiteSoldOut` */
+    websiteStatus?: WebsiteStatus | null;
 }
 
 export default function ProductEdit() {
-    const { product, categories, description, descriptionEn, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, boutiqueParts, addonBoutiqueLinks, context } =
+    const { product, categories, description, descriptionEn, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, boutiqueParts, addonBoutiqueLinks, websiteStatus, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -58,6 +60,7 @@ export default function ProductEdit() {
                 addonsDisplay={addonsDisplay}
                 boutiqueParts={boutiqueParts}
                 addonBoutiqueLinks={addonBoutiqueLinks}
+                websiteStatus={websiteStatus}
             />
         </AdminLayout>
     );

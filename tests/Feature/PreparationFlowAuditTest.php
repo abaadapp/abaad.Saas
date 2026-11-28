@@ -240,7 +240,8 @@ class PreparationFlowAuditTest extends TestCase
         $mine = $this->order();
         $elsewhere = $this->order(['branch_id' => $second->id]);
 
-        session(['current_branch' => $this->branch->id]);
+        // الفرعُ إسنادُ الموظّف لا جلستُه (`PreparationScope`)
+        $this->actingAsBranch($this->branch);
 
         $numbers = [];
         $this->get(route('admin.preparation.index'))
@@ -257,9 +258,18 @@ class PreparationFlowAuditTest extends TestCase
         $second = Branch::create(['business_id' => $this->business->id, 'name' => 'صلالة']);
         $elsewhere = $this->order(['branch_id' => $second->id]);
 
-        session(['current_branch' => $this->branch->id]);
+        $this->actingAsBranch($this->branch);
 
         $this->move($elsewhere, OrderStatus::READY)->assertNotFound();
+        $this->assertSame(OrderStatus::PREPARING, $elsewhere->fresh()->status);
+    }
+
+    /** من قُيِّد بهذا الفرع — وجلستُه على «كل الفروع» */
+    private function actingAsBranch(Branch $branch): void
+    {
+        $local = $this->staff('inventory', ['preparation']);
+        $local->branches()->sync([$branch->id]);
+        $this->actingAs($local);
     }
 
     /* ------------------- الصلاحية ------------------- */

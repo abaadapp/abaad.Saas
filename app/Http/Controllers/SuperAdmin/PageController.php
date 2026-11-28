@@ -40,7 +40,10 @@ use App\Support\Purge\Vault;
 use App\Support\Roles;
 use App\Support\Search;
 use App\Support\SupportWhatsApp;
+use App\Support\TillCatalogSwitch;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppLinkHealth;
+use App\Support\WhatsAppMerchantLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\JsonResponse;
@@ -150,10 +153,20 @@ class PageController extends Controller
         ];
     }
 
-    public function businessesCreate(): Response
+    public function businessesCreate(Request $request): Response
     {
+        $options = $this->businessOptions();
+
         return $this->page('Platform/Businesses/Create', [
-            'options' => $this->businessOptions(),
+            'options' => $options,
+            /*
+             * القطاعُ المحدَّد سلفًا — من صفحة القطاع (`?sector=`)، أو الوحيدُ النشط.
+             *
+             * وقطاعٌ في الرابط لا يُقرأ إلّا إن كان بين النشطة: رابطٌ قديمٌ لقطاعٍ
+             * أُطفئ لا يفتح إضافةً إليه.
+             */
+            'sectorId' => collect($options['sectors'])->firstWhere('id', (int) $request->query('sector'))['id']
+                ?? (count($options['sectors']) === 1 ? $options['sectors'][0]['id'] : null),
         ]);
     }
 
@@ -234,7 +247,8 @@ class PageController extends Controller
                  * الترقيةُ في الحساب نفسِه — تجربةٌ إلى مدفوع، أو باقةٌ إلى أخرى — بسعر
                  * كلّ باقةٍ في سياسة المتجر. تُفوتَر الآن وتسري بالسداد (`Billing::upgrade`).
                  */
-                'upgrades' => \App\Models\Plan::where('id', '!=', (int) $model->plan_id)->orderBy('monthly_price')->get()
+                // ومن قطاع المتجر وحده — والخادمُ يردّ غيرَها (`Sectors::assertPlanFits`)
+                'upgrades' => \App\Models\Plan::where('id', '!=', (int) $model->plan_id)->where('sector_id', $model->sector_id)->orderBy('monthly_price')->get()
                     ->map(fn (\App\Models\Plan $p) => ['id' => $p->id, 'name' => $p->name, 'prices' => self::upgradePrices($model, $p)])
                     ->values()->all(),
                 /*
@@ -351,6 +365,7 @@ class PageController extends Controller
                 // العنوان وتاريخا الاشتراك كانت قيمًا ثابتة في القالب
                 'address' => $model?->address,
                 'plan_id' => $model?->plan_id,
+                'sector_id' => $model?->sector_id,
                 'starts_at' => optional($model?->starts_at)->format('Y-m-d'),
                 'ends_at' => optional($model?->ends_at)->format('Y-m-d'),
                 'tier' => $model?->tier,
@@ -402,30 +417,45 @@ class PageController extends Controller
 
     public function plans(): Response
     {
+        $sectors = \App\Models\Sector::orderBy('sort')->orderBy('id')->get(['id', 'name', 'active']);
+
         return $this->page('Platform/Subscriptions/Plans', [
-            'plans' => Plan::orderBy('id')->get()->map(fn ($p) => [
-                'id' => $p->id,
-                'name' => $p->name,
-                'monthly' => (float) $p->monthly_price,
-                'yearly' => (float) $p->yearly_price,
-                'color' => $p->color,
-                'popular' => (bool) $p->is_popular,
-                'features' => $p->features ?? [],
-                // السقوف تُحرَّر من الشاشة الآن، فتُقرأ فيها
-                'max_branches' => $p->max_branches,
-                'max_employees' => $p->max_employees,
-                'max_products' => $p->max_products,
-                /*
-                 * ما تفتحه الباقة — و`null` تعني «كلّ شيء» لا «لا شيء».
-                 *
-                 * تُرسل كما هي لا مُسوّاةً إلى قائمةٍ فارغة: الفرق بينهما هو
-                 * الفرق بين باقةٍ لم تُضبط بعد وباقةٍ أُغلقت عمدًا، والشاشة
-                 * تحتاج أن تقول أيّهما.
-                 */
-                'capabilities' => $p->capabilities,
-            ])->all(),
+            'plans' => self::planCards(Plan::orderBy('id')->get()),
             'capabilityOptions' => PlanFeatures::options(),
+            // وقطاعُ الباقة الجديدة يُختار هنا حين يتعدّد — ومن صفحة القطاع يصل معها
+            'sectors' => $sectors->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'active' => (bool) $s->active])->all(),
         ]);
+    }
+
+    /**
+     * بطاقاتُ الباقات — شكلٌ واحدٌ تقرؤه صفحةُ الباقات وتبويبُ باقات القطاع.
+     *
+     * @param  \Illuminate\Support\Collection<int, Plan>  $plans
+     */
+    public static function planCards(\Illuminate\Support\Collection $plans): array
+    {
+        return $plans->map(fn (Plan $p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'monthly' => (float) $p->monthly_price,
+            'yearly' => (float) $p->yearly_price,
+            'color' => $p->color,
+            'popular' => (bool) $p->is_popular,
+            'features' => $p->features ?? [],
+            // السقوف تُحرَّر من الشاشة الآن، فتُقرأ فيها
+            'max_branches' => $p->max_branches,
+            'max_employees' => $p->max_employees,
+            'max_products' => $p->max_products,
+            /*
+             * ما تفتحه الباقة — و`null` تعني «كلّ شيء» لا «لا شيء».
+             *
+             * تُرسل كما هي لا مُسوّاةً إلى قائمةٍ فارغة: الفرق بينهما هو
+             * الفرق بين باقةٍ لم تُضبط بعد وباقةٍ أُغلقت عمدًا، والشاشة
+             * تحتاج أن تقول أيّهما.
+             */
+            'capabilities' => $p->capabilities,
+            'sector_id' => $p->sector_id,
+        ])->values()->all();
     }
 
     public function invoices(): Response
@@ -489,6 +519,8 @@ class PageController extends Controller
                 'role_key' => $model->role,
                 // كانت «الباقة الاحترافية» نصًّا ثابتًا تحت اسم الشركة
                 'business_plan' => $model->business?->plan?->name,
+                // «دخول كمستخدم» يُرسم لمن يُدخل فعلًا — والقاعدةُ قاعدةُ الخادم نفسُها
+                'can_enter' => ImpersonationController::refusal($model) === null,
             ],
             'activities' => Demo::userActivities($model->id),
             'roles' => $this->roleOptions(),
@@ -603,6 +635,25 @@ class PageController extends Controller
             // حال البريد كما هو على الخادم — لا كما حُفظ في الشاشة
             'mail' => PlatformConfig::mailStatus(),
             /*
+             * ‏‏ومفتاحُ كتالوج الصندوق على الجهاز كما يقرؤه الصندوقُ الآن — لا كما حُفظ وحده:
+             * إطفاءُ الخادم (`POS_CATALOG_ON_DEVICE`) يغلبه، وصفٌّ لا يُقرأ يعني «مطفأ».
+             * ومعه آخرُ ما تبدّل فيه، من سجلّ النشاط.
+             */
+            'posCatalog' => TillCatalogSwitch::state(),
+            /*
+             * ‏‏وكيف يربط التجّارُ الجدد واتسابهم، وجاهزيّةُ الربط بضغطة عبر تطبيق أبعاد — وآخرُ ما
+             * تبدّل فيهما. ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» (`WhatsAppMerchantLink`).
+             */
+            'whatsappLink' => WhatsAppMerchantLink::state(),
+            // ‏‏وكلفةُ رقم أبعاد المشترك: تصنيفُ Meta وتقديرُها — ولا مبلغَ من عندنا
+            'whatsappSharedCost' => \App\Support\WhatsAppPrices::sharedView(),
+            // ‏‏ولمن تُفتح أتمتةُ الردود بالكلمات — مقفلةٌ افتراضًا (`ChannelAutomationsSwitch`)
+            'channelAutomations' => \App\Support\ChannelAutomationsSwitch::state(),
+            // ‏‏ولمن تُفتح حملاتُ واتساب — مقفلةٌ افتراضًا (`WhatsAppCampaignsSwitch`)
+            'whatsappCampaigns' => \App\Support\WhatsAppCampaignsSwitch::state(),
+            // ‏‏وتطبيقُ إنستقرام ولمن يُفتح ربطُه، والعناوينُ التي تُلصق في لوحة Meta (`InstagramPlatform`)
+            'instagram' => \App\Support\InstagramPlatform::state(),
+            /*
              * الباقات بأسمائها لتُختار لا لتُكتب.
              *
              * «الباقة الافتراضية» كانت حقلًا نصّيًّا يُطابَق بالحرف: مسافةٌ
@@ -637,6 +688,7 @@ class PageController extends Controller
                 'gbpConfigured' => GoogleBusiness::configured(),
                 'gbpConnected' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('refresh_token')->count(),
                 'gbpErrors' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('last_error')->count(),
+                'gbpBlocked' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('api_blocked_at')->count(),
             ],
             /*
              * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.
@@ -702,6 +754,13 @@ class PageController extends Controller
                 'onNoticeLine' => CrmWhatsApp::sharingNoticeLine(),
                 'connected' => CrmWhatsApp::connected(),
             ],
+            /*
+             * وأرقامُ المتاجر المستقلّة كلُّها: أيصلنا ما يكتبه زبائنُها؟
+             *
+             * من الأعمدة المخزّنة وحدها — فتحُ الشاشة لا يُنادي ميتا، ولا يخرج
+             * رمزٌ ولا معرّفُ رقمٍ ولا تطبيقٍ آخر (`WhatsAppLinkHealth::fleet`).
+             */
+            'ownNumbers' => WhatsAppLinkHealth::fleet(),
         ]);
     }
 
@@ -895,6 +954,10 @@ class PageController extends Controller
             'statuses' => self::STATUSES,
             // وتفاصيلُ كلّ باقةٍ معها — تُعرض تحت الاختيار، من مصدرٍ واحدٍ مع نموذج الاشتراك
             'plans' => SubscriptionController::planOptions(),
+            // والقطاعاتُ النشطة — والباقاتُ تُعرض من قطاع الشركة وحده (`Sectors`)
+            'sectors' => \App\Support\Sectors::active()
+                ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'name_en' => $s->name_en, 'icon' => $s->icon])
+                ->values()->all(),
             // وطرقُ فتح الاشتراك لمتجرٍ جديد: السياسةُ والأسعارُ بدوراتها والإضافات
             'subscription' => \App\Support\NewMerchantSubscription::options(),
         ];

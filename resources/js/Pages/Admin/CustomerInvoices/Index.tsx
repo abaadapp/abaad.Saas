@@ -9,7 +9,6 @@ import DataTable, { type Column, type Filter, type ServerPagination } from '@/Co
 import { Button } from '@/Components/ui/button';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { useMay } from '@/lib/may';
 import type { PageProps } from '@/types';
 
 interface Row {
@@ -63,7 +62,9 @@ export default function CustomerInvoicesIndex({
     customers,
     totals,
 }: Props) {
-    const { context } = usePage<PageProps>().props;
+    const { context, auth } = usePage<PageProps>().props;
+    // طلباتُ التصحيح الماليّ — لمن يعتمدها ولمن يقرأ سجلّ التعديلات (`FinancialCorrectionController::index`)
+    const readsCorrections = ['financialCorrection.approve', 'customerInvoice.history'].some((a) => auth?.mayActions?.includes(a) ?? false);
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -182,8 +183,6 @@ export default function CustomerInvoicesIndex({
         },
     ];
 
-    const may = useMay();
-
     return (
         <AdminLayout title={t('فواتير العملاء')}>
             <PageHeader
@@ -191,8 +190,7 @@ export default function CustomerInvoicesIndex({
                 subtitle={t('الفواتير الصادرة على الشركات والجهات، وما بقي منها.')}
                 actions={
                     <>
-                        {/* طلباتُ التصحيح الماليّ — لمن يعتمدها ولمن يقرأ سجلّ التعديلات */}
-                        {(may('financialCorrection.approve') || may('customerInvoice.history')) && (
+                        {readsCorrections && (
                             <Button variant="outline" asChild>
                                 <SmartLink
                                     routeName="admin.customerInvoices.corrections.index"

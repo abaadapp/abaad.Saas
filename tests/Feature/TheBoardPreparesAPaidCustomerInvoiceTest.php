@@ -116,14 +116,10 @@ class TheBoardPreparesAPaidCustomerInvoiceTest extends TestCase
         return $activated;
     }
 
-    private function board(?User $user = null, array $query = [], ?Branch $branch = null): array
+    private function board(?User $user = null, array $query = []): array
     {
-        $req = $this->actingAs($user ?? $this->owner);
-        if ($branch) {
-            $req = $req->withSession(['current_branch' => $branch->id]);
-        }
-
-        return $req->get(route('admin.preparation.index', $query))->assertOk()->viewData('page')['props'];
+        return $this->actingAs($user ?? $this->owner)
+            ->get(route('admin.preparation.index', $query))->assertOk()->viewData('page')['props'];
     }
 
     private function card(array $props, CustomerInvoicePreparation $task): ?array
@@ -222,16 +218,23 @@ class TheBoardPreparesAPaidCustomerInvoiceTest extends TestCase
         $north = $this->task();
         $south = $this->task([], $this->south);
 
-        $atNorth = $this->board(null, [], $this->north);
-        $this->assertNotNull($this->card($atNorth, $north));
-        $this->assertNull($this->card($atNorth, $south));
+        // والفرعُ إسنادُ من يجهّز (`PreparationScope`) — لا جلستُه
+        $atNorth = $this->preparer();
+        $atNorth->branches()->sync([$this->north->id]);
+        $this->assertNotNull($this->card($this->board($atNorth), $north));
+        $this->assertNull($this->card($this->board($atNorth), $south));
 
-        $atSouth = $this->board(null, [], $this->south);
-        $this->assertNull($this->card($atSouth, $north));
-        $this->assertNotNull($this->card($atSouth, $south));
+        $atSouth = $this->preparer();
+        $atSouth->branches()->sync([$this->south->id]);
+        $this->assertNull($this->card($this->board($atSouth), $north));
+        $this->assertNotNull($this->card($this->board($atSouth), $south));
 
-        // ونقلُ مهمّة فرعٍ آخر يُردّ
-        $this->actingAs($this->owner)->withSession(['current_branch' => $this->south->id])
+        // والمالكُ يرى الفرعين، ويرشّح بأحدهما إن شاء
+        $this->assertCount(2, $this->board()['orders']);
+        $this->assertNull($this->card($this->board(null, ['branch' => $this->south->id]), $north));
+
+        // ونقلُ مهمّة فرعٍ لا يعمل فيه يُردّ
+        $this->actingAs($atSouth)->withSession(['current_branch' => $this->north->id])
             ->post(route('admin.preparation.invoiceMove', $north->id), ['status' => OrderStatus::PREPARING])
             ->assertSessionHasErrors('status');
         $this->assertSame(OrderStatus::CONFIRMED, $north->fresh()->status);

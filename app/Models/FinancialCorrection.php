@@ -8,13 +8,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * تصحيحٌ ماليّ ينتظر اعتمادَ شخصٍ ثانٍ — انظر `FinancialCorrections`.
  *
- * الحالُ تمضي في اتّجاهٍ واحد: من «معلَّق» إلى واحدةٍ من أربع، ولا تعود.
- * فلا يُحذف الصفّ، ولا يُعاد فتحُ طلبٍ بُتّ فيه — يُطلب تصحيحٌ جديد.
+ * الحالُ تمضي في اتّجاهٍ واحد: من «معلَّق» إلى واحدةٍ من أربع (معتمَد، مرفوض،
+ * مسحوب، تغيّرت فاتورتُه)، ولا تعود. فلا يُحذف الصفّ، ولا يُعاد فتحُ طلبٍ بُتّ
+ * فيه — يُطلب تصحيحٌ جديد. وهو سجلُّ من طلب ومن بتّ ومتى ولماذا.
  */
 class FinancialCorrection extends Model
 {
-    /** تعديلُ فاتورة عميل صادرة أو مدفوعة — `CustomerInvoiceEdits` */
+    /** تصحيحُ فاتورة عميل صادرة أو مدفوعة بإشعارٍ دائنٍ أو مدين — `CustomerInvoiceEdits::apply` */
     public const INVOICE_EDIT = 'customer_invoice_edit';
+
+    /** إلغاءُ فاتورةٍ صادرة وإصدارُ بديلتها مسودّةً لعميلٍ آخر — `CustomerInvoiceEdits::replace` */
+    public const INVOICE_REPLACE = 'customer_invoice_replace';
 
     public const PENDING = 'pending';
 
@@ -62,6 +66,12 @@ class FinancialCorrection extends Model
     public function revision(): BelongsTo
     {
         return $this->belongsTo(CustomerInvoiceRevision::class, 'customer_invoice_revision_id');
+    }
+
+    /** البديلةُ التي كُتبت مسودّةً حين اعتُمد الاستبدال */
+    public function replacement(): BelongsTo
+    {
+        return $this->belongsTo(CustomerInvoice::class, 'replacement_invoice_id');
     }
 
     public function isPending(): bool

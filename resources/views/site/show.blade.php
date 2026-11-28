@@ -129,6 +129,20 @@
         كتب `</script>` في نبذة متجره يُنهي الوسمَ من داخله. فتُرمَّز `<`
         و`>` سداسيًّا، ويقرؤها `JSON.parse` كما كُتبت.
     --}}
+    {{--
+        وروابطُ الصفحات القانونيّة التي نشرها صاحبُ المتجر — شريطٌ تحت الموقع.
+
+        خارجَ `#site` عمدًا: طبقةُ الرسم تملأ ذاك الوعاءَ من اللقطة المنشورة،
+        وهذه الروابطُ ليست منها (`Store\StoreLegal::links`). ولا شيء لمن لم ينشر.
+    --}}
+    @if (($legalLinks ?? []) !== [])
+        <nav aria-label="الصفحات القانونية" data-testid="site-legal" style="display:flex;flex-wrap:wrap;justify-content:center;gap:0 18px;padding:12px 16px 20px;font:13px/1.6 system-ui,sans-serif">
+            @foreach ($legalLinks as $legal)
+                <a href="{{ $legal['href'] }}" style="color:inherit;min-height:44px;display:inline-flex;align-items:center" data-testid="site-legal-{{ $legal['key'] }}">{{ $legal['label'] }}</a>
+            @endforeach
+        </nav>
+    @endif
+
     <script id="site-doc" type="application/json">@json($doc, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE)</script>
 </body>
 </html>

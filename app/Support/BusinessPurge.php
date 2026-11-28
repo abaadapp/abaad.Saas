@@ -74,7 +74,7 @@ final class BusinessPurge
         'orders', 'order_items',
         'customer_invoices', 'customer_invoice_items', 'customer_invoice_orders', 'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations', 'customer_credit_notes',
-        'customer_invoice_revisions', 'financial_corrections',
+        'customer_invoice_revisions', 'customer_debit_notes', 'financial_corrections',
         'customer_payment_links', 'paymob_settlements', 'paymob_settlement_items',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
@@ -98,7 +98,8 @@ final class BusinessPurge
     private const KEPT_DIRS = ['customer-invoices', 'expenses', 'supplier-invoices', 'receipts'];
 
     /** ملفّاتٌ تُحذف ولا تُؤرشَف — لا وزنَ محاسبيَّ لها */
-    private const DROP_DIRS = ['gift-cards/kept'];
+    /** ‏وفهرسُ بصمات صوره (`ImageFingerprints`) — دليلٌ لا سجلّ، يذهب معه */
+    private const DROP_DIRS = ['gift-cards/kept', 'image-fingerprints'];
 
     /**
      * أعمدةُ ملفّاتٍ على قرص `public` — تُقرأ قيمُها فتُحذف ملفّاتُها.
@@ -750,6 +751,9 @@ final class BusinessPurge
                     $public->delete($path);
                     $deleted++;
                 }
+
+                // ‏ونسخُه الأخفّ معه — لا تبقى بعد المتجر نسخةٌ بلا أصل
+                ImageVariants::forget($path);
             } catch (Throwable $e) {
                 $failures[] = $path.' — '.$e->getMessage();
             }

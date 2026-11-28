@@ -6,6 +6,8 @@ import { useTranslate } from '@/lib/i18n';
 export interface InvoiceLoyaltyRow {
     id: number;
     type: 'earn' | 'redeem';
+    /** اسمُ الحركة من مفتاحها (`InvoiceLoyalty::rows`) — صرفٌ على الورقة، أو إعادتُه، أو عكسُ تحصيل */
+    kind?: 'spent' | 'returned_credit' | 'returned_cancel' | 'reversal' | 'earned';
     points: number;
     balance_after: number;
     payment: string | null;
@@ -27,6 +29,24 @@ export interface InvoiceLoyaltyData {
  * أو فاتورةٌ تغطّي طلباتٍ كسبت نقاطَها عند البيع) — فلا يُعِد هذا القسمُ بشيءٍ
  * لن يقع. انظر `InvoiceLoyalty` و`CustomerInvoiceController::loyaltyProps`.
  */
+/** اسمُ الحركة كما يُقرأ — وصفٌّ قديمٌ بلا `kind` يُقرأ كما كان */
+function rowLabel(r: InvoiceLoyaltyRow, t: ReturnType<typeof useTranslate>): string | null {
+    switch (r.kind) {
+        case 'spent':
+            return t('استبدال على هذه الفاتورة');
+        case 'returned_credit':
+            return t('إعادة بإشعار دائن');
+        case 'returned_cancel':
+            return t('إعادة بإلغاء الفاتورة');
+        case 'reversal':
+            return t('عكس تحصيلٍ ملغى');
+        case 'earned':
+            return null;
+        default:
+            return r.type === 'redeem' ? t('عكس تحصيلٍ ملغى') : null;
+    }
+}
+
 export default function InvoiceLoyaltyPanel({ loyalty }: { loyalty: InvoiceLoyaltyData }) {
     const t = useTranslate();
 
@@ -51,7 +71,7 @@ export default function InvoiceLoyaltyPanel({ loyalty }: { loyalty: InvoiceLoyal
                                 {r.points > 0 ? '+' : ''}
                                 {number(r.points)} {t('نقطة')}
                             </span>
-                            {r.type === 'redeem' && <span className="ms-1 text-[12px] text-[#71717a]">({t('عكس تحصيلٍ ملغى')})</span>}
+                            {rowLabel(r, t) && <span className="ms-1 text-[12px] text-[#71717a]">({rowLabel(r, t)})</span>}
                             {r.payment && <span className="ms-1 text-[12px] text-[#71717a]">· {r.payment}</span>}
                         </span>
                         <span className="shrink-0 text-[12px] text-[#71717a]">

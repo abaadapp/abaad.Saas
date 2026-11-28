@@ -263,15 +263,13 @@ class PlanOpensWhatItSoldTest extends TestCase
         ];
     }
 
-    /**
-     * ما يمنحه الدور — الحدّ يقع على الانحراف عنه لا على إرسال القائمة.
-     *
-     * أقسامًا وأفعالًا كما يرسلها النموذج (`role_permissions`): للكاشير فعلٌ
-     * منذ فُصلت أفعال الأقسام (`goal.manage` مع «لوحة التحكم»).
-     */
+    /** ما يمنحه الدور — الحدّ يقع على الانحراف عنه لا على إرسال القائمة */
     private function roleSections(JobTitle $title): array
     {
-        return Permissions::roleGrants($title->role);
+        return array_values(array_filter(
+            Permissions::sections(),
+            fn ($s) => Permissions::allows($title->role, $s),
+        ));
     }
 
     public function test_hiring_by_the_plain_role_is_never_a_paid_feature(): void

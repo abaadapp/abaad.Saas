@@ -1,7 +1,7 @@
 import { allowOrders, orderUrl, showPrices } from './commerce';
 import { Phone } from './icons';
 import { layoutOf, RATIO } from './layout';
-import { gridOf, ProductCard } from './ProductCard';
+import { cardSizes, gridOf, ProductCard } from './ProductCard';
 import ProductGallery from './ProductGallery';
 import { Cta, Grid, Heading, Link, Media, Price } from './primitives';
 import type { DocProduct, Mode, SiteDocument } from './types';
@@ -133,8 +133,16 @@ export function ProductView({
                             center={false}
                             className={layout.grid === 'editorial' ? 'w-grid-editorial' : undefined}
                         >
-                            {related.map((p) => (
-                                <ProductCard key={p.id} p={p} doc={doc} mode={mode} card={layout.card} ratio={ratio} />
+                            {related.map((p, i) => (
+                                <ProductCard
+                                    key={p.id}
+                                    p={p}
+                                    doc={doc}
+                                    mode={mode}
+                                    card={layout.card}
+                                    ratio={ratio}
+                                    sizes={cardSizes(shape, layout, false, related.length, layout.grid === 'editorial' && i === 0 ? 2 : 1)}
+                                />
                             ))}
                         </Grid>
                     </div>

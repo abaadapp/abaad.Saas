@@ -32,7 +32,8 @@
     المتغيّرات: `$items` قائمةُ `['name','qty','unit','total','note','custom','addons']` ·
     `$showPrices` · `$showOrdered` عمودا المطلوب والمستلَم لسند الاستلام ·
     `$itemsLabel` تسميةُ عمود الصنف · `$qtyLabel` تسميةُ عمود الكميّة —
-    فـ«الكمية» على أمرٍ لم يُشحن بعدُ «الكمية المطلوبة».
+    فـ«الكمية» على أمرٍ لم يُشحن بعدُ «الكمية المطلوبة» · و`$unitLabel` و`$totalLabel`
+    لعمودَي المال — فعلى مستند التصحيح «قبل الضريبة» و«الفرق» لا سعرُ وحدة.
 --}}
 @php
     $items = $items ?? [];
@@ -67,8 +68,8 @@
                 <th style="width:{{ $prices ? 16 : 26 }}%" class="num">{!! $head($qtyLabel ?? 'الكمية') !!}</th>
             @endif
             @if ($prices)
-                <th style="width:18%" class="amt">{!! $head('السعر') !!}</th>
-                <th style="width:24%" class="amt">{!! $head('المبلغ') !!}</th>
+                <th style="width:18%" class="amt">{!! $head($unitLabel ?? 'السعر') !!}</th>
+                <th style="width:24%" class="amt">{!! $head($totalLabel ?? 'المبلغ') !!}</th>
             @endif
         </tr>
     </thead>

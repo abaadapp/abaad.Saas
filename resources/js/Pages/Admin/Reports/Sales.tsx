@@ -53,8 +53,9 @@ interface TopProduct {
 /** أرقامُ نطاق البوتيك — من بنوده وحدها. انظر `Boutiques::soldTotals` */
 interface BoutiqueTotals {
     gross: number;
-    commission: number;
-    net: number;
+    /** غائبان لمن لا يقرأ مالَ البوتيكات — يحذفهما الخادمُ من الحمولة (`BoutiqueAccess::totals`) */
+    commission?: number;
+    net?: number;
     quantity: number;
     orders: number;
     lines: number;
@@ -190,8 +191,8 @@ export default function ReportsSales() {
             ]
           : [
                 { label: t('إجمالي مبيعات البوتيك'), value: m(boutiqueTotals.gross), icon: 'wallet', color: 'primary' },
-                { label: t('عمولة المتجر'), value: m(boutiqueTotals.commission), icon: 'trending-up', color: 'success' },
-                { label: t('المستحق للبوتيك'), value: m(boutiqueTotals.net), icon: 'arrow-down-circle', color: 'warning' },
+                ...(boutiqueTotals.commission === undefined ? [] : [{ label: t('عمولة المتجر'), value: m(boutiqueTotals.commission), icon: 'trending-up', color: 'success' }]),
+                ...(boutiqueTotals.net === undefined ? [] : [{ label: t('المستحق للبوتيك'), value: m(boutiqueTotals.net), icon: 'arrow-down-circle', color: 'warning' }]),
                 { label: t('الكمية المباعة'), value: number(boutiqueTotals.quantity), icon: 'package', color: 'info' },
             ];
 
@@ -243,7 +244,6 @@ export default function ReportsSales() {
                         {server.period && <PeriodButton period={server.period} onClick={() => setPicking(true)} />}
                         {/* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */}
                         <ExportMenu
-                            action="report.export"
                             feature="reports_advanced"
                             xlsx={route('admin.reports.xlsx', params)}
                             pdf={route('admin.reports.pdf', params)}

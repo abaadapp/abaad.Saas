@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOwnApp;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * وصلةُ رقمٍ على واتساب — لأبعاد أو لمحلّ.
@@ -21,6 +23,13 @@ class WhatsAppConnection extends Model
 
     protected $casts = [
         'access_token' => 'encrypted',
+        // وسرُّ تطبيق التاجر ورمزُ تحقّق إشعاراته — مشفَّران كالرمز (`WhatsAppOwnApp`)
+        'app_secret' => 'encrypted',
+        'webhook_verify_token' => 'encrypted',
+        'webhook_verified_at' => 'datetime',
+        'billing_checked_at' => 'datetime',
+        // ما راجعه فريقُ أبعاد دليلًا على أنّ فوترة ميتا على التاجر (`WhatsAppOwnApp::confirmBilling`)
+        'billing_evidence' => 'array',
         'token_expires_at' => 'datetime',
         'connected_at' => 'datetime',
         'disconnected_at' => 'datetime',
@@ -28,7 +37,13 @@ class WhatsAppConnection extends Model
         'last_error_at' => 'datetime',
         'token_verified_at' => 'datetime',
         'webhook_checked_at' => 'datetime',
+        'last_status_at' => 'datetime',
+        'last_inbound_at' => 'datetime',
+        'last_inbound_saved_at' => 'datetime',
+        'inbound_problem_at' => 'datetime',
         'coexistence' => 'boolean',
+        // ‏‏كانت قائمةً قبل قفل الفوترة (`WhatsAppBillingLock`) — وكلُّ ما يُكتب بعده مقفلٌ حتى تثبت جهةُ رسومه
+        'billing_exempt' => 'boolean',
         'metadata' => 'array',
     ];
 
@@ -39,7 +54,7 @@ class WhatsAppConnection extends Model
      * `WhatsAppConnections::publicView`)، وهذا حارسٌ ثانٍ: من كتب
      * `->toArray()` سهوًا لا يُسرّب المفتاح.
      */
-    protected $hidden = ['access_token'];
+    protected $hidden = ['access_token', 'app_secret', 'webhook_verify_token'];
 
     public const ACTIVE = 'active';
 
@@ -72,6 +87,12 @@ class WhatsAppConnection extends Model
         return $this->belongsTo(Business::class);
     }
 
+    /** ‏‏أحوالُ فوترة حسابات متجرها — يُقرأ منها ما لحسابها وحده (`WhatsAppBillingLock::row`) */
+    public function billings(): HasMany
+    {
+        return $this->hasMany(WhatsAppBilling::class, 'business_id', 'business_id');
+    }
+
     public function connectedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'connected_by_user_id');
@@ -89,12 +110,12 @@ class WhatsAppConnection extends Model
     }
 
     /**
-     * صالحةٌ للإرسال: نشطة، ولها معرّف رقم، ورمزها لم ينتهِ.
+     * ‏‏مربوطةٌ فعلًا: نشطة، ولها معرّف رقم، ورمزها لم ينتهِ — أتُرسل أم تنتظر إثبات جهة رسومها.
      *
      * انتهاء الرمز يُفحص هنا لا عند ميتا: النداء بمفتاحٍ منتهٍ يُردّ بخطأ
      * بعد ثوانٍ، والحصّة تكون قد حُجزت.
      */
-    public function isUsable(): bool
+    public function isConnected(): bool
     {
         /*
          * و«يحتاج إعادة تفويض» يُرسل.
@@ -108,5 +129,18 @@ class WhatsAppConnection extends Model
         }
 
         return $this->token_expires_at === null || $this->token_expires_at->isFuture();
+    }
+
+    /**
+     * صالحةٌ للإرسال: مربوطةٌ، وتُعرف جهةُ رسومها.
+     *
+     * وصلةُ متجرٍ لا تُرسل قبل أن يُراجَع دليلُ فوترتها، ويُعرف بأمان حسابُ الرسائل
+     * الذي تُحتسب عليه رسائلُها — أيًّا كانت حالتُها: بتطبيق التاجر (`WhatsAppOwnApp`)
+     * أو عبر تطبيق أبعاد (`WhatsAppBillingLock`). فحالةٌ صُحّحت خطأً إلى «نشطة» لا
+     * تُخرج رسالةً تُحتسب على من لم يثبت أنّه يدفعها.
+     */
+    public function isUsable(): bool
+    {
+        return $this->isConnected() && WhatsAppOwnApp::sendAccount($this)['problem'] === null;
     }
 }

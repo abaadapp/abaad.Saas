@@ -31,8 +31,7 @@ vi.mock('@/Layouts/AdminLayout', () => ({ default: ({ children }: { children: Re
 const base = {
     translations: {},
     context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } },
-    // ومن يضيف العميل هنا يملك إضافته — `customer.create` منذ فُصلت أفعالُ الأقسام
-    auth: { abilities: [], mayActions: ['customer.create'], user: { businessId: 3 } },
+    auth: { abilities: [], mayActions: [], user: { businessId: 3 } },
 };
 
 const customer = (over: Record<string, unknown> = {}) => ({
@@ -63,7 +62,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    Object.assign(pageProps, { translations: {}, context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } }, auth: { abilities: [], mayActions: ['customer.create'] } });
+    Object.assign(pageProps, { translations: {}, context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } }, auth: { abilities: [], mayActions: [] } });
 });
 
 describe('ملفُّ العميل', () => {

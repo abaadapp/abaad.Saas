@@ -39,7 +39,6 @@ import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
-import { useMay } from '@/lib/may';
 import { cn } from '@/lib/utils';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
@@ -75,7 +74,6 @@ export default function ProductsIndex() {
         context,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const may = useMay();
     // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
     const tenant = useTenantLink();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
@@ -280,6 +278,12 @@ export default function ProductsIndex() {
                                 {t(CHANNEL_TAG[where])}
                             </span>
                         )}
+                        {/* ونفدت كمّيّتُه في الموقع — يُرى هناك بشارته ولا يُطلب */}
+                        {p.active && p.published !== false && p.website_sold_out && (
+                            <span className="text-[11px] font-medium text-[#b45309]" data-testid={`product-soldout-${p.id}`}>
+                                {t('نفدت الكمية في الموقع')}
+                            </span>
+                        )}
                     </div>
                 );
             },
@@ -345,7 +349,6 @@ export default function ProductsIndex() {
                             الجرد ثمّ استورده ظنّ أنّه ردّ الجرد كلّه.
                         */}
                         <ExportMenu
-                            action="product.export"
                             xlsx={route('admin.products.xlsx')}
                             pdf={route('admin.products.exportPdf')}
                             csv={route('admin.export.products')}
@@ -378,14 +381,12 @@ export default function ProductsIndex() {
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        {may('product.create') && (
-                            <Button asChild>
-                                <SmartLink routeName="admin.products.create" href={route('admin.products.create')}>
-                                    <Plus />
-                                    {t('إضافة منتج')}
-                                </SmartLink>
-                            </Button>
-                        )}
+                        <Button asChild>
+                            <SmartLink routeName="admin.products.create" href={route('admin.products.create')}>
+                                <Plus />
+                                {t('إضافة منتج')}
+                            </SmartLink>
+                        </Button>
                     </>
                 }
             />

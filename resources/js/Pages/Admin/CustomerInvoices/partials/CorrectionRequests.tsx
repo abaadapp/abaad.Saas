@@ -10,13 +10,15 @@ import { cn } from '@/lib/utils';
 /** طلبُ تصحيحٍ كما يرسله الخادم — `FinancialCorrections::present` */
 export interface CorrectionRequest {
     id: number;
+    /** تصحيحٌ بإشعار، أو إلغاءٌ وإصدارُ بديلة لعميلٍ آخر */
+    kind: 'customer_invoice_edit' | 'customer_invoice_replace';
     status: 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'stale';
     reason: string;
     invoice: { id: number; number: string | null };
     summary: {
         kind: string;
         number: string | null;
-        money: {
+        money?: {
             total_before: number;
             total_after: number;
             difference: number;
@@ -26,10 +28,16 @@ export interface CorrectionRequest {
             outstanding_after: number;
             customer_credit: number;
         };
-        changes: { field: string; label: string; before: string | null; after: string | null }[];
-        customer_changed: boolean;
-        period: { mode: string | null; reversal_date: string | null; entry_date: string | null };
+        changes?: { field: string; label: string; before: string | null; after: string | null }[];
+        /** ما يصدر عند الاعتماد — إشعارٌ دائنٌ لما نقص ومدينٌ لما زاد */
+        documents?: { credit: { amount: number; tax: number } | null; debit: { amount: number; tax: number } | null };
+        note_date?: string | null;
+        /** والاستبدال: من عميلٍ إلى عميل، وإجماليُّ الفاتورة التي تُلغى */
+        customer_before?: string | null;
+        customer_after?: string | null;
+        total?: number;
     };
+    replacement: { id: number } | null;
     requested_by: string | null;
     requested_at: string | null;
     decided_by: string | null;
@@ -115,13 +123,42 @@ export default function CorrectionRequests({
                             </span>
                         </div>
 
-                        <p className="tabular-nums" dir="auto">
-                            <span className="font-medium">{t('الإجمالي')}:</span>{' '}
-                            <span dir="ltr">
-                                {m(r.summary.money.total_before)} ← {m(r.summary.money.total_after)} ({diff(r.summary.money.difference)})
-                            </span>
-                        </p>
-                        {r.summary.money.paid > 0 && (
+                        {r.kind === 'customer_invoice_replace' ? (
+                            <p data-testid="correction-replace">
+                                <span className="font-medium">{t('إلغاء وإصدار بديلة لعميل آخر')}:</span>{' '}
+                                <bdi>{r.summary.customer_before ?? '—'}</bdi> ← <bdi>{r.summary.customer_after ?? '—'}</bdi>
+                                {r.summary.total !== undefined && (
+                                    <>
+                                        {' — '}
+                                        {t('يُعكس قيد')} <span dir="ltr">{m(r.summary.total)}</span>
+                                    </>
+                                )}
+                            </p>
+                        ) : r.summary.money && (
+                            <p className="tabular-nums" dir="auto">
+                                <span className="font-medium">{t('الإجمالي')}:</span>{' '}
+                                <span dir="ltr">
+                                    {m(r.summary.money.total_before)} ← {m(r.summary.money.total_after)} ({diff(r.summary.money.difference)})
+                                </span>
+                            </p>
+                        )}
+                        {(r.summary.documents?.credit || r.summary.documents?.debit) && (
+                            <p className="text-[12px] text-[#4b4b4b]" data-testid="correction-documents">
+                                {t('يصدر عند الاعتماد')}:{' '}
+                                {r.summary.documents?.credit && (
+                                    <span>
+                                        {t('إشعار دائن')} <span dir="ltr">{m(r.summary.documents.credit.amount)}</span>
+                                    </span>
+                                )}
+                                {r.summary.documents?.credit && r.summary.documents?.debit && '، '}
+                                {r.summary.documents?.debit && (
+                                    <span>
+                                        {t('إشعار مدين')} <span dir="ltr">{m(r.summary.documents.debit.amount)}</span>
+                                    </span>
+                                )}
+                            </p>
+                        )}
+                        {r.summary.money && r.summary.money.paid > 0 && (
                             <p className="text-[12px] text-[#4b4b4b]">
                                 {t('المقبوض')}: <span dir="ltr">{m(r.summary.money.paid)}</span>
                                 {r.summary.money.customer_credit > 0
@@ -129,9 +166,9 @@ export default function CorrectionRequests({
                                     : ` — ${t('الباقي على العميل')}: ${m(r.summary.money.outstanding_after)}`}
                             </p>
                         )}
-                        {r.summary.changes.length > 0 && (
+                        {(r.summary.changes ?? []).length > 0 && (
                             <ul className="space-y-0.5 text-[12px] text-[#4b4b4b]">
-                                {r.summary.changes.map((c) => (
+                                {(r.summary.changes ?? []).map((c) => (
                                     <li key={c.field}>
                                         <span className="font-medium">{c.label}:</span> <bdi>{c.before ?? '—'}</bdi> ← <bdi>{c.after ?? '—'}</bdi>
                                     </li>
@@ -146,6 +183,19 @@ export default function CorrectionRequests({
                             <p className="text-[12px] text-[#6b7280]" data-testid="correction-decision">
                                 <bdi>{r.decided_by ?? '—'}</bdi> · <span dir="ltr">{r.decided_at}</span>
                                 {r.revision !== null && ` — ${t('التعديل')} ${r.revision}`}
+                                {r.replacement && (
+                                    <>
+                                        {' — '}
+                                        <SmartLink
+                                            routeName="admin.customerInvoices.show"
+                                            href={route('admin.customerInvoices.show', r.replacement.id)}
+                                            className="underline underline-offset-2"
+                                            data-testid="correction-replacement"
+                                        >
+                                            {t('البديلة')}
+                                        </SmartLink>
+                                    </>
+                                )}
                                 {r.decision_note && (
                                     <>
                                         {' — '}

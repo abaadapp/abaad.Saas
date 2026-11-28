@@ -2,8 +2,10 @@
 
 namespace App\Support;
 
+use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceRevision;
+use App\Models\CustomerPaymentLink;
 use App\Models\FinancialCorrection;
 use App\Models\Setting;
 use App\Models\User;
@@ -13,52 +15,97 @@ use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
- * الاعتمادُ الثنائيّ للتصحيحات الماليّة — من يطلب لا يعتمد.
+ * الاعتمادُ الثنائيّ لتصحيح الفاتورة ماليًّا — من يطلب لا يعتمد.
  *
  * ═══ متى يقع ═══
  *
  * حين يُشعل صاحبُ النشاط «الاعتماد الثنائي» من الإعدادات (`SETTING`)، وحين
- * يمسّ التعديلُ المالَ: فاتورةٌ صادرةٌ أو مدفوعة يتغيّر مبلغُها أو عميلُها أو
- * يُعكس قيدُها (`touchesMoney`). والمسودّةُ والمراجعُ والملاحظاتُ تُحفظ كما
- * كانت: لا دفترَ يتحرّك فيها.
+ * يمسّ التصحيحُ المال (`touchesMoney`):
+ *   - تصحيحُ فاتورةٍ صادرةٍ أو مدفوعة يصدر به إشعارٌ دائنٌ أو مدين (#195).
+ *   - «إلغاء وإصدار بديلة» لعميلٍ آخر: يلغي الفاتورةَ ويعكس قيدَها.
  *
- * ومتجرٌ لم يُشعله يعمل كما كان تمامًا — المفتاحُ مطفأٌ لكلّ نشاطٍ قائمٍ وجديد.
+ * والمسودّةُ والملاحظاتُ الداخليّة تُحفظ كما كانت: لا دفترَ يتحرّك فيها.
+ * ومتجرٌ لم يُشعله يعمل كما كان تمامًا — المفتاحُ مطفأٌ لكلّ نشاطٍ قائمٍ وجديد،
+ * ولا هجرةَ تُشعله.
  *
  * ═══ ما يقع قبل الاعتماد ═══
  *
- * لا شيء في الفاتورة ولا في الدفتر ولا في المدفوعات ولا في المخزون: يُكتب
- * صفٌّ في `financial_corrections` يحمل التعديلَ كما طُلب وبصمةَ الفاتورة.
+ * لا شيء في الفاتورة ولا في الدفتر ولا في التحصيلات ولا في النقاط: يُكتب صفٌّ
+ * في `financial_corrections` يحمل التصحيحَ كما طُلب وبصمةَ الفاتورة يومَها.
  *
  * ═══ وما يقع عنده ═══
  *
  * تحت قفل الطلب ثمّ قفل الفاتورة:
  *   ١. الطلبُ ما زال معلّقًا — فلا يُعتمد مرّتين.
  *   ٢. المعتمدُ غيرُ مقدّمه، ويملك `financialCorrection.approve`، ومن متجره.
- *   ٣. الفاتورةُ كما كانت يوم الطلب (`fingerprint`) — وإلّا صار الطلبُ
+ *   ٣. الفاتورةُ كما كانت يوم الطلب (`fingerprint`) — وإلّا أُغلق الطلبُ
  *      «تغيّرت الفاتورة» ولم يُنفَّذ: لا يُعتمد تصحيحٌ على ورقةٍ لم يرها المعتمد.
- *   ٤. ثمّ `CustomerInvoiceEdits::apply` نفسُها باسم مقدّمه: تعيد السؤال عن
- *      صلاحياته اليوم، والفترة اليوم، وكلِّ مانع. فإن ردّت لم يُكتب شيء.
+ *   ٤. ثمّ يُنفَّذ بالباب نفسِه (`CustomerInvoiceEdits::apply` أو `replace`)
+ *      باسم مقدّمه: يُعاد السؤالُ عن صلاحياته اليوم، والفترة اليوم، وكلِّ مانع.
+ *      فإن ردّ لم يُكتب شيء.
  */
 final class FinancialCorrections
 {
     /** مفتاحُ الإعداد — `SettingController::KEYS` */
     public const SETTING = 'dual_approval_corrections';
 
-    /** هل أشعل هذا النشاطُ الاعتمادَ الثنائيّ؟ */
+    /** هل أشعل هذا النشاطُ الاعتمادَ الثنائيّ؟ — لا صفَّ يعني مطفأ */
     public static function required(int $businessId): bool
     {
         return Setting::where('business_id', $businessId)->where('key', self::SETTING)->value('value') === '1';
     }
 
     /**
-     * هل يمسّ هذا التعديلُ المال؟ — ما يحتاج عينًا ثانية حين يُشعل المفتاح.
+     * هل يمسّ هذا التصحيحُ المال؟ — يصدر به إشعارٌ دائنٌ أو مدين.
      *
      * @param  array<string, mixed>  $plan  `CustomerInvoiceEdits::plan`
      */
     public static function touchesMoney(array $plan): bool
     {
         return $plan['kind'] !== CustomerInvoiceRevision::DRAFT
-            && ($plan['money_changed'] || $plan['customer_changed'] || $plan['ledger']['repost']);
+            && (($plan['documents']['credit'] ?? null) !== null || ($plan['documents']['debit'] ?? null) !== null);
+    }
+
+    /**
+     * ما يقوله الاعتمادُ عن هذا التصحيح — يُضاف إلى الخطّة، فتقوله المعاينةُ قبل الحفظ.
+     *
+     * @param  array<string, mixed>  $plan
+     * @return array<string, mixed>
+     */
+    public static function gate(CustomerInvoice $invoice, array $plan, ?User $user, ?FinancialCorrection $approving): array
+    {
+        $bid = (int) $invoice->business_id;
+
+        /*
+         * وطلبٌ ينتظر الاعتماد يُبقي الورقةَ كما هي حتى يُبتّ فيه.
+         *
+         * تعديلٌ يقع فوقه يغيّر بصمتها فيُغلق الطلب «تغيّرت الفاتورة» — فيُقال
+         * قبل الحفظ لا بعده. والطلبُ الذي يُعتمد الآن لا يمنع نفسه.
+         */
+        if (self::pendingFor($invoice, $approving)) {
+            $plan['blockers'][] = __('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.');
+        }
+
+        $required = self::required($bid) && self::touchesMoney($plan);
+        $plan['approval'] = ['required' => $required];
+
+        if ($required && $approving === null && $user !== null && ($why = self::nobodyToApprove($bid, $user)) !== null) {
+            $plan['blockers'][] = $why;
+        }
+
+        return $plan;
+    }
+
+    /**
+     * ولا يُرسل طلبٌ لا يعتمده أحد: المعتمدُ غيرُ صاحبه. معتمدٌ عُطّل بعد
+     * الإشعال يترك صاحبَ الطلب وحده — فيُقال له لماذا وكيف يمضي، لا أن يُعلَّق
+     * تصحيحُه بلا من يبتّ فيه.
+     */
+    public static function nobodyToApprove(int $businessId, User $requester): ?string
+    {
+        return self::approvers($businessId, (int) $requester->id) === 0
+            ? __('الاعتماد الثنائي مفعّل، ولا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — فلا يُرسل طلبٌ لا يعتمده أحد. امنح الصلاحية لموظف آخر من ملفه، أو يطفئ صاحب النشاط الاعتماد الثنائي من الإعدادات.')
+            : null;
     }
 
     /** الطلبُ المعلّق على هذه الفاتورة — إلّا الذي يُعتمد الآن */
@@ -72,9 +119,10 @@ final class FinancialCorrections
     }
 
     /**
-     * بصمةُ الفاتورة كما يراها الطلب: ورقتُها، وحالُها، ومقبوضُها، وإشعاراتُها، وقيدُها.
+     * بصمةُ الفاتورة كما يراها الطلب: ورقتُها وحالُها ومقبوضُها وإشعاراتُها وقيدُها.
      *
-     * تحصيلٌ يُسجَّل، أو إشعارٌ دائن، أو تعديلٌ آخر، أو إلغاء — كلٌّ منها يغيّرها.
+     * تحصيلٌ يُسجَّل، أو إشعارٌ دائنٌ أو مدين، أو تصحيحٌ آخر، أو رابطُ دفع، أو
+     * إلغاء — كلٌّ منها يغيّرها.
      */
     public static function fingerprint(CustomerInvoice $invoice): string
     {
@@ -84,20 +132,24 @@ final class FinancialCorrections
             'sheet' => CustomerInvoiceEdits::snapshot($invoice),
             'status' => $invoice->status,
             'revision' => (int) $invoice->revision,
+            'customer' => (int) $invoice->customer_id,
             'paid' => round($invoice->paidTotal(), 3),
             'credited' => round($invoice->creditedTotal(), 3),
+            'debited' => round($invoice->debitedTotal(), 3),
+            'links' => CustomerPaymentLink::where('business_id', $invoice->business_id)
+                ->where('customer_invoice_id', $invoice->id)->orderBy('id')->pluck('status', 'id')->all(),
             'entry' => CustomerInvoices::liveEntry($invoice)?->id,
         ], JSON_UNESCAPED_UNICODE));
     }
 
     /**
-     * طلبُ التصحيح — يُفحص كما يُفحص الحفظ، ولا يكتب في الفاتورة شيئًا.
+     * طلبُ تصحيح الفاتورة — يُفحص كما يُفحص الحفظ، ولا يكتب في الفاتورة شيئًا.
      *
      * @param  array<string, mixed>  $input  ما مرّ من `CustomerInvoiceEdits::rules()`
      *
      * @throws AuthorizationException ما لا يملكه
-     * @throws ValidationException سببٌ أو موضعُ تصحيحٍ ناقص
-     * @throws RuntimeException ما يمنع التعديل، بسببه
+     * @throws ValidationException سببٌ أو أساسٌ ناقص
+     * @throws RuntimeException ما يمنع التصحيح، بسببه
      */
     public static function request(CustomerInvoice $invoice, array $input, User $user): FinancialCorrection
     {
@@ -107,13 +159,7 @@ final class FinancialCorrections
         return DB::transaction(function () use ($invoice, $input, $user, $bid, $token) {
             $locked = CustomerInvoice::where('business_id', $bid)->lockForUpdate()->findOrFail($invoice->id);
 
-            // النموذجُ نفسُه أُرسل مرّتين: الطلبُ الأوّل هو الجواب
-            $twin = FinancialCorrection::where('business_id', $bid)->where('edit_token', $token)->first();
-            if ($twin) {
-                if ((int) $twin->customer_invoice_id !== (int) $locked->id) {
-                    throw new RuntimeException(__('رمز النموذج هذا استُعمل لفاتورة أخرى — افتح شاشة التعديل من جديد.'));
-                }
-
+            if ($twin = self::twin($bid, $token, (int) $locked->id)) {
                 return $twin;
             }
 
@@ -143,32 +189,61 @@ final class FinancialCorrections
 
             $reason = trim((string) ($input['reason'] ?? ''));
             if ($reason === '') {
-                throw ValidationException::withMessages(['reason' => __('اكتب سبب تعديل الفاتورة — يُحفظ في سجل التعديلات وعلى قيد التصحيح.')]);
+                throw ValidationException::withMessages(['reason' => __('اكتب سبب تصحيح الفاتورة — يُطبع على مستند التصحيح ويُحفظ في السجل.')]);
+            }
+            if ($plan['needs_basis'] && $plan['basis'] === null) {
+                throw ValidationException::withMessages(['basis' => __('اختر أساس التصحيح.')]);
             }
 
-            CustomerInvoiceEdits::assertPeriodChosen($plan, $reason);
+            return self::open($locked, FinancialCorrection::INVOICE_EDIT, $input, self::summary($plan, $locked), $reason, $token, $user,
+                'طلب تصحيح فاتورة عميل '.$locked->number.' بانتظار الاعتماد: '.$plan['money']['total_before'].' ← '.$plan['money']['total_after']);
+        });
+    }
 
-            $correction = FinancialCorrection::create([
-                'business_id' => $bid,
-                'kind' => FinancialCorrection::INVOICE_EDIT,
-                'customer_invoice_id' => $locked->id,
-                'status' => FinancialCorrection::PENDING,
-                'expected_revision' => (int) $locked->revision,
-                'fingerprint' => self::fingerprint($locked),
-                'payload' => $input,
-                'summary' => self::summary($plan, $locked),
-                'reason' => mb_substr($reason, 0, 255),
-                'edit_token' => $token,
-                'requested_by' => $user->id,
-            ]);
+    /**
+     * طلبُ «إلغاء وإصدار بديلة» لعميلٍ آخر — يُفحص كما يُفحص الاستبدال، ولا يكتب شيئًا.
+     *
+     * @throws AuthorizationException ما لا يملكه
+     * @throws ValidationException سببٌ أو عميلٌ غيرُ صالح
+     * @throws RuntimeException ما يمنع الاستبدال، بسببه
+     */
+    public static function requestReplace(CustomerInvoice $invoice, Customer $customer, string $reason, string $token, User $user): FinancialCorrection
+    {
+        $bid = (int) $invoice->business_id;
+        CustomerInvoiceEdits::assertMayReplace($invoice, $user);
 
-            Activity::log('created', BooksPeriod::fit(
-                'طلب تصحيح فاتورة عميل '.$locked->number.' بانتظار الاعتماد: '
-                    .$plan['money']['total_before'].' ← '.$plan['money']['total_after'],
-                $reason,
-            ), ['subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => $bid]);
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw ValidationException::withMessages(['reason' => __('اكتب سبب استبدال الفاتورة — يُكتب على إلغائها.')]);
+        }
 
-            return $correction;
+        return DB::transaction(function () use ($invoice, $customer, $reason, $token, $user, $bid) {
+            $locked = CustomerInvoice::where('business_id', $bid)->lockForUpdate()->findOrFail($invoice->id);
+            $locked->loadMissing('items', 'orders', 'preparation');
+
+            if ($twin = self::twin($bid, $token, (int) $locked->id)) {
+                return $twin;
+            }
+
+            if (self::pendingFor($locked)) {
+                throw new RuntimeException(__('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.'));
+            }
+
+            if (($why = CustomerInvoiceEdits::replaceRefusal($locked, $customer)) !== null) {
+                throw new RuntimeException($why);
+            }
+
+            if (($why = self::nobodyToApprove($bid, $user)) !== null) {
+                throw new RuntimeException($why);
+            }
+
+            return self::open($locked, FinancialCorrection::INVOICE_REPLACE, ['customer_id' => (int) $customer->id, 'reason' => $reason], [
+                'kind' => FinancialCorrection::INVOICE_REPLACE,
+                'number' => $locked->number,
+                'customer_before' => $locked->customer_name,
+                'customer_after' => $customer->name,
+                'total' => round((float) $locked->total, 3),
+            ], $reason, $token, $user, 'طلب إلغاء فاتورة عميل '.$locked->number.' وإصدار بديلة للعميل '.$customer->name.' بانتظار الاعتماد');
         });
     }
 
@@ -176,7 +251,7 @@ final class FinancialCorrections
      * الاعتماد — يُنفَّذ التصحيحُ كلُّه أو لا شيء منه.
      *
      * @throws AuthorizationException معتمدٌ لا يملكه، أو هو مقدّمه
-     * @throws ValidationException ما صار التصحيحُ يحتاجه اليوم (موضعُ الفترة)
+     * @throws ValidationException ما صار التصحيحُ يحتاجه اليوم
      * @throws RuntimeException طلبٌ بُتّ فيه، أو فاتورةٌ تغيّرت، أو مانعٌ جدّ
      */
     public static function approve(FinancialCorrection $correction, User $approver, ?string $note = null): FinancialCorrection
@@ -215,7 +290,15 @@ final class FinancialCorrections
             }
 
             try {
-                $revision = CustomerInvoiceEdits::apply($invoice, $row->payload, $requester, $row);
+                $done = $row->kind === FinancialCorrection::INVOICE_REPLACE
+                    ? CustomerInvoiceEdits::replace(
+                        $invoice,
+                        Customer::where('business_id', $bid)->findOrFail((int) $row->payload['customer_id']),
+                        (string) $row->payload['reason'],
+                        $requester,
+                        $row,
+                    )
+                    : CustomerInvoiceEdits::apply($invoice, $row->payload, $requester, $row);
             } catch (AuthorizationException $e) {
                 throw new AuthorizationException(__('مقدّم الطلب لم يعد يملك هذا التعديل — :why', ['why' => $e->getMessage()]));
             }
@@ -225,10 +308,15 @@ final class FinancialCorrections
                 'decided_by' => $approver->id,
                 'decided_at' => now(),
                 'decision_note' => self::note($note),
-                'customer_invoice_revision_id' => $revision->id,
+                'customer_invoice_revision_id' => $done instanceof CustomerInvoiceRevision ? $done->id : null,
+                'replacement_invoice_id' => $done instanceof CustomerInvoice ? $done->id : null,
             ])->save();
 
-            Activity::log('updated', 'اعتمد تصحيح فاتورة عميل '.$invoice->number.' (التعديل '.$revision->revision.') طلبه '.$requester->name, [
+            $what = $done instanceof CustomerInvoice
+                ? 'إلغاء فاتورة عميل '.$invoice->number.' وإصدار بديلتها'
+                : 'تصحيح فاتورة عميل '.$invoice->number.' (التعديل '.$done->revision.')';
+
+            Activity::log('updated', BooksPeriod::fit('اعتمد '.$what.' طلبه '.$requester->name, (string) $note), [
                 'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice', 'business_id' => $bid,
             ]);
 
@@ -236,7 +324,7 @@ final class FinancialCorrections
         });
 
         if ($stale) {
-            throw new RuntimeException(__('تغيّرت الفاتورة بعد طلب التصحيح (تحصيل أو إشعار دائن أو تعديل آخر) — لم يُنفَّذ، وأُغلق الطلب. يُطلب التصحيح من جديد على الفاتورة كما هي الآن.'));
+            throw new RuntimeException(__('تغيّرت الفاتورة بعد طلب التصحيح (تحصيل أو إشعار أو رابط دفع أو تعديل آخر) — لم يُنفَّذ، وأُغلق الطلب. يُطلب التصحيح من جديد على الفاتورة كما هي الآن.'));
         }
 
         return $row;
@@ -246,6 +334,11 @@ final class FinancialCorrections
     public static function reject(FinancialCorrection $correction, User $approver, string $reason): FinancialCorrection
     {
         $bid = (int) $correction->business_id;
+        $reason = trim($reason);
+
+        if (mb_strlen($reason) < 3) {
+            throw ValidationException::withMessages(['reason' => __('اكتب سبب رفض التصحيح — يراه مقدّم الطلب.')]);
+        }
 
         return DB::transaction(function () use ($correction, $approver, $reason, $bid) {
             $row = self::lockPending($correction, $bid);
@@ -258,7 +351,7 @@ final class FinancialCorrections
                 'decision_note' => self::note($reason),
             ])->save();
 
-            Activity::log('updated', BooksPeriod::fit('رفض طلب تصحيح فاتورة عميل', $reason), [
+            Activity::log('updated', BooksPeriod::fit('رفض طلب تصحيح فاتورة عميل '.($row->summary['number'] ?? ''), $reason), [
                 'subject_id' => $row->customer_invoice_id, 'subject_type' => 'customer_invoice', 'business_id' => $bid,
             ]);
 
@@ -284,6 +377,10 @@ final class FinancialCorrections
                 'decided_at' => now(),
             ])->save();
 
+            Activity::log('updated', 'سحب طلب تصحيح فاتورة عميل '.($row->summary['number'] ?? ''), [
+                'subject_id' => $row->customer_invoice_id, 'subject_type' => 'customer_invoice', 'business_id' => $bid,
+            ]);
+
             return $row;
         });
     }
@@ -293,8 +390,7 @@ final class FinancialCorrections
      *
      * مفتاحٌ يُشعَل ولا معتمدَ غيرُ صاحب التصحيح يُعلّق طلبَه بلا من يبتّ فيه —
      * وصاحبُ النشاط وحده في متجرٍ صغير أوّلُ من يقع فيه. فيسأله الإشعالُ
-     * (`SettingController`) والطلبُ (`CustomerInvoiceEdits::plan`) معًا، ويُقال
-     * السببُ وطريقُه بدل أن يقف العملُ صامتًا.
+     * (`SettingController`) والطلبُ (`gate`) معًا.
      */
     public static function approvers(int $businessId, ?int $except = null): int
     {
@@ -323,6 +419,7 @@ final class FinancialCorrections
     {
         return [
             'id' => $row->id,
+            'kind' => $row->kind,
             'status' => $row->status,
             'reason' => $row->reason,
             'summary' => $row->summary,
@@ -335,9 +432,49 @@ final class FinancialCorrections
             'decided_at' => optional($row->decided_at)->format('Y-m-d H:i'),
             'decision_note' => $row->decision_note,
             'revision' => $row->revision?->revision,
+            'replacement' => $row->replacement_invoice_id ? ['id' => (int) $row->replacement_invoice_id] : null,
             'may_decide' => self::mayDecide($viewer, $row),
             'may_withdraw' => $viewer !== null && $row->isPending() && (int) $viewer->id === (int) $row->requested_by,
         ];
+    }
+
+    /** النموذجُ نفسُه أُرسل مرّتين: الطلبُ الأوّل هو الجواب */
+    private static function twin(int $bid, string $token, int $invoiceId): ?FinancialCorrection
+    {
+        $twin = FinancialCorrection::where('business_id', $bid)->where('edit_token', $token)->first();
+
+        if ($twin && (int) $twin->customer_invoice_id !== $invoiceId) {
+            throw new RuntimeException(__('رمز النموذج هذا استُعمل لفاتورة أخرى — افتح شاشة التعديل من جديد.'));
+        }
+
+        return $twin;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $summary
+     */
+    private static function open(CustomerInvoice $locked, string $kind, array $payload, array $summary, string $reason, string $token, User $user, string $log): FinancialCorrection
+    {
+        $row = FinancialCorrection::create([
+            'business_id' => $locked->business_id,
+            'kind' => $kind,
+            'customer_invoice_id' => $locked->id,
+            'status' => FinancialCorrection::PENDING,
+            'expected_revision' => (int) $locked->revision,
+            'fingerprint' => self::fingerprint($locked),
+            'payload' => $payload,
+            'summary' => $summary,
+            'reason' => mb_substr($reason, 0, 255),
+            'edit_token' => mb_substr($token, 0, 64),
+            'requested_by' => $user->id,
+        ]);
+
+        Activity::log('created', BooksPeriod::fit($log, $reason), [
+            'subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => $locked->business_id,
+        ]);
+
+        return $row;
     }
 
     private static function lockPending(FinancialCorrection $correction, int $bid): FinancialCorrection
@@ -374,27 +511,24 @@ final class FinancialCorrections
     }
 
     /**
-     * ما رآه مقدّمُ الطلب — يُحفظ كما كان، ويُعرض للمعتمد مع ما يقوله الخادمُ اليوم.
+     * ما رآه مقدّمُ الطلب — يُحفظ كما كان، ويُعرض للمعتمد.
      *
      * @param  array<string, mixed>  $plan
      * @return array<string, mixed>
      */
     private static function summary(array $plan, CustomerInvoice $invoice): array
     {
-        $day = fn ($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : $d;
+        $doc = fn (?array $d) => $d === null ? null : ['amount' => $d['amount'], 'tax' => $d['tax']];
 
         return [
             'kind' => $plan['kind'],
             'number' => $invoice->number,
+            'basis' => $plan['basis'] ?? null,
             'money' => $plan['money'],
             'changes' => $plan['changes'],
             'lines' => $plan['lines'],
-            'customer_changed' => $plan['customer_changed'],
-            'period' => [
-                'mode' => $plan['period']['mode'] ?? null,
-                'reversal_date' => $day($plan['period']['reversal_date'] ?? null),
-                'entry_date' => $day($plan['period']['entry_date'] ?? null),
-            ],
+            'documents' => ['credit' => $doc($plan['documents']['credit']), 'debit' => $doc($plan['documents']['debit'])],
+            'note_date' => $plan['period']['note_date'] ?? null,
         ];
     }
 }

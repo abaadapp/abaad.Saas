@@ -3,7 +3,6 @@
 namespace App\Http\Middleware;
 
 use App\Support\Permissions;
-use App\Support\SectionActions;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -44,15 +43,6 @@ class CheckAbility
         $section = Permissions::sectionFromRoute($name);
         if (! $user->allows($section)) {
             abort(403, __('ليس لديك صلاحية للوصول إلى قسم «:section».', ['section' => $section]));
-        }
-
-        /*
-         * والقسمُ يفتح الشاشة ولا يبيح ما فيها: الإضافةُ والتعديلُ والحذفُ
-         * والتصديرُ أفعالٌ تُمنح بأسمائها (`SectionActions`). ويُسأل عنها هنا
-         * لا في الزرّ — من يرسل الطلب بيده يُردّ كمن يضغطه.
-         */
-        if (($operation = SectionActions::forRoute($name)) !== null && ! $user->may($operation)) {
-            abort(403, __('ليس لديك صلاحية: :action', ['action' => Permissions::actionLabels()[$operation] ?? $operation]));
         }
 
         return $next($request);

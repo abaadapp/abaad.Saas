@@ -13,7 +13,6 @@ use App\Models\WebsiteDomain;
 use App\Support\Demo;
 use App\Support\MarketingSettings;
 use App\Support\PosAddonsLayout;
-use App\Support\SectionActions;
 use App\Support\Storefront;
 use App\Support\Website\Domain\CustomDomainProvider;
 use App\Support\Website\Domain\DomainCheck;
@@ -117,9 +116,9 @@ class TheOwnerPicksHowAddonsSitInThePosTest extends TestCase
     public static function outsiders(): array
     {
         return [
-            'موظّفٌ بصلاحية المنتجات' => [['role' => 'staff', 'permissions' => SectionActions::withActionsOf(['products'])]],
+            'موظّفٌ بصلاحية المنتجات' => [['role' => 'staff', 'permissions' => ['products']]],
             'مديرُ فرع' => [['role' => 'manager']],
-            'مديرٌ ضُيّقت صلاحياته' => [['role' => 'admin', 'permissions' => SectionActions::withActionsOf(['products'])]],
+            'مديرٌ ضُيّقت صلاحياته' => [['role' => 'admin', 'permissions' => ['products']]],
         ];
     }
 

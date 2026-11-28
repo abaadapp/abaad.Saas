@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsitePage;
+use App\Support\ImageVariants;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,6 +157,22 @@ class WebsiteWriteRoutesTest extends TestCase
 
         $files = Storage::disk('public')->allFiles('website/'.$this->shop->id);
         $this->assertNotEmpty($files, 'لم تُحفظ الصورة تحت مجلّد المتجر');
+    }
+
+    /** وصورةُ هاتفٍ عريضة تُصغَّر كصور المحرّر — لا تُحفظ كما رُفعت (`StoreImageUpload`) */
+    public function test_a_wide_photo_is_shrunk_before_it_is_stored(): void
+    {
+        Storage::fake('public');
+
+        $this->post(route('admin.website.media'), [
+            'image' => UploadedFile::fake()->image('wide.jpg', 3200, 1600),
+        ])->assertSessionHasNoErrors();
+
+        // ‏أصلٌ واحد — ونسخُه الأخفُّ إلى جواره (`ImageVariants`)
+        $files = array_values(array_filter(Storage::disk('public')->allFiles('website/'.$this->shop->id), fn ($f) => ! ImageVariants::isVariant($f)));
+        $this->assertCount(1, $files);
+        $size = getimagesize(Storage::disk('public')->path($files[0]));
+        $this->assertSame([2560, 1280], [$size[0], $size[1]], 'حُفظت الصورةُ بأبعادها كما رُفعت');
     }
 
     /** وما ليس صورةً يُردّ — لا يُحفظ ثمّ يُكتشف عند العرض */

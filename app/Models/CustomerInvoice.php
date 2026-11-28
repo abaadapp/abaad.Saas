@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * فاتورةُ عميل — التزامٌ ماليٌّ عليه، لا حالةُ سدادٍ في طلب.
@@ -32,6 +33,26 @@ class CustomerInvoice extends Model
         'issued_by_at' => 'datetime',
         'cancelled_at' => 'datetime',
     ];
+
+    /**
+     * مسودّةٌ عليها نقاطُ ولاءٍ لا يتبدّل عميلُها.
+     *
+     * النقاطُ اختيرت من رصيد عميلها وبقواعد يومها، وتُصرف منه عند الإصدار
+     * (`CustomerInvoices::spendPoints`). وعميلٌ يتبدّل تحتها يجعل الإصدارَ
+     * يصرف من رصيد غيره خصمًا لم يُعرض عليه. ولا بابَ اليوم يبدّله — وهذا
+     * حارسٌ لكلّ بابٍ يأتي (تعديلُ المسودّات في #195): من أراد عميلًا آخر
+     * ألغى المسودّةَ وكتب جديدة، فيُسأل عن نقاط العميل الصحيح.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (self $invoice) {
+            if ($invoice->getOriginal('status') === self::DRAFT
+                && (int) $invoice->getOriginal('loyalty_points') > 0
+                && $invoice->isDirty('customer_id')) {
+                throw new RuntimeException(__('على المسودّة نقاطُ ولاءٍ اختيرت من رصيد عميلها — لا يُغيَّر عميلُها. ألغِ المسودّة وأنشئ فاتورةً جديدة.'));
+            }
+        });
+    }
 
     public function business(): BelongsTo
     {
@@ -112,6 +133,18 @@ class CustomerInvoice extends Model
         return $this->hasMany(CustomerCreditNote::class);
     }
 
+    /** الإشعاراتُ المدينة — زياداتٌ على الورقة بعد صدورها، كلٌّ بمستنده (م٥٠ من اللائحة) */
+    public function debitNotes(): HasMany
+    {
+        return $this->hasMany(CustomerDebitNote::class);
+    }
+
+    /** الفاتورةُ التي حلّت هذه محلَّها — حين تغيّر العميلُ فأُلغيت وكُتبت بديلتُها */
+    public function replaces(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaces_invoice_id');
+    }
+
     /** تعديلاتُ الورقة بعد كتابتها — أحدثُها أوّلًا (`CustomerInvoiceEdits`) */
     public function revisions(): HasMany
     {
@@ -167,6 +200,18 @@ class CustomerInvoice extends Model
     }
 
     /**
+     * ما زادته الإشعاراتُ المدينة — والفاتورةُ نفسُها بمبلغها كما صدرت.
+     *
+     * فالذمّةُ = الإجماليُّ + المدينُ − المسدَّدُ − الدائن. ويُقرأ هنا وفي
+     * `debitedTotal` بالقاعدة نفسِها، كأخويه.
+     */
+    public static function debitedSql(): string
+    {
+        return '(SELECT COALESCE(SUM(d.amount), 0) FROM customer_debit_notes d'
+            .' WHERE d.customer_invoice_id = customer_invoices.id)';
+    }
+
+    /**
      * الباقي — بلا حصرٍ عند الصفر، عمدًا.
      *
      * `outstanding()` تحصره لأنّها تُعرَض: فاتورةٌ سالبة على الشاشة خبرٌ
@@ -180,7 +225,7 @@ class CustomerInvoice extends Model
      */
     public static function outstandingSql(): string
     {
-        return '(customer_invoices.total - '.self::paidSql().' - '.self::creditedSql().')';
+        return '(customer_invoices.total + '.self::debitedSql().' - '.self::paidSql().' - '.self::creditedSql().')';
     }
 
     /**
@@ -252,10 +297,51 @@ class CustomerInvoice extends Model
         return round((float) $this->creditNotes()->sum('amount'), 3);
     }
 
+    public function debitedTotal(): float
+    {
+        return round((float) $this->debitNotes()->sum('amount'), 3);
+    }
+
+    /**
+     * ما على الورقة بعد مستندات تصحيحها — الإجماليُّ كما صدر، والمدينُ فوقه، والدائنُ منه.
+     *
+     * وهو ما يُطالَب به العميلُ قبل أن يُخصم ما دفع. والإجماليُّ في العمود يبقى
+     * إجماليَّ الفاتورة كما صدرت: الورقةُ لا تُعاد كتابتُها (م١٥٧ من اللائحة).
+     */
+    public function effectiveTotal(): float
+    {
+        return round((float) $this->total + $this->debitedTotal() - $this->creditedTotal(), 3);
+    }
+
+    /**
+     * مبلغُها الباقي بعد إشعاراتها — ما يجوز أن يردّه إشعارٌ دائنٌ يدويٌّ بعدُ.
+     *
+     * من إجماليّها لا من باقيها على العميل: فاتورةٌ سُدّدت كلُّها باقيها صفر،
+     * وكان الحدُّ «الباقي + المسدَّد» يبقى مئةً بعد كلّ إشعار — فثلاثةُ
+     * إشعاراتٍ بستّين على فاتورةٍ بمئة تصير للعميل مئةً وثمانين.
+     *
+     * والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — كما في `outstanding`.
+     */
+    public function amountLeft(): float
+    {
+        if ($this->status !== self::ISSUED) {
+            return 0.0;
+        }
+
+        // والإشعارُ المدينُ زاد الورقةَ بعد صدورها (`CustomerInvoiceEdits`) — فما زاده يُردّ كما يُردّ أصلُها
+        return round(max(0.0, $this->effectiveTotal()), 3);
+    }
+
+    /** ضريبتُها الباقية بعد إشعاراتها — ومعها ضريبةُ ما زادته الإشعاراتُ المدينة */
+    public function taxLeft(): float
+    {
+        return round(max(0.0, (float) $this->tax_total + (float) $this->debitNotes()->sum('tax_amount') - (float) $this->creditNotes()->sum('tax_amount')), 3);
+    }
+
     /**
      * الباقي على العميل.
      *
-     * إجمالي - مسدَّد - مردود. ولا ينزل تحت الصفر: زيادةُ الدفع تبقى غيرَ
+     * إجمالي + مدين - مسدَّد - دائن. ولا ينزل تحت الصفر: زيادةُ الدفع تبقى غيرَ
      * مخصَّصةٍ في رصيد العميل ولا تجعل فاتورةً سالبة.
      */
     public function outstanding(): float
@@ -264,7 +350,7 @@ class CustomerInvoice extends Model
             return 0.0;
         }
 
-        return round(max(0, (float) $this->total - $this->paidTotal() - $this->creditedTotal()), 3);
+        return round(max(0, $this->effectiveTotal() - $this->paidTotal()), 3);
     }
 
     /**

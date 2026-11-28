@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoicePreparation;
+use App\Models\JobTitle;
 use App\Models\JournalEntry;
 use App\Models\PrintJob;
 use App\Models\Setting;
@@ -20,7 +21,6 @@ use App\Support\OrderStatus;
 use App\Support\Permissions;
 use App\Support\PrepSheet;
 use App\Support\PrintJobs;
-use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -31,10 +31,12 @@ use Tests\TestCase;
  *
  * ═══ ما يُحرس ═══
  *
- *   - الفعلُ `customerInvoice.preparation.edit` باسمه: لصاحب النشاط والمدير
- *     بدورهما، ولا يُورَث مع قسم اللوحة، ولا يمنحه ترحيلُ الصلاحيات.
- *   - الموظّفُ المخوَّل يعدّل مهمّةً سُدّدت عبر Paymob وظهرت في اللوحة؛ وغيرُ
- *     المخوَّل يفتح اللوحة ولا يرى الزرّ ويُردّ بـ٤٠٣.
+ *   - الفعلُ `customerInvoice.preparation.edit` باسمه: لصاحب النشاط وحده بدوره،
+ *     ولا يصل موظّفًا قائمًا — لا بدوره ولا بقائمته ولا بقسم اللوحة — حتى
+ *     يمنحه المالكُ باسمه من ملفّه.
+ *   - الموظّفُ المخوَّل يعدّل مهمّةً سُدّدت عبر Paymob وظهرت في اللوحة، ولا
+ *     تتكرّر المهمّةُ ولا تُفعَّل مرّتين؛ وغيرُ المخوَّل يفتح اللوحة ولا يرى
+ *     الزرّ ويُردّ بـ٤٠٣.
  *   - لا بندَ ولا سعرَ ولا ضريبةَ ولا تحصيلَ ولا قيدَ يتغيّر — ولو أُرسل.
  *   - ما سُلّم لا يُعدَّل، ومتجرٌ لا يبلغ مهمّةَ غيره، وفرعٌ لا يُنقل إليه ولا منه
  *     إلّا ممّن يعمل فيه.
@@ -158,7 +160,7 @@ class DeliveryDetailsAreCorrectedOnTheBoardTest extends TestCase
         $invoice = $invoice->fresh('items');
 
         return [
-            'invoice' => [(float) $invoice->subtotal, (float) $invoice->discount_total, (float) $invoice->tax_total, (float) $invoice->total, $invoice->status, (int) $invoice->revision],
+            'invoice' => [(float) $invoice->subtotal, (float) $invoice->discount_total, (float) $invoice->tax_total, (float) $invoice->total, $invoice->status, (int) $invoice->customer_id],
             'items' => $invoice->items->map(fn ($i) => [$i->description, (float) $i->quantity, (float) $i->unit_price, (float) $i->discount, (float) $i->tax_amount, (float) $i->line_total])->all(),
             'paid' => $invoice->paidTotal(),
             'payments' => DB::table('customer_payments')->where('business_id', $invoice->business_id)->count(),
@@ -191,24 +193,76 @@ class DeliveryDetailsAreCorrectedOnTheBoardTest extends TestCase
 
     /* ============================== الصلاحية ============================== */
 
-    public function test_the_action_is_its_own_name_held_by_owner_and_manager_and_shown_with_the_board(): void
+    public function test_the_action_is_its_own_name_held_by_the_owner_alone(): void
     {
         $key = Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT;
         $this->assertSame('customerInvoice.preparation.edit', $key);
         $this->assertSame('تعديل بيانات التجهيز والتسليم', Permissions::actionLabels()[$key]);
+        $this->assertNotEmpty(Permissions::actionHints()[$key], 'يُشرح تحت اسمه في صلاحيات الموظف');
 
         foreach (array_keys(Permissions::MAP) as $role) {
             $u = new User(['role' => $role, 'permissions' => null]);
-            $this->assertSame(in_array($role, ['admin', 'manager'], true), $u->may($key), $role);
+            $this->assertSame($role === 'admin', $u->may($key), $role);
         }
 
-        // يُرى في شاشة صلاحيات الموظف تحت «لوحة التجهيز»
-        $group = collect(SectionActions::groups())->firstWhere('key', 'preparation');
-        $this->assertContains($key, $group['actions']);
+        // ولا يُورَث مع قسمٍ: ترقيةُ القوائم القديمة لا تمنحه لمن يملك اللوحة أو كلَّ قسم
+        $this->assertNotContains($key, Permissions::withLegacyActions(Permissions::sections()));
+        foreach (Permissions::LEGACY_SECTION_ACTIONS as $actions) {
+            $this->assertNotContains($key, $actions);
+        }
+    }
 
-        // ولا يُورَث مع القسم: ترحيلُ الصلاحيات لا يمنحه لمن يملك اللوحة
-        $this->assertNotContains($key, SectionActions::withActionsOf(['dashboard', 'preparation', 'orders']));
-        $this->assertArrayNotHasKey($key, SectionActions::SPLIT);
+    /**
+     * لا يصل موظّفًا قائمًا — والمالكُ يمنحه باسمه من ملفّه.
+     *
+     * الموظّفون القائمون كلُّهم: من يتبع دورَه (المديرُ والكاشيرُ والمحاسبُ
+     * والمبيعاتُ والتوصيلُ والمخزون)، ومن قائمتُه يدويّةٌ فيها اللوحةُ وكلُّ
+     * قسمٍ وكلُّ فعلٍ سواه. ثمّ يُمنح أحدُهم باسمه فيعدّل — ولا يُمنح غيرُه معه.
+     */
+    public function test_no_current_employee_holds_it_until_the_owner_grants_it_by_name(): void
+    {
+        $task = $this->task();
+        $everythingElse = array_values(array_diff([...Permissions::sections(), ...Permissions::actions()], [Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT]));
+
+        $staff = collect(array_keys(Permissions::MAP))
+            ->reject(fn ($role) => in_array($role, ['admin', 'super_admin'], true))
+            ->map(fn ($role) => $this->user($role, $role.'@staff.om'))
+            ->push($this->user('manager', 'listed@staff.om', $everythingElse))
+            ->push($this->user('admin', 'narrowed@staff.om', ['dashboard', 'preparation', 'orders']));
+
+        foreach ($staff as $u) {
+            $this->assertFalse($u->may(Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT), $u->email);
+            $this->edit($task, ['recipient_name' => 'قبل المنح'], $u)->assertForbidden();
+        }
+        $this->assertSame('مريم البلوشية', $task->fresh()->recipient_name);
+
+        // والمالكُ وحده يملك منحَه — المديرُ لا يمنح ما لا يملك
+        $this->assertContains(Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT, Permissions::grantable($this->owner));
+        $manager = User::where('email', 'manager@staff.om')->first();
+        $this->assertNotContains(Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT, Permissions::grantable($manager));
+
+        // يمنحه المالكُ لموظّف التوصيل من ملفّه، مع ما كان يفتحه
+        $driver = User::where('email', 'delivery@staff.om')->first();
+        JobTitle::create(['business_id' => $this->shop->id, 'name' => 'سائق', 'role' => 'delivery']);
+        $driver->forceFill(['job_title' => 'سائق'])->save();
+        $kept = Permissions::roleGrants('delivery');
+        $this->actingAs($this->owner)->put(route('admin.employees.update', $driver->id), [
+            'name' => $driver->name, 'job_title' => 'سائق', 'manual_permissions' => 1,
+            'permissions' => [...$kept, Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT],
+        ])->assertSessionHasNoErrors();
+
+        $driver->refresh();
+        $this->assertTrue($driver->may(Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT));
+        foreach ($kept as $was) {
+            $this->assertTrue($driver->allows($was) || $driver->may($was), 'سقط بالمنح: '.$was);
+        }
+        $this->edit($task, ['recipient_name' => 'نورة الكندية'], $driver)->assertSessionHasNoErrors();
+        $this->assertSame('نورة الكندية', $task->fresh()->recipient_name);
+
+        // ولم يُمنح أحدٌ غيرُه معه
+        foreach ($staff->reject(fn ($u) => $u->is($driver)) as $u) {
+            $this->assertFalse($u->fresh()->may(Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT), $u->email);
+        }
     }
 
     public function test_without_the_action_the_board_opens_but_the_edit_is_neither_offered_nor_accepted(): void
@@ -249,6 +303,16 @@ class DeliveryDetailsAreCorrectedOnTheBoardTest extends TestCase
         $this->assertSame('تخرّج', $fresh->occasion_text);
         $this->assertTrue((bool) $fresh->is_gift);
         $this->assertSame(OrderStatus::CONFIRMED, $fresh->status, 'التعديلُ لا ينقل المهمّة');
+
+        // ومهمّةٌ واحدةٌ كما كانت — لا ثانيةَ ولا تفعيلَ ثانٍ، ولو أعاد إشعارُ Paymob نفسَه
+        $this->assertSame(1, CustomerInvoicePreparation::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertSame(CustomerInvoicePreparations::FROM_PAYMOB, $fresh->activation_source);
+        $this->assertSame($task->activated_at->toDateTimeString(), $fresh->activated_at->toDateTimeString());
+        $this->assertSame([null, null], CustomerInvoicePreparations::activate($invoice->id, CustomerInvoicePreparations::FROM_PAYMOB));
+        $this->assertSame(1, CustomerInvoicePreparation::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertSame(1, PrintJob::where('subject_id', $task->id)->count(), 'ورقةُ الصندوق المنتظِرة لا تتكرّر');
+        $this->assertSame(1, ActivityLog::where('subject_type', 'customer_invoice_preparation')->where('subject_id', $task->id)
+            ->where('description', 'like', '%إلى لوحة التجهيز%')->count(), 'وصلت إلى اللوحة مرّةً واحدة');
 
         // المالُ كما كان — لا بندَ ولا ضريبةَ ولا تحصيلَ ولا قيد
         $this->assertSame($before, $this->money($invoice));

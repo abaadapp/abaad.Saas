@@ -83,8 +83,7 @@ const reset = (over: Record<string, unknown>) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, {
         translations: {}, context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } },
-        // ومن يقرأ التقرير هنا يصدّره: التصديرُ فعلٌ باسمه (`report.export`) منذ فُصلت أفعالُ الأقسام
-        auth: { abilities: ['reports'], mayActions: ['report.export'], planFeatures: { reports_advanced: true } }, ...over,
+        auth: { abilities: ['reports'], mayActions: [], planFeatures: { reports_advanced: true } }, ...over,
     });
 };
 

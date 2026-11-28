@@ -34,6 +34,10 @@ import { useTranslate } from '@/lib/i18n';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Customer } from '@/types/models';
+import { PhoneStatusBadge } from '@/Components/CustomerPhoneReview';
+import { CustomerPortalCard } from '@/Components/RibbonPortal';
+import type { PortalCustomerState } from '@/lib/ribbon-portal';
+import { phoneRefusal, phoneStatus } from '@/lib/customer-phone';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import {
     CollectionHistory, PurchaseHistory, type CollectionRow, type CollectionTotals, type PurchaseRow, type PurchaseTotals,
@@ -64,11 +68,13 @@ interface Props {
     paymentLinks?: PaymentLinksPanel;
     /** سجلُّ نقاط الولاء — آخرُ الحركات، ومصدرُ كلٍّ منها: فاتورةٌ سُدّدت برابط، أو طلب، أو يد */
     pointHistory?: PointRow[];
+    /** حالُ رابطه إلى بوابة RIBBON — يصل لمتجرها ومن يشارك فيه وحدهم */
+    portalCustomer?: PortalCustomerState;
 }
 
 interface PointRow {
     id: number;
-    type: 'earn' | 'redeem';
+    type: 'earn' | 'redeem' | 'adjust';
     points: number;
     balance_after: number;
     note: string | null;
@@ -97,7 +103,7 @@ const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 export default function CustomerShow() {
     const {
         customer, history = [], historyTotals = NO_TOTALS, collections = [], collectionTotals = NO_RECEIPTS, addresses, context, branches = [],
-        customerFlags, paymentLinks, pointHistory = [], auth,
+        customerFlags, paymentLinks, pointHistory = [], portalCustomer, auth,
     } = usePage<PageProps<Props>>().props;
     /*
      * ورفعُ حظر البيع لمن يملك تجاوزَه — كما يقبله الخادم (`CustomerController::internal`).
@@ -112,6 +118,9 @@ export default function CustomerShow() {
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [redeeming, setRedeeming] = useState(false);
+    const mayAdjustPoints = (auth?.mayActions ?? []).includes('customerPoints.adjust');
+    // ولا نوعَ مختارًا سلفًا: «إنقاص» افتراضًا أنقص رصيدَ من أُريد تعويضُه — فيُختار صراحةً
+    const adjust = useForm({ direction: '' as '' | 'add' | 'deduct', points: '', reason: '' });
     const [editingProfile, setEditingProfile] = useState(false);
 
     /*
@@ -155,6 +164,22 @@ export default function CustomerShow() {
 
     /** نموذج واحد للإضافة والتعديل: address_id فارغ = عنوان جديد */
     const [editing, setEditing] = useState(false);
+
+    /*
+     * وحالةُ الرقم المحفوظ بجانب حقله — من القاعدة نفسِها التي يعدّ بها التنبيه.
+     * والرقمُ القديم لا يمنع حفظَ الاسم أو العنوان: يُسأل الرقمُ إن تغيّر وحده.
+     */
+    const savedPhoneStatus = phoneStatus(customer.phone, customer.contact_phone, customer.name);
+    const savedPhoneHint =
+        savedPhoneStatus === 'missing'
+            ? 'لا رقم هاتف لهذا العميل — أضفه ليصل إليه ما يُرسل وتتبعه نقاطه.'
+            : savedPhoneStatus === 'incomplete'
+              ? 'رقم الهاتف المحفوظ أقصر من ثماني خانات — صحّحه من «تعديل».'
+              : savedPhoneStatus === 'invalid'
+                ? 'رقم الهاتف المحفوظ لا يطابق القواعد — صحّحه من «تعديل».'
+                : savedPhoneStatus === 'country'
+                  ? 'الرقم محفوظ بلا مفتاح دولة وأطول من ثماني خانات — إن كان عُمانيًّا فاكتبه ثماني خانات، وإن كان لدولةٍ أخرى فاكتبه بـ + أو 00 ثمّ مفتاحها. لا يمنع البيع ولا الفاتورة.'
+                  : '';
     const address = useForm({ ...BLANK });
 
     const openAdd = () => { address.setData({ ...BLANK }); address.clearErrors(); setEditing(true); };
@@ -213,9 +238,14 @@ export default function CustomerShow() {
                                 <Receipt />{t('كشف حساب')}
                             </a>
                         </Button>
-                        {customer.points > 0 && (
-                            <Button onClick={() => setRedeeming(true)}>
-                                <Award />{t('صرف النقاط')}
+                        {/*
+                            تصحيحُ الرصيد لا «صرفُ النقاط»: الصرفُ مقابل خصمٍ
+                            بابُه الصندوقُ وفاتورةُ العميل بقواعد التاجر. وهذا
+                            لمن مُنح فعلَه باسمه، وبسببٍ مكتوب.
+                        */}
+                        {mayAdjustPoints && (
+                            <Button variant="outline" onClick={() => setRedeeming(true)}>
+                                <Award />{t('تصحيح رصيد النقاط')}
                             </Button>
                         )}
                         {/*
@@ -286,7 +316,16 @@ export default function CustomerShow() {
                                 </li>
                             ))}
                         </ul>
+                        {savedPhoneStatus && (
+                            <p data-testid="customer-phone-problem" className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[#92400e]">
+                                <PhoneStatusBadge status={savedPhoneStatus} />
+                                {t(savedPhoneHint)}
+                            </p>
+                        )}
                     </Card>
+
+                    {/* ومفتاحُه حالُه: رقمٌ صُحّح من هذه الصفحة يُغلق دخولَه، فيُرسم كما صار */}
+                    {portalCustomer && <CustomerPortalCard key={JSON.stringify(portalCustomer)} state={portalCustomer} />}
 
                     {showInternal && (
                         <Card className="p-6">
@@ -568,19 +607,60 @@ export default function CustomerShow() {
 
             <Dialog open={redeeming} onOpenChange={setRedeeming}>
                 <DialogContent className="max-w-sm">
-                    <DialogHeader><DialogTitle>{t('صرف النقاط')}</DialogTitle></DialogHeader>
-                    <div className="px-5 pb-5">
+                    <DialogHeader><DialogTitle>{t('تصحيح رصيد النقاط')}</DialogTitle></DialogHeader>
+                    <form
+                        data-testid="points-adjust"
+                        className="space-y-3 px-5 pb-5"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            adjust.post(route('admin.customers.points.adjust', customer.id), {
+                                preserveScroll: true,
+                                onSuccess: () => {
+                                    adjust.reset();
+                                    setRedeeming(false);
+                                },
+                            });
+                        }}
+                    >
                         <p className="text-sm text-[#4b4b4b]">
-                            {t('سيتم صرف')} {number(customer.points)} {t('نقطة')} ({m(customer.points / 100)}).
+                            {t('الرصيد الحالي:')} {number(customer.points)} {t('نقطة')}
                         </p>
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button variant="outline" onClick={() => setRedeeming(false)}>{t('إلغاء')}</Button>
-                            <Button onClick={() => router.post(route('admin.customers.redeem', customer.id),
-                                { points: customer.points }, { onFinish: () => setRedeeming(false) })}>
-                                {t('صرف')}
-                            </Button>
+                        <p className="text-[12px] text-[#6b7280]">
+                            {t('تصحيحٌ إداريّ للرصيد — لا يُنتج خصمًا ولا مالًا. الاستبدال مقابل خصم يتمّ من الصندوق أو فاتورة العميل.')}
+                        </p>
+                        <Field label="نوع التصحيح" error={adjust.errors.direction}>
+                            <Select
+                                value={adjust.data.direction}
+                                placeholder="اختر: زيادة أم إنقاص"
+                                options={[
+                                    { value: 'deduct', label: t('إنقاص') },
+                                    { value: 'add', label: t('زيادة') },
+                                ]}
+                                onChange={(e) => adjust.setData('direction', e.target.value as '' | 'add' | 'deduct')}
+                            />
+                        </Field>
+                        <Field label="عدد النقاط" error={adjust.errors.points}>
+                            <Input
+                                type="number"
+                                min="1"
+                                step="1"
+                                dir="ltr"
+                                value={adjust.data.points}
+                                onChange={(e) => adjust.setData('points', e.target.value)}
+                            />
+                        </Field>
+                        <Field label="السبب" error={adjust.errors.reason}>
+                            <Input
+                                value={adjust.data.reason}
+                                onChange={(e) => adjust.setData('reason', e.target.value)}
+                                placeholder={t('مثال: نقاط مُنحت بالخطأ في الفاتورة ٣٢')}
+                            />
+                        </Field>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="outline" onClick={() => setRedeeming(false)}>{t('إلغاء')}</Button>
+                            <Button type="submit" loading={adjust.processing}>{t('حفظ التصحيح')}</Button>
                         </div>
-                    </div>
+                    </form>
                 </DialogContent>
             </Dialog>
 
@@ -631,8 +711,11 @@ export default function CustomerShow() {
                         )}
                         <Field
                             label="رقم الهاتف"
-                            hint="نقاط الولاء تتبع الرقم — تغييره ينقلها معه"
-                            error={edit.errors.phone}
+                            hint={savedPhoneStatus && edit.data.phone === (customer.phone ?? '') ? savedPhoneHint : 'نقاط الولاء تتبع الرقم — تغييره ينقلها معه'}
+                            error={
+                                edit.errors.phone ||
+                                (edit.data.phone !== (customer.phone ?? '') && phoneRefusal(edit.data.phone) ? t(phoneRefusal(edit.data.phone)!) : undefined)
+                            }
                         >
                             <Input dir="ltr" value={edit.data.phone} onChange={(e) => edit.setData('phone', e.target.value)} />
                         </Field>

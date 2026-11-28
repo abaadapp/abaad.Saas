@@ -28,7 +28,16 @@
             وكانت تبلغ ~٤٥٠ ميغا قبل أن تصل اختباراتِ ملفّات Excel وPDF — فيُسقطها أيُّ
             اختبارٍ يُضاف بخطأ ذاكرةٍ لا علاقةَ له بما يقيسه.
         -->
-        <ini name="memory_limit" value="1G"/>
+        <!--
+            وألفان لا ألف (2026-11-28): بلغت الحزمةُ ~٨٠٠ ميغا بعد جمع المهملات
+            قبل آخر اختباراتها، وبلا جمعٍ تتجاوز الألف — فسقطت وظيفةُ SQLite على
+            #195 مرّتين عند اختبار الخمسين ألف طلب، وهو وحده لا يزيد ٣٠ ميغا.
+            والسببُ ليس اختبارًا بعينه: اختبارٌ فارغ يُبقي ~٤١ ك.ب. كلَّ مرّة،
+            ومنه أنّ PHP بلا OPcache تُبقي شيئًا من كلّ دالّةٍ مجهولة كلّما أعادت
+            قراءة ملفّها (المسارات والقوالب تُقرأ في كلّ اختبار) — ~٤١ ك.ب. ×
+            ~١٠٬٦٠٠ اختبار. السقفُ يحمي العمليّة ولا يقيس شيئًا: لا اختبارَ يُتخطّى.
+        -->
+        <ini name="memory_limit" value="2G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
@@ -39,6 +48,8 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- حدودُ جولة الصور القديمة تقرأ حِملَ الجهاز نفسه، وجهازُ CI مشغولٌ بالاختبارات: تُفتح وتُحاكى في AnOldImageWaitsForAQuietServerTest -->
+        <env name="IMAGES_BATCH_GATE" value="false"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

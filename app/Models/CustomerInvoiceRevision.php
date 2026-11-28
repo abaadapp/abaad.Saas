@@ -4,12 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * تعديلٌ واحد على فاتورة عميل — يُكتب مرّةً ولا يُعدَّل ولا يُحذف.
  *
- * الورقةُ قبله وبعده، والسببُ ومن ومتى، والمدفوعُ ساعتَها، وقيدا العكس
- * والترحيل. وهو ما يُسأل عنه بعد سنةٍ في مراجعة: «لماذا صارت مئةً وعشرين؟».
+ * حالُ الورقة قبله وبعده، والسببُ وأساسُه ومن ومتى، والمدفوعُ ساعتَها، ومستندا
+ * التصحيح اللذان أصدرهما (إشعارٌ دائنٌ لما نقص، ومدينٌ لما زاد). وهو ما يُسأل
+ * عنه بعد سنةٍ في مراجعة: «لماذا صار المطلوبُ مئةً وعشرين؟».
+ *
+ * ولفاتورةٍ صدرت: `after` حالُها بعد التصحيح — والفاتورةُ نفسُها كما صدرت.
  * فسجلٌّ يُمحى أو يُعاد كتابتُه لا يجيب. وحذفُ المتجر نفسِه يمحوه بالقاعدة
  * (`cascadeOnDelete`، `BusinessPurge`) لا من هنا.
  */
@@ -21,6 +25,14 @@ class CustomerInvoiceRevision extends Model
 
     public const PAID = 'paid';
 
+    /** أساسُ التصحيح: خطأٌ في الفاتورة — م١٥٥ من اللائحة */
+    public const ERROR = 'error';
+
+    /** أساسُ التصحيح: إرجاعٌ أو إلغاءٌ جزئيّ للتوريد — م٤٨ من اللائحة */
+    public const RETURN = 'return';
+
+    public const BASES = [self::ERROR, self::RETURN];
+
     protected $guarded = [];
 
     protected $casts = [
@@ -28,8 +40,6 @@ class CustomerInvoiceRevision extends Model
         'after' => 'array',
         'changes' => 'array',
         'revision' => 'integer',
-        'reversal_date' => 'date',
-        'entry_date' => 'date',
     ];
 
     protected static function booted(): void
@@ -51,5 +61,17 @@ class CustomerInvoiceRevision extends Model
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** الإشعارُ الدائن الذي أصدره هذا التصحيح — لما نقص */
+    public function creditNote(): HasOne
+    {
+        return $this->hasOne(CustomerCreditNote::class, 'revision_id');
+    }
+
+    /** والإشعارُ المدين — لما زاد */
+    public function debitNote(): HasOne
+    {
+        return $this->hasOne(CustomerDebitNote::class, 'revision_id');
     }
 }

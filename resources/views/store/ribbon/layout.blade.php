@@ -37,13 +37,14 @@
         {{--
             والعربيّةُ والإنجليزيّةُ ترجمتان لا نسختان.
 
-            الصفحتان على العنوان نفسِه ويفرّق بينهما `‎?lang‎`، وأصلُهما
-            واحدٌ في `canonical`. فبلا هذين السطرين يقرأ غوغل الإنجليزيّةَ
-            نسخةً مكرَّرةً ويُسقطها — ولا يجدها من يبحث بالإنجليزيّة.
+            الصفحتان على العنوان نفسِه ويفرّق بينهما `‎?lang‎`، ولكلٍّ منهما
+            أصلُها نفسُها في `canonical` (انظر `StoreSeo::head`). فبلا هذه
+            السطور يقرأ غوغل الإنجليزيّةَ نسخةً مكرَّرةً ويُسقطها — ولا يجدها
+            من يبحث بالإنجليزيّة.
         --}}
-        <link rel="alternate" hreflang="ar" href="{{ $seo['canonical'] }}">
-        <link rel="alternate" hreflang="en" href="{{ $seo['canonical'] }}?lang=en">
-        <link rel="alternate" hreflang="x-default" href="{{ $seo['canonical'] }}">
+        <link rel="alternate" hreflang="ar" href="{{ $seo['alternates']['ar'] }}">
+        <link rel="alternate" hreflang="en" href="{{ $seo['alternates']['en'] }}">
+        <link rel="alternate" hreflang="x-default" href="{{ $seo['alternates']['ar'] }}">
     @endif
     {{--
         ═══ وما يُعرض حين يُلصَق الرابط ═══
@@ -254,6 +255,8 @@
         .rb-card .rb-img { aspect-ratio: 1/1; border-radius: var(--rb-r-lg); overflow: hidden; background: var(--rb-soft); display: flex; align-items: center; justify-content: center; }
         .rb-card .rb-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
         .rb-card:hover .rb-img img { transform: scale(1.03); }
+        .rb-card .rb-img { position: relative; }
+        .rb-soldout-tag { position: absolute; top: 10px; inset-inline-start: 10px; background: rgba(17, 17, 17, .78); color: #fff; font-size: 12px; line-height: 1; padding: 6px 10px; border-radius: 999px; pointer-events: none; }
         /*
          * ═══ وصورُ المنتجات «كاملة» — لمن اختارها (`store_catalog_fit`) ═══
          *
@@ -267,6 +270,32 @@
         html.rb-catalog-contain .rb-card:hover .rb-img img { transform: none; }
         .rb-card .rb-name { margin-top: 12px; font-size: 15px; text-align: center; }
         .rb-card .rb-price { margin-top: 4px; font-size: 17px; font-weight: 600; text-align: center; }
+        /*
+         * ═══ فاصلٌ تحت كلّ بطاقة — إلّا الصفَّ الأخير ═══
+         *
+         * خطٌّ هادئٌ بعد السعر في وسط مسافةٍ أوسع بين الصفوف، على كلّ شاشة.
+         * أفقيٌّ وحده — لا خطَّ بين الأعمدة. وعلى ابن الشبكة لا على البطاقة:
+         * أبناءُ الصفّ الواحد بطولٍ واحد (تمدّدُ الشبكة)، فخطوطُ الصفّ على سطرٍ
+         * واحد ولو طال اسمُ أحدها. وابنُ الشبكة البطاقةُ نفسُها أو غلافُها مع
+         * زرّ واتساب — والخطُّ عليه في الحالين، ولا يُلمس فلا يفتح المنتج.
+         *
+         * والصفُّ الأخير بعدد الأعمدة، وعددُها من عرض الشبكة نفسِها لا الشاشة:
+         * ن عمودًا تتّسع من ٢٥٤ن − ٢٤ (عمودٌ ٢٣٠ وفجوةٌ ٢٤). وأعرضُ شبكةٍ هنا
+         * ١٢٣٢px (١٢٨٠ إلّا الحاشيتين) — أربعةُ أعمدةٍ لا خمسة. وأوّلُ الصفّ
+         * الأخير `:nth-child(نn+1)` ممّا بقي بعده أقلُّ من ن، وما يليه معه.
+         *
+         * وما لا يقرأ الحاويات (iOS قبل ١٦) يبقى على شكله القديم بلا خطّ.
+         */
+        .rb-grid { container: rb-grid / inline-size; }
+        @supports (container-type: inline-size) {
+            .rb-grid { row-gap: 48px; }
+            .rb-grid > * { position: relative; }
+            .rb-grid > *::after { content: ''; position: absolute; inset-inline: 6%; bottom: -24px; height: 1px; background: var(--rb-line); pointer-events: none; }
+        }
+        @container rb-grid (max-width: 483.98px) { .rb-grid > :last-child::after { content: none; } }
+        @container rb-grid (min-width: 484px) and (max-width: 737.98px) { .rb-grid > :nth-child(2n+1):nth-last-child(-n+2)::after, .rb-grid > :nth-child(2n+1):nth-last-child(-n+2) ~ *::after { content: none; } }
+        @container rb-grid (min-width: 738px) and (max-width: 991.98px) { .rb-grid > :nth-child(3n+1):nth-last-child(-n+3)::after, .rb-grid > :nth-child(3n+1):nth-last-child(-n+3) ~ *::after { content: none; } }
+        @container rb-grid (min-width: 992px) { .rb-grid > :nth-child(4n+1):nth-last-child(-n+4)::after, .rb-grid > :nth-child(4n+1):nth-last-child(-n+4) ~ *::after { content: none; } }
         .rb-stripes { background: repeating-linear-gradient(135deg, var(--tint, #e6dcc8) 0 12px, #f3efe9 12px 24px); width: 100%; height: 100%; }
         .rb-h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); font-weight: 500; }
         .rb-h1 { margin: 0; font-size: 30px; font-weight: 500; }
@@ -288,6 +317,7 @@
         .rb-social a { height: 44px; min-width: 44px; padding: 0 14px; border: 1px solid #8b8968; border-radius: var(--rb-r-sm); display: inline-flex; align-items: center; justify-content: center; color: var(--rb-cream); font-size: 13px; }
         .rb-social a:hover { background: #6b694c; }
         .rb-foot-bottom { border-top: 1px solid #77754f; margin-top: 40px; padding-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #c4bfa6; }
+        .rb-foot-legal { display: flex; flex-wrap: wrap; gap: 0 18px; } .rb-foot-legal a { font-size: 12px; color: #c4bfa6; }
         .rb-toast { position: fixed; bottom: 24px; inset-inline-start: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; }
         .rb-toast.show { opacity: 1; }
         @if (! empty($visualBar ?? []))
@@ -364,7 +394,7 @@
                     <span class="rb-vcard-img">
                         @if ($rbCard['image'])
                             {{-- والاسمُ مكتوبٌ تحت الصورة، فلا يُقرأ مرّتين: الصورةُ زينةٌ للقارئ الصوتيّ --}}
-                            <img src="{{ $rbCard['image'] }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async" @if (($rbCard['fit'] ?? 'cover') === 'contain') class="is-contain" @endif data-fit="{{ $rbCard['fit'] ?? 'cover' }}">
+                            <img src="{{ \App\Support\ImageVariants::link($rbCard['image'], \App\Support\ImageVariants::THUMB) }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async" @if (($rbCard['fit'] ?? 'cover') === 'contain') class="is-contain" @endif data-fit="{{ $rbCard['fit'] ?? 'cover' }}">
                         @else
                             <span class="rb-stripes" aria-hidden="true"></span>
                         @endif
@@ -540,8 +570,20 @@
                 @endif
             @endforeach
         </div>
-        @if ($footer['copyright'] !== null || ($footer['line'] && filled($tagline)))
+        @php $rbLegal = $legalLinks ?? []; @endphp
+        @if ($footer['copyright'] !== null || ($footer['line'] && filled($tagline)) || $rbLegal !== [])
         <div class="rb-foot-bottom">
+            {{--
+                وروابطُ الصفحات القانونيّة — ما نشره صاحبُ المتجر وحده (`Store\StoreLegal::links`).
+                ولا شيء لمن لم ينشر: يبقى تذييلُه كما كان.
+            --}}
+            @if ($rbLegal !== [])
+                <nav class="rb-foot-legal" aria-label="{{ $lang === 'en' ? 'Legal' : 'الصفحات القانونية' }}" data-testid="rb-foot-legal">
+                    @foreach ($rbLegal as $rbLink)
+                        <a href="{{ $rbLink['href'] }}" data-testid="rb-foot-legal-{{ $rbLink['key'] }}">{{ $rbLink['label'] }}</a>
+                    @endforeach
+                </nav>
+            @endif
             {{-- وسطرُ الحقوق كما كتبه صاحبُه، أو السنةُ واسمُ المتجر — أو لا سطر --}}
             @if ($footer['copyright'] !== null)
                 <span data-testid="rb-copyright">{{ $footer['copyright'] }}</span>
@@ -663,6 +705,65 @@ window.RB = (function () {
     return { read: read, write: write, add: add, addMany: addMany, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE, limits: LIMITS };
 })();
 </script>
+@php($oldCart = $base === '' ? \App\Support\Website\Domains::oldCartBridge((int) $business->id) : null)
+@if ($oldCart !== null && request()->getSchemeAndHttpHost() === $oldCart['to'])
+<script>
+/*
+ * سلّةُ الزبون من العنوان القديم — تُنقل إلى هذا النطاق مرّةً.
+ *
+ * نُقل المتجرُ من `/s/اسمه` إلى نطاقه، والسلّةُ في المتصفّح تخصّ العنوانَ
+ * الذي كُتبت عليه. فتُفتح صفحةٌ مخفيّةٌ من العنوان القديم تقرؤها وترسلها
+ * إلى هنا (`StoreOldCartBridgeController`)، ويُقبل منها وحدها.
+ *
+ * وتدخل السلّةَ إن كانت هنا فارغة — لا تُخلط بما اختاره الزبونُ على النطاق.
+ * وتُمرَّر بحدّي السلّة (`RB.addMany`)، والأسعارُ من الخادم كعادتها. وتُحاوَل
+ * ثلاثَ مرّاتٍ على الأكثر ثمّ لا تعود — فلا إطارَ في كلّ صفحةٍ أبدًا.
+ */
+(function () {
+    var FROM = @json($oldCart['from']), SRC = @json($oldCart['url']);
+    var FLAG = 'ribbon-cart:{{ (int) $business->id }}:moved';
+    var tries;
+    try { tries = localStorage.getItem(FLAG); } catch (e) { return; }
+    if (tries === 'done' || (+tries || 0) >= 3) return;
+    try { localStorage.setItem(FLAG, String((+tries || 0) + 1)); } catch (e) { return; }
+
+    var frame = document.createElement('iframe');
+    function finish() {
+        window.removeEventListener('message', hear);
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+    }
+    function line(it) {
+        if (!it || typeof it !== 'object') return null;
+        var id = Number(it.id), qty = Number(it.qty), variant = it.variant_id == null ? null : Number(it.variant_id);
+        if (!Number.isInteger(id) || id < 1 || !Number.isInteger(qty) || qty < 1) return null;
+        if (variant !== null && (!Number.isInteger(variant) || variant < 1)) return null;
+        var l = { id: id, variant_id: variant, qty: qty };
+        if (typeof it.note === 'string' && it.note) l.note = it.note;
+        if (Array.isArray(it.addons) && it.addons.length) l.addons = it.addons;
+        return l;
+    }
+    function hear(e) {
+        if (e.origin !== FROM || e.source !== frame.contentWindow) return;
+        if (!e.data || e.data.type !== 'abaad-old-cart') return;
+        try { localStorage.setItem(FLAG, 'done'); } catch (x) {}
+        finish();
+        var lines = (Array.isArray(e.data.items) ? e.data.items : []).map(line).filter(Boolean);
+        if (!lines.length || RB.read().length) return;
+        // وصفحةُ السلّة رُسمت فارغةً قبل وصولها — فتُعاد مرّةً لتُرسم بها
+        if (RB.addMany(lines).ok && document.querySelector('[data-rb-empty]')) location.reload();
+    }
+    window.addEventListener('message', hear);
+    frame.hidden = true;
+    frame.tabIndex = -1;
+    frame.title = '';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.display = 'none';
+    frame.src = SRC;
+    setTimeout(finish, 8000);
+    document.body.appendChild(frame);
+})();
+</script>
+@endif
 <script>
 /*
  * ما لا يقدر عليه CSS وحده — سطران، وبلاهما تبقى الصفحةُ كما كانت.

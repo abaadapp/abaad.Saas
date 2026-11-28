@@ -8,12 +8,16 @@ use App\Models\WhatsAppConnection;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppBillingLock;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppOnboarding;
+use App\Support\WhatsAppOrders;
+use App\Support\WhatsAppOwnApp;
+use App\Support\WhatsAppSender;
 use Illuminate\Http\Request;
 
 /**
@@ -92,6 +96,11 @@ class WhatsAppOnboardingController extends Controller
             return back()->withErrors(['code' => __('ربط واتساب غير مهيّأ على الخادم — راجع أبعاد.')]);
         }
 
+        // والتجّارُ يربطون بتطبيقاتهم — التسجيلُ المدمج عبر تطبيق أبعاد ليس طريقَهم (`WhatsAppOwnApp`)
+        if (WhatsAppOwnApp::enabledFor((int) $business->id)) {
+            return back()->withErrors(['code' => __('الربط يتمّ بتطبيقك الخاص على Meta — اتبع خطوات «اربط تطبيقك» في الصفحة.')]);
+        }
+
         $data = $request->validate([
             'code' => ['required', 'string', 'min:10', 'max:2000'],
             /*
@@ -137,6 +146,31 @@ class WhatsAppOnboardingController extends Controller
     }
 
     /**
+     * تفعيلُ رقمٍ جديد في Cloud API — برمز التحقّق بخطوتين يكتبه صاحبُ الحساب.
+     *
+     * والرمزُ لا يُحفظ ولا يُعاد إلى الشاشة: يمرّ إلى ميتا في نداءٍ واحد
+     * (`WhatsAppOnboarding::register`).
+     */
+    public function register(Request $request)
+    {
+        $business = $this->business();
+
+        if (! $this->mayManage()) {
+            return back()->withErrors(['pin' => __('ربط واتساب لصاحب الحساب أو مديره.')]);
+        }
+
+        $data = $request->validate(['pin' => ['required', 'digits:6']]);
+
+        $result = WhatsAppOnboarding::register($business, $data['pin']);
+
+        if (! $result['ok']) {
+            return back()->withErrors(['pin' => $result['message']]);
+        }
+
+        return back()->with('toast', ['msg' => $result['message'], 'type' => 'success']);
+    }
+
+    /**
      * اختبارُ الاتصال — من الخادم، بالرمز المخزَّن، ولا يُعرض الرمز.
      *
      * ═══ ولمَ زرٌّ يُسأل به ═══
@@ -155,6 +189,11 @@ class WhatsAppOnboardingController extends Controller
         }
 
         $result = WhatsAppEmbeddedSignup::inspectNumber($connection->phone_number_id, $connection->access_token);
+
+        // ‏‏وما لم نصل إلى Meta لا يُكتب عطبًا على رقمٍ يعمل: «خطأ» تُوقف إرسالَه
+        if (! $result['ok'] && $result['code'] === 'network_error') {
+            return back()->withErrors(['code' => __('تعذّر الوصول إلى Meta — لم يتغيّر شيء. أعد المحاولة بعد قليل.')]);
+        }
 
         if (! $result['ok']) {
             /*
@@ -179,13 +218,25 @@ class WhatsAppOnboardingController extends Controller
          * التاجر قد يُغيّر اسمَ العرض عندهم، وقد تُصلَح العلّةُ التي كُتبت
          * أمس. فبقاءُ «حدث خطأ» بعد أن زال الخطأ عطبٌ في نفسه.
          */
+        /*
+         * ووصلةٌ تنتظر خطوةً — إثباتَ الفوترة أو تفعيلَ الرقم — لا يجعلها ردُّ
+         * الرقم «نشطة»: تلك خطوةٌ لم تتمّ، والفحصُ لا يقفز فوقها.
+         */
+        $waiting = WhatsAppOwnApp::awaitsBilling($connection) || WhatsAppOnboarding::awaitsRegistration($connection);
+
         $connection->forceFill([
-            'status' => WhatsAppConnection::ACTIVE,
             'display_phone_number' => $result['display_phone_number'] ?? $connection->display_phone_number,
+        ] + ($waiting ? [] : [
+            'status' => WhatsAppConnection::ACTIVE,
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
-        ])->save();
+        ]))->save();
+
+        // ووصلةُ تطبيق التاجر: الفوترةُ واشتراكُ تطبيقه وعنوانُ إشعاراته (`WhatsAppOwnApp::recheck`)
+        if (WhatsAppOwnApp::is($connection)) {
+            WhatsAppOwnApp::recheck($connection);
+        }
 
         /*
          * ثمّ الأهمّ: أيصلنا ما يكتبه الزبائن؟ — قراءةٌ عند ميتا لا غير.
@@ -194,13 +245,44 @@ class WhatsAppOnboardingController extends Controller
          * أبعاد، ويُكتب ذلك في أعمدة الفحص وحدها (`WhatsAppLinkCheck::recheck`).
          */
         WhatsAppLinkCheck::recheck($connection->refresh());
+        // ‏‏ورقمٌ ينتظر أن يصير رقمَ الإرسال لا ينتظر موعدَ فحصه التالي
+        WhatsAppSender::soon((int) $business->id);
         $health = WhatsAppLinkHealth::state($connection->refresh());
 
         return back()->with('toast', [
             'msg' => __('رقمك يردّ عند ميتا: :name', ['name' => $result['verified_name'] ?: $connection->display_phone_number])
                 .' — '.WhatsAppLinkHealth::label($health),
-            'type' => in_array($health, [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true) ? 'success' : 'warning',
+            'type' => in_array($health, WhatsAppLinkHealth::HEALTHY, true) ? 'success' : 'warning',
         ]);
+    }
+
+    /** ‏‏«أضفت وسيلة الدفع — اطلب التحقق»: طلبٌ يراجعه فريقُ أبعاد، ولا يُثبت بذاته شيئًا */
+    public function billingRequest()
+    {
+        return $this->billing(fn (WhatsAppConnection $c) => WhatsAppBillingLock::request($c, auth()->user()));
+    }
+
+    /** ‏‏«أصلحت وسيلة الدفع — أعد المحاولة» */
+    public function billingRetry()
+    {
+        return $this->billing(fn (WhatsAppConnection $c) => WhatsAppBillingLock::retry($c, auth()->user()));
+    }
+
+    /** @param  callable(WhatsAppConnection): array{ok: bool, message: string}  $do */
+    private function billing(callable $do)
+    {
+        $business = $this->business();
+
+        if (! $this->mayManage()) {
+            return back()->withErrors(['billing' => __('هذا الإعداد لصاحب الحساب أو مديره.')]);
+        }
+
+        $c = WhatsAppConnections::forBusiness($business->id);
+        $r = $c === null ? ['ok' => false, 'message' => __('اربط رقم متجرك أولًا.')] : $do($c);
+
+        return $r['ok']
+            ? back()->with('toast', ['msg' => $r['message'], 'type' => 'success'])
+            : back()->withErrors(['billing' => $r['message']]);
     }
 
     /**
@@ -226,19 +308,45 @@ class WhatsAppOnboardingController extends Controller
         ]);
 
         /*
-         * ولا يُشعَل بلا نصّ.
+         * والحقلان الفارغان لا يمنعان الإشعال.
          *
-         * مفتاحٌ مُشعَلٌ فوق حقلٍ فارغ يعني رسالةً بيضاءَ تصل الزبون — أو
-         * ردًّا تردّه ميتا فيُقيَّد فشلٌ كلَّ مرّة. والمنعُ هنا قبل الحفظ.
+         * كان يُمنع: مفتاحٌ فوق حقلٍ فارغ رسالةٌ بيضاء. وصار للفارغ نصٌّ عامٌّ
+         * باسم المتجر (`WhatsAppAutoReply::defaultText`) — فلا رسالةَ بيضاءَ تخرج.
          */
-        if ($data['enabled'] && trim((string) ($data['ar'] ?? '')) === '' && trim((string) ($data['en'] ?? '')) === '') {
-            return back()->withErrors(['ar' => __('اكتب نصّ الردّ قبل تشغيله.')]);
-        }
-
         WhatsAppAutoReply::save($business->id, $data);
 
         Activity::log('settings', 'واتساب — الردّ التلقائيّ: '.($data['enabled'] ? 'شُغّل' : 'أُوقف'));
 
         return back()->with('toast', ['msg' => __('حُفظ الردّ التلقائي'), 'type' => 'success']);
+    }
+
+    /**
+     * «الطلبات الآليّة عبر واتساب» — مفتاحٌ مستقلٌّ عن الردّ الترحيبيّ.
+     *
+     * لمتجرٍ أذنت له المنصّة وحده (`WhatsAppOrders::allowed`)، ولصاحبه أو مديره.
+     * والإشعالُ لا يُشغّل ما لم تكتمل شروطُه (`readiness`): يُحفظ، وتقول الشاشةُ ما ينقص.
+     */
+    public function guidedOrders(Request $request)
+    {
+        $business = $this->business();
+
+        abort_unless(WhatsAppOrders::allowed((int) $business->id), 404);
+
+        if (! $this->mayManage()) {
+            return back()->withErrors(['enabled' => __('هذا الإعداد لصاحب الحساب أو مديره.')]);
+        }
+
+        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+
+        WhatsAppOrders::save((int) $business->id, (bool) $data['enabled']);
+
+        Activity::log('settings', 'واتساب — الطلبات الآليّة: '.($data['enabled'] ? 'شُغّلت' : 'أُوقفت'));
+
+        return back()->with('toast', [
+            'msg' => $data['enabled'] && ! WhatsAppOrders::active($business)
+                ? __('حُفظ — ولا تعمل الطلبات الآلية حتى تكتمل شروطها')
+                : __('حُفظ إعداد الطلبات الآلية'),
+            'type' => 'success',
+        ]);
     }
 }

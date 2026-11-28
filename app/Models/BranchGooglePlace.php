@@ -22,6 +22,7 @@ class BranchGooglePlace extends Model
         'synced_at' => 'datetime',
         'linked_at' => 'datetime',
         'unlinked_at' => 'datetime',
+        'gbp_synced_at' => 'datetime',
     ];
 
     public function branch(): BelongsTo

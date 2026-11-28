@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPayment;
@@ -12,28 +15,35 @@ use App\Models\FinancialCorrection;
 use App\Models\JournalEntry;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\CustomerInvoiceEdits;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\FinancialCorrections;
 use App\Support\Ledger;
+use App\Support\NeedsApproval;
 use App\Support\Permissions;
 use App\Support\Receivables;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 /**
- * الاعتمادُ الثنائيّ: من يصحّح مالَ فاتورةٍ صادرة لا يعتمد تصحيحه.
+ * الاعتمادُ الثنائيّ: من يصحّح مالَ فاتورةٍ صادرة لا يعتمد تصحيحه (#196 فوق #195).
  *
  * ═══ ما يُحرس هنا ═══
  *
- *   - مطفأٌ لكلّ نشاطٍ قائمٍ وجديد: التعديلُ يُحفظ كما كان (#195).
- *   - مُشعلًا: تعديلُ المال طلبٌ لا يكتب شيئًا — لا فاتورةَ ولا قيدَ ولا سجلّ.
+ *   - مطفأٌ لكلّ نشاطٍ قائمٍ وجديد: التصحيحُ يُحفظ كما كان (#195).
+ *   - مُشعلًا: تصحيحٌ يصدر به إشعارٌ دائنٌ أو مدين طلبٌ لا يكتب شيئًا — لا
+ *     إشعارَ ولا قيدَ ولا سجلَّ تصحيح. وكذلك «إلغاء وإصدار بديلة».
+ *   - والبابُ المباشرُ لا يتجاوزه: `apply` و`replace` تردّان بلا طلبٍ مقفل.
  *   - مقدّمُه لا يعتمده ولا يرفضه، ومن لا يملك الاعتمادَ لا يعتمد.
  *   - المعتمدُ ينفّذه مرّةً واحدة — والثاني يُردّ.
  *   - فاتورةٌ تغيّرت أثناء الانتظار (تحصيلٌ مثلًا) لا يُنفَّذ عليها الطلب.
- *   - وعند الاعتماد يُعاد السؤالُ عن صلاحية مقدّمه والفترة.
- *   - والرفضُ بسبب، والسحبُ لمقدّمه وحده، والمفتاحُ لصاحب النشاط وحده.
+ *   - وعند الاعتماد يُعاد السؤالُ عن صلاحية مقدّمه وفترتها والدفاتر.
+ *   - والرفضُ بسبب، والسحبُ لمقدّمه وحده، والمفتاحُ لصاحب النشاط وحده،
+ *     ولا يُشعَل بلا معتمدٍ آخر. وكلُّ ذلك في سجلّ النشاط.
  *   - ومتجرٌ لا يبلغ طلبَ غيره.
  */
 class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
@@ -131,7 +141,9 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
             'payment_terms_days' => $invoice->payment_terms_days,
             'branch_id' => $invoice->branch_id,
             'notes' => $invoice->notes,
+            'internal_notes' => $invoice->internal_notes,
             'reason' => 'تصحيح الكمية حسب أمر الشراء',
+            'basis' => CustomerInvoiceRevision::ERROR,
             'items' => $invoice->items->map(fn ($i) => [
                 'item_id' => $i->id, 'description' => $i->description, 'quantity' => $qty ?? (float) $i->quantity,
                 'unit_price' => (float) $i->unit_price, 'discount' => (float) $i->discount, 'tax_rate' => (float) $i->tax_rate,
@@ -154,6 +166,17 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         return JournalEntry::where('business_id', $this->shop->id)->count();
     }
 
+    /** الإجماليُّ بعد مستندات التصحيح — والفاتورةُ نفسُها كما صدرت */
+    private function effective(CustomerInvoice $invoice): float
+    {
+        return round($invoice->fresh()->effectiveTotal(), 3);
+    }
+
+    private function logged(string $like): int
+    {
+        return ActivityLog::where('business_id', $this->shop->id)->where('description', 'like', '%'.$like.'%')->count();
+    }
+
     /* ============================== مطفأ ============================== */
 
     public function test_off_for_every_shop_old_and_new_an_edit_is_applied_at_once(): void
@@ -167,6 +190,7 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(1, (int) $invoice->fresh()->revision);
+        $this->assertSame(1, CustomerDebitNote::count());
         $this->assertSame(0, FinancialCorrection::count());
     }
 
@@ -184,10 +208,37 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->assertSame(FinancialCorrection::PENDING, $correction->status);
         $this->assertSame($this->owner->id, (int) $correction->requested_by);
         $this->assertSame($total, (float) $invoice->fresh()->total, 'تغيّرت الفاتورة قبل الاعتماد');
+        $this->assertSame($total, $this->effective($invoice), 'صدر مستندُ تصحيحٍ قبل الاعتماد');
         $this->assertSame(0, (int) $invoice->fresh()->revision);
         $this->assertSame($entries, $this->entries(), 'كُتب قيدٌ قبل الاعتماد');
-        $this->assertSame(0, CustomerInvoiceRevision::count());
+        $this->assertSame([0, 0, 0], [CustomerInvoiceRevision::count(), CustomerDebitNote::count(), CustomerCreditNote::count()]);
         $this->assertSame(126.0, (float) $correction->summary['money']['total_after']);
+        $this->assertEquals(['amount' => 21.0, 'tax' => 1.0], $correction->summary['documents']['debit']);
+        $this->assertSame(1, $this->logged('بانتظار الاعتماد'), 'الطلبُ في سجلّ النشاط');
+    }
+
+    public function test_the_door_itself_refuses_without_a_locked_request(): void
+    {
+        $this->dualOn();
+        $invoice = $this->issued();
+
+        // من يبلغ الخدمةَ مباشرةً — لا من المتحكّم — يُردّ قبل أوّل كتابة
+        try {
+            CustomerInvoiceEdits::apply($invoice, $this->form($invoice, [], 12), $this->owner);
+            $this->fail('نُفّذ تصحيحٌ ماليٌّ بلا اعتماد');
+        } catch (NeedsApproval) {
+        }
+
+        try {
+            CustomerInvoiceEdits::replace($invoice->fresh(), Customer::create([
+                'business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92345678', 'allow_credit_sales' => true,
+            ]), 'العميل الصحيح', $this->owner);
+            $this->fail('استُبدلت فاتورةٌ بلا اعتماد');
+        } catch (NeedsApproval) {
+        }
+
+        $this->assertSame([CustomerInvoice::ISSUED, 0, 0], [$invoice->fresh()->status, CustomerDebitNote::count(), FinancialCorrection::count()]);
+        $this->assertSame(1, CustomerInvoice::where('business_id', $this->shop->id)->count(), 'كُتبت بديلةٌ بلا اعتماد');
     }
 
     public function test_the_preview_says_it_will_wait(): void
@@ -199,7 +250,7 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
             ->assertOk()->assertJsonPath('approval.required', true);
 
         // وتعديلُ الملاحظة لا يمسّ المال — لا ينتظر أحدًا
-        $this->postJson(route('admin.customerInvoices.editPreview', $invoice->id), $this->form($invoice, ['notes' => 'سلّم صباحًا']))
+        $this->postJson(route('admin.customerInvoices.editPreview', $invoice->id), $this->form($invoice, ['internal_notes' => 'سلّم صباحًا']))
             ->assertOk()->assertJsonPath('approval.required', false);
     }
 
@@ -212,9 +263,9 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->assertSame(1, (int) $draft->fresh()->revision);
 
         $invoice = $this->issued();
-        $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, ['notes' => 'سلّم صباحًا']))
+        $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, ['internal_notes' => 'سلّم صباحًا']))
             ->assertSessionHasNoErrors();
-        $this->assertSame(1, (int) $invoice->fresh()->revision);
+        $this->assertSame('سلّم صباحًا', $invoice->fresh()->internal_notes);
         $this->assertSame(0, FinancialCorrection::count());
     }
 
@@ -228,9 +279,12 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->put(route('admin.customerInvoices.update', $invoice->id), $form)->assertSessionHasNoErrors();
         $this->assertSame(1, FinancialCorrection::count());
 
-        // ونموذجٌ آخر والطلبُ الأوّل معلّق: يُردّ بسببه
+        // ونموذجٌ آخر والطلبُ الأوّل معلّق: يُردّ بسببه — بجملةٍ تُقرأ، والمعاينةُ تقولها قبله
+        $why = __('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.');
+        $this->postJson(route('admin.customerInvoices.editPreview', $invoice->id), $this->form($invoice, [], 15))
+            ->assertOk()->assertJsonPath('blockers', [$why]);
         $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, [], 15))
-            ->assertSessionHasErrors('edit');
+            ->assertSessionHasErrors(['edit' => $why]);
         $this->assertSame(1, FinancialCorrection::count());
     }
 
@@ -258,6 +312,15 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $reader = $this->user('accountant', 'reader@dual.om', ['dashboard', 'orders', Permissions::CUSTOMER_INVOICE_HISTORY]);
 
         $this->actingAs($reader)->post(route('admin.customerInvoices.corrections.approve', $correction->id))->assertForbidden();
+
+        // والخدمةُ نفسُها تسأل — لا الباب وحده
+        foreach ([fn () => FinancialCorrections::approve($correction, $reader), fn () => FinancialCorrections::reject($correction, $reader, 'لا أملكه')] as $act) {
+            try {
+                $act();
+                $this->fail('بتّ في الطلب من لا يملك الاعتماد');
+            } catch (AuthorizationException) {
+            }
+        }
         $this->assertSame(FinancialCorrection::PENDING, $correction->fresh()->status);
     }
 
@@ -277,19 +340,22 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->assertNotNull($correction->decided_at);
 
         $invoice->refresh();
-        $this->assertSame(126.0, (float) $invoice->total);
+        $this->assertSame(105.0, (float) $invoice->total, 'الفاتورةُ كما صدرت');
+        $this->assertSame(126.0, $this->effective($invoice));
         $this->assertSame(1, (int) $invoice->revision);
         $revision = CustomerInvoiceRevision::sole();
         $this->assertSame($this->owner->id, (int) $revision->created_by, 'المؤلِّفُ مقدّمُ الطلب');
         $this->assertSame($revision->id, (int) $correction->customer_invoice_revision_id);
-        $this->assertSame($entries + 2, $this->entries(), 'عكسٌ وترحيلٌ واحد');
+        $this->assertSame(21.0, (float) CustomerDebitNote::sole()->amount);
+        $this->assertSame($entries + 1, $this->entries(), 'قيدُ الإشعار المدين وحده');
+        $this->assertSame(1, $this->logged('اعتمد تصحيح فاتورة عميل'), 'الاعتمادُ في سجلّ النشاط');
         $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced'], 'الذممُ تطابق الدفتر');
 
         // والثاني يُردّ — ولا يُكتب سجلٌّ ثانٍ ولا قيد
         $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $correction->id))
             ->assertSessionHasErrors('correction');
-        $this->assertSame(1, CustomerInvoiceRevision::count());
-        $this->assertSame($entries + 2, $this->entries());
+        $this->assertSame([1, 1], [CustomerInvoiceRevision::count(), CustomerDebitNote::count()]);
+        $this->assertSame($entries + 1, $this->entries());
 
         // والسجلُّ يقول من اعتمده
         $this->actingAs($this->owner)->get(route('admin.customerInvoices.show', $invoice->id))
@@ -307,7 +373,8 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $correction->id))
             ->assertSessionHasNoErrors();
 
-        $this->assertSame(84.0, (float) $invoice->fresh()->total);
+        $this->assertSame(84.0, $this->effective($invoice));
+        $this->assertSame(21.0, (float) CustomerCreditNote::sole()->amount);
         $this->assertSame(105.0, (float) $payment->fresh()->amount, 'المقبوضُ لا يُمسّ');
         $this->assertSame(21.0, Receivables::credit($this->shop->id, $this->ministry->id), 'الفرقُ رصيدٌ دائنٌ للعميل');
     }
@@ -325,8 +392,8 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
             ->assertSessionHasErrors('correction');
 
         $this->assertSame(FinancialCorrection::STALE, $correction->fresh()->status);
-        $this->assertSame(105.0, (float) $invoice->fresh()->total);
-        $this->assertSame(0, CustomerInvoiceRevision::count());
+        $this->assertSame(105.0, $this->effective($invoice));
+        $this->assertSame([0, 0], [CustomerInvoiceRevision::count(), CustomerDebitNote::count()]);
         $this->assertSame($entries, $this->entries());
     }
 
@@ -342,22 +409,37 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.customerInvoices.corrections.approve', $correction->id))->assertForbidden();
         $this->assertSame(FinancialCorrection::PENDING, $correction->fresh()->status);
-        $this->assertSame(105.0, (float) $invoice->fresh()->total);
+        $this->assertSame(105.0, $this->effective($invoice));
     }
 
     public function test_approval_asks_again_about_the_period(): void
     {
         $this->dualOn();
+        $clerk = $this->user('accountant', 'period@dual.om', ['dashboard', 'orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
+        $invoice = $this->issued();
+        $correction = $this->request($invoice, $clerk);
+
+        // اعتُمد بعد شهرين: صارت فاتورةُ سبتمبر من فترةٍ سابقة، ومقدّمُه لا يملك تصحيحَها
+        Carbon::setTestNow('2025-11-05 10:00:00');
+
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.corrections.approve', $correction->id))->assertForbidden();
+        $this->assertSame(FinancialCorrection::PENDING, $correction->fresh()->status);
+        $this->assertSame([0, 0], [(int) $invoice->fresh()->revision, CustomerDebitNote::count()]);
+    }
+
+    public function test_approval_asks_again_about_closed_books(): void
+    {
+        $this->dualOn();
         $invoice = $this->issued();
         $correction = $this->request($invoice);
 
-        // اعتُمد بعد شهرين: قيدُ سبتمبر صار في شهرٍ مضى، والطلبُ لم يختر موضعه
-        Carbon::setTestNow('2025-11-05 10:00:00');
+        // أُقفلت الدفاترُ حتى اليوم أثناء الانتظار — لا يُقيَّد مستندُ التصحيح
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'books_closed_through'], ['value' => '2025-09-20']);
 
         $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $correction->id))
             ->assertSessionHasErrors('correction');
         $this->assertSame(FinancialCorrection::PENDING, $correction->fresh()->status);
-        $this->assertSame(0, (int) $invoice->fresh()->revision);
+        $this->assertSame(0, CustomerDebitNote::count());
     }
 
     /* ============================== الرفض والسحب ============================== */
@@ -370,6 +452,12 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
 
         $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.reject', $correction->id), [])
             ->assertSessionHasErrors('reason');
+        // والخدمةُ نفسُها لا ترفض بلا سبب
+        try {
+            FinancialCorrections::reject($correction, $this->approver, '  ');
+            $this->fail('رُفض الطلبُ بلا سبب');
+        } catch (ValidationException) {
+        }
         $this->assertSame(FinancialCorrection::PENDING, $correction->fresh()->status);
 
         $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.reject', $correction->id), ['reason' => 'الكمية في أمر الشراء 10'])
@@ -377,7 +465,8 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
 
         $this->assertSame(FinancialCorrection::REJECTED, $correction->fresh()->status);
         $this->assertSame('الكمية في أمر الشراء 10', $correction->fresh()->decision_note);
-        $this->assertSame(105.0, (float) $invoice->fresh()->total);
+        $this->assertSame(105.0, $this->effective($invoice));
+        $this->assertSame(1, $this->logged('رفض طلب تصحيح فاتورة عميل'), 'الرفضُ في سجلّ النشاط');
 
         // وطلبٌ بُتّ فيه لا يُعتمد بعده
         $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $correction->id))
@@ -397,6 +486,7 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
 
         $this->actingAs($clerk)->post(route('admin.customerInvoices.corrections.withdraw', $correction->id))->assertSessionHasNoErrors();
         $this->assertSame(FinancialCorrection::WITHDRAWN, $correction->fresh()->status);
+        $this->assertSame(1, $this->logged('سحب طلب تصحيح فاتورة عميل'), 'السحبُ في سجلّ النشاط');
 
         // وبعد السحب يُطلب تصحيحٌ جديد
         $this->request($invoice, $clerk, 11);
@@ -420,6 +510,7 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->actingAs($this->owner)->post(route('admin.settings.update'), ['dual_approval_corrections' => true])
             ->assertSessionHasNoErrors();
         $this->assertTrue(FinancialCorrections::required($this->shop->id));
+        $this->assertSame(1, $this->logged('شغّل الاعتماد الثنائي'), 'من شغّله في سجلّ النشاط');
 
         $this->actingAs($manager)->post(route('admin.settings.update'), ['dual_approval_corrections' => false])
             ->assertSessionHasErrors('dual_approval_corrections');
@@ -465,9 +556,9 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->assertSame($entries, $this->entries());
 
         // وما لا مالَ فيه يُحفظ كما كان
-        $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, ['notes' => 'سلّم صباحًا']))
+        $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, ['internal_notes' => 'سلّم صباحًا']))
             ->assertSessionHasNoErrors();
-        $this->assertSame(1, (int) $invoice->fresh()->revision);
+        $this->assertSame('سلّم صباحًا', $invoice->fresh()->internal_notes);
 
         // والموظّفُ يطلب فيعتمده صاحبُ النشاط — لا يُردّ إلّا من لا معتمدَ له
         $clerk = $this->user('accountant', 'clerk-lone@dual.om', ['dashboard', 'orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
@@ -511,5 +602,54 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('admin.customerInvoices.corrections.index'))
             ->assertInertia(fn ($p) => $p->where('corrections.0.may_decide', false)->where('corrections.0.may_withdraw', true));
+    }
+
+    /* ============================== الاستبدال لعميلٍ آخر ============================== */
+
+    public function test_replacing_for_another_customer_waits_then_is_carried_out_once(): void
+    {
+        $this->dualOn();
+        $invoice = $this->issued();
+        $health = Customer::create(['business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92345678', 'allow_credit_sales' => true]);
+        $entries = $this->entries();
+
+        $replace = fn () => $this->actingAs($this->owner)->post(route('admin.customerInvoices.replace', $invoice->id), [
+            'customer_id' => $health->id, 'reason' => 'صدرت باسم الوزارة الخطأ',
+        ]);
+        $replace()->assertRedirect(route('admin.customerInvoices.show', $invoice->id))->assertSessionHasNoErrors();
+        // والنموذجُ مرّتين طلبٌ واحد
+        $replace()->assertSessionHasNoErrors();
+
+        $correction = FinancialCorrection::sole();
+        $this->assertSame([FinancialCorrection::INVOICE_REPLACE, FinancialCorrection::PENDING], [$correction->kind, $correction->status]);
+        $this->assertSame([CustomerInvoice::ISSUED, 1, $entries], [$invoice->fresh()->status, CustomerInvoice::where('business_id', $this->shop->id)->count(), $this->entries()],
+            'أُلغيت الفاتورة أو كُتبت بديلتها قبل الاعتماد');
+
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $correction->id))->assertSessionHasNoErrors();
+
+        $correction->refresh();
+        $draft = CustomerInvoice::where('business_id', $this->shop->id)->where('replaces_invoice_id', $invoice->id)->sole();
+        $this->assertSame([FinancialCorrection::APPROVED, $draft->id], [$correction->status, (int) $correction->replacement_invoice_id]);
+        $this->assertSame([CustomerInvoice::CANCELLED, CustomerInvoice::DRAFT, $health->id], [$invoice->fresh()->status, $draft->status, (int) $draft->customer_id]);
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
+
+        // والثاني يُردّ — ولا بديلةَ ثانية
+        $this->actingAs($this->approver)->post(route('admin.customerInvoices.corrections.approve', $correction->id))->assertSessionHasErrors('correction');
+        $this->assertSame(1, CustomerInvoice::where('replaces_invoice_id', $invoice->id)->count());
+    }
+
+    public function test_a_replacement_that_could_not_happen_is_refused_before_it_is_asked(): void
+    {
+        $this->dualOn();
+        $invoice = $this->issued();
+        $this->pay($invoice, 30);
+        $health = Customer::create(['business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92345678', 'allow_credit_sales' => true]);
+
+        // قُبض منها مال باسم عميلها — لا تُستبدل، فلا يُعلَّق طلبٌ لن يُنفَّذ
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.replace', $invoice->id), [
+            'customer_id' => $health->id, 'reason' => 'صدرت باسم الوزارة الخطأ',
+        ])->assertSessionHasErrors('replace');
+
+        $this->assertSame([0, CustomerInvoice::ISSUED], [FinancialCorrection::count(), $invoice->fresh()->status]);
     }
 }

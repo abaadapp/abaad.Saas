@@ -65,8 +65,22 @@
 
     $totals = [['label' => 'المجموع الفرعي', 'value' => $amount($invoice->subtotal)]];
 
-    if ((float) $invoice->discount_total > 0) {
-        $totals[] = ['label' => 'الخصم', 'value' => '− '.$amount($invoice->discount_total)];
+    /*
+        وخصمُ النقاط سطرٌ مستقلّ بعددها وقيمتها، و«الخصم» فوقه ما سواه —
+        فمجموعُ السطرين خصمُ الورقة كلُّه، ولا يُعدّ أحدُهما مرّتين.
+    */
+    $ownDiscount = round((float) $invoice->discount_total - (float) $invoice->loyalty_discount, 3);
+
+    if ($ownDiscount > 0) {
+        $totals[] = ['label' => 'الخصم', 'value' => '− '.$amount($ownDiscount)];
+    }
+
+    if ((float) $invoice->loyalty_discount > 0) {
+        $totals[] = [
+            'label' => 'خصم نقاط الولاء',
+            'value' => '− '.$amount($invoice->loyalty_discount),
+            'hint' => (int) $invoice->loyalty_points.' '.__('نقطة'),
+        ];
     }
 
     if ((float) $invoice->tax_total > 0) {
@@ -74,6 +88,21 @@
     }
 
     $totals[] = ['label' => 'الإجمالي', 'value' => $money($invoice->total), 'grand' => true];
+    /*
+     * وما صُحّحت به بعد صدورها يُطبع بين إجماليّها وما سُدِّد، بأرقام مستنداته.
+     * الفاتورةُ نفسُها كما صدرت، و«الباقي» يقرأ الإشعارات (`outstanding()`) —
+     * فورقةٌ بلا هذين السطرين تقول «50 − 50 = 5».
+     */
+    if ($invoice->status !== \App\Models\CustomerInvoice::DRAFT) {
+        $debits = $invoice->debitNotes()->orderBy('id')->get(['number', 'amount']);
+        $credits = $invoice->creditNotes()->orderBy('id')->get(['number', 'amount']);
+        if ($debits->isNotEmpty()) {
+            $totals[] = ['label' => 'إشعارات مدينة', 'hint' => $debits->pluck('number')->implode('، '), 'value' => '+ '.$amount($debits->sum('amount'))];
+        }
+        if ($credits->isNotEmpty()) {
+            $totals[] = ['label' => 'إشعارات دائنة', 'hint' => $credits->pluck('number')->implode('، '), 'value' => '− '.$amount($credits->sum('amount'))];
+        }
+    }
     $totals[] = ['label' => 'المسدَّد', 'value' => $amount($paid)];
     $totals[] = ['label' => 'الباقي', 'value' => $money($outstanding), 'due' => true];
 

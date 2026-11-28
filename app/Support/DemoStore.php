@@ -225,6 +225,8 @@ class DemoStore
     private static function wipe(Business $business, bool $keepBusiness): void
     {
         DemoGuard::assertDemo($business);
+        // ‏‏ولا يُمحى ما يُحاسَب به: جهةُ رسوم واتساب وتجربتُها ورسائلُ خرجت إلى Meta
+        DemoGuard::assertWipeable($business);
 
         DB::transaction(function () use ($business, $keepBusiness) {
             $bid = $business->id;

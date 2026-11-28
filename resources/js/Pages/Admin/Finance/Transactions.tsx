@@ -259,7 +259,6 @@ export default function Transactions() {
                 actions={
                     <div className="flex flex-wrap items-center gap-2">
                         <ExportMenu
-                            action="finance.export"
                             label="تصدير"
                             xlsx={route('admin.finance.xlsx')}
                             pdf={route('admin.finance.pdf')}

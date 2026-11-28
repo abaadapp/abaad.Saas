@@ -55,6 +55,8 @@ trait FakesMetaLinking
                 ],
             ]], 200),
             '*fields=is_on_biz_app*' => Http::response(['is_on_biz_app' => false, 'platform_type' => 'CLOUD_API'], 200),
+            // ولا توجيهَ محادثاتٍ على الرقم — كلُّ مستجيبٍ متّصلٍ يصله كلُّ وارد (ردُّ ميتا الموثَّق)
+            '*/routing_roles*' => Http::response(['error' => ['code' => 100, 'message' => 'Conversation routing is not enabled for this phone number.']], 400),
         ];
 
         foreach ($accounts as $waba => $numbers) {

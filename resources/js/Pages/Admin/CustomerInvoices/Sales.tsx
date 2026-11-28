@@ -32,6 +32,8 @@ export interface SaleRow {
     date: string;
     amount: number;
     credited: number | null;
+    /** ما زادته الإشعاراتُ المدينة — والمبلغُ مبلغُ الفاتورة كما صدرت */
+    debited?: number;
     pay_state: string;
     /** الفاتورةُ التي تغطّي الطلب — يُحصَّل عليها */
     cover: { id: number; number: string | null } | null;
@@ -192,6 +194,11 @@ export default function CustomerInvoicesSales({
                             {t('إشعار دائن')} −{m(r.credited)}
                         </div>
                     )}
+                    {(r.debited ?? 0) > 0 && (
+                        <div className="text-[11px] tabular-nums text-[#1d4ed8]" data-testid="sale-debited">
+                            {t('إشعار مدين')} +{m(r.debited ?? 0)}
+                        </div>
+                    )}
                 </>
             ),
         },
@@ -309,7 +316,6 @@ export default function CustomerInvoicesSales({
                 subtitle={t('كلُّ بيعة في متجرك من مكانٍ واحد: من باعها، ومن أين، وما سُدّد منها، وأين وصل تجهيزها.')}
                 actions={
                     <ExportMenu
-                        action="order.export"
                         xlsx={route('admin.customerInvoices.sales.xlsx', exportArgs)}
                         pdf={route('admin.customerInvoices.sales.pdf', exportArgs)}
                         csv={route('admin.customerInvoices.sales.csv', exportArgs)}

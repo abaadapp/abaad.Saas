@@ -45,6 +45,8 @@ class IntegrationsAreSoldWithThePlanTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
         app()->setLocale('ar');
         Http::fake();
 
@@ -54,6 +56,8 @@ class IntegrationsAreSoldWithThePlanTest extends TestCase
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@integrations-plan.om',
             'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
         ]);
+        // ‏‏وما بعد الإطلاق: نجحت تجربةُ الفوترة، فيسري «تطبيق أبعاد»
+        $this->launchWhatsAppForAll();
     }
 
     private function onPlan(array $capabilities): void
@@ -101,6 +105,7 @@ class IntegrationsAreSoldWithThePlanTest extends TestCase
         $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.index'));
         $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.google.key'));
         $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.googleBusiness.callback'));
+        $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.instagram.callback'));
         $this->assertSame('whatsapp', CheckPlanFeature::featureFor('admin.integrations.whatsapp.connect'));
         $this->assertNull(CheckPlanFeature::featureFor('admin.integrations.paymob'));
         $this->assertNull(CheckPlanFeature::featureFor('admin.integrations.paymob.save'));

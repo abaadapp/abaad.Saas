@@ -5,7 +5,7 @@ import { showPrices } from './commerce';
 import { ChevronDown, Search, Sliders } from './icons';
 import { useText } from './i18n';
 import type { LayoutTokens } from './layout';
-import { gridOf, ProductCard } from './ProductCard';
+import { cardSizes, gridOf, ProductCard } from './ProductCard';
 import { Grid } from './primitives';
 import type { DocCategory, DocProduct, Mode, SiteDocument } from './types';
 
@@ -69,6 +69,7 @@ export default function Catalog({
     grid,
     ratio,
     columns,
+    layout = { width: 'normal', density: 'balanced' },
 }: {
     doc: SiteDocument;
     mode: Mode;
@@ -78,6 +79,8 @@ export default function Catalog({
     grid: LayoutTokens['grid'];
     ratio: string;
     columns: number;
+    /** عرضُ القالب وكثافتُه — منهما عرضُ البطاقة لـ`sizes` (`cardSizes`) */
+    layout?: Pick<LayoutTokens, 'width' | 'density'>;
 }) {
     const t = useText();
     const [q, setQ] = useState('');
@@ -340,6 +343,7 @@ export default function Catalog({
                                 card={card}
                                 ratio={ratio}
                                 eager={i < 4}
+                                sizes={cardSizes(shape, layout, false, shown.length, grid === 'editorial' && i === 0 ? 2 : 1)}
                             />
                         ))}
                     </Grid>

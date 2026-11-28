@@ -11,7 +11,7 @@ import { Advanced, PageActions, SettingsGroup, SettingsPage, SettingsSection } f
 import Toggle from '@/Components/Toggle';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Button } from '@/Components/ui/button';
-import SmartLink from '@/Components/SmartLink';
+import GoogleReviewsStep, { type ReviewsManagement } from '@/Pages/Admin/Integrations/partials/GoogleReviewsStep';
 import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -89,6 +89,8 @@ interface Props {
     internal: number;
     /** مراحل الربط — شكلُها شكلُ واتساب، انظر App\Support\Integration */
     readiness: Readiness;
+    /** خطوةُ إدارة التقييمات — إذنٌ مستقلٌّ عن مفتاح الخرائط */
+    reviewsManagement?: ReviewsManagement;
     branches: BranchLink[];
     /** أقلُّ ما يُبحث به — من الخادم لا رقمٌ مكتوبٌ هنا أيضًا */
     searchMin: number;
@@ -482,7 +484,7 @@ function KeyForm({
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, enabled, serverIp, google, internal, readiness, branches, searchMin } =
+    const { settings, link, keyHint, enabled, serverIp, google, internal, readiness, branches, searchMin, reviewsManagement } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -549,6 +551,9 @@ export default function MarketingGoogle() {
                     done={t('تمّ الربط — تُقرأ تقييماتك أدناه، ورابطُ التقييم جاهز.')}
                     waiting={t('لا تُقرأ تقييمةٌ واحدة قبل أن تكتمل هذه المراحل.')}
                 />
+
+                {/* واكتمالُ الخرائط يُبرز الخطوةَ التالية: إذنٌ مستقلٌّ لإدارة التقييمات */}
+                {readiness.ready && reviewsManagement && <GoogleReviewsStep data={reviewsManagement} />}
 
                 {/*
                     والمفتاحُ حين يكون شرطًا يعلو، وحين يكون اختيارًا يُطوى آخرَها.
@@ -820,21 +825,7 @@ export default function MarketingGoogle() {
                     تختارها Google. وقراءةُ التقييمات كلِّها والردُّ عليها
                     باسم المتجر تحتاج إذنَ صاحبه — فتُذكر ولا تُخلط بهذه.
                 */}
-                <SettingsSection
-                    title="الرد على التقييمات"
-                    description="اقرأ تقييماتك كلّها وردّ عليها باسم متجرك — يحتاج ربط حساب Google بإذنك."
-                    icon={Star}
-                    action={
-                        <Button asChild variant="outline" size="sm">
-                            <SmartLink
-                                routeName="admin.integrations.googleBusiness"
-                                href={route('admin.integrations.googleBusiness')}
-                            >
-                                {t('إدارة التقييمات')}
-                            </SmartLink>
-                        </Button>
-                    }
-                />
+                {! readiness.ready && reviewsManagement && <GoogleReviewsStep data={reviewsManagement} />}
 
                 {/*
                     الفرق بين التقييمين يُقال صراحةً: تقييمات النظام تُكتب

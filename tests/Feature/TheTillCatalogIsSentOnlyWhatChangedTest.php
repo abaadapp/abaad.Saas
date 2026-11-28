@@ -431,13 +431,29 @@ class TheTillCatalogIsSentOnlyWhatChangedTest extends TestCase
         DB::table('products')->where('id', $id)->update(['price' => 42]);
 
         foreach ([
-            'رمزٌ مزوَّر' => substr($known['t'], 0, -2).'00',
+            'رمزٌ مزوَّر' => $this->forged($known['t']),
             'رمزٌ بلا توقيع' => explode('.', $known['t'])[0],
             'لا رمز' => null,
         ] as $what => $t) {
             $d = $this->ask(['t' => $t] + $known)->assertOk()->json();
             $this->assertSame(42.0, $this->apply($known, $d)['rows'][$id]['price'], $what);
         }
+    }
+
+    /**
+     * ‏‏توقيعٌ مزوَّر: آخرُ حرفٍ منه يُبدَّل بحرفٍ غيره — فلا يساوي الأصلَ أبدًا.
+     *
+     * كان يُكتب «00» مكانَ آخر حرفين، والتوقيعُ ستّةَ عشريٌّ من HMAC: ينتهي بـ«00» مرّةً
+     * في كلّ 256. فيكون «المزوَّر» هو الأصلَ نفسَه، ويُعفي من الفحص بحقّ، فيسقط الاختبارُ
+     * على كودٍ سليم.
+     */
+    private function forged(string $token): string
+    {
+        $last = substr($token, -1);
+        $forged = substr($token, 0, -1).($last === '0' ? '1' : '0');
+        $this->assertNotSame($token, $forged, 'التزويرُ لم يغيّر التوقيع');
+
+        return $forged;
     }
 
     /** ‏‏بصماتٌ مشوَّهة أو بعددٍ آخر من السلال: الكتالوجُ كلُّه */

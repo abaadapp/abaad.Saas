@@ -175,7 +175,7 @@ class TheSystemInstallsAsAnAppTest extends TestCase
             $ink = 0;
             for ($y = 0; $y < $n; $y++) {
                 $c = imagecolorsforindex($image, imagecolorat($image, intdiv($n, 2), $y));
-                $ink += $c['red'] + $c['green'] + $c['blue'] < 3 * 80 ? 1 : 0;
+                $ink += 3 * 80 > $c['red'] + $c['green'] + $c['blue'] ? 1 : 0;
             }
             $this->assertGreaterThan(0, $ink, "{$icon['src']}: لا علامةَ فيها");
         }
@@ -196,7 +196,7 @@ class TheSystemInstallsAsAnAppTest extends TestCase
         for ($y = 0; $y < $n; $y++) {
             for ($x = 0; $x < $n; $x++) {
                 $c = imagecolorsforindex($image, imagecolorat($image, $x, $y));
-                if ($c['red'] + $c['green'] + $c['blue'] >= 3 * 200) {
+                if (3 * 200 <= $c['red'] + $c['green'] + $c['blue']) {
                     continue;
                 }
                 $inked++;

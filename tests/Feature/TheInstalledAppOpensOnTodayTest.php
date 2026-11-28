@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\Order;
 use App\Models\User;
+use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -26,6 +29,8 @@ class TheInstalledAppOpensOnTodayTest extends TestCase
 
     private Business $shop;
 
+    private Branch $branch;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -33,7 +38,17 @@ class TheInstalledAppOpensOnTodayTest extends TestCase
         $this->shop = Business::create([
             'name' => 'ورد الخوير', 'type' => 'محل ورود', 'status' => 'نشط', 'phone' => '91234567',
         ]);
-        Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
+    }
+
+    private function sale(Business $shop, Branch $branch, float $total, Carbon $at): void
+    {
+        Order::create([
+            'business_id' => $shop->id, 'branch_id' => $branch->id, 'channel' => 'pos',
+            'number' => 'INV-'.uniqid(), 'status' => 'مكتمل', 'payment_status' => 'مدفوع', 'is_held' => false,
+            'payment_method' => 'نقدي', 'subtotal' => $total, 'discount' => 0, 'tax' => 0, 'total' => $total,
+            'ordered_at' => $at,
+        ]);
     }
 
     private function user(string $role): User
@@ -73,6 +88,27 @@ class TheInstalledAppOpensOnTodayTest extends TestCase
 
         $dashboard = $this->actingAs($owner)->get(route('admin.dashboard'))->assertOk()->viewData('page')['props']['stats'];
         $this->assertSame(array_slice($dashboard, 0, count($cards)), $cards);
+    }
+
+    /**
+     * «مبيعات اليوم» تُقاس على أمس — ومن متجره وحده.
+     *
+     * البطاقةُ نُقلت من `adminStats` إلى `salesTodayCard`، ولم يكن يحرس
+     * مقارنتَها بأمسِ حارس: يومٌ يُقارَن بنفسه كان يمرّ «0%» على كلّ حال.
+     */
+    public function test_todays_sales_are_this_shops_and_measured_against_yesterday(): void
+    {
+        $this->sale($this->shop, $this->branch, 10, now()->subDay()->setTime(12, 0));
+        $this->sale($this->shop, $this->branch, 5, now()->setTime(0, 30));
+
+        $other = Business::create(['name' => 'متجر آخر', 'type' => 'عام', 'status' => 'نشط']);
+        $this->sale($other, Branch::create(['business_id' => $other->id, 'name' => 'الرئيسي']), 900, now()->setTime(0, 30));
+
+        $card = $this->props($this->user('admin'))['cards'][0];
+
+        $this->assertSame('مبيعات اليوم', $card['label']);
+        $this->assertSame(Demo::money(5), $card['value']);
+        $this->assertSame(['−50%', false], [$card['trend'], $card['up']]);
     }
 
     public function test_the_owner_gets_every_button(): void

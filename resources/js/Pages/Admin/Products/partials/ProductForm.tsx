@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useForm } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { Check, Pencil, Plus, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Tabs from '@/Components/Tabs';
@@ -20,6 +20,7 @@ import BoutiqueParts, { type BoutiquePartsData } from './BoutiqueParts';
 import { CHANNEL_SUMMARY, DESCRIPTION_SUMMARY, descriptionShows, salesChannels } from './channels';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
+import type { PageProps } from '@/types';
 import { originalOf } from '@/lib/image-fingerprint';
 
 interface Props {
@@ -254,6 +255,13 @@ export default function ProductForm({
     const [ask, confirmDialog] = useConfirm();
     /** أيُعرض حقلُ البوتيك؟ — ومن لا يُعرض له لا يُرسَل منه شيء */
     const offersBoutiques = boutiques.length > 0;
+    /*
+     * وحسابُ صاحب البوتيك: صنفُه في بوتيكه دائمًا، ولا إضافاتِ متجرٍ يربطها.
+     *
+     * الحقلان لا يُرسمان له — والخادمُ هو الحارس لا هذا: ما يُنشئه يُنسب إلى
+     * بوتيكه أيًّا كان المُرسَل، وأبوابُ الإضافات تردّه (`BoutiqueAccount`).
+     */
+    const boutiqueAccount = usePage<PageProps>().props.auth?.boutiqueAccount ?? null;
     const initialBoutique = boutiqueId == null ? '' : String(boutiqueId);
 
     const form = useForm({
@@ -744,7 +752,7 @@ export default function ProductForm({
                                     يردّ بوتيكَ متجرٍ آخر (`boutiqueRule`). وما بِيع
                                     قبل التغيير يبقى على لقطة بنده.
                                 */}
-                                {offersBoutiques && (
+                                {offersBoutiques && !boutiqueAccount && (
                                     <Field
                                         label="البوتيك"
                                         hint="بدون بوتيك = منتج المتجر. ما بِيع من قبل يبقى لصاحبه وقت البيع."
@@ -793,6 +801,7 @@ export default function ProductForm({
                             بطاقةٌ في «المعلومات الأساسية» لا تبويبٌ خامس: الإضافاتُ تُقرَّر
                             مع المنتج، وصفحةُ الإضافات تديرها كلَّها.
                         */}
+                        {!boutiqueAccount && (
                         <Card className="p-6">
                             <ProductAddonsPanel
                                 addons={addonList}
@@ -809,6 +818,7 @@ export default function ProductForm({
                                 )}
                             </ProductAddonsPanel>
                         </Card>
+                        )}
 
                         <Card className="p-6" data-testid="product-channels">
                             <h3 className="mb-4 font-bold text-[#111]">{t('أين يُباع المنتج')}</h3>

@@ -7,11 +7,14 @@ use App\Models\Branch;
 use App\Models\JobTitle;
 use App\Models\User;
 use App\Support\Activity;
+use App\Support\BoutiqueAccount;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
+use App\Support\UserSessions;
 use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -533,7 +536,16 @@ class EmployeeController extends Controller
                 'permissions' => $employee->permissions,
                 // ما يفتحه دورُه كاملًا — أفعالَه لا أقسامَه وحدها — لمسمًّى لا صفَّ له في `titleGrants`
                 'role_permissions' => Permissions::roleGrants((string) $employee->role),
+                'boutique_id' => $employee->boutique_id !== null ? (int) $employee->boutique_id : null,
             ],
+            /*
+             * حسابُ صاحب بوتيك — بوتيكاتُ المتجر ليُختار منها، في متجرٍ يُؤويها
+             * وحده، ولغير صاحب النشاط ولغير صاحب الشاشة نفسِه. `null` فلا يُرسم
+             * الحقل. انظر `boutiqueBinding`.
+             */
+            'boutiqueOptions' => Boutiques::holds(auth()->user()->business) && ! Permissions::isOwner($employee) && $employee->id !== auth()->id()
+                ? Boutiques::options(auth()->user()->business)
+                : null,
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
             'actionHints' => Permissions::actionHints(),
@@ -827,9 +839,30 @@ class EmployeeController extends Controller
             $employee->whatsapp_inbox = $inbox;
         }
 
+        [$boutiqueSent, $boutique] = $this->boutiqueBinding($request, $employee);
+        $boutiqueBefore = $employee->boutique_id;
+        $statusBefore = $employee->status;
+        if ($boutiqueSent) {
+            $employee->boutique_id = $boutique;
+        }
+
         $employee->update($data);
+
+        /*
+         * وتغيّرُ الربط أو التعطيلُ يُنهي جلساتِه المفتوحة و«تذكّرني» — انظر `UserSessions`.
+         * من فُكّ ربطُه عاد إلى صلاحيّاته كلِّها، ومن عُطّل ثمّ فُعّل لا يعود بكعكةٍ قديمة.
+         */
+        if ((int) $boutiqueBefore !== (int) $employee->boutique_id
+            || ($statusBefore === 'نشط' && $employee->status !== 'نشط')) {
+            UserSessions::end($employee);
+        }
         Activity::log('updated', 'عدّل بيانات الموظف: '.$employee->name, ['subject_id' => $employee->id]);
         $this->logInboxGrant($employee, $inboxBefore, $employee->whatsapp_inbox);
+        if ((int) $boutiqueBefore !== (int) $employee->boutique_id) {
+            Activity::log('updated', $employee->boutique_id
+                ? 'ربط حسابَ الموظف '.$employee->name.' ببوتيكه: '.BoutiqueAccount::boutique($employee)?->name
+                : 'فكّ ربطَ حساب الموظف '.$employee->name.' ببوتيكه', ['subject_id' => $employee->id]);
+        }
 
         return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => __('تم تحديث بيانات الموظف'), 'type' => 'success']);
     }
@@ -847,6 +880,51 @@ class EmployeeController extends Controller
      *
      * @return array{0: bool, 1: ?string} أُرسل الحقل؟ والقيمةُ المحفوظة
      */
+    /**
+     * حسابُ صاحب بوتيك؟ — يُربط ببوتيكه أو يُفكّ، بيد من يدير الموظفين.
+     *
+     * الربطُ يُضيّق ولا يُوسّع (`BoutiqueAccount`): من رُبط لا يبلغ إلا أصنافَ
+     * بوتيكه ولا يقرأ مالًا مهما حمل من صلاحيّات. فلا يحتاج من يربط أكثرَ من
+     * إدارة الموظف — وهو يملك أن يسحب صلاحيّاته كلَّها أصلًا. والفكُّ يُعيد
+     * الحسابَ إلى صلاحيّاته كما هي، لا إلى أكثر منها.
+     *
+     * ولا يُربط صاحبُ النشاط، ولا يربط أحدٌ حسابَه أو يفكّه بنفسه. ولا يُخمَّن
+     * لحسابٍ بوتيكُه: ما لم يُرسَل الحقلُ بقي الحسابُ كما كان.
+     *
+     * @return array{0: bool, 1: ?int}
+     */
+    private function boutiqueBinding(Request $request, User $employee): array
+    {
+        $now = $employee->boutique_id !== null ? (int) $employee->boutique_id : null;
+
+        if (! $request->has('boutique_id')) {
+            return [false, $now];
+        }
+
+        $request->validate([
+            'boutique_id' => ['nullable', 'integer', Rule::exists('boutiques', 'id')->where('business_id', $this->bid())],
+        ]);
+
+        $wanted = $request->filled('boutique_id') ? (int) $request->input('boutique_id') : null;
+
+        if ($wanted === $now) {
+            return [true, $now];
+        }
+
+        $refusal = match (true) {
+            Permissions::isOwner($employee) => __('صاحب النشاط لا يُربط ببوتيك.'),
+            $employee->id === auth()->id() => __('لا تربط حسابك ببوتيكٍ ولا تفكّه بنفسك.'),
+            $wanted !== null && ! Boutiques::holds(auth()->user()->business) => __('متجرك لا يُؤوي بوتيكات.'),
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            throw ValidationException::withMessages(['boutique_id' => $refusal]);
+        }
+
+        return [true, $wanted];
+    }
+
     private function inboxGrant(Request $request, ?User $employee): array
     {
         if (! $request->has('whatsapp_inbox')) {
@@ -1068,6 +1146,10 @@ class EmployeeController extends Controller
         $employee->status = $employee->status === 'نشط' ? 'معطل' : 'نشط';
         $employee->save();
         $on = $employee->status === 'نشط';
+        // والمعطَّلُ لا يبقى له جهازٌ مفتوح، ولا يعود بكعكة «تذكّرني» إن فُعّل — انظر `UserSessions`
+        if (! $on) {
+            UserSessions::end($employee);
+        }
         Activity::log('status', ($on ? 'فعّل' : 'عطّل').' حساب الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
         return back()->with('toast', ['msg' => $on ? __('تم تفعيل الحساب') : __('تم تعطيل الحساب'), 'type' => $on ? 'success' : 'warning']);

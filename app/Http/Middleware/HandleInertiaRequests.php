@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Support\CrmWebsiteInquiries;
 use App\Support\CrmWhatsApp;
 use App\Models\PosPeripheral;
+use App\Support\BoutiqueAccount;
 use App\Support\Boutiques;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
@@ -66,6 +67,14 @@ class HandleInertiaRequests extends Middleware
                  * يومًا، فيُرسم بابٌ يُردّ صاحبُه أو يُخفى بابٌ مأذون.
                  */
                 'isEmployee' => $user->isEmployee(),
+                /*
+                 * وحسابُ صاحب بوتيك؟ — اسمُ بوتيكه لتقول الشاشةُ لمن هو، ولتُخفي
+                 * ما لا يُفتح له (حقلُ البوتيك ومكوّناتُ الباقة والإضافات).
+                 * والحارسُ في الخادم لا هنا (`KeepsABoutiqueAccountOnItsShelf`).
+                 */
+                'boutiqueAccount' => BoutiqueAccount::bound($user)
+                    ? ['id' => $user->boutique_id, 'name' => BoutiqueAccount::boutique($user)?->label()]
+                    : null,
                 // وإلى أين يدخل: الوجهة لا الإذن وحده — انظر Permissions::panelEntry
                 'panelUrl' => Permissions::panelEntry($user),
                 /*
@@ -251,7 +260,8 @@ class HandleInertiaRequests extends Middleware
              * تقريرٍ يُضاف: بطاقةٌ في الشاشة لا مدخل لها في البحث، أو مدخلٌ
              * في البحث يقود إلى تقريرٍ حُذف.
              */
-            'reportPages' => fn () => $user?->business_id
+            // وحسابُ صاحب البوتيك لا تقريرَ له ولا جرس — انظر `BoutiqueAccount`
+            'reportPages' => fn () => $user?->business_id && ! BoutiqueAccount::bound($user)
                 ? collect(Reports::forUser($user))
                     ->map(fn ($r) => ['title' => $r['title'], 'href' => $r['href']])
                     ->all()
@@ -268,7 +278,7 @@ class HandleInertiaRequests extends Middleware
              * ولا يُوسَّع بذلك ما يُقرأ: فرعُه يردّ قبل أن يُقرأ صفُّ تاجرٍ
              * واحد، ومن لا متجرَ له ولا إدارةَ منصّةٍ تبقى خاصّيّتُه `null`.
              */
-            'notifications' => fn () => $user && ($user->business_id || $user->isSuperAdmin())
+            'notifications' => fn () => $user && ($user->business_id || $user->isSuperAdmin()) && ! BoutiqueAccount::bound($user)
                 ? Demo::notificationFeed()
                 : null,
 

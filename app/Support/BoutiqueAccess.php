@@ -29,7 +29,8 @@ final class BoutiqueAccess
 {
     public static function read(?User $user): bool
     {
-        return $user !== null && $user->allows('expenses');
+        // وحسابُ صاحب البوتيك لا يقرأ مالًا ولو كُتبت له «المصروفات» — انظر `BoutiqueAccount`
+        return $user !== null && ! BoutiqueAccount::bound($user) && $user->allows('expenses');
     }
 
     public static function issue(?User $user): bool
@@ -57,7 +58,7 @@ final class BoutiqueAccess
     /** أيُحجب ما بيع من صنفٍ عن هذا الجالس؟ — في متجرٍ يؤوي بوتيكاتٍ وحده */
     public static function hidesSales(?User $user, ?Business $business): bool
     {
-        return self::productsOnly($user) && Boutiques::holds($business);
+        return BoutiqueAccount::bound($user) || (self::productsOnly($user) && Boutiques::holds($business));
     }
 
     /**

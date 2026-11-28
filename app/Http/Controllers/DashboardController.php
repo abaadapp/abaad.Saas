@@ -99,6 +99,8 @@ class DashboardController extends Controller
             'customerPhoneReview' => auth()->user()?->allows('customers') && ! session()->has(self::phoneReviewKey())
                 ? \App\Support\CustomerPhone::reviewCount(Demo::bid())
                 : 0,
+            // وحساباتُ «المنتجات» غيرُ المربوطة ببوتيك — لصاحب النشاط وحده، في متجرٍ يُؤوي بوتيكات
+            'unboundBoutiqueAccounts' => \App\Support\BoutiqueAccount::unbound(auth()->user()),
             // والبطاقاتُ والرسمان في اللقطة أعلاه: تتبع الفرعَ المختار كأحدث
             // الطلبات، وتتحدّث معًا في نبضة `adminStats`. والتقارير العامة
             // تبقى مستقلة عن هذا العقد ولا نغيّر معناها هنا.

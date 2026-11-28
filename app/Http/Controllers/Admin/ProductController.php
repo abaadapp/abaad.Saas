@@ -9,6 +9,7 @@ use App\Models\Business;
 use App\Models\ImportBatch;
 use App\Models\Product;
 use App\Support\Activity;
+use App\Support\BoutiqueAccount;
 use App\Support\Demo;
 use App\Support\Lists\ProductsList;
 use App\Support\Pagination;
@@ -300,6 +301,17 @@ class ProductController extends Controller
         unset($data['composition']);
 
         /*
+         * وحسابُ صاحب البوتيك يُنشئ في بوتيكه — أيًّا كان ما أُرسل.
+         *
+         * ولا يبني باقةً من أصناف المتجر ولا يربط إضافاته: مكوّناتُ الباقة
+         * وإضافاتُها أصنافُ غيره. ومقاساتُ صنفه له. انظر `BoutiqueAccount`.
+         */
+        if (BoutiqueAccount::bound($request->user())) {
+            $data['boutique_id'] = $request->user()->boutique_id;
+            $composition = array_intersect_key($composition, ['variants' => true]);
+        }
+
+        /*
          * والصورُ بترتيبها: الرئيسيةُ أوّلًا ثمّ المعرض — كما تقرؤها الشاشاتُ كلُّها.
          *
          * والسقفُ يُقاس قبل أن يُكتب ملفّ: سادسةٌ تُردّ الطلبَ كلَّه برسالةٍ
@@ -502,6 +514,10 @@ class ProductController extends Controller
              */
         ], ['category_id.exists' => __('قسم غير معروف')]);
         $data['name_en'] = $data['name_en'] ?? null;
+        // وحسابُ صاحب البوتيك لا ينقل صنفًا من بوتيكه — انظر `BoutiqueAccount`
+        if (BoutiqueAccount::bound($request->user())) {
+            $data['boutique_id'] = $request->user()->boutique_id;
+        }
         /*
          * ولا يُوقَظ صنفٌ أُوقف بحفظةٍ لم تُرسله — كالعرض والربط سواء.
          *

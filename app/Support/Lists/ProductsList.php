@@ -5,6 +5,7 @@ namespace App\Support\Lists;
 use App\Support\ImageVariants;
 use App\Models\Business;
 use App\Models\Product;
+use App\Support\BoutiqueAccount;
 use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
@@ -40,14 +41,22 @@ final class ProductsList
     /** بوتيكاتُ المتجر — فارغةٌ لمن لا بوتيكَ عنده فلا عمودَ ولا مرشِّح */
     public static function boutiques(): array
     {
-        return Boutiques::options(Business::find(self::bid()));
+        $options = Boutiques::options(Business::find(self::bid()));
+
+        // وحسابُ صاحب البوتيك لا يقرأ أسماءَ البوتيكات الأخرى — بوتيكُه وحده (`BoutiqueAccount`)
+        $user = auth()->user();
+
+        return BoutiqueAccount::bound($user)
+            ? array_values(array_filter($options, fn ($o) => (string) $o['value'] === (string) $user->boutique_id))
+            : $options;
     }
 
     public static function query(Request $request, ?array $boutiques = null): Builder
     {
         $boutiques ??= self::boutiques();
 
-        $q = Product::where('business_id', self::bid())->with('category')
+        // وحسابُ صاحب البوتيك يقرأ رفَّ بوتيكه وحده — في الشاشة والملفّ سواء (`BoutiqueAccount`)
+        $q = BoutiqueAccount::scope(Product::where('business_id', self::bid()), auth()->user())->with('category')
             // واسمُ البوتيك بضمٍّ واحد للصفحة لا باستعلامٍ لكلّ صفّ
             ->when($boutiques !== [], fn ($w) => $w->with('boutique:id,name,name_en'));
 

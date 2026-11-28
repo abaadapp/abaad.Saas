@@ -33,10 +33,12 @@ interface Props {
     may_read_payroll: boolean;
     /** «محادثات واتساب» — لمتجرٍ فُتح له الصندوق (`EmployeeController::inboxField`) */
     inbox?: InboxAccess | null;
+    /** «حساب صاحب بوتيك» — لمتجرٍ يُؤوي بوتيكات (`EmployeeController::edit`) */
+    boutiqueOptions?: { value: number; label: string }[] | null;
 }
 
 export default function EmployeeEdit() {
-    const { employee, branches, branchOptions, jobTitles, sections, actions, actionHints, may_read_payroll, inbox, grantable, blockedTitles, titleGrants, auth } =
+    const { employee, branches, branchOptions, jobTitles, sections, actions, actionHints, may_read_payroll, inbox, boutiqueOptions, grantable, blockedTitles, titleGrants, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -61,6 +63,7 @@ export default function EmployeeEdit() {
                 key={employee.id}
                 mayReadPayroll={may_read_payroll}
                 inbox={inbox}
+                boutiqueOptions={boutiqueOptions}
                 employee={employee}
                 branches={branches}
                 branchOptions={branchOptions}

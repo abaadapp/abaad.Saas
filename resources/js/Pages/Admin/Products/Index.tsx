@@ -72,8 +72,16 @@ export default function ProductsIndex() {
         lastImport,
         boutiques = [],
         context,
+        auth,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    /*
+     * وحسابُ صاحب البوتيك: أصنافُ رفِّه وحدها — بلا تصديرٍ ولا استيرادٍ ولا تعديلٍ جماعيّ.
+     *
+     * أبوابُها الثلاثة تردّه في الخادم (`KeepsABoutiqueAccountOnItsShelf`)، فلا
+     * تُرسم له أزرارٌ تقود إلى ٤٠٣. والحارسُ هناك لا هنا.
+     */
+    const shelfOnly = !!auth?.boutiqueAccount;
     // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
     const tenant = useTenantLink();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
@@ -152,7 +160,7 @@ export default function ProductsIndex() {
     );
 
     const columns: Column<Product>[] = [
-        {
+        ...(shelfOnly ? [] : [{
             key: 'select',
             header: '',
             cell: (p) => (
@@ -164,7 +172,7 @@ export default function ProductsIndex() {
                     className="size-4 cursor-pointer accent-[#111]"
                 />
             ),
-        },
+        } satisfies Column<Product>]),
         {
             key: 'name',
             header: 'المنتج',
@@ -348,6 +356,7 @@ export default function ProductsIndex() {
                             أعمدةُ الاستيراد، ولا يتبع المُرشِّحات عمدًا: من صدّر نصف
                             الجرد ثمّ استورده ظنّ أنّه ردّ الجرد كلّه.
                         */}
+                        {!shelfOnly && (<>
                         <ExportMenu
                             xlsx={route('admin.products.xlsx')}
                             pdf={route('admin.products.exportPdf')}
@@ -381,6 +390,7 @@ export default function ProductsIndex() {
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
+                        </>)}
                         <Button asChild>
                             <SmartLink routeName="admin.products.create" href={route('admin.products.create')}>
                                 <Plus />

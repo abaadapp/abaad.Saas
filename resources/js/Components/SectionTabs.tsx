@@ -70,7 +70,9 @@ export default function SectionTabs({ tabs: all, current, className }: Props) {
             (!tb.action || (auth?.mayActions?.includes(tb.action) ?? false)) &&
             (!tb.anyAction || tb.anyAction.some((a) => auth?.mayActions?.includes(a) ?? false)) &&
             (!tb.feature || (auth?.planFeatures?.[tb.feature] ?? false)) &&
-            (!tb.hosts || (context?.hosted?.includes(tb.hosts) ?? false)),
+            (!tb.hosts || (context?.hosted?.includes(tb.hosts) ?? false)) &&
+            // وحسابُ صاحب البوتيك لا يُرسم له إلا ما يُفتح له — انظر `BoutiqueAccount::ROUTES`
+            (!auth?.boutiqueAccount || tb.routeName === 'admin.products.index'),
     );
 
     /*

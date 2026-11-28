@@ -17,6 +17,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\BoutiqueAccess;
+use App\Support\BoutiqueAccount;
 use App\Support\Boutiques;
 use App\Support\BranchGoogle;
 use App\Support\DeliveryPaper;
@@ -26,6 +27,7 @@ use App\Support\Emojis;
 use App\Support\InvoiceBranding;
 use App\Support\Lists\InMemory;
 use App\Support\Lists\InventoryList;
+use App\Support\Lists\ProductsList;
 use App\Support\Lists\SuppliersList;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
@@ -75,6 +77,41 @@ class PageController extends Controller
      *
      * @return array{layout: string, can_change: bool}
      */
+    /**
+     * قوائمُ التركيب كما تصل حسابَ صاحب البوتيك: مقاساتُ صنفه وحدها.
+     *
+     * المكوّناتُ والإضافاتُ وموادُّ المخزون قوائمُ أصناف المتجر كلِّها بتكلفتها
+     * وكميّتها — يبني منها التاجرُ باقاتِه. وصاحبُ البوتيك لا يبني باقةً من
+     * أصناف غيره (`ProductController::store`)، فلا تُرسل إليه. انظر `BoutiqueAccount`.
+     *
+     * وباقةٌ بناها التاجرُ على رفّه من أصناف المتجر تبقى بمكوّناتها وكمّيّاتها، بلا
+     * تكلفةِ مكوّنٍ ولا تكلفةِ سطرٍ ولا تكلفةِ الباقة وهامشِها: تلك تكلفةُ المتجر وربحُه.
+     * والشاشةُ لا ترسم شيئًا منها — كانت تصل في بيانات الصفحة وحدها.
+     *
+     * @param  array<string, mixed>  $composition
+     * @return array<string, mixed>
+     */
+    private static function shelfOnly(array $composition): array
+    {
+        if (! BoutiqueAccount::bound(auth()->user())) {
+            return $composition;
+        }
+
+        $costless = fn (array $recipe): array => array_diff_key([
+            'items' => array_map(fn (array $item) => array_diff_key($item, ['unit_cost' => 1, 'line_cost' => 1]), $recipe['items'] ?? []),
+        ] + $recipe, ['cost' => 1, 'margin' => 1, 'margin_pct' => 1]);
+
+        if (is_array($composition['recipe'] ?? null)) {
+            $composition['recipe'] = $costless($composition['recipe']);
+        }
+        if (is_array($composition['variants'] ?? null)) {
+            $composition['variants'] = array_map(fn (array $v) => is_array($v['recipe'] ?? null) ? ['recipe' => $costless($v['recipe'])] + $v : $v, $composition['variants']);
+        }
+
+        return array_merge($composition, array_fill_keys(
+            array_values(array_intersect(['components', 'addons', 'stock_items', 'products'], array_keys($composition))), []));
+    }
+
     private function addonsDisplay(): array
     {
         return [
@@ -89,16 +126,16 @@ class PageController extends Controller
         // الصفوف لا فارغةَ الخيارات — فمن يكتب باقةً يختار مكوّناتها الآن
         return Inertia::render('Admin/Products/Create', [
             'categories' => Demo::categories(),
-            'composition' => ProductCompositionController::blank(
+            'composition' => self::shelfOnly(ProductCompositionController::blank(
                 auth()->user()->business_id ?? Demo::bid(),
-            ),
+            )),
             // وحالُه في الموقع بثلاثٍ — لمن يرسم موقعُه «نفدت الكمية» وحده (`WebsiteSoldOut`)
             'websiteStatus' => WebsiteSoldOut::allowed(auth()->user()->business_id ?? Demo::bid()) ? WebsiteSoldOut::AVAILABLE : null,
-            // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`
-            'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`؛ ولصاحب البوتيك بوتيكُه وحده
+            'boutiques' => ProductsList::boutiques(),
             'addonsDisplay' => $this->addonsDisplay(),
             // أيُربط صنفُ بوتيكٍ بإضافةٍ من نافذتها — انظر `AddonController::boutiqueLinks`
-            'addonBoutiqueLinks' => AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            'addonBoutiqueLinks' => BoutiqueAccount::bound(auth()->user()) ? null : AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
             /*
              * والصورُ تُختار مع المنتج — بالسقف والحدود نفسها التي يقرؤها المعرض
              * في التعديل. فالشاشةُ تردّ السادسةَ والثقيلةَ قبل الإرسال، لا بعد
@@ -189,7 +226,7 @@ class PageController extends Controller
              */
             'websiteStatus' => $model && WebsiteSoldOut::allowed((int) $model->business_id) ? WebsiteSoldOut::status($model) : null,
             'composition' => $model
-                ? ProductCompositionController::payload($model)
+                ? self::shelfOnly(ProductCompositionController::payload($model))
                 : null,
             /*
              * المعرض يصل إلى شاشة التعديل لتُدار منه الصور.
@@ -205,12 +242,12 @@ class PageController extends Controller
              * والبوتيكُ الحاليّ من الصفّ نفسه — لا من حمولة `Demo::products`
              * التي تقرؤها نقطةُ البيع كذلك، فلا يُثقلها حقلٌ لا تحتاجه.
              */
-            'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            'boutiques' => ProductsList::boutiques(),
             'boutiqueId' => $model?->boutique_id ? (int) $model->boutique_id : null,
             // منتجاتُ البوتيك في هذه الباقة — `null` لمن لم يُفتح له السجلّ، فلا يُرسم القسم
-            'boutiqueParts' => $model ? BoutiquePartsController::payload($model) : null,
+            'boutiqueParts' => $model && ! BoutiqueAccount::bound(auth()->user()) ? BoutiquePartsController::payload($model) : null,
             'addonsDisplay' => $this->addonsDisplay(),
-            'addonBoutiqueLinks' => AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            'addonBoutiqueLinks' => BoutiqueAccount::bound(auth()->user()) ? null : AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
         ]);
     }
 
@@ -632,6 +669,8 @@ class PageController extends Controller
             ->selectRaw('job_title, COUNT(*) as c')->groupBy('job_title')->pluck('c', 'job_title');
 
         return [
+            // حساباتُ «المنتجات» غيرُ المربوطة ببوتيك — لصاحب النشاط وحده (`BoutiqueAccount::unbound`)
+            'unboundBoutiqueAccounts' => BoutiqueAccount::unbound(auth()->user()),
             'employees' => Demo::employees(),
             'jobTitles' => JobTitle::where('business_id', $bid)->orderBy('name')->get()
                 ->map(fn ($t) => [

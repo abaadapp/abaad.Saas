@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, KeyRound, MessagesSquare, Plus, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
+import { Check, KeyRound, MessagesSquare, Plus, ShieldCheck, Store, Target, UserRound, Wallet } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -46,6 +46,8 @@ export interface EmployeeFormValues {
     role_permissions?: string[];
     /** فروع العمل المسموح بها. الفارغة = كل فروع المتجر */
     branches?: number[];
+    /** بوتيكُه إن كان حسابَ صاحب بوتيك — انظر `EmployeeController::boutiqueBinding` */
+    boutique_id?: number | null;
 }
 
 interface Props {
@@ -99,6 +101,12 @@ interface Props {
      * لا تُمحى صلاحيتُه بحفظِ رقم هاتفه.
      */
     inbox?: InboxAccess | null;
+    /**
+     * «حساب صاحب بوتيك» — بوتيكاتُ المتجر، في متجرٍ يُؤويها وحده، وإلّا لا شيء.
+     *
+     * والحقلُ لا يُرسل حين لا يُعرض: لا يُفكّ ربطٌ بحفظِ رقم هاتف.
+     */
+    boutiqueOptions?: { value: number; label: string }[] | null;
 }
 
 /** قسم داخل النموذج: عنوان وشرح سطر، ثم حقوله */
@@ -155,6 +163,7 @@ export default function EmployeeForm({
     canEditPermissions = true,
     mayReadPayroll = true,
     inbox = null,
+    boutiqueOptions = null,
 }: Props) {
     const t = useTranslate();
     /*
@@ -235,6 +244,7 @@ export default function EmployeeForm({
         manual_permissions: employee ? employee.permissions != null : false,
         permissions: employee?.permissions ?? employee?.role_permissions ?? [],
         ...(inbox ? { whatsapp_inbox: inbox.level } : {}),
+        ...(boutiqueOptions ? { boutique_id: employee?.boutique_id ?? null } : {}),
     });
 
     /*
@@ -806,6 +816,24 @@ export default function EmployeeForm({
                         onChange={(level) => form.setData('whatsapp_inbox', level)}
                         error={(form.errors as Record<string, string | undefined>).whatsapp_inbox}
                     />
+                </Section>
+            )}
+
+            {boutiqueOptions && (
+                <Section
+                    icon={Store}
+                    title="حساب صاحب بوتيك"
+                    hint="اربطه ببوتيكه: لا يرى إلا منتجات بوتيكه، ولا يرى مبيعاتٍ ولا فواتير ولا عمولةً ولا مستحقًّا — مهما حمل من صلاحيات"
+                >
+                    <Field label="البوتيك" error={(form.errors as Record<string, string | undefined>).boutique_id}>
+                        <Select
+                            value={form.data.boutique_id ?? ''}
+                            onChange={(e) => form.setData('boutique_id', e.target.value === '' ? null : Number(e.target.value))}
+                            options={boutiqueOptions.map((b) => ({ label: b.label, value: String(b.value) }))}
+                            placeholder="ليس حسابَ بوتيك"
+                            aria-label={t('البوتيك')}
+                        />
+                    </Field>
                 </Section>
             )}
 

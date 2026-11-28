@@ -4,6 +4,7 @@ import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { EMPLOYEE_TABS } from '@/Components/SectionTabs';
 import EmployeesPanel, { type JobTitle } from '../Settings/panels/EmployeesPanel';
 import InboxAccessRoster, { type InboxRoster } from './partials/InboxAccessRoster';
+import { UnboundBoutiqueAccountsNotice, type UnboundBoutiqueAccount } from '@/Components/UnboundBoutiqueAccounts';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -15,7 +16,7 @@ import type { Employee } from '@/types/models';
  * تبقى لأن رابطها منشورٌ في روابط محفوظة، ولأن «موظف جديد» يعود إليها.
  */
 export default function EmployeesIndex() {
-    const { employees, jobTitles, inboxAccess } = usePage<PageProps<{ employees: Employee[]; jobTitles: JobTitle[]; inboxAccess?: InboxRoster | null }>>().props;
+    const { employees, jobTitles, inboxAccess, unboundBoutiqueAccounts } = usePage<PageProps<{ employees: Employee[]; jobTitles: JobTitle[]; inboxAccess?: InboxRoster | null; unboundBoutiqueAccounts?: UnboundBoutiqueAccount[] }>>().props;
     const t = useTranslate();
 
     return (
@@ -32,6 +33,9 @@ export default function EmployeesIndex() {
                 يزاحم التبويبات ويقول إنّك في مكانٍ فرعيّ وأنت لست فيه.
             */}
             <SectionTabs tabs={EMPLOYEE_TABS} current="admin.employees.index" />
+
+            {/* حساباتُ «المنتجات» غيرُ المربوطة ببوتيك — لصاحب النشاط وحده (`BoutiqueAccount::unbound`) */}
+            <UnboundBoutiqueAccountsNotice accounts={unboundBoutiqueAccounts} />
 
             <EmployeesPanel employees={employees} jobTitles={jobTitles} />
 

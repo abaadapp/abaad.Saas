@@ -14,6 +14,7 @@ use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
+use App\Support\UserSessions;
 use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -840,11 +841,21 @@ class EmployeeController extends Controller
 
         [$boutiqueSent, $boutique] = $this->boutiqueBinding($request, $employee);
         $boutiqueBefore = $employee->boutique_id;
+        $statusBefore = $employee->status;
         if ($boutiqueSent) {
             $employee->boutique_id = $boutique;
         }
 
         $employee->update($data);
+
+        /*
+         * وتغيّرُ الربط أو التعطيلُ يُنهي جلساتِه المفتوحة و«تذكّرني» — انظر `UserSessions`.
+         * من فُكّ ربطُه عاد إلى صلاحيّاته كلِّها، ومن عُطّل ثمّ فُعّل لا يعود بكعكةٍ قديمة.
+         */
+        if ((int) $boutiqueBefore !== (int) $employee->boutique_id
+            || ($statusBefore === 'نشط' && $employee->status !== 'نشط')) {
+            UserSessions::end($employee);
+        }
         Activity::log('updated', 'عدّل بيانات الموظف: '.$employee->name, ['subject_id' => $employee->id]);
         $this->logInboxGrant($employee, $inboxBefore, $employee->whatsapp_inbox);
         if ((int) $boutiqueBefore !== (int) $employee->boutique_id) {
@@ -1135,6 +1146,10 @@ class EmployeeController extends Controller
         $employee->status = $employee->status === 'نشط' ? 'معطل' : 'نشط';
         $employee->save();
         $on = $employee->status === 'نشط';
+        // والمعطَّلُ لا يبقى له جهازٌ مفتوح، ولا يعود بكعكة «تذكّرني» إن فُعّل — انظر `UserSessions`
+        if (! $on) {
+            UserSessions::end($employee);
+        }
         Activity::log('status', ($on ? 'فعّل' : 'عطّل').' حساب الموظف: '.$employee->name, ['subject_id' => $employee->id]);
 
         return back()->with('toast', ['msg' => $on ? __('تم تفعيل الحساب') : __('تم تعطيل الحساب'), 'type' => $on ? 'success' : 'warning']);

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\BoutiqueAccount;
+use App\Support\UserSessions;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,6 +24,18 @@ class KeepsABoutiqueAccountOnItsShelf
     {
         $user = $request->user();
         $route = $request->route();
+
+        /*
+         * وجلسةٌ فُتحت على ربطٍ غيرِ ربطه الآن — رُبط بعدها أو نُقل أو فُكّ — تُنهى
+         * هنا، لأيّ حساب: يدخل من جديدٍ على ما صار له. انظر `UserSessions`.
+         */
+        if ($user !== null && UserSessions::stale($request, $user)) {
+            $message = __('تغيّر ربطُ حسابك ببوتيك — سجّل الدخول من جديد.');
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message], 401)
+                : redirect()->guest(route('login'))->with('status', $message);
+        }
 
         if (! BoutiqueAccount::bound($user) || $route === null || ! $this->asksForLogin($route->gatherMiddleware())) {
             return $next($request);

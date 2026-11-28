@@ -25,6 +25,7 @@ import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
 import { CustomerPhoneReviewBanner } from '@/Components/CustomerPhoneReview';
+import { UnboundBoutiqueAccountsNotice, type UnboundBoutiqueAccount } from '@/Components/UnboundBoutiqueAccounts';
 
 interface Order {
     id: string;
@@ -53,6 +54,7 @@ interface DashboardProps {
     stats: Stat[];
     /** عملاءُ تحتاج أرقامُهم مراجعة — صفرٌ لمن لا يدخل قسم العملاء، ولمن أغلقه في جلسته */
     customerPhoneReview?: number;
+    unboundBoutiqueAccounts?: UnboundBoutiqueAccount[];
     statCatalog: CatalogStat[];
     salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[] };
     paymentDistribution: { labels: string[]; series: number[] };
@@ -132,6 +134,9 @@ export default function Dashboard() {
 
             {/* تنبيهُ بيانات العملاء — في الصفحة لا في الجرس، ويختفي بلا أرقامٍ ناقصة */}
             <CustomerPhoneReviewBanner count={server.customerPhoneReview ?? 0} onDismiss={() => dismissPhoneReview()} />
+
+            {/* حساباتُ «المنتجات» غيرُ المربوطة ببوتيك — لصاحب النشاط في متجرٍ يُؤوي بوتيكات (`BoutiqueAccount::unbound`) */}
+            <UnboundBoutiqueAccountsNotice accounts={server.unboundBoutiqueAccounts} />
 
             <StatGrid stats={liveStats} storageKey="admin" catalog={statCatalog} />
             {updatedAt && (

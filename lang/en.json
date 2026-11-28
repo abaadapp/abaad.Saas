@@ -11774,5 +11774,8 @@
     "متجرك لا يُؤوي بوتيكات.": "Your shop does not host boutiques.",
     "حساب صاحب بوتيك": "Boutique owner account",
     "اربطه ببوتيكه: لا يرى إلا منتجات بوتيكه، ولا يرى مبيعاتٍ ولا فواتير ولا عمولةً ولا مستحقًّا — مهما حمل من صلاحيات": "Bind it to its boutique: it sees only that boutique's products, and no sales, invoices, commission or dues — whatever permissions it holds",
-    "ليس حسابَ بوتيك": "Not a boutique account"
+    "ليس حسابَ بوتيك": "Not a boutique account",
+    "حساباتٌ تفتح أصناف المتجر كلَّها ولم تُربط ببوتيك": "Accounts that open the whole shop catalog and are not bound to a boutique",
+    "إن كان أحدُها لصاحب بوتيك فاربطه ببوتيكه من شاشة الموظف ليرى أصنافه وحدها، أو عطّله. لا يُربط حسابٌ ولا يُعطَّل تلقائيًّا.": "If one belongs to a boutique owner, bind it to their boutique from the staff screen so it sees only its items, or disable it. No account is bound or disabled automatically.",
+    "تغيّر ربطُ حسابك ببوتيك — سجّل الدخول من جديد.": "Your account's boutique binding changed — please sign in again."
 }

@@ -215,6 +215,60 @@ class ABoutiqueAccountSeesOnlyItsOwnShelfTest extends TestCase
         $this->actingAs($lama)->get(route('admin.products.edit', $this->p['lama']->id))->assertOk();
     }
 
+    /**
+     * ولا بابَ يكتب ينقل ملكيّةَ صنفٍ أو نسبتَه، ولا يربط الحسابَ نفسَه أو يفكّه.
+     *
+     * الأبوابُ المفتوحة له على أصنافه تُطرق بحمولةٍ مصنوعة: `boutique_id` لبوتيكٍ آخر أو فارغ،
+     * ونسبةُ عمولة. والأبوابُ المغلقة التي تكتب الملكيّةَ أو النسبة (التعديلُ الجماعيّ، وإسنادُ
+     * البوتيك، وتعديلُ البوتيك، والباقة، وتعديلُ الموظف) تُطرق فتُردّ، ولا يتغيّر صفّ.
+     */
+    public function test_no_write_door_moves_ownership_or_rate_and_it_never_rebinds_itself(): void
+    {
+        $lama = $this->user($this->shop, 'sales', ['dashboard', 'products', 'employees', 'settings'], $this->lama);
+        $mine = $this->p['lama'];
+        $variant = DB::table('product_variants')->insertGetId(['business_id' => $this->shop->id, 'product_id' => $mine->id, 'name' => 'صغير', 'price' => 12, 'active' => true, 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $before = [
+            'products' => DB::table('products')->orderBy('id')->get(['id', 'boutique_id'])->toArray(),
+            'rates' => DB::table('boutiques')->orderBy('id')->pluck('commission_rate', 'id')->all(),
+            'binding' => DB::table('users')->where('id', $lama->id)->value('boutique_id'),
+        ];
+        $crafted = ['boutique_id' => $this->reem->id, 'commission_rate' => 1, 'boutique_rate' => 1];
+
+        // الأبوابُ المفتوحة على أصنافها: تُقبل وتُكتب على بوتيكها وحده
+        $this->actingAs($lama)->patch(route('admin.products.quick', $mine->id), ['price' => 14] + $crafted);
+        $this->actingAs($lama)->post(route('admin.products.variants.store', $mine->id), ['name' => 'كبير', 'price' => 15] + $crafted);
+        $this->actingAs($lama)->put(route('admin.products.variants.update', [$mine->id, $variant]), ['name' => 'صغير', 'price' => 11] + $crafted);
+        $this->actingAs($lama)->post(route('admin.products.duplicate', $mine->id));
+        $copy = Product::where('business_id', $this->shop->id)->where('id', '!=', $mine->id)->where('name', 'like', '%خاتم لمى%')->latest('id')->first();
+        $this->assertNotNull($copy, 'لم يُنسخ صنفُها');
+        $this->assertSame($this->lama->id, (int) $copy->boutique_id, 'نسخةُ صنفها خرجت من بوتيكها');
+
+        // والأبوابُ التي تكتب الملكيّةَ أو النسبة مغلقة — ولو حمل الحسابُ «الموظفين» و«الإعدادات»
+        $shut = [
+            'التعديلُ الجماعيّ' => ['post', route('admin.products.bulk'), ['ids' => [$this->p['reem']->id, $this->p['shop']->id, $mine->id], 'action' => 'boutique', 'boutique_id' => $this->lama->id]],
+            'تعديلُ البوتيك ونسبته' => ['put', route('admin.boutiques.update', $this->lama->id), ['name' => 'بوتيك لمى', 'commission_rate' => 1]],
+            'تعديلُ بوتيكٍ آخر' => ['put', route('admin.boutiques.update', $this->reem->id), ['name' => 'بوتيك ريم', 'commission_rate' => 1]],
+            'باقةٌ من صنفها' => ['post', route('admin.products.recipe.store', $mine->id), ['component_product_id' => $this->p['shop']->id, 'quantity' => 1]],
+            'تعديلُ حسابها من الموظفين' => ['put', route('admin.employees.update', $lama->id), ['name' => $lama->name, 'job_title' => 'بائع', 'boutique_id' => '']],
+        ];
+        foreach ($shut as $door => [$method, $url, $body]) {
+            $status = $this->actingAs($lama)->json($method, $url, $body)->status();
+            $this->assertContains($status, [403, 404], "«{$door}» لم يُردّ ({$status})");
+        }
+
+        // والملفُّ الشخصيّ مفتوحٌ له — ولا يحمل الربط
+        $this->actingAs($lama)->put(route('profile.update'), ['name' => $lama->name, 'email' => $lama->email, 'boutique_id' => $this->reem->id]);
+
+        $this->assertSame($before['rates'], DB::table('boutiques')->orderBy('id')->pluck('commission_rate', 'id')->all(), 'تغيّرت نسبةُ بوتيك');
+        $this->assertSame($before['binding'], DB::table('users')->where('id', $lama->id)->value('boutique_id'), 'تغيّر ربطُ الحساب بيده');
+        $now = collect(DB::table('products')->orderBy('id')->get(['id', 'boutique_id'])->toArray())->keyBy('id');
+        foreach ($before['products'] as $row) {
+            $this->assertSame($row->boutique_id, $now[$row->id]->boutique_id, "انتقلت ملكيّةُ الصنف {$row->id}");
+        }
+        $this->assertSame(0, DB::table('recipe_items')->where('product_id', $mine->id)->count(), 'بنت باقةً من أصناف المتجر');
+        $this->assertSame(0, DB::table('product_variants')->whereNotNull('product_id')->where('product_id', '!=', $mine->id)->where('product_id', '!=', $copy->id)->where('business_id', $this->shop->id)->count(), 'كُتب مقاسٌ على صنف غيرها');
+    }
+
     public function test_no_money_and_no_other_screen_reaches_it_whatever_it_was_granted(): void
     {
         // حسابٌ مربوطٌ أُعطي كلَّ صلاحيّات المال — الربطُ فوقها

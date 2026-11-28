@@ -6,6 +6,7 @@ use App\Models\Boutique;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\Expense;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Setting;
@@ -289,6 +290,65 @@ class EveryDoorOutsideABoutiqueShelfIsShutTest extends TestCase
         }
     }
 
+    /**
+     * ولا اسمَ ولا هاتفَ لعميل، ولا بندَ مصروف، ولا شيءَ من بوتيكٍ آخر أو أصناف المحلّ.
+     *
+     * المالُ وحده لا يكفي: اسمُ الشركة ورقمُها، وما صُرف ولمن، وأسماءُ البوتيكات الأخرى
+     * وأصنافُها — كلُّها من دفتر المتجر لا من رفّ صاحبة البوتيك. وكلُّ عيّنةٍ تُرى أوّلًا
+     * عند صاحب النشاط في صفحتها، فلا يُقال «لم تظهر» عن بحثٍ أعمى.
+     */
+    public function test_its_shelf_carries_no_customer_no_expense_and_nothing_of_another_boutique_or_the_shop(): void
+    {
+        $customer = Customer::create(['business_id' => $this->shop->id, 'language' => 'ar', 'name' => 'زبونةٌ لا تُسمّى', 'phone' => '91827364', 'customer_type' => 'فرد']);
+        Expense::create(['business_id' => $this->shop->id, 'type' => 'إيجار', 'description' => 'إيجارُ مخزنٍ سرّيّ', 'amount' => 777.111,
+            'method' => 'نقدي', 'status' => Expense::PAID, 'spent_at' => '2027-02-05']);
+
+        $canaries = [
+            'اسمُ عميلة' => [$customer->name, route('admin.customers.index')],
+            'هاتفُ عميلة' => ['91827364', route('admin.customers.index')],
+            'اسمُ شركةٍ عميلة' => ['شركة النور', route('admin.customers.index')],
+            'هاتفُ الشركة' => ['90000001', route('admin.customers.index')],
+            'بندُ مصروف' => ['إيجارُ مخزنٍ سرّيّ', route('admin.expenses.index')],
+            'بوتيكٌ آخر' => ['بوتيك ريم', route('admin.products.index')],
+            'صنفُ بوتيكٍ آخر' => ['وشاح ريم', route('admin.products.index')],
+            'صنفُ المحلّ' => ['ورد جوري', route('admin.products.index')],
+            'صنفُ متجرٍ آخر' => ['صنف متجر آخر', null],
+        ];
+
+        // ليس أعمى: صاحبُ النشاط يرى كلَّ عيّنةٍ في صفحتها
+        foreach ($canaries as $label => [$form, $where]) {
+            if ($where !== null) {
+                $this->assertStringContainsString($form, $this->ownerSees($where), "صاحبُ النشاط لا يرى «{$label}» في صفحتها — البحثُ أعمى");
+            }
+        }
+
+        // والبحثُ باسمها أو هاتفها أو باسم صنف غيرها لا يُرجع صفًّا — والكلمةُ نفسُها تُعاد في المرشِّح، فيُعدّ الصفُّ لا النصّ
+        foreach (['زبونة', '91827364', 'شركة النور', 'وشاح', 'ورد'] as $q) {
+            $this->actingAs($this->rich)->get(route('admin.products.index', ['q' => $q]))->assertOk()
+                ->assertInertia(fn (\Inertia\Testing\AssertableInertia $p) => $p->has('products', 0));
+        }
+
+        $pages = [
+            'قائمة الأصناف' => route('admin.products.index'),
+            'صنفٌ جديد' => route('admin.products.create'),
+            'عرضُ صنفها' => route('admin.products.show', $this->ring->id),
+            'تعديلُ صنفها' => route('admin.products.edit', $this->ring->id),
+            'الملفّ الشخصيّ' => route('profile.edit'),
+        ];
+        foreach ($pages as $page => $url) {
+            $body = $this->everythingOf($url);
+            foreach ($canaries as $label => [$form]) {
+                $this->assertStringNotContainsString($form, $body, "«{$page}» حملت {$label} ({$form})");
+            }
+        }
+    }
+
+    /** ما يراه صاحبُ النشاط في صفحةٍ — كاملةً، بما يُؤجَّل منها */
+    private function ownerSees(string $url): string
+    {
+        return $this->everythingOf($url, $this->owner);
+    }
+
     /** المبالغُ التي لا تبلغه — كلُّ مبلغٍ في دفاتر المتجر بعد البيع، إلّا سعرَ صنفها */
     private function canaries(): array
     {
@@ -331,9 +391,10 @@ class EveryDoorOutsideABoutiqueShelfIsShutTest extends TestCase
     }
 
     /** الصفحةُ كاملة: ما رُسم أوّلًا، وما يُؤجَّل منها ويُطلب بعده */
-    private function everythingOf(string $url): string
+    private function everythingOf(string $url, ?User $as = null): string
     {
-        $response = $this->actingAs($this->rich)->get($url);
+        $who = $as ?? $this->rich;
+        $response = $this->actingAs($who)->get($url);
         $response->assertOk();
         $body = $response->getContent();
 
@@ -346,7 +407,7 @@ class EveryDoorOutsideABoutiqueShelfIsShutTest extends TestCase
         $body .= "\n".json_encode($page, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         foreach ((array) ($page['deferredProps'] ?? []) as $props) {
-            $body .= "\n".$this->actingAs($this->rich)->withHeaders([
+            $body .= "\n".$this->actingAs($who)->withHeaders([
                 'X-Inertia' => 'true',
                 'X-Inertia-Version' => (string) ($page['version'] ?? ''),
                 'X-Inertia-Partial-Component' => (string) $page['component'],

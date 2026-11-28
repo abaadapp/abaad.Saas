@@ -95,6 +95,34 @@ final class BoutiqueAccount
                 ->exists();
     }
 
+    /**
+     * حساباتٌ نشطةٌ تحمل «المنتجات» وحدها ولم تُربط ببوتيك — في متجرٍ يُؤوي بوتيكات.
+     *
+     * هي هيئةُ حساب صاحب البوتيك قبل الربط: يفتح أصنافَ المتجر كلَّها، ويُسند أيَّ صنفٍ
+     * إلى أيّ بوتيك. فتُسمّى لصاحب النشاط وحده (`Permissions::isOwner`) ليربطها أو
+     * يعطّلها بيده من شاشة الموظف — لا ربطَ ولا تعطيلَ تلقائيًّا، ولا تخمينَ لبوتيكها.
+     * ولا شيءَ لمتجرٍ بلا بوتيكات، ولا لغير صاحب النشاط، ولا من متجرٍ غيرِ متجره.
+     *
+     * @return list<array{id: int, name: string}>
+     */
+    public static function unbound(?User $viewer): array
+    {
+        if ($viewer === null || ! Permissions::isOwner($viewer) || ! Boutiques::holds($viewer->business)) {
+            return [];
+        }
+
+        return User::where('business_id', $viewer->business_id)
+            ->whereNull('boutique_id')
+            ->where('status', 'نشط')
+            ->whereKeyNot($viewer->id)
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (User $u) => ! $u->isSuperAdmin() && ! Permissions::isOwner($u)
+                && $u->allows('products') && BoutiqueAccess::productsOnly($u))
+            ->map(fn (User $u) => ['id' => (int) $u->id, 'name' => (string) $u->name])
+            ->values()->all();
+    }
+
     /** قائمةُ أصناف المتجر كما يراها: رفُّ بوتيكه وحده — ولغيره كما هي */
     public static function scope(Builder $query, ?User $user): Builder
     {

@@ -669,6 +669,8 @@ class PageController extends Controller
             ->selectRaw('job_title, COUNT(*) as c')->groupBy('job_title')->pluck('c', 'job_title');
 
         return [
+            // حساباتُ «المنتجات» غيرُ المربوطة ببوتيك — لصاحب النشاط وحده (`BoutiqueAccount::unbound`)
+            'unboundBoutiqueAccounts' => BoutiqueAccount::unbound(auth()->user()),
             'employees' => Demo::employees(),
             'jobTitles' => JobTitle::where('business_id', $bid)->orderBy('name')->get()
                 ->map(fn ($t) => [

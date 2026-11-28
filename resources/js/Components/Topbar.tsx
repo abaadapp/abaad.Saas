@@ -15,6 +15,7 @@ import {
     X,
 } from 'lucide-react';
 import GoldBadge from '@/Components/GoldBadge';
+import InstalledAppHome from '@/Components/InstalledAppHome';
 import UnifiedSearch from '@/Components/UnifiedSearch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Button } from '@/Components/ui/button';
@@ -325,6 +326,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                 <Menu />
                 <span className="sr-only">{t('القائمة')}</span>
             </Button>
+            {/* وفي التطبيق المثبَّت على الهاتف وحده: طريقُ العودة إلى الشاشة البسيطة */}
+            <InstalledAppHome />
 
             {searchUrl && <UnifiedSearch url={searchUrl} pages={pages} />}
 

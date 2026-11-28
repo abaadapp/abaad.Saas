@@ -661,6 +661,22 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::delete('/whatsapp/packs/{id}', [WhatsAppController::class, 'cancelPack'])->name('whatsapp.packs.cancel');
 });
 
+/*
+ * أبعاد تطبيقًا — `app.abaadapp.om/app`، ما يفتحه التطبيقُ المثبَّت على كلّ جهاز (`start_url`).
+ *
+ * بابٌ يعرف صاحبَه وجهازَه:
+ *   - من يملك «لوحة التحكم» على هاتف: شاشةٌ واحدةٌ بسيطة — أرقامُ اليوم وأزرارٌ قليلة؛
+ *   - وعلى آيباد أو حاسوب: اللوحةُ نفسُها (الواجهةُ تقيس الشاشة، `AppHome.tsx`)؛
+ *   - ومن لا يملكها — الكاشيرُ مثلًا: صفحتُه هو (`Permissions::homeFor`)، نقطةُ البيع.
+ *
+ * ولذلك لا `panel` ولا `ability` هنا: كانا يردّان الكاشيرَ بـ403 في تطبيقٍ
+ * لا شريطَ رجوعٍ فيه. والمتحكّمُ يسأل سؤالَهما نفسَه — من يدخل اللوحة
+ * بأقسامه ويملك «لوحة التحكم» — فيعرض، وإلّا حوّل ولم يعرض شيئًا.
+ */
+Route::get('/app', [DashboardController::class, 'app'])
+    ->middleware(['auth', 'export.tenant', 'tenant', 'business', 'plan'])
+    ->name('admin.dashboard.app');
+
 /* ------------------------------- Admin ----------------------------- */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'tenant', 'business', 'panel', 'ability', 'plan'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');

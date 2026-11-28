@@ -955,10 +955,6 @@ class Demo
         $branch = self::currentBranchId();
         $invoices = fn (Carbon $from, Carbon $to) => StandaloneInvoiceSales::total($bid, $from, $to, $branch);
 
-        $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total')
-            + $invoices(today(), today()->addDay());
-        $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total')
-            + $invoices(today()->subDay(), today());
         $ordersSalesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
         $salesMonth = $ordersSalesMonth + $invoices($mStart, $mStart->copy()->addMonthNoOverflow());
 
@@ -1069,7 +1065,7 @@ class Demo
         $expTrend['up'] = ! $expTrend['up'];
 
         $cards = [
-            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday), ['hint' => __('نقدًا وآجلًا، يومَ البيع أو صدور الفاتورة')]),
+            self::salesTodayCard($bid, $branch),
             array_merge(['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'color' => 'success'], self::trend($salesMonth, $salesLastMonth)),
             array_merge(['label' => __('عدد الطلبات'), 'value' => (string) $ordersTotal, 'icon' => 'receipt', 'color' => 'info'], self::trend($ordersMonth, $ordersLastMonth)),
             array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
@@ -1093,6 +1089,41 @@ class Demo
         array_splice($cards, 1, 0, self::moneyCards($bid, $branch));
 
         return $cards;
+    }
+
+    /**
+     * بطاقاتُ اليوم وحدها — للتطبيق المثبَّت (`/app`): مبيعاتُ اليوم ثمّ `moneyCards`.
+     *
+     * هي البطاقاتُ الأولى في اللوحة بترتيبها ومن الدوالّ نفسِها، فلا يقول
+     * الهاتفُ رقمًا غيرَ ما تقوله اللوحة. ولا يُحسب معها ما لا يُعرض: الشهرُ
+     * والأرباحُ والمخزونُ تبقى للوحة.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function todayCards(): array
+    {
+        $bid = self::bid();
+        $branch = self::currentBranchId();
+
+        return [self::salesTodayCard($bid, $branch), ...self::moneyCards($bid, $branch)];
+    }
+
+    /** «مبيعات اليوم» مقابل أمس — الطلباتُ المباعة وفواتيرُ العملاء يومَ صدورها (انظر `adminStats`) */
+    private static function salesTodayCard(int $bid, ?int $branch): array
+    {
+        $on = fn (Carbon $day) => (float) Order::where('business_id', $bid)->sold()
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch))
+            ->whereDate('ordered_at', $day)->sum('total')
+            + StandaloneInvoiceSales::total($bid, $day->copy()->startOfDay(), $day->copy()->startOfDay()->addDay(), $branch);
+
+        $today = $on(today());
+        $yesterday = $on(today()->subDay());
+
+        return array_merge(
+            ['label' => __('مبيعات اليوم'), 'value' => self::money($today), 'icon' => 'shopping-bag', 'color' => 'primary'],
+            self::trend($today, $yesterday),
+            ['hint' => __('نقدًا وآجلًا، يومَ البيع أو صدور الفاتورة')],
+        );
     }
 
     /**

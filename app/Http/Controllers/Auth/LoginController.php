@@ -132,7 +132,17 @@ class LoginController extends Controller
         // الجهاز ويعرف فرعَه بعدها — انظر PosTerminal
         PosTerminal::rememberBusiness(Auth::user()->business_id);
 
-        return redirect()->intended($this->homeFor(Auth::user()));
+        /*
+         * ومن دخل من التطبيق المثبَّت يعود إلى بابه `/app` — وهي تحوّل كلًّا
+         * إلى مكانه: صاحبَ اللوحة على هاتفٍ إلى شاشتها البسيطة، والكاشيرَ إلى
+         * نقطة البيع (`DashboardController::app`). فلا تُعطي هذه الكلمةُ أحدًا
+         * أكثرَ ممّا يُعطيه `homeFor`. ومديرُ المنصّة لا متجرَ له هناك.
+         */
+        $home = $request->boolean('installed') && ! Auth::user()->isSuperAdmin()
+            ? route('admin.dashboard.app')
+            : $this->homeFor(Auth::user());
+
+        return redirect()->intended($home);
     }
 
     /**

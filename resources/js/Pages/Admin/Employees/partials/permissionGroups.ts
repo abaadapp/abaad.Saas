@@ -39,6 +39,7 @@ export const PERMISSION_GROUPS: PermissionGroupDef[] = [
             'customerInvoice.editPaid',
             'customerInvoice.correctPeriod',
             'customerInvoice.history',
+            'financialCorrection.approve',
             'customerCreditNote.create',
             'customerPayment.create',
             'customerPayment.cancel',

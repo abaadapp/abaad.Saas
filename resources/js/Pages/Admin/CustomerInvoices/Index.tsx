@@ -62,7 +62,9 @@ export default function CustomerInvoicesIndex({
     customers,
     totals,
 }: Props) {
-    const { context } = usePage<PageProps>().props;
+    const { context, auth, pendingCorrections } = usePage<PageProps<{ pendingCorrections?: number | null }>>().props;
+    // طلباتُ التصحيح الماليّ — لمن يعتمدها ولمن يقرأ سجلّ التعديلات (`FinancialCorrectionController::index`)
+    const readsCorrections = ['financialCorrection.approve', 'customerInvoice.history'].some((a) => auth?.mayActions?.includes(a) ?? false);
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -187,15 +189,37 @@ export default function CustomerInvoicesIndex({
                 title={t('فواتير العملاء')}
                 subtitle={t('الفواتير الصادرة على الشركات والجهات، وما بقي منها.')}
                 actions={
-                    <Button asChild>
-                        <SmartLink
-                            routeName="admin.customerInvoices.create"
-                            href={route('admin.customerInvoices.create')}
-                        >
-                            <Plus />
-                            {t('إنشاء فاتورة')}
-                        </SmartLink>
-                    </Button>
+                    <>
+                        {readsCorrections && (
+                            <Button variant="outline" asChild>
+                                <SmartLink
+                                    routeName="admin.customerInvoices.corrections.index"
+                                    href={route('admin.customerInvoices.corrections.index')}
+                                    data-testid="corrections-link"
+                                >
+                                    {t('طلبات التصحيح')}
+                                    {(pendingCorrections ?? 0) > 0 && (
+                                        <span
+                                            className="ms-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full bg-[#b45309] px-1.5 text-[11px] font-bold text-white"
+                                            data-testid="corrections-pending"
+                                            aria-label={t('بانتظار اعتمادك: :n', { n: String(pendingCorrections) })}
+                                        >
+                                            {pendingCorrections}
+                                        </span>
+                                    )}
+                                </SmartLink>
+                            </Button>
+                        )}
+                        <Button asChild>
+                            <SmartLink
+                                routeName="admin.customerInvoices.create"
+                                href={route('admin.customerInvoices.create')}
+                            >
+                                <Plus />
+                                {t('إنشاء فاتورة')}
+                            </SmartLink>
+                        </Button>
+                    </>
                 }
             />
 

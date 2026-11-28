@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
+use App\Models\FinancialCorrection;
 use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Order;
@@ -918,6 +919,10 @@ final class CustomerInvoices
             if ($invoice->status === CustomerInvoice::CANCELLED) {
                 return $invoice;
             }
+            // وإلغاءُ الصادرة يعكس قيدَها — يحتاج اعتمادًا حين يُشعل، ولا يقع فوق طلبٍ معلّق (`FinancialCorrections::guard`)
+            if ($invoice->status === CustomerInvoice::ISSUED) {
+                FinancialCorrections::guard($invoice, FinancialCorrection::INVOICE_CANCEL);
+            }
             if ($invoice->paidTotal() > 0) {
                 throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
             }
@@ -997,6 +1002,16 @@ final class CustomerInvoices
             // والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — والحالُ من الورقة تحت القفل لا من نسخةٍ في اليد
             if ($invoice->status !== CustomerInvoice::ISSUED) {
                 throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
+            /*
+             * والاعتمادُ الثنائيّ يُسأل هنا لا في الشاشة وحدها: إشعارٌ يدويّ لا يصدر
+             * حين يُشعله صاحبُ النشاط إلّا باعتماد طلبه، ولا فوق طلبٍ معلّقٍ على الورقة
+             * ولو أُطفئ (`FinancialCorrections::guard`). وإشعارُ التصحيح (`$revisionId`)
+             * يُسأل عند حفظ التصحيح نفسه (`CustomerInvoiceEdits::apply`).
+             */
+            if ($source === self::NOTE_MANUAL && $revisionId === null) {
+                FinancialCorrections::guard($invoice, FinancialCorrection::CREDIT_NOTE);
             }
 
             // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه ومبلغُه وضريبتُه (`ManualInvoiceAdjustments`)

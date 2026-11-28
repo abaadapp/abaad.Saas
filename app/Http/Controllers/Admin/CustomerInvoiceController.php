@@ -15,6 +15,7 @@ use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
+use App\Models\FinancialCorrection;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
@@ -31,6 +32,7 @@ use App\Support\Document\Branding;
 use App\Support\Document\PaperSize;
 use App\Support\Document\Snapshot;
 use App\Support\Document\Version;
+use App\Support\FinancialCorrections;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
@@ -39,6 +41,7 @@ use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
 use App\Support\InvoiceLineDetails;
 use App\Support\Loyalty;
+use App\Support\NeedsApproval;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
@@ -184,6 +187,14 @@ class CustomerInvoiceController extends Controller
             'statuses' => [CustomerInvoice::DRAFT, CustomerInvoice::ISSUED, CustomerInvoice::CANCELLED],
             'customers' => Customer::where('business_id', $bid)->orderBy('name')->get(['id', 'name'])->all(),
             'totals' => Receivables::totals($bid),
+            /*
+             * وعددُ طلبات التصحيح المعلّقة — لمن يعتمدها وحده، فيرى أنّ عليه ما يبتّ فيه.
+             * وغيرُه لا يُرسَل إليه العددُ أصلًا (`null`)، لا يُخفى في الشاشة وحدها.
+             */
+            'pendingCorrections' => auth()->user()?->may(Permissions::FINANCIAL_CORRECTION_APPROVE)
+                ? FinancialCorrection::where('business_id', $bid)->where('status', FinancialCorrection::PENDING)
+                    ->where('requested_by', '!=', auth()->id())->count()
+                : null,
         ]);
     }
 
@@ -324,6 +335,8 @@ class CustomerInvoiceController extends Controller
              */
             'mayEdit' => CustomerInvoiceEdits::mayOpen(auth()->user(), $invoice),
             'revisions' => $this->revisionsOf($invoice),
+            // وطلباتُ التصحيح الماليّ على الورقة — حين يُشعل صاحبُ النشاط الاعتمادَ الثنائيّ
+            'corrections' => $this->correctionsOf($invoice),
             'invoice' => $this->row($invoice) + [
                 'revision' => (int) $invoice->revision,
                 /*
@@ -1798,8 +1811,21 @@ class CustomerInvoiceController extends Controller
         // وفاتورةُ متجرٍ آخر ٤٠٤ — لا خطأَ «لم يُعثر» يُلتقط في الـ`catch` ويُعرض للتاجر
         $invoice = $this->find($id);
 
+        // وضغطةٌ ثانية على إلغاءٍ أُرسل للاعتماد: طلبُه المعلّق هو الجواب
+        if (FinancialCorrection::where('business_id', $this->bid())->where('customer_invoice_id', $invoice->id)
+            ->where('kind', FinancialCorrection::INVOICE_CANCEL)->where('status', FinancialCorrection::PENDING)
+            ->where('requested_by', auth()->id())->exists()) {
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                'msg' => __('أُرسل إلغاء الفاتورة :n للاعتماد — لا تُلغى حتى يعتمده موظف آخر.', ['n' => $invoice->number]), 'type' => 'info',
+            ]);
+        }
+
         try {
             CustomerInvoices::cancel($invoice, $data['reason'], auth()->id());
+        } catch (NeedsApproval) {
+            // والاعتمادُ الثنائيّ مُشعَل: يُكتب طلبُ الإلغاء ولا يُلغى شيء (`FinancialCorrections::requestCancel`)
+            return $this->requestCorrection(fn () => FinancialCorrections::requestCancel($invoice, $data['reason'], auth()->user()), $invoice, 'invoice',
+                __('أُرسل إلغاء الفاتورة :n للاعتماد — لا تُلغى حتى يعتمده موظف آخر.', ['n' => $invoice->number]));
         } catch (RuntimeException $e) {
             return back()->withErrors(['invoice' => $e->getMessage()]);
         }
@@ -1844,6 +1870,14 @@ class CustomerInvoiceController extends Controller
                 return back()->with('toast', ['msg' => __('أُصدر إشعار الدائن :n', ['n' => $number]), 'type' => 'success']);
             }
 
+            // والنموذجُ نفسُه أُرسل للاعتماد من قبل: طلبُه هو الجواب، لا رفضٌ بأنّ على الورقة طلبًا
+            if (FinancialCorrection::where('business_id', $this->bid())->where('customer_invoice_id', $invoice->id)
+                ->where('edit_token', 'credit-note:'.$data['token'])->exists()) {
+                return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                    'msg' => __('أُرسل إشعار الدائن على الفاتورة :n للاعتماد — لا يصدر حتى يعتمده موظف آخر.', ['n' => $invoice->number]), 'type' => 'info',
+                ]);
+            }
+
             $note = CustomerInvoices::creditNote(
                 $invoice,
                 (float) $data['amount'],
@@ -1853,6 +1887,10 @@ class CustomerInvoiceController extends Controller
                 basis: $data['basis'],
             );
             Cache::put($key, $note->number, now()->addDay());
+        } catch (NeedsApproval) {
+            // والاعتمادُ الثنائيّ مُشعَل: يُكتب طلبُ الإشعار ولا يصدر شيء (`FinancialCorrections::requestCreditNote`)
+            return $this->requestCorrection(fn () => FinancialCorrections::requestCreditNote($invoice, $data, auth()->user()), $invoice, 'amount',
+                __('أُرسل إشعار الدائن على الفاتورة :n للاعتماد — لا يصدر حتى يعتمده موظف آخر.', ['n' => $invoice->number]));
         } catch (LockTimeoutException) {
             return back()->withErrors(['amount' => __('يُصدر هذا الإشعار الآن — انتظر لحظة ثم أعد فتح الفاتورة.')]);
         } catch (RuntimeException $e) {
@@ -2045,6 +2083,8 @@ class CustomerInvoiceController extends Controller
             'needs_basis' => $plan['needs_basis'],
             'missing' => array_map(fn ($a) => $labels[$a] ?? $a, $plan['missing_actions']),
             'blockers' => $plan['blockers'],
+            // وينتظر شخصًا ثانيًا؟ — الشاشةُ تقول «إرسال للاعتماد» بدل «اعتماد التصحيح»
+            'approval' => $plan['approval'],
         ]);
     }
 
@@ -2060,6 +2100,9 @@ class CustomerInvoiceController extends Controller
 
         try {
             $revision = CustomerInvoiceEdits::apply($invoice, $data, $user);
+        } catch (NeedsApproval) {
+            // الاعتمادُ الثنائيّ مُشعل: يُكتب طلبٌ ينتظر غيرَ صاحبه، ولا يتغيّر شيء
+            return $this->requestCorrection(fn () => FinancialCorrections::request($invoice, $data, $user), $invoice);
         } catch (AuthorizationException $e) {
             abort(403, $e->getMessage());
         } catch (RuntimeException $e) {
@@ -2104,6 +2147,16 @@ class CustomerInvoiceController extends Controller
 
         try {
             $draft = CustomerInvoiceEdits::replace($invoice, $customer, $data['reason'], $user);
+        } catch (NeedsApproval) {
+            /*
+             * والاستبدالُ ينتظر غيرَ صاحبه. ورمزُه من الورقة وعددِ ما بُتّ فيه من
+             * طلباتها: النموذجُ يُرسل مرّتين والطلبُ معلّق فيجد طلبَه الأوّل، وطلبٌ
+             * بعد رفضٍ أو سحبٍ رمزُه جديد.
+             */
+            $token = 'replace:'.$invoice->id.':'.FinancialCorrection::where('business_id', $this->bid())
+                ->where('customer_invoice_id', $invoice->id)->where('status', '!=', FinancialCorrection::PENDING)->count();
+
+            return $this->requestCorrection(fn () => FinancialCorrections::requestReplace($invoice, $customer, $data['reason'], $token, $user), $invoice, 'replace');
         } catch (AuthorizationException $e) {
             abort(403, $e->getMessage());
         } catch (RuntimeException $e) {
@@ -2114,6 +2167,42 @@ class CustomerInvoiceController extends Controller
             'msg' => __('أُلغيت الفاتورة :n وكُتبت بديلتها مسودة للعميل :c — راجعها ثم أصدرها.', ['n' => $invoice->number, 'c' => $customer->name]),
             'type' => 'success',
         ]);
+    }
+
+    /** طلبُ تصحيحٍ ينتظر الاعتماد — لا يتغيّر شيءٌ حتى يعتمده غيرُ صاحبه */
+    private function requestCorrection(callable $request, CustomerInvoice $invoice, string $field = 'edit', ?string $sent = null)
+    {
+        try {
+            $request();
+        } catch (AuthorizationException $e) {
+            abort(403, $e->getMessage());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages([$field => $e->getMessage()]);
+        }
+
+        return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+            'msg' => $sent ?? __('أُرسل تصحيح الفاتورة :n للاعتماد — لا يتغيّر شيء حتى يعتمده موظف آخر.', ['n' => $invoice->number]),
+            'type' => 'info',
+        ]);
+    }
+
+    /**
+     * طلباتُ التصحيح على هذه الورقة — لمقدّمها ولمن يعتمد ولمن يقرأ السجلّ.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function correctionsOf(CustomerInvoice $invoice): array
+    {
+        $user = auth()->user();
+        $readsAll = $user?->may(Permissions::FINANCIAL_CORRECTION_APPROVE) || $user?->may(Permissions::CUSTOMER_INVOICE_HISTORY);
+
+        return FinancialCorrection::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)
+            ->when(! $readsAll, fn ($q) => $q->where('requested_by', $user?->id))
+            ->with(['requester:id,name', 'decider:id,name', 'revision:id,revision'])
+            ->latest('id')->limit(20)->get()
+            ->map(fn (FinancialCorrection $c) => FinancialCorrections::present($c, $user))
+            ->values()->all();
     }
 
     /**
@@ -2127,7 +2216,14 @@ class CustomerInvoiceController extends Controller
             return null;
         }
 
+        // ومن اعتمد التصحيحَ حين انتظر شخصًا ثانيًا (`FinancialCorrections`)
+        $approvers = FinancialCorrection::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)->whereNotNull('customer_invoice_revision_id')
+            ->with('decider:id,name')->get()
+            ->mapWithKeys(fn (FinancialCorrection $c) => [$c->customer_invoice_revision_id => $c->decider?->name]);
+
         return $invoice->revisions()->with('author:id,name', 'creditNote', 'debitNote')->get()->map(fn (CustomerInvoiceRevision $r) => [
+            'approved_by' => $approvers[$r->id] ?? null,
             'revision' => $r->revision,
             'kind' => $r->kind,
             'basis' => $r->basis ? __(CustomerInvoiceEdits::BASIS_LABELS[$r->basis] ?? $r->basis) : null,

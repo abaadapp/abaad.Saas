@@ -184,3 +184,29 @@ jobs:
           git tag -a "$next" "$SHA" -m "نُشر على الإنتاج $(date -u +%Y-%m-%d\ %H:%M) UTC"
           git push origin "$next"
           echo "### نُشر ووُسم \`$next\` → \`$(git rev-parse --short "$SHA")\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # وإن سقط شيءٌ هنا: حالُ الخادم والخطواتُ الآمنة في ملخّص التشغيل — أوّلَ ما يُرى.
+      # كما طبعها `scripts/deploy.sh` بين علامتيه (وكتبها في DEPLOY-FAILED.txt على الخادم)،
+      # لا تُخمَّن هنا. ومن سجلّ خطوة النشر نفسها — بلا سرٍّ جديد ولا اتّصالٍ ثانٍ بالخادم.
+      - name: حال الخادم بعد السقوط
+        if: failure() && env.SKIP != '1'
+        run: |
+          set -uo pipefail
+          {
+            echo "## ✗ سقط النشر — حالُ الخادم والخطواتُ الآمنة"
+            echo
+            block=""
+            [ -s deploy.log ] && block="$(sed 's/\x1b\[[0-9;]*m//g' deploy.log | sed -n '/^=== حال الخادم بعد سقوط النشر ===$/,/^=== نهاية حال الخادم ===$/p')"
+            if [ -n "$block" ]; then
+              echo '```'
+              printf '%s\n' "$block"
+              echo '```'
+            elif [ -s deploy.log ]; then
+              echo "سقط بعد أن أنهى السكربتُ عمله (التحقّق من الموقع أو الوسم). آخرُ سجلّ النشر:"
+              echo '```'
+              sed 's/\x1b\[[0-9;]*m//g' deploy.log | tail -25
+              echo '```'
+            else
+              echo "لا سجلَّ للنشر — لم يُبنَ الاتّصالُ بالخادم، فلم يتغيّر عليه شيء."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

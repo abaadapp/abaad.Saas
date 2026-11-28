@@ -88,6 +88,20 @@ return [
     'timezone' => env('APP_TIMEZONE', 'Asia/Muscat'),
 
     /*
+    | ملفُّ إيقاف المهامّ المجدولة أثناء النشر — يكتبه scripts/deploy.sh في جذر
+    | الشجرة ويقرؤه App\Support\DeployHold. لا يُضبط من .env: السكربتُ يكتبه في
+    | هذا المكان بعينه، والاختبارُ وحده يغيّره.
+    */
+    'deploy_hold_file' => base_path('.deploy-hold'),
+
+    /*
+    | قفلُ النشر (`flock`) — يمسكه scripts/deploy.sh وrollback-code.sh ما داما يجريان،
+    | في مجلّد حالة النشر (STATE_DIR). يسأله App\Support\DeployState بقفلٍ مشتركٍ لا
+    | ينتظر: أيجري نشرٌ الآن؟ فلا تُطلق المهامُّ المجدولة تحت نشرٍ جارٍ.
+    */
+    'deploy_lock_file' => '/var/log/abaad-deploy/deploy.lock',
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { isInstalledApp } from '@/lib/installed-app';
 import { Lock, Mail, TriangleAlert } from 'lucide-react';
 
 import AuthLayout from '@/Layouts/AuthLayout';
@@ -52,7 +53,14 @@ export default function Login() {
     const t = useTranslate();
     const [forgetting, setForgetting] = useState(false);
 
-    const form = useForm({ email: '', password: '', remember: false });
+    /*
+     * ومن يدخل من التطبيق المثبَّت يعود إلى بابه `/app` — لا إلى اللوحة.
+     *
+     * خرج صاحبُ النشاط ودخل موظّفٌ على الهاتف نفسِه: بلا هذا يفتح اللوحةَ
+     * كاملةً على شاشةٍ صغيرة. و`/app` تعرف صاحبَها وجهازَه فتحوّل كلًّا إلى
+     * مكانه (`LoginController::attempt`).
+     */
+    const form = useForm({ email: '', password: '', remember: false, installed: isInstalledApp() });
 
     const submit = (e: FormEvent) => {
         e.preventDefault();

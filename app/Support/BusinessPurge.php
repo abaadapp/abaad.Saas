@@ -74,6 +74,7 @@ final class BusinessPurge
         'orders', 'order_items',
         'customer_invoices', 'customer_invoice_items', 'customer_invoice_orders', 'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations', 'customer_credit_notes',
+        'customer_invoice_revisions', 'customer_debit_notes',
         'customer_payment_links', 'paymob_settlements', 'paymob_settlement_items',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',

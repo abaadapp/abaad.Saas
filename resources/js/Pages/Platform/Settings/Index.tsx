@@ -14,6 +14,7 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
+import InvoiceCorrectionsSwitch, { type InvoiceCorrectionsState } from './partials/InvoiceCorrectionsSwitch';
 import PosCatalogSwitch, { type PosCatalogState } from './partials/PosCatalogSwitch';
 import InstagramPlatformCard, { type InstagramPlatformState } from '@/Pages/Platform/Settings/partials/InstagramPlatformCard';
 import ChannelAutomationsSwitch, { type ChannelAutomationsState } from '@/Pages/Platform/Settings/partials/ChannelAutomationsSwitch';
@@ -123,14 +124,17 @@ const TABS = [
     { key: 'ai', label: 'المساعد الذكي' },
     { key: 'archive', label: 'أرشفة البيانات' },
     { key: 'pos', label: 'نقطة البيع' },
+    { key: 'invoices', label: 'فواتير العملاء' },
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, whatsappLink, whatsappSharedCost, channelAutomations, whatsappCampaigns, instagram } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers, posCatalog, invoiceCorrections, whatsappLink, whatsappSharedCost, channelAutomations, whatsappCampaigns, instagram } =
         usePage<PageProps<{
             settings: Settings;
             /* ‏‏مفتاحُ كتالوج الصندوق على الجهاز — انظر TillCatalogSwitch::state */
             posCatalog?: PosCatalogState;
+            /* ‏‏مفتاحُ إيقاف تعديل فواتير العملاء — انظر InvoiceCorrectionsSwitch::state */
+            invoiceCorrections?: InvoiceCorrectionsState;
             /* ‏‏وكيف يربط التجّارُ الجدد واتسابهم — انظر WhatsAppMerchantLink::state */
             whatsappLink?: WhatsAppLinkState;
             whatsappSharedCost?: SharedCost;
@@ -1164,6 +1168,7 @@ export default function PlatformSettings() {
                 يُقيَّد فيه من بدّله وكان ماذا وصار ماذا — لا حقلٌ يُحفظ مع غيره.
             */}
             {tab === 'pos' && posCatalog && <PosCatalogSwitch state={posCatalog} locale={locale} />}
+            {tab === 'invoices' && invoiceCorrections && <InvoiceCorrectionsSwitch state={invoiceCorrections} locale={locale} />}
 
             {tab === 'language' && (
                 <Card className="p-6">

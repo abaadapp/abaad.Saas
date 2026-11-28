@@ -655,6 +655,18 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::delete('/whatsapp/packs/{id}', [WhatsAppController::class, 'cancelPack'])->name('whatsapp.packs.cancel');
 });
 
+/*
+ * أبعاد تطبيقًا — `app.abaadapp.om/app`، ما يفتحه الهاتفُ حين يُثبَّت (`start_url`).
+ *
+ * شاشةٌ واحدةٌ بسيطة: أرقامُ اليوم وأزرارٌ لأكثر الصفحات استعمالًا، وما
+ * بعدها اللوحةُ نفسُها داخل التطبيق. وهي اللوحةُ في ثوبٍ آخر لا قسمٌ جديد:
+ * الاسمُ تحت `admin.dashboard` فتحرسها صلاحيّةُ «لوحة التحكم» نفسُها،
+ * والوسطاءُ هم وسطاءُ مجموعة admin بالحرف.
+ */
+Route::get('/app', [DashboardController::class, 'app'])
+    ->middleware(['auth', 'export.tenant', 'tenant', 'business', 'panel', 'ability', 'plan'])
+    ->name('admin.dashboard.app');
+
 /* ------------------------------- Admin ----------------------------- */
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'tenant', 'business', 'panel', 'ability', 'plan'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');

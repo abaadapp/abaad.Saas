@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\DashboardMetrics;
 use App\Support\Demo;
+use App\Support\Permissions;
 use App\Support\PlatformMetrics;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,44 @@ class DashboardController extends Controller
         // البطاقاتُ والرسمان معًا — انظر `DashboardMetrics::snapshot`
         return response()->json(DashboardMetrics::snapshot() + [
             'updated_at' => now()->format('H:i:s'),
+        ]);
+    }
+
+    /**
+     * أزرارُ التطبيق — أكثرُ ما يفتحه صاحبُ المتجر من هاتفه، بترتيبها.
+     *
+     * والمفتاحُ للواجهة (أيقونتُه)، والاسمُ يُترجم هنا.
+     */
+    private const APP_LINKS = [
+        ['key' => 'orders', 'route' => 'admin.orders.index', 'label' => 'الطلبات'],
+        ['key' => 'customers', 'route' => 'admin.customers.index', 'label' => 'العملاء'],
+        ['key' => 'paymentLink', 'route' => 'admin.finance.paymentLinks', 'label' => 'رابط دفع'],
+        ['key' => 'sales', 'route' => 'admin.customerInvoices.sales', 'label' => 'المبيعات'],
+    ];
+
+    /**
+     * أبعاد تطبيقًا (`/app`) — أرقامُ اليوم وأزرارٌ قليلة، والباقي في اللوحة.
+     *
+     * البطاقاتُ أوّلُ بطاقات اللوحة ومن دوالّها (`Demo::todayCards`)، للفرع
+     * المختار كما في اللوحة. والزرُّ لا يُرسل لمن لا يفتح صفحتَه: يُسأل عنه
+     * ما يسأله `CheckAbility` — الفعلُ إن حرسه فعل، وإلّا قسمُه — فلا يُعرض
+     * بابٌ يردّ بـ403 في تطبيقٍ لا شريطَ رجوعٍ فيه.
+     */
+    public function app(Request $request)
+    {
+        $user = $request->user();
+        $opens = fn (string $route) => ($action = Permissions::routeAction($route)) !== null
+            ? $user->may($action)
+            : $user->allows(Permissions::sectionFromRoute($route));
+
+        return Inertia::render('Admin/AppHome', [
+            'cards' => Demo::todayCards(),
+            'links' => collect(self::APP_LINKS)
+                ->filter(fn (array $link) => $opens($link['route']))
+                ->map(fn (array $link) => ['key' => $link['key'], 'label' => __($link['label']), 'url' => route($link['route'])])
+                ->values()
+                ->all(),
+            'fullUrl' => route('admin.dashboard'),
         ]);
     }
 

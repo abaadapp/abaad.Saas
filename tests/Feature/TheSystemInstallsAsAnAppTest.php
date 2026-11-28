@@ -23,7 +23,7 @@ use Tests\TestCase;
  *
  * ═══ ولماذا على نطاق النظام وحده ═══
  *
- * التطبيقُ المثبَّت يفتح `start_url` — وهو `/` من النطاق الذي ثُبِّت منه.
+ * التطبيقُ المثبَّت يفتح `start_url` (`/app`) من النطاق الذي ثُبِّت منه.
  * فلو أُعلن الملفُّ على نطاق متجرٍ لصار «تطبيقُ أبعاد» على شاشة زبونٍ
  * يفتح متجرَ التاجر. فالإعلانُ مشروطٌ بأن يكون المضيفُ مضيفَ `APP_URL`.
  * (ومتاجرُ التجّار لا تحمل `/brand/abaad/` أصلًا — يحرسه
@@ -127,8 +127,8 @@ class TheSystemInstallsAsAnAppTest extends TestCase
         $m = $this->manifest();
 
         $this->assertSame('standalone', $m['display'] ?? null, 'بلا شريط المتصفّح');
-        $this->assertSame('/', $m['start_url'] ?? null, 'يفتح جذرَ النظام: الدخولُ أو اللوحة');
-        $this->assertSame('/', $m['scope'] ?? null, 'كلُّ صفحات النظام داخل التطبيق');
+        $this->assertSame('/app', $m['start_url'] ?? null, 'يفتح شاشةَ التطبيق البسيطة — والضيفُ يُحوَّل إلى الدخول ثمّ يعود إليها');
+        $this->assertSame('/', $m['scope'] ?? null, 'كلُّ صفحات النظام داخل التطبيق: «النظام كاملًا» لا يخرج إلى المتصفّح');
         $this->assertSame('/', $m['id'] ?? null, 'هويّةٌ ثابتة لا تتبدّل بتغيير start_url');
         $this->assertSame('Abaad', $m['name'] ?? null);
         $this->assertSame('Abaad', $m['short_name'] ?? null);

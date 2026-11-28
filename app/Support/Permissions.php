@@ -555,18 +555,17 @@ class Permissions
         self::CUSTOMER_POINTS_ADJUST => ['admin'],
         self::CUSTOMER_INVOICE_CANCEL => ['admin', 'manager'],
         /*
-         * وتعديلُ الفاتورة: المسودّةُ لمن يكتبها بقسمه — والبائعُ يكتبها اليوم.
+         * وتعديلُ الفاتورة وتصحيحُها وسجلُّهما: لصاحب النشاط وحده بدوره (قرارُه 2026-11-28).
          *
-         * وما بعدها لصاحب النشاط وحده بدوره: يغيّر إيرادًا رُحّل وذمّةً قائمة
-         * أو مالًا قُبض، فلا يقع لأحدٍ لأنّه فتح «المبيعات» أو كان مديرَ فرع
-         * أو محاسبًا. ومن أراده صاحبُ النشاط أعطاه إيّاه باسمه. ولا هجرةَ تمنحه:
-         * لم يكن يُملَك يومًا. والسجلُّ قراءةٌ لمن يقرأ الدفتر.
+         * لم يكن شيءٌ منها يُملَك قبل هذا — ولا تعديلُ المسودّة — فإعطاؤها مديرًا أو
+         * محاسبًا أو بائعًا بدوره توسيعٌ لصلاحيّاتٍ لم يطلبه. ومن أراده صاحبُ النشاط
+         * أعطاه إيّاه باسمه من لوحة الموظّف. ولا هجرةَ تمنحه، ولا يُسحب بها قديم.
          */
-        self::CUSTOMER_INVOICE_EDIT_DRAFT => ['admin', 'manager', 'accountant', 'sales'],
+        self::CUSTOMER_INVOICE_EDIT_DRAFT => ['admin'],
         self::CUSTOMER_INVOICE_EDIT_ISSUED => ['admin'],
         self::CUSTOMER_INVOICE_EDIT_PAID => ['admin'],
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => ['admin'],
-        self::CUSTOMER_INVOICE_HISTORY => ['admin', 'manager', 'accountant'],
+        self::CUSTOMER_INVOICE_HISTORY => ['admin'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
         self::PAYROLL_PAY => ['admin', 'manager'],

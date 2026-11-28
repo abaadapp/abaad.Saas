@@ -130,6 +130,8 @@ return [
     'migrations' => [
         'table' => 'migrations',
         'update_date_on_publish' => true,
+        // مهلةُ انتظار القفل لكلّ هجرةٍ على PostgreSQL — انظر `App\Support\MigrationLockTimeout`
+        'lock_timeout' => env('DB_MIGRATION_LOCK_TIMEOUT', '3s'),
     ],
 
     /*

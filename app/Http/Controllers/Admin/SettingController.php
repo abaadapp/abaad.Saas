@@ -8,6 +8,8 @@ use App\Models\Currency;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\FinancialCorrections;
+use App\Support\Permissions;
 use App\Support\InvoiceBranding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -186,6 +188,15 @@ class SettingController extends Controller
          */
         'staff_sees_performance' => ['section' => 'permissions', 'label' => 'إظهار أدائه للموظّف',
             'rules' => ['sometimes', 'boolean']],
+        /*
+         * الاعتمادُ الثنائيّ لتصحيح الفواتير ماليًّا — مطفأٌ لكلّ نشاطٍ قائمٍ وجديد.
+         *
+         * يُشعله صاحبُ النشاط وحده (`ownerOnlyRefusal`): هو من يقرّر أنّ تصحيحَ
+         * المال يحتاج عينًا ثانية، ولا يطفئه من يقيّده. ولا يُشعَل بلا معتمدٍ
+         * آخر — فلا يتعطّل نشاطٌ يعمل فيه صاحبُه وحده (`FinancialCorrections`).
+         */
+        FinancialCorrections::SETTING => ['section' => 'permissions', 'label' => 'الاعتماد الثنائي للتصحيحات المالية',
+            'rules' => ['sometimes', 'boolean']],
 
         // التنبيهات
         'notify_new_order' => ['section' => 'notifications', 'label' => 'بريدٌ عند كل طلب جديد',
@@ -338,6 +349,15 @@ class SettingController extends Controller
 
         $bid = auth()->user()->business_id ?? Demo::bid();
 
+        if ($refused = $this->dualApprovalRefusal((int) $bid, $data)) {
+            return back()
+                ->withErrors([FinancialCorrections::SETTING => $refused])
+                ->withInput()
+                ->with('toast', ['msg' => __('لم يُحفظ شيء — :why', ['why' => $refused]), 'type' => 'danger']);
+        }
+
+        $dualBefore = FinancialCorrections::required((int) $bid);
+
         $profile = [];
         foreach (self::PROFILE as $field => $column) {
             if (array_key_exists($field, $data)) {
@@ -387,7 +407,46 @@ class SettingController extends Controller
 
         Activity::log('settings', 'حدّث إعدادات النشاط');
 
+        // ومن شغّل الاعتمادَ الثنائيّ أو أطفأه ومتى — في السجلّ باسمه
+        if (array_key_exists(FinancialCorrections::SETTING, $data) && (bool) $data[FinancialCorrections::SETTING] !== $dualBefore) {
+            Activity::log('settings', $dualBefore ? 'أطفأ الاعتماد الثنائي للتصحيحات المالية' : 'شغّل الاعتماد الثنائي للتصحيحات المالية');
+        }
+
         return back()->with('toast', ['msg' => __('تم حفظ الإعدادات بنجاح'), 'type' => 'success']);
+    }
+
+    /**
+     * الاعتمادُ الثنائيّ: صاحبُ النشاط وحده يغيّره، ولا يُشعله بلا معتمدٍ غيره.
+     *
+     * ويُسأل عن التغيير لا عن الإرسال: الشاشةُ ترسل حقولَ القسم كلَّها كما
+     * قرأتها، فمن يحفظ مفتاحًا آخر في القسم يرسل هذا كما هو — ولا يُردّ.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function dualApprovalRefusal(int $bid, array $data): ?string
+    {
+        if (! array_key_exists(FinancialCorrections::SETTING, $data)) {
+            return null;
+        }
+
+        $on = (bool) $data[FinancialCorrections::SETTING];
+
+        if ($on === FinancialCorrections::required($bid)) {
+            return null;
+        }
+
+        $user = auth()->user();
+
+        if (! Permissions::isOwner($user)) {
+            return __('صاحب النشاط وحده يغيّر «:field».', ['field' => __('الاعتماد الثنائي للتصحيحات المالية')]);
+        }
+
+        // ولا يُشعَل اعتمادٌ لا معتمدَ فيه غيرُ صاحب النشاط — يُعلّق تصحيحاتِه هو
+        if ($on && FinancialCorrections::approvers($bid, (int) $user->id) === 0) {
+            return __('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه أولًا، وإلا بقيت تصحيحاتك المالية بلا من يعتمدها.');
+        }
+
+        return null;
     }
 
     /**

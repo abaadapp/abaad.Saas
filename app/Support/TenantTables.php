@@ -147,7 +147,17 @@ class TenantTables
          */
         'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations',
+        /*
+         * وسجلُّ تصحيحات الفاتورة قبل الإشعارين: كلاهما يشير إلى الفاتورة
+         * وإلى التصحيح الذي أصدره (`revision_id`) — والسجلُّ لا يشير إليهما.
+         */
+        'customer_invoice_revisions',
         'customer_credit_notes',
+        // وتسميةُ طلب الإشعار بعده وبعد الطلبات والفواتير التي تشير إليها (`CreditNoteOrders`)
+        'customer_credit_note_orders',
+        'customer_debit_notes',
+        // وطلباتُ التصحيح الماليّ بعد الفواتير وتصحيحاتها التي تشير إليها (`FinancialCorrections`)
+        'financial_corrections',
         /*
          * وحركاتُ النقاط بعد التحصيلات: نقاطُ سداد الفاتورة برابطٍ تشير إلى
          * فاتورتها وتحصيلها (`InvoiceLoyalty`).

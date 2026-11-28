@@ -487,7 +487,9 @@ final class PaymentLinks
             'paid_at' => optional($link->paid_at)->format('Y-m-d H:i'),
             'payment' => $link->payment ? ['id' => $link->payment->id, 'number' => $link->payment->number] : null,
             'error' => $link->status === CustomerPaymentLink::PAID ? null : $link->error,
-            'review' => $extra !== [] || PaymobRefunds::flagged((array) ($link->meta ?? [])),
+            // ودفعةٌ زادت على باقي فاتورتها تُراجَع كذلك — بقي زائدُها رصيدًا للعميل (`settle`)
+            'review' => $extra !== [] || PaymobRefunds::flagged((array) ($link->meta ?? []))
+                || (float) (($link->meta ?? [])['excess'] ?? 0) > 0.0005,
         ];
     }
 
@@ -740,6 +742,22 @@ final class PaymentLinks
                     null,
                 );
 
+                /*
+                 * ═══ وما زاد على باقي الفاتورة يُرى ولا يُكتب تحصيلًا ثانيًا ═══
+                 *
+                 * المالُ وصل Paymob فعلًا، فلا يُردّ ولا يُتجاهل: يُسجَّل مرّةً واحدة،
+                 * ويُخصَّص منه باقي الفاتورة وحده، ويبقى الزائدُ رصيدًا للعميل. ويُكتب
+                 * على الرابط وفي السجلّ «يحتاج مراجعة»: يقرّر صاحبُ المحلّ أيردّه أم
+                 * يُبقيه رصيدًا — لا يقرّره النظام.
+                 */
+                $excess = $invoiceId ? $payment->unallocated() : 0.0;
+                $meta = $locked->customer_invoice_id
+                    ? ['loyalty' => InvoiceLoyalty::PENDING] + (array) ($locked->meta ?? [])
+                    : $locked->meta;
+                if ($excess > 0.0005) {
+                    $meta = ['excess' => $excess] + (array) ($meta ?? []);
+                }
+
                 $locked->forceFill([
                     'status' => CustomerPaymentLink::PAID,
                     'paid_at' => now(),
@@ -751,10 +769,15 @@ final class PaymentLinks
                      * فرابطٌ سُدّد قبل اكتساب النقاط على الروابط لا علَمَ له، ولا
                      * يمنحه إشعارٌ مكرّرٌ نقاطًا عن مالٍ قديم (`InvoiceLoyalty`).
                      */
-                    'meta' => $locked->customer_invoice_id
-                        ? ['loyalty' => InvoiceLoyalty::PENDING] + (array) ($locked->meta ?? [])
-                        : $locked->meta,
+                    'meta' => $meta,
                 ])->save();
+
+                if ($excess > 0.0005) {
+                    Activity::log('warning', 'دفعة Paymob على الرابط '.$locked->reference.' زادت على باقي الفاتورة بـ'.number_format($excess, 3)
+                        .' — بقيت رصيدًا للعميل في التحصيل '.$payment->number.' وتحتاج مراجعة', [
+                            'subject_id' => $locked->id, 'subject_type' => 'customer_payment_link', 'business_id' => (int) $locked->business_id,
+                        ]);
+                }
 
                 Activity::log('created', 'دُفع رابط الدفع عبر Paymob بمبلغ '.number_format((float) $locked->amount, 3).' '.$locked->currency
                     .' — التحصيل '.$payment->number, [

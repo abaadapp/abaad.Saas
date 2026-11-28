@@ -26,6 +26,8 @@ export interface PurchaseRow {
     date: string;
     amount: number;
     credited: number | null;
+    /** ما زادته الإشعاراتُ المدينة على الفاتورة كما صدرت */
+    debited?: number;
     pay_state: string;
     cover: { id: number; number: string | null } | null;
     status: string;
@@ -137,6 +139,11 @@ export function PurchaseHistory({ rows, totals, money }: { rows: PurchaseRow[]; 
                                 {!r.cancelled && (r.credited ?? 0) > 0 && (
                                     <span className="block text-[11px] font-normal text-[#b45309]">
                                         {t('إشعار دائن')} −{money(r.credited ?? 0)}
+                                    </span>
+                                )}
+                                {!r.cancelled && (r.debited ?? 0) > 0 && (
+                                    <span className="block text-[11px] font-normal text-[#1d4ed8]">
+                                        {t('إشعار مدين')} +{money(r.debited ?? 0)}
                                     </span>
                                 )}
                             </TableCell>

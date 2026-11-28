@@ -193,7 +193,7 @@ class APaymentLinkIsItsOwnPermissionTest extends TestCase
         $this->post(route('admin.finance.paymentLinks.store'), ['customer_id' => $this->customer->id, 'customer_invoice_id' => $invoice->id])->assertForbidden();
         $this->post(route('admin.finance.paymentLinks.cancel', $link->id))->assertForbidden();
         $this->post(route('admin.finance.paymobSettlements.store'), ['gross' => 10, 'fee' => 1, 'net' => 9, 'settled_on' => '2026-10-19'])->assertForbidden();
-        $this->post(route('admin.customerPayments.store'), ['customer_id' => $this->customer->id, 'amount' => 10, 'method' => 'نقدي'])->assertForbidden();
+        $this->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 'customer_id' => $this->customer->id, 'amount' => 10, 'method' => 'نقدي'])->assertForbidden();
         $this->get(route('admin.integrations.paymob'))->assertForbidden();
 
         $this->assertSame(CustomerPaymentLink::PENDING, $link->fresh()->status);

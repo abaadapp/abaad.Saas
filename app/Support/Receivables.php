@@ -290,6 +290,12 @@ final class Receivables
                 $rows[] = ['at' => $note->issued_at, 'kind' => 'إشعار دائن', 'ref' => $note->number,
                     'debit' => 0.0, 'credit' => round((float) $note->amount, 3)];
             }
+
+            // والإشعارُ المدين يزيد ما عليه في يومه — والفاتورةُ بمبلغها كما صدرت
+            foreach ($inv->debitNotes as $note) {
+                $rows[] = ['at' => $note->issued_at, 'kind' => 'إشعار مدين', 'ref' => $note->number,
+                    'debit' => round((float) $note->amount, 3), 'credit' => 0.0];
+            }
         }
 
         $payments = CustomerPayment::where('business_id', $businessId)

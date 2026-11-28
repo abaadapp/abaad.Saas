@@ -640,6 +640,8 @@ class PageController extends Controller
              * ومعه آخرُ ما تبدّل فيه، من سجلّ النشاط.
              */
             'posCatalog' => TillCatalogSwitch::state(),
+            // ‏‏ومفتاحُ إيقاف تعديل فواتير العملاء — خطّةُ الرجوع (`InvoiceCorrectionsSwitch`)
+            'invoiceCorrections' => \App\Support\InvoiceCorrectionsSwitch::state(),
             /*
              * ‏‏وكيف يربط التجّارُ الجدد واتسابهم، وجاهزيّةُ الربط بضغطة عبر تطبيق أبعاد — وآخرُ ما
              * تبدّل فيهما. ولا سرَّ فيه: سرُّ التطبيق يُقال «موجود» أو «ناقص» (`WhatsAppMerchantLink`).

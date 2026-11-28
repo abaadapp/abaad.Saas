@@ -118,7 +118,7 @@ class EveryCustomerInvoiceIsListedToWhoeverMayReadThemTest extends TestCase
 
     private function pay(User $by, CustomerInvoice $invoice, float $amount): void
     {
-        $this->actingAs($by)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($by)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $invoice->customer_id, 'amount' => $amount, 'method' => 'نقدي', 'customer_invoice_id' => $invoice->id,
         ])->assertSessionHasNoErrors();
     }
@@ -307,7 +307,7 @@ class EveryCustomerInvoiceIsListedToWhoeverMayReadThemTest extends TestCase
 
         $this->assertSame([$theirs->id], $this->ids($theirOwner));
         $this->actingAs($theirOwner)->get(route('admin.customerInvoices.show', $mine['paid']))->assertNotFound();
-        $this->actingAs($theirOwner)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($theirOwner)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'amount' => 1, 'method' => 'نقدي', 'customer_invoice_id' => $mine['unpaid'],
         ])->assertSessionHasErrors('customer_id');
     }

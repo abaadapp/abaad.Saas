@@ -7,7 +7,10 @@ use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerCreditNoteOrder;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
+use App\Models\FinancialCorrection;
 use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Order;
@@ -50,6 +53,9 @@ final class CustomerInvoices
     public const SOURCE = 'فاتورة عميل';
 
     public const SOURCE_CREDIT = 'إشعار دائن';
+
+    /** الإشعارُ المدين — زيادةٌ على فاتورةٍ صدرت (`debitNote`) */
+    public const SOURCE_DEBIT = 'إشعار مدين';
 
     /** إشعارٌ كتبه التاجر — يُقيَّد */
     public const NOTE_MANUAL = 'يدوي';
@@ -159,7 +165,7 @@ final class CustomerInvoices
      * @param  array<int, array<string, mixed>>  $lines
      * @return array{items: array<int, array<string, mixed>>, subtotal: float, discount: float, tax: float, total: float}
      */
-    public static function compute(int $businessId, array $lines, ?float $taxRate = null): array
+    public static function compute(int $businessId, array $lines, ?float $taxRate = null, ?bool $inclusive = null): array
     {
         /*
          * ونسبةُ الضريبة تُقرأ لمتجر الفاتورة لا لمتجر القارئ.
@@ -178,8 +184,14 @@ final class CustomerInvoices
          */
         $rate = $taxRate ?? Vat::rate($businessId);
 
-        /* ويُقرأ مرّةً لا لكلّ بند: استعلامٌ في حلقةٍ على فاتورةٍ بأربعين بندًا */
-        $inclusive = Vat::inclusive($businessId);
+        /*
+         * ويُقرأ مرّةً لا لكلّ بند: استعلامٌ في حلقةٍ على فاتورةٍ بأربعين بندًا.
+         *
+         * ويُعطى صراحةً حين تُعاد ورقةٌ صدرت: قاعدتُها قاعدةُ يوم إصدارها لا
+         * إعدادُ اليوم (`CustomerInvoiceEdits::inclusiveOf`). متجرٌ بدّل «الأسعار
+         * شاملة الضريبة» بعد الإصدار لا تتغيّر ضريبةُ بنودٍ لم يلمسها أحد.
+         */
+        $inclusive ??= Vat::inclusive($businessId);
 
         $items = [];
         // بالبيسات الصحيحة — والقاعدةُ قاعدةُ الصندوق نفسُها (`VatLines`)
@@ -510,33 +522,7 @@ final class CustomerInvoices
             throw new RuntimeException(__('هذا العميل ليس من عملاء متجرك.'));
         }
 
-        foreach ($lines as $line) {
-            // والبندُ منتجٌ أو إضافة — لا إضافةٌ تلبس منتجًا ولا العكس
-            if (! empty($line['product_id']) && ! empty($line['addon_id'])) {
-                throw new RuntimeException(__('البند منتجٌ أو إضافة — لا الاثنان معًا.'));
-            }
-
-            if (! empty($line['product_id'])) {
-                $ok = Product::where('business_id', $businessId)->whereKey($line['product_id'])->exists();
-                if (! $ok) {
-                    throw new RuntimeException(__('هذا الصنف ليس من أصناف متجرك.'));
-                }
-            }
-
-            /*
-             * والإضافةُ كالمنتج: من متجر الفاتورة أو لا تُكتب.
-             *
-             * ولا يُسأل هنا عن نشاطها: الفاتورةُ المولودة من طلبٍ تنقل إضافةً
-             * بيعت يومَها ثمّ أُوقفت — ولقطتُها هي الحقيقة. والنشاطُ يُسأل حيث
-             * تُختار الإضافةُ من الكتالوج (`addonsFromCatalog`).
-             */
-            if (! empty($line['addon_id'])) {
-                $ok = Addon::where('business_id', $businessId)->whereKey($line['addon_id'])->exists();
-                if (! $ok) {
-                    throw new RuntimeException(__('هذه الإضافة ليست من إضافات متجرك.'));
-                }
-            }
-        }
+        self::assertLinesBelong($businessId, $lines);
 
         return DB::transaction(function () use ($businessId, $customer, $data, $lines, $userId) {
             /*
@@ -598,27 +584,8 @@ final class CustomerInvoices
                 ]
             );
 
-
-            /*
-             * والإضافةُ المدفوعةُ تعرف صنفَها — بمجموعته في النموذج، تُقرأ هنا
-             * مفتاحًا بعد أن يُكتب الصنفُ قبلها. والمالُ في سطرها كما حُسب.
-             */
-            $written = [];
-
-            foreach ($totals['items'] as $item) {
-                $group = $item['group'] ?? null;
-                $parent = $item['parent'] ?? null;
-                unset($item['group'], $item['parent']);
-
-                $row = CustomerInvoiceItem::create($item + [
-                    'customer_invoice_id' => $invoice->id,
-                    'parent_item_id' => $parent !== null ? ($written[$parent] ?? null) : null,
-                ]);
-
-                if ($group !== null) {
-                    $written[$group] = $row->id;
-                }
-            }
+            // والبنودُ بالكاتب نفسِه الذي يكتب به التعديلُ بنودَه الجديدة (`writeItems`)
+            self::writeItems($invoice, $totals['items']);
 
             // ومتجرُ الورقة لا متجرُ الجلسة — فاتورةٌ يكتبها الطلبُ الآليّ لا جلسةَ له (`WhatsAppOrderCheckout`)
             Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
@@ -627,6 +594,73 @@ final class CustomerInvoices
 
             return $invoice->fresh('items');
         });
+    }
+
+    /**
+     * بنودُ الورقة من متجرها — منتجًا كان البندُ أو إضافة.
+     *
+     * يسأله الإنشاءُ وتعديلُ الورقة بعده (`CustomerInvoiceEdits`): بندٌ يُضاف
+     * في التعديل لا يمرّ من بابٍ أوسع من الباب الذي كُتبت منه الورقة.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public static function assertLinesBelong(int $businessId, array $lines): void
+    {
+        foreach ($lines as $line) {
+            // والبندُ منتجٌ أو إضافة — لا إضافةٌ تلبس منتجًا ولا العكس
+            if (! empty($line['product_id']) && ! empty($line['addon_id'])) {
+                throw new RuntimeException(__('البند منتجٌ أو إضافة — لا الاثنان معًا.'));
+            }
+
+            if (! empty($line['product_id'])) {
+                $ok = Product::where('business_id', $businessId)->whereKey($line['product_id'])->exists();
+                if (! $ok) {
+                    throw new RuntimeException(__('هذا الصنف ليس من أصناف متجرك.'));
+                }
+            }
+
+            /*
+             * والإضافةُ كالمنتج: من متجر الفاتورة أو لا تُكتب.
+             *
+             * ولا يُسأل هنا عن نشاطها: الفاتورةُ المولودة من طلبٍ تنقل إضافةً
+             * بيعت يومَها ثمّ أُوقفت — ولقطتُها هي الحقيقة. والنشاطُ يُسأل حيث
+             * تُختار الإضافةُ من الكتالوج (`addonsFromCatalog`).
+             */
+            if (! empty($line['addon_id'])) {
+                $ok = Addon::where('business_id', $businessId)->whereKey($line['addon_id'])->exists();
+                if (! $ok) {
+                    throw new RuntimeException(__('هذه الإضافة ليست من إضافات متجرك.'));
+                }
+            }
+        }
+    }
+
+    /**
+     * سطورُ البنود كما حسبتها `compute` — والإضافةُ المدفوعةُ تعرف صنفَها.
+     *
+     * بمجموعته في النموذج، تُقرأ هنا مفتاحًا بعد أن يُكتب الصنفُ قبلها. والمالُ
+     * في سطرها كما حُسب. ويكتب بها الإنشاءُ والبنودَ الجديدة في التعديل.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    public static function writeItems(CustomerInvoice $invoice, array $items): void
+    {
+        $written = [];
+
+        foreach ($items as $item) {
+            $group = $item['group'] ?? null;
+            $parent = $item['parent'] ?? null;
+            unset($item['group'], $item['parent']);
+
+            $row = CustomerInvoiceItem::create($item + [
+                'customer_invoice_id' => $invoice->id,
+                'parent_item_id' => $parent !== null ? ($written[$parent] ?? null) : null,
+            ]);
+
+            if ($group !== null) {
+                $written[$group] = $row->id;
+            }
+        }
     }
 
     /**
@@ -742,6 +776,18 @@ final class CustomerInvoices
             return;
         }
 
+        self::postEntry($invoice, $userId);
+    }
+
+    /**
+     * قيدُ الورقة بمجاميعها كما هي الآن — مدين الذمم / دائن المبيعات والضريبة.
+     *
+     * يكتبه الإصدارُ بتاريخ الورقة، ويكتبه تعديلُ الورقة الصادرة بعد عكس قيدها
+     * (`CustomerInvoiceEdits::apply`) بتاريخ التصحيح الذي اختير. والمصدرُ
+     * والمرجعُ واحدٌ في الحالين، فيقرأ `ledgerLines` الأوّلَ وعكسَه والجديد معًا.
+     */
+    public static function postEntry(CustomerInvoice $invoice, ?int $userId, ?Carbon $date = null, ?string $description = null): ?JournalEntry
+    {
         $net = round((float) $invoice->subtotal - (float) $invoice->discount_total, 3);
         $tax = round((float) $invoice->tax_total, 3);
 
@@ -765,9 +811,10 @@ final class CustomerInvoices
          * المعاملة كلّها.
          */
         if (round((float) $invoice->total, 3) <= 0 && $net <= 0 && $tax <= 0) {
-            BooksPeriod::assertOpen((int) $invoice->business_id, Carbon::parse($invoice->issued_at));
+            BooksPeriod::assertOpen((int) $invoice->business_id, Carbon::parse($date ?? $invoice->issued_at));
 
-            return;
+            // ولا قيدَ يُردّ: ورقةٌ غطّتها النقاطُ كلُّها
+            return null;
         }
 
         $lines = [['account' => 'receivable', 'debit' => round((float) $invoice->total, 3)]];
@@ -779,11 +826,11 @@ final class CustomerInvoices
             $lines[] = ['account' => 'tax_payable', 'credit' => $tax];
         }
 
-        Ledger::post(
+        return Ledger::post(
             (int) $invoice->business_id,
-            __('فاتورة عميل ').$invoice->number,
+            $description ?? __('فاتورة عميل ').$invoice->number,
             $lines,
-            Carbon::parse($invoice->issued_at),
+            $date ?? Carbon::parse($invoice->issued_at),
             self::SOURCE,
             $invoice->branch_id,
             $userId,
@@ -792,10 +839,28 @@ final class CustomerInvoices
     }
 
     /**
+     * القيدُ القائم للورقة — ما رُحّل لها ولم يُعكس بعد.
+     *
+     * وبعد أوّل تعديلٍ تصير للورقة قيودٌ: الأوّلُ وعكسُه والجديد. والقائمُ هو
+     * الذي لم يُعكس — لا أحدثُها معرّفًا: قد يكون العكسُ نفسُه أحدثَ صفٍّ.
+     */
+    public static function liveEntry(CustomerInvoice $invoice): ?JournalEntry
+    {
+        return JournalEntry::where('business_id', $invoice->business_id)
+            ->where('sourceable_type', CustomerInvoice::class)
+            ->where('sourceable_id', $invoice->id)
+            ->where('source', self::SOURCE)
+            ->whereNull('reverses_id')
+            ->whereNull('reversed_at')
+            ->latest('id')->first();
+    }
+
+    /**
      * سطورُ الدفتر لما يرحّله هذا الصنفُ بنفسه — وعكوسُها.
      *
      * الفاتورةُ اليدويّة (`post`)، وإشعارُ الدائن اليدويّ (`creditNote`)،
-     * والقيدُ العكسيّ لإلغاء الفاتورة (`cancel` → `Ledger::reverse`) في يومه.
+     * والإشعارُ المدين (`debitNote`)، والقيدُ العكسيّ لإلغاء الفاتورة (`cancel`
+     * → `Ledger::reverse`) في يومه. وكلُّ إشعارٍ في يومه لا في يوم فاتورته.
      *
      * ═══ وبهذا لا تُعدّ بيعةٌ مرّتين ═══
      *
@@ -811,7 +876,7 @@ final class CustomerInvoices
      */
     public static function ledgerLines(int $businessId)
     {
-        $sources = [self::SOURCE, self::SOURCE_CREDIT];
+        $sources = [self::SOURCE, self::SOURCE_CREDIT, self::SOURCE_DEBIT];
 
         return DB::table('journal_lines')
             ->join('journal_entries as je', 'je.id', '=', 'journal_lines.journal_entry_id')
@@ -855,6 +920,10 @@ final class CustomerInvoices
             if ($invoice->status === CustomerInvoice::CANCELLED) {
                 return $invoice;
             }
+            // وإلغاءُ الصادرة يعكس قيدَها — يحتاج اعتمادًا حين يُشعل، ولا يقع فوق طلبٍ معلّق (`FinancialCorrections::guard`)
+            if ($invoice->status === CustomerInvoice::ISSUED) {
+                FinancialCorrections::guard($invoice, FinancialCorrection::INVOICE_CANCEL);
+            }
             if ($invoice->paidTotal() > 0) {
                 throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
             }
@@ -864,11 +933,8 @@ final class CustomerInvoices
             }
 
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
-                $entry = JournalEntry::where('business_id', $invoice->business_id)
-                    ->where('sourceable_type', CustomerInvoice::class)
-                    ->where('sourceable_id', $invoice->id)
-                    ->where('source', self::SOURCE)
-                    ->latest('id')->first();
+                // والقائمُ وحده: ورقةٌ عُدّلت لها قيدٌ عُكس وقيدٌ قائم
+                $entry = self::liveEntry($invoice);
 
                 if ($entry) {
                     Ledger::reverse($entry, now(), $userId, __('إلغاء فاتورة عميل ').$invoice->number);
@@ -908,6 +974,10 @@ final class CustomerInvoices
         string $source = self::NOTE_MANUAL,
         ?int $orderId = null,
         ?string $basis = null,
+        // بنودُ الإشعار ونسختُه حين يولد من تصحيح الفاتورة (`CustomerInvoiceEdits`) — بالاسم لا بالموضع
+        ?array $items = null,
+        ?int $revisionId = null,
+        ?int $forOrderId = null,
     ): CustomerCreditNote {
         $amount = round($amount, 3);
 
@@ -915,7 +985,7 @@ final class CustomerInvoices
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis, $items, $revisionId, $forOrderId) {
             /*
              * والحدُّ يُقرأ تحت قفل المتجر، من الورقة كما هي الآن.
              *
@@ -931,12 +1001,40 @@ final class CustomerInvoices
             Business::whereKey($invoice->business_id)->lockForUpdate()->first();
             $invoice = CustomerInvoice::where('business_id', $invoice->business_id)->findOrFail($invoice->id);
 
+            // والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — والحالُ من الورقة تحت القفل لا من نسخةٍ في اليد
+            if ($invoice->status !== CustomerInvoice::ISSUED) {
+                throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
+            /*
+             * والاعتمادُ الثنائيّ يُسأل هنا لا في الشاشة وحدها: إشعارٌ يدويّ لا يصدر
+             * حين يُشعله صاحبُ النشاط إلّا باعتماد طلبه، ولا فوق طلبٍ معلّقٍ على الورقة
+             * ولو أُطفئ (`FinancialCorrections::guard`). وإشعارُ التصحيح (`$revisionId`)
+             * يُسأل عند حفظ التصحيح نفسه (`CustomerInvoiceEdits::apply`).
+             */
+            if ($source === self::NOTE_MANUAL && $revisionId === null) {
+                FinancialCorrections::guard($invoice, FinancialCorrection::CREDIT_NOTE);
+            }
+
             // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه ومبلغُه وضريبتُه (`ManualInvoiceAdjustments`)
             if ($source === self::NOTE_MANUAL) {
                 ManualInvoiceAdjustments::assertCreditNote($invoice, $amount, round($taxAmount, 3), $basis);
             } elseif ($amount > round($invoice->outstanding() + $invoice->paidTotal(), 3)) {
                 // وإشعارُ إلغاء الطلب مرآةُ قيدٍ عُكس (`Books::unpostSale`) — حدُّه كما كان (`onOrderCancelled`)
                 throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
+            /*
+             * وإشعارُ الإرجاع يسمّي طلبَه إن سُمّي — تحت القفل نفسِه، وبما بقي من
+             * الطلب بعد إشعاراتٍ سُمّيت عنه (`CreditNoteOrders`). فيُعرف أنّه عن
+             * ذلك الطلب وحده، ويبقى إلغاءُ طلبات الفاتورة الأخرى ممكنًا.
+             */
+            $forOrder = null;
+            if ($forOrderId !== null) {
+                if ($source !== self::NOTE_MANUAL || $basis !== CustomerCreditNote::RETURN) {
+                    throw new CreditNoteOrderRefused(__('يُسمّى الطلبُ في إشعار الإرجاع وحده.'));
+                }
+                $forOrder = CreditNoteOrders::assertFits($invoice, $forOrderId, $amount, round($taxAmount, 3));
             }
 
             $note = CustomerCreditNote::create([
@@ -950,11 +1048,26 @@ final class CustomerInvoices
                 'source' => $source,
                 'order_id' => $orderId,
                 'basis' => $basis,
+                'items' => $items,
+                'revision_id' => $revisionId,
                 'created_by' => $userId,
             ]);
 
-            // وما صُرف عليها من نقاطٍ يعود بنسبة ما رُدّ — في المعاملة نفسِها
+            if ($forOrder) {
+                CreditNoteOrders::record($note, $forOrder, CustomerCreditNoteOrder::AT_ISSUE, $reason, $userId);
+            }
+
+            // وما صُرف عليها من نقاطٍ يعود بحصّة ما رُدّ من بنوده — في المعاملة نفسِها
             self::returnPointsForCredit($invoice, $note);
+
+            /*
+             * وما كسبه العميلُ عليها بسداد رابطٍ يتبع صافيَ مشترياته بعد الإشعار
+             * (`InvoiceLoyalty::followNet`). وإشعارُ إلغاء طلبٍ لا: نقاطُ الطلب يعكسها
+             * تصحيحُ الطلب نفسُه (`OrderCorrection`).
+             */
+            if ($source !== self::NOTE_ORDER_CANCELLED) {
+                InvoiceLoyalty::followNet($invoice, -$amount, 'cn:'.$note->id, 'إشعار دائن '.$note->number, $userId);
+            }
 
             /*
              * والقيدُ يتبع المصدر.
@@ -994,9 +1107,96 @@ final class CustomerInvoices
             );
 
             Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number
-                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '').' — '.$reason, [
+                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '')
+                .($forOrder ? ' — عن الطلب '.$forOrder->number : '').' — '.$reason, [
                 'subject_id' => $note->id, 'subject_type' => 'customer_credit_note',
             ]);
+
+            return $note;
+        });
+    }
+
+    /**
+     * إشعارٌ مدين — يزيد الذمّة ولا يُعيد كتابة الفاتورة (م٥٠ و١٥٥ من اللائحة).
+     *
+     * فاتورةٌ بخمسين سُدّدت ثمّ تبيّن أنّ ثمنها خمسةٌ وخمسون: تبقى بخمسين كما
+     * صدرت ودُفعت، ويصدر هذا بخمسةٍ يشير إليها، فتبقى الخمسةُ على العميل.
+     *
+     * ويُقيَّد يومَ صدوره: مدين الذمم بالمبلغ، ودائن المبيعات بالصافي والضريبة
+     * بنصيبها — قيدُ الفاتورة نفسُه بالفرق (`postEntry`). ولا يولد إلّا من
+     * تصحيحٍ (`CustomerInvoiceEdits::apply`) ببنوده، ولفاتورةٍ لا تغطّي طلبًا:
+     * طلبٌ قيدُه في `Books`، فقيدٌ هنا يُضاعفه.
+     *
+     * @param  array<int, array<string, mixed>>  $items  ما زاد من كلّ بند
+     */
+    public static function debitNote(
+        CustomerInvoice $invoice,
+        float $amount,
+        float $taxAmount,
+        string $reason,
+        array $items,
+        ?string $basis = null,
+        ?int $revisionId = null,
+        ?int $userId = null,
+    ): CustomerDebitNote {
+        $amount = round($amount, 3);
+        $taxAmount = round($taxAmount, 3);
+
+        if ($amount <= 0) {
+            throw new RuntimeException(__('مبلغ الإشعار المدين يجب أن يكون أكبر من صفر.'));
+        }
+        if ($invoice->status !== CustomerInvoice::ISSUED) {
+            throw new RuntimeException(__('لا يصدر إشعارٌ مدين إلّا على فاتورةٍ صادرة.'));
+        }
+        if ($invoice->coversOrders()) {
+            throw new RuntimeException(__('هذه الفاتورة مولودة من طلب — يُصحَّح مالها بتصحيح الطلب نفسه.'));
+        }
+
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $items, $basis, $revisionId, $userId) {
+            $note = CustomerDebitNote::create([
+                'business_id' => $invoice->business_id,
+                'customer_invoice_id' => $invoice->id,
+                'number' => self::sequence((int) $invoice->business_id, CustomerDebitNote::class, 'DN-'),
+                'amount' => $amount,
+                'tax_amount' => $taxAmount,
+                'issued_at' => now()->toDateString(),
+                'basis' => $basis,
+                'reason' => $reason,
+                'items' => $items,
+                'revision_id' => $revisionId,
+                'created_by' => $userId,
+            ]);
+
+            $net = round($amount - $taxAmount, 3);
+            $lines = [['account' => 'receivable', 'debit' => $amount]];
+            if ($net > 0) {
+                $lines[] = ['account' => 'sales', 'credit' => $net];
+            }
+            if ($taxAmount > 0) {
+                $lines[] = ['account' => 'tax_payable', 'credit' => $taxAmount];
+            }
+
+            Ledger::post(
+                (int) $invoice->business_id,
+                __('إشعار مدين ').$note->number.' — '.$invoice->number,
+                $lines,
+                now(),
+                self::SOURCE_DEBIT,
+                $invoice->branch_id,
+                $userId,
+                $note,
+            );
+
+            Activity::log('created', 'أصدر إشعار مدين '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number, [
+                'subject_id' => $note->id, 'subject_type' => 'customer_debit_note',
+            ]);
+
+            /*
+             * ولا يمنح الإشعارُ المدين نقاطًا مستبدلة ولا مكتسبة بنفسه: الزيادةُ تُكسب
+             * نقاطُها حين تُسدَّد برابط، بالقاعدة نفسِها (`InvoiceLoyalty::decide`). وما
+             * سُحب من المكتسَب بإشعارٍ دائنٍ قبله يعود إن عاد الصافي فوق المدفوع.
+             */
+            InvoiceLoyalty::followNet($invoice, $amount, 'dn:'.$note->id, 'إشعار مدين '.$note->number, $userId);
 
             return $note;
         });
@@ -1633,11 +1833,49 @@ final class CustomerInvoices
             return;
         }
 
-        $credited = round((float) CustomerCreditNote::where('customer_invoice_id', $locked->id)->sum('amount'), 3);
-        $give = self::pointsDueBack($spent, $credited, (float) $locked->total) - self::pointsReturned($locked);
+        $give = self::pointsDueBackFor($locked, $spent) - self::pointsReturned($locked);
 
         self::givePoints($locked, $give, self::redeemKey($locked).':cn:'.$note->id,
-            'إعادة نقاط مستبدلة بنسبة إشعار الدائن '.$note->number.' — فاتورة '.$locked->number);
+            'إعادة نقاط مستبدلة بحصة ما رُدّ في إشعار الدائن '.$note->number.' — فاتورة '.$locked->number);
+    }
+
+    /**
+     * كم يحقّ للعميل أن يعود إليه من نقاطٍ صرفها على الورقة — حتى الآن، تراكميًّا.
+     *
+     * ═══ بحصّة البنود لا بنسبة المبلغ ═══
+     *
+     * خصمُ النقاط موزَّعٌ على البنود (`loyalty_discount`)، والتصحيحُ يُنقص حصّةَ كلّ بندٍ
+     * بنسبة ما بقي منه (`CustomerInvoiceEdits::pointsShareFollows`) — والبندُ الذي أضافه
+     * إشعارٌ مدين لا حصّةَ له. فيعود من المصروف بقدر ما نقص من الحصص:
+     *
+     *     المصروف × (الحصصُ كما صدرت − الحصصُ الآن) ÷ الحصصُ كما صدرت
+     *
+     * فبندٌ أُضيف بإشعارٍ مدين ثمّ رُدّ بدائنٍ لا يعيد نقطة: لم يُصرف عليه شيء. وكانت
+     * النسبةُ من المبلغ (ما رُدّ ÷ إجماليّ الورقة) تعيد نصفَ النقاط على ردّ بندٍ كهذا.
+     *
+     * والإشعارُ الدائن اليدويّ بمبلغٍ بلا بنود لا يُعرف بندُه: يبقى بنسبة مبلغه من
+     * إجماليّ الورقة كما كان. والمجموعُ لا يتجاوز المصروف، والقسمةُ بالبيسات الصحيحة.
+     */
+    public static function pointsDueBackFor(CustomerInvoice $invoice, int $spent): int
+    {
+        if ($spent <= 0) {
+            return 0;
+        }
+
+        $issued = (int) round(((float) $invoice->items()->sum('loyalty_discount')) * 1000);
+        $byShare = 0;
+        // والحالُ الآن من آخر تصحيح — وبلا تصحيحٍ هي البنودُ كما صدرت، فلا يعود منها شيء.
+        // (ولا يُسأل عدّادُ الورقة: التصحيحُ يكتب مراجعتَه ويصدر إشعاره قبل أن يتقدّم العدّاد)
+        if ($issued > 0) {
+            $now = (int) round(array_sum(array_map(fn ($l) => (float) ($l['loyalty_discount'] ?? 0), CustomerInvoiceEdits::state($invoice)['lines'])) * 1000);
+            $byShare = BigInteger::of($spent)->multipliedBy(max(0, $issued - $now))->quotient($issued)->toInt();
+        }
+
+        // وما رُدّ بإشعارٍ يدويٍّ بلا تصحيح — بنسبة مبلغه كما كان
+        $manual = round((float) CustomerCreditNote::where('customer_invoice_id', $invoice->id)->whereNull('revision_id')
+            ->where('source', '<>', self::NOTE_ORDER_CANCELLED)->sum('amount'), 3);
+
+        return min($spent, $byShare + self::pointsDueBack($spent, $manual, (float) $invoice->total));
     }
 
     /**

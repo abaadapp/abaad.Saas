@@ -80,7 +80,7 @@ class OneCustomersMoneyDoesNotPayAnothersInvoiceTest extends TestCase
     {
         $companys = $this->issued($this->company);
 
-        $this->actingAs($this->owner)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($this->owner)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->ministry->id, 'customer_invoice_id' => $companys->id,
             'amount' => $companys->total, 'method' => 'نقدي',
         ])->assertSessionHasErrors('amount');
@@ -94,7 +94,7 @@ class OneCustomersMoneyDoesNotPayAnothersInvoiceTest extends TestCase
     {
         $ministrys = $this->issued($this->ministry);
 
-        $this->actingAs($this->owner)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($this->owner)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->ministry->id, 'customer_invoice_id' => $ministrys->id,
             'amount' => $ministrys->total, 'method' => 'نقدي',
         ])->assertSessionHasNoErrors();

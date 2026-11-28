@@ -131,6 +131,8 @@ trait TwoFullShops
             'alert' => $this->row('custom_alerts', ['business_id' => $bid, 'type' => 'reminder', 'section' => 'inventory', 'message' => "تنبيه {$tag}", 'due_at' => now()->addDay()]),
             'template' => $template,
             'invoice' => $invoice,
+            // وإشعارٌ دائنٌ يدويٌّ عليها لم يُسمَّ طلبُه — يُطرق بابُ تسميته
+            'credit_note' => $this->row('customer_credit_notes', ['business_id' => $bid, 'customer_invoice_id' => $invoice, 'number' => "CN-{$tag}-1", 'amount' => 1, 'tax_amount' => 0, 'issued_at' => now()->toDateString(), 'source' => 'يدوي']),
             'invoice_attachment' => $this->row('customer_invoice_attachments', ['business_id' => $bid, 'customer_invoice_id' => $invoice, 'path' => $attachPath, 'name' => 'doc.pdf']),
             'attach_path' => $attachPath,
             'payment' => $payment = $this->row('customer_payments', ['business_id' => $bid, 'customer_id' => $customer, 'number' => "RC-{$tag}-1", 'amount' => 5, 'method' => 'cheque', 'occurred_at' => now()->toDateString()]),

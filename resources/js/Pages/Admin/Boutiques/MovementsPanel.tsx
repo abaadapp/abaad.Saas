@@ -20,11 +20,15 @@ import type { Currency } from '@/types';
 
 export type MovementKind =
     | 'recorded' | 'changed' | 'cancelled' | 'piece' | 'piece_back' | 'kept' | 'credit' | 'sheet'
-    | 'paid' | 'pieces_paid' | 'note' | 'decided' | 'offset' | 'claim_offset' | 'receipt' | 'refund';
+    | 'paid' | 'pieces_paid' | 'note' | 'decided' | 'offset' | 'claim_offset' | 'receipt' | 'refund' | 'hold' | 'unhold';
+
+/** صنفُ السطر: مالٌ تحرّك، أو مستحقٌّ من بيع، أو مصروفٌ على المتجر، أو مقاصّةٌ وتعليقٌ بلا مال */
+export type MovementCategory = 'cash' | 'dues' | 'expense' | 'non_cash';
 
 export interface Movement {
     key: string;
     kind: MovementKind;
+    category: MovementCategory;
     state: string | null;
     at: string;
     name: string | null;
@@ -57,6 +61,7 @@ export interface MovementsPage {
         credit: number; claims: number; net: number;
     };
     groups: Record<string, { count: number; effect: number }>;
+    categories: Record<MovementCategory, { count: number; effect: number; in: number; out: number }>;
 }
 
 export const KIND: Record<MovementKind, string> = {
@@ -76,6 +81,23 @@ export const KIND: Record<MovementKind, string> = {
     claim_offset: 'خصم مطالبة من ورقة',
     receipt: 'تحصيل مطالبة من البوتيك',
     refund: 'استرداد رصيد من البوتيك',
+    hold: 'تعليق سداد ما أُلغي تحصيله',
+    unhold: 'فك التعليق',
+};
+
+/** أصنافُ الحركة — كلٌّ يُقال على سطره ويُجمع وحده */
+export const CATEGORY: Record<MovementCategory, string> = {
+    cash: 'مال تحرّك فعلًا',
+    dues: 'مستحق من البيع بلا مال',
+    expense: 'مصروف على المتجر',
+    non_cash: 'مقاصة أو تعليق بلا مال',
+};
+
+const CATEGORY_TONE: Record<MovementCategory, string> = {
+    cash: 'bg-[#ecfdf5] text-[#047857]',
+    dues: 'bg-[#f5f3ff] text-[#6d28d9]',
+    expense: 'bg-[#fef2f2] text-[#b91c1c]',
+    non_cash: 'bg-[#f3f4f6] text-[#4b5563]',
 };
 
 /** من يتحمّل المرتجعَ، وحالُ القطعة */
@@ -167,6 +189,27 @@ export default function MovementsPanel({ boutiqueId, period, currency }: Props) 
                         </div>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-2 border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-[12px] sm:grid-cols-4" data-testid="movement-categories">
+                        {(Object.keys(CATEGORY) as MovementCategory[]).map((c) => {
+                            const total = data.categories?.[c] ?? { count: 0, effect: 0, in: 0, out: 0 };
+
+                            return (
+                                <div key={c} className="rounded-md border border-[var(--ui-border,#e8e8e8)] px-3 py-2" data-category={c}>
+                                    <p className="text-[#6b7280]">{t(CATEGORY[c])} <span className="text-[#9ca3af]">· {number(total.count)}</span></p>
+                                    {c === 'cash' ? (
+                                        <p className="tabular-nums text-[#111]">
+                                            <span className="text-[#047857]">{t('دخل')} {money(total.in, currency)}</span>
+                                            {' · '}
+                                            <span className="text-[#b91c1c]">{t('خرج')} {money(total.out, currency)}</span>
+                                        </p>
+                                    ) : (
+                                        <p className="font-semibold tabular-nums text-[#111]" dir="ltr">{signed(total.effect)}</p>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
                     {data.rows.length === 0 ? (
                         <p className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-8 text-center text-[13px] text-[#9ca3af]">{t('لا حركات في هذا الشهر')}</p>
                     ) : (
@@ -190,6 +233,7 @@ export default function MovementsPanel({ boutiqueId, period, currency }: Props) 
                                             <td className="px-4 py-2.5">
                                                 <div className="flex flex-wrap items-center gap-1.5 text-[#111]">
                                                     {t(KIND[r.kind])}
+                                                    <span className={cn('rounded px-1.5 py-0.5 text-[11px]', CATEGORY_TONE[r.category])} data-category={r.category}>{t(CATEGORY[r.category])}</span>
                                                     {r.state && STATE[r.state] && <Badge variant="neutral">{t(STATE[r.state])}</Badge>}
                                                 </div>
                                                 {r.name && (

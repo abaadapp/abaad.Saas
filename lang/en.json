@@ -11808,5 +11808,11 @@
     "الأثر": "Effect",
     "القيد والحركة المالية": "Entry and money movement",
     "يُقيَّد مع ورقته": "Posted with its sheet",
-    "صفحة :page من :last": "Page :page of :last"
+    "صفحة :page من :last": "Page :page of :last",
+    "تعليق سداد ما أُلغي تحصيله": "Payment held: collection was cancelled",
+    "فك التعليق": "Hold released",
+    "مال تحرّك فعلًا": "Money actually moved",
+    "مستحق من البيع بلا مال": "Due from sales (no money moved)",
+    "مصروف على المتجر": "Expense borne by the shop",
+    "مقاصة أو تعليق بلا مال": "Offset or hold (no money moved)"
 }

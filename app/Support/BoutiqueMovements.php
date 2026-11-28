@@ -70,20 +70,63 @@ final class BoutiqueMovements
 
     public const REFUND = 'refund';
 
+    /**
+     * تعليقُ ما أُلغي تحصيلُه من ورقةٍ وفكُّه — يكتبه طلبُ فواتير العملاء (#271، `BoutiqueHolds`)
+     * حين يدخل. اسماه هنا محجوزان كي لا يتغيّر عقدُ السجلّ: فرعُه في `union()` يُضاف معه.
+     */
+    public const HOLD = 'hold';
+
+    public const UNHOLD = 'unhold';
+
     /** ما يُرشَّح به — مجموعةٌ بأنواعها */
     public const GROUPS = [
         'dues' => [self::RECORDED, self::CHANGED, self::PIECE],
         'sheets' => [self::SHEET],
         'payments' => [self::PAID, self::PIECES_PAID],
         'returns' => [self::CANCELLED, self::PIECE_BACK, self::KEPT, self::NOTE, self::DECIDED],
-        'credits' => [self::CREDIT, self::OFFSET, self::REFUND, self::CLAIM_OFFSET, self::RECEIPT],
+        'credits' => [self::CREDIT, self::OFFSET, self::REFUND, self::CLAIM_OFFSET, self::RECEIPT, self::HOLD, self::UNHOLD],
     ];
+
+    /*
+     * ═══ وكلُّ سطرٍ من صنفٍ واحد — يُقال ويُجمع وحده ═══
+     *
+     * ما تحرّك فيه مالٌ فعلًا (صندوقٌ أو بنك) غيرُ ما سُجّل مستحقًّا من بيعٍ بلا مال، وغيرُ
+     * ما صار مصروفًا على المتجر، وغيرُ مقاصّةٍ أو تعليقٍ لا يتحرّك فيه مال. فالصنفُ يُحسب في
+     * الاستعلام نفسِه من المستند — لا من وجود صفٍّ في «الحركات» (قد لا يُكتب: `cash_rows`).
+     */
+    public const CAT_CASH = 'cash';
+
+    public const CAT_DUES = 'dues';
+
+    public const CAT_EXPENSE = 'expense';
+
+    public const CAT_NON_CASH = 'non_cash';
+
+    public const CATEGORIES = [self::CAT_CASH, self::CAT_DUES, self::CAT_EXPENSE, self::CAT_NON_CASH];
+
+    /**
+     * أيُكتب مالُ البوتيكات صفًّا في «الحركات»؟ — مطفأٌ حتّى يعتمد المحاسب.
+     *
+     * سدادُ قطع ورقةٍ، واستردادُ رصيدٍ من بوتيك، وتحصيلُ مطالبة: صفوفٌ لم تكن، تدخل حين تُكتب
+     * «الداخل/الخارج» في ملخّص الماليّة وقائمة الحركات والتقرير. وتغييرُ ما تقرؤه تلك الأرقام
+     * قرارُ المحاسب لا هذا الطلب — فلا تُكتب ما دام مطفأً، ويبقى كلُّ شيءٍ كما في main: القيدُ
+     * في الدفتر، والسجلُّ هنا يقرؤه من مستنده. (`config/boutique_movements.php`)
+     */
+    public static function writesCash(): bool
+    {
+        return (bool) config('boutique_movements.cash_rows', false);
+    }
 
     /* ═══════════ الكتابة: صفُّ المال وأثرُ التصحيح ═══════════ */
 
     /** صفٌّ في «الحركات» لمالٍ دخل من بوتيكٍ أو خرج إليه — مرتبطًا بقيده إن كُتب */
     public static function cash(int $businessId, string $kind, float $amount, string $method, string $description, Carbon $at, ?JournalEntry $entry = null, ?int $branchId = null): Transaction
     {
+        // ولا يُكتب صفٌّ والمفتاحُ مطفأ — نداءٌ نُسي حارسُه يُردّ لا يُغيّر «الداخل/الخارج» بصمت
+        if (! self::writesCash()) {
+            throw new \LogicException('boutique_movements.cash_rows is off: a boutique money row must not be written');
+        }
+
         return Transaction::create([
             'business_id' => $businessId,
             'branch_id' => $branchId,
@@ -151,6 +194,9 @@ final class BoutiqueMovements
             ->selectRaw('m.*, SUM(m.effect_b) OVER (ORDER BY m.at, m.ord, m.kind, m.ref_id ROWS UNBOUNDED PRECEDING) as running_b');
         $totals = DB::query()->fromSub($month, 't')->groupBy('t.kind')
             ->selectRaw('t.kind, COUNT(*) as n, SUM(t.effect_b) as effect_b, SUM(t.shown_b) as shown_b')->get()->keyBy('kind');
+        $cats = DB::query()->fromSub($month, 't')->groupBy('t.cat')
+            ->selectRaw('t.cat, COUNT(*) as n, SUM(t.effect_b) as effect_b, SUM(CASE WHEN t.effect_b > 0 THEN t.effect_b ELSE 0 END) as up_b, SUM(CASE WHEN t.effect_b < 0 THEN 0 - t.effect_b ELSE 0 END) as down_b')
+            ->get()->keyBy('cat');
 
         $rows = DB::query()->fromSub($month, 't')
             ->when($f['group'] !== null, fn ($q) => $q->whereIn('t.kind', self::GROUPS[$f['group']]))
@@ -170,6 +216,16 @@ final class BoutiqueMovements
                 'count' => (int) $totals->only($kinds)->sum('n'),
                 'effect' => self::money((int) $totals->only($kinds)->sum('effect_b')),
             ])->all(),
+            /*
+             * وأصنافُ الشهر — كلٌّ وحده. والمالُ داخلٌ وخارج: الأثرُ الموجب مالٌ دخل من البوتيك
+             * (استردادٌ أو تحصيل)، والسالبُ مالٌ خرج إليه (سدادٌ). وغيرُ المال أثرُه على ما للبوتيك.
+             */
+            'categories' => collect(self::CATEGORIES)->mapWithKeys(fn (string $c) => [$c => [
+                'count' => (int) ($cats[$c]->n ?? 0),
+                'effect' => self::money((int) ($cats[$c]->effect_b ?? 0)),
+                'in' => self::money((int) ($cats[$c]->up_b ?? 0)),
+                'out' => self::money((int) ($cats[$c]->down_b ?? 0)),
+            ]])->all(),
         ];
     }
 
@@ -245,11 +301,18 @@ final class BoutiqueMovements
     }
 
     /** أعمدةُ السطر — بترتيبٍ واحد في كلّ فرع */
-    private static function columns($query, string $kind, int $ord, string $at, string $ref, string $sheet, string $order, string $name, string $qty, string $shown, string $effect)
+    private static function columns($query, string $kind, int $ord, string $at, string $ref, string $sheet, string $order, string $name, string $qty, string $shown, string $effect, string $cat)
     {
         return $query->selectRaw("CAST(? AS VARCHAR(20)) as kind, CAST({$ord} AS BIGINT) as ord, {$at} as at, {$ref} as ref_id", [$kind])
             ->selectRaw("CAST({$sheet} AS BIGINT) as sheet_id, CAST({$order} AS BIGINT) as order_id, CAST({$name} AS VARCHAR(255)) as name")
-            ->selectRaw("CAST({$qty} AS DECIMAL(14,3)) as qty, CAST({$shown} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b");
+            ->selectRaw("CAST({$qty} AS DECIMAL(14,3)) as qty, CAST({$shown} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b")
+            ->selectRaw('CAST('.$cat.' AS VARCHAR(20)) as cat');
+    }
+
+    /** صنفٌ ثابت بلغة القاعدة */
+    private static function cat(string $cat): string
+    {
+        return "'".$cat."'";
     }
 
     private static function b(string $sql): string
@@ -273,7 +336,7 @@ final class BoutiqueMovements
         return self::columns(
             DB::table('order_items as oi')->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->where('o.business_id', $businessId)->where('o.is_held', false)->where('oi.boutique_id', $boutiqueId),
-            self::RECORDED, 1, 'o.ordered_at', 'oi.id', 'oi.boutique_settlement_id', 'o.id', 'oi.name', 'oi.quantity', $sum, $sum,
+            self::RECORDED, 1, 'o.ordered_at', 'oi.id', 'oi.boutique_settlement_id', 'o.id', 'oi.name', 'oi.quantity', $sum, $sum, self::cat(self::CAT_DUES),
         );
     }
 
@@ -287,7 +350,7 @@ final class BoutiqueMovements
                 ->where('x.business_id', $businessId)->where('x.boutique_id', $boutiqueId)->whereNotNull('x.boutique_share')
                 ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('order_items as gone')->whereColumn('gone.id', 'x.boutique_item_id'))
                 ->groupBy('x.boutique_item_id', 'o.id', 'o.ordered_at'),
-            self::RECORDED, 1, 'o.ordered_at', 'MIN(x.id)', 'NULL', 'o.id', 'MIN(x.subject)', 'MAX(x.qty_before)', $sum, $sum,
+            self::RECORDED, 1, 'o.ordered_at', 'MIN(x.id)', 'NULL', 'o.id', 'MIN(x.subject)', 'MAX(x.qty_before)', $sum, $sum, self::cat(self::CAT_DUES),
         );
     }
 
@@ -301,7 +364,7 @@ final class BoutiqueMovements
                 ->where('r.source', BoutiqueReturn::QUANTITY)
                 ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('order_items as gone')->whereColumn('gone.id', 'r.order_item_id'))
                 ->groupBy('r.order_id', 'r.boutique_settlement_id', 'r.product_id', 'r.name', 'r.variant_name', 'r.rate', 'r.sold_at'),
-            self::RECORDED, 1, 'r.sold_at', 'MIN(r.id)', 'r.boutique_settlement_id', 'r.order_id', 'r.name', 'SUM(r.quantity)', $sum, $sum,
+            self::RECORDED, 1, 'r.sold_at', 'MIN(r.id)', 'r.boutique_settlement_id', 'r.order_id', 'r.name', 'SUM(r.quantity)', $sum, $sum, self::cat(self::CAT_DUES),
         );
     }
 
@@ -309,7 +372,7 @@ final class BoutiqueMovements
     {
         return self::columns(
             DB::table('order_edits as x')->where('x.business_id', $businessId)->where('x.boutique_id', $boutiqueId)->whereNotNull('x.boutique_share'),
-            self::CHANGED, 2, 'x.created_at', 'x.id', 'NULL', 'x.order_id', 'x.subject', 'x.qty_after - x.qty_before', self::b('x.boutique_share'), self::b('x.boutique_share'),
+            self::CHANGED, 2, 'x.created_at', 'x.id', 'NULL', 'x.order_id', 'x.subject', 'x.qty_after - x.qty_before', self::b('x.boutique_share'), self::b('x.boutique_share'), self::cat(self::CAT_DUES),
         );
     }
 
@@ -323,7 +386,7 @@ final class BoutiqueMovements
             DB::table('order_items as oi')->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->where('o.business_id', $businessId)->where('o.is_held', false)->where('o.status', Order::CANCELLED)
                 ->where('oi.boutique_id', $boutiqueId)->whereNull('oi.boutique_settlement_id'),
-            self::CANCELLED, 3, $at, 'oi.id', 'NULL', 'o.id', 'oi.name', '0 - oi.quantity', $net, $net,
+            self::CANCELLED, 3, $at, 'oi.id', 'NULL', 'o.id', 'oi.name', '0 - oi.quantity', $net, $net, self::cat(self::CAT_DUES),
         );
     }
 
@@ -334,7 +397,9 @@ final class BoutiqueMovements
 
         return $q->selectRaw("CAST({$kind} AS VARCHAR(20)) as kind, CAST(1 AS BIGINT) as ord, d.occurred_at as at, d.id as ref_id")
             ->selectRaw('CAST(d.boutique_settlement_id AS BIGINT) as sheet_id, CAST(d.order_id AS BIGINT) as order_id, CAST(d.product_name AS VARCHAR(255)) as name')
-            ->selectRaw('CAST(d.quantity AS DECIMAL(14,3)) as qty, '.self::b('d.amount').' as shown_b, '.self::b('d.amount').' as effect_b');
+            ->selectRaw('CAST(d.quantity AS DECIMAL(14,3)) as qty, '.self::b('d.amount').' as shown_b, '.self::b('d.amount').' as effect_b')
+            // مستحقُّ القطعة وعكسُه من البيع، ورصيدُ المتجر على البوتيك بلا مال
+            ->selectRaw("CAST(CASE WHEN d.kind IN ('".BoutiqueComponentDue::DUE."', '".BoutiqueComponentDue::REVERSAL."') THEN ".self::cat(self::CAT_DUES).' ELSE '.self::cat(self::CAT_NON_CASH).' END AS VARCHAR(20)) as cat');
     }
 
     /** قطعةٌ أُلغي طلبُها ولم تعد: مستحقُّها باقٍ — لا أثرَ على ما للبوتيك، وثمنُها خسارةٌ على المتجر */
@@ -343,7 +408,8 @@ final class BoutiqueMovements
         return self::columns(
             DB::table('boutique_component_dues as d')->where('d.business_id', $businessId)->where('d.boutique_id', $boutiqueId)
                 ->where('d.kind', BoutiqueComponentDue::DUE)->whereNotNull('d.kept_state'),
-            self::KEPT, 4, 'd.updated_at', 'd.id', 'd.boutique_settlement_id', 'd.order_id', 'd.product_name', 'd.quantity', self::b('d.amount'), '0',
+            // ثمنُ قطعةٍ لم تعد ومستحقُّها باقٍ: خسارةٌ على المتجر
+            self::KEPT, 4, 'd.updated_at', 'd.id', 'd.boutique_settlement_id', 'd.order_id', 'd.product_name', 'd.quantity', self::b('d.amount'), '0', self::cat(self::CAT_EXPENSE),
         );
     }
 
@@ -360,6 +426,8 @@ final class BoutiqueMovements
             self::SHEET, 5, 'bs.issued_at', 'bs.id', 'bs.id', 'NULL', 'bs.number', 'NULL',
             self::b('bs.net').' + '.self::b('bs.components_net'),
             self::b('bs.net')." - {$carried} - {$gone}",
+            // صدورُ الورقة مصروفٌ مستحقٌّ على المتجر (2160) — لا مالٌ خرج
+            self::cat(self::CAT_EXPENSE),
         );
     }
 
@@ -375,6 +443,8 @@ final class BoutiqueMovements
                 ->leftJoin('transactions as t', 't.id', '=', 'e.transaction_id')
                 ->where('bs.business_id', $businessId)->where('bs.boutique_id', $boutiqueId)->where('e.status', Expense::PAID),
             self::PAID, 6, 'COALESCE(t.occurred_at, e.updated_at)', 'bs.id', 'bs.id', 'NULL', 'bs.number', 'NULL', $paid, $paid,
+            // ورقةٌ استُنفد صافيها بمقاصّةٍ أو خفضٍ لم يخرج بها مال
+            "CASE WHEN {$paid} < 0 THEN ".self::cat(self::CAT_CASH).' ELSE '.self::cat(self::CAT_NON_CASH).' END',
         );
     }
 
@@ -388,7 +458,9 @@ final class BoutiqueMovements
             ->whereNotNull('bs.components_paid_at')
             ->selectRaw("CAST(CASE WHEN {$refund} THEN '".self::REFUND."' ELSE '".self::PIECES_PAID."' END AS VARCHAR(20)) as kind, CAST(6 AS BIGINT) as ord, bs.components_paid_at as at, bs.id as ref_id")
             ->selectRaw('CAST(bs.id AS BIGINT) as sheet_id, CAST(NULL AS BIGINT) as order_id, CAST(bs.number AS VARCHAR(255)) as name')
-            ->selectRaw("CAST(NULL AS DECIMAL(14,3)) as qty, CAST({$effect} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b");
+            ->selectRaw("CAST(NULL AS DECIMAL(14,3)) as qty, CAST({$effect} AS BIGINT) as shown_b, CAST({$effect} AS BIGINT) as effect_b")
+            // مالٌ خرج أو دخل — وقطعُ ورقةٍ قاصّها رصيدٌ كلَّها لم يتحرّك بها مال
+            ->selectRaw("CAST(CASE WHEN {$effect} <> 0 THEN ".self::cat(self::CAT_CASH).' ELSE '.self::cat(self::CAT_NON_CASH).' END AS VARCHAR(20)) as cat');
     }
 
     /** إشعارُ مرتجعٍ بعد ورقته كُتب — ولا أثرَ له حتّى يُحسم */
@@ -396,7 +468,7 @@ final class BoutiqueMovements
     {
         return self::columns(
             DB::table('boutique_returns as r')->where('r.business_id', $businessId)->where('r.boutique_id', $boutiqueId),
-            self::NOTE, 7, 'r.returned_at', 'r.id', 'r.boutique_settlement_id', 'r.order_id', 'r.name', 'r.quantity', self::b('r.amount'), '0',
+            self::NOTE, 7, 'r.returned_at', 'r.id', 'r.boutique_settlement_id', 'r.order_id', 'r.name', 'r.quantity', self::b('r.amount'), '0', self::cat(self::CAT_NON_CASH),
         );
     }
 
@@ -410,6 +482,8 @@ final class BoutiqueMovements
                 ->whereIn('r.status', [...BoutiqueReturn::BORNE, BoutiqueReturn::SHOP]),
             self::DECIDED, 8, 'COALESCE(r.decided_at, r.updated_at)', 'r.id', 'r.boutique_settlement_id', 'r.order_id', 'r.name', 'r.quantity',
             self::b('r.amount'), "CASE WHEN r.status IN ({$borne}) THEN 0 - ".self::b('r.amount').' ELSE 0 END',
+            // على البوتيك: يُنقص ما له بلا مال. وعلى المتجر: خسارتُه
+            "CASE WHEN r.status IN ({$borne}) THEN ".self::cat(self::CAT_NON_CASH).' ELSE '.self::cat(self::CAT_EXPENSE).' END',
         );
     }
 
@@ -419,7 +493,7 @@ final class BoutiqueMovements
         return self::columns(
             DB::table('boutique_credit_offsets as c')->join('boutique_settlements as bs', 'bs.id', '=', 'c.boutique_settlement_id')
                 ->where('c.business_id', $businessId)->where('c.boutique_id', $boutiqueId)->where('bs.kind', BoutiqueSettlement::SETTLEMENT),
-            self::OFFSET, 5, 'c.created_at', 'c.id', 'bs.id', 'NULL', 'bs.number', 'NULL', self::b('c.amount'), '0',
+            self::OFFSET, 5, 'c.created_at', 'c.id', 'bs.id', 'NULL', 'bs.number', 'NULL', self::b('c.amount'), '0', self::cat(self::CAT_NON_CASH),
         );
     }
 
@@ -432,7 +506,8 @@ final class BoutiqueMovements
             ->where('v.business_id', $businessId)->where('v.boutique_id', $boutiqueId)
             ->selectRaw("CAST(CASE WHEN {$receipt} THEN '".self::RECEIPT."' ELSE '".self::CLAIM_OFFSET."' END AS VARCHAR(20)) as kind, CAST(9 AS BIGINT) as ord, v.created_at as at, v.id as ref_id")
             ->selectRaw('CAST(v.boutique_settlement_id AS BIGINT) as sheet_id, CAST(r.order_id AS BIGINT) as order_id, CAST(r.name AS VARCHAR(255)) as name')
-            ->selectRaw('CAST(NULL AS DECIMAL(14,3)) as qty, '.self::b('v.amount')." as shown_b, CASE WHEN {$receipt} THEN ".self::b('v.amount').' ELSE 0 END as effect_b');
+            ->selectRaw('CAST(NULL AS DECIMAL(14,3)) as qty, '.self::b('v.amount')." as shown_b, CASE WHEN {$receipt} THEN ".self::b('v.amount').' ELSE 0 END as effect_b')
+            ->selectRaw("CAST(CASE WHEN {$receipt} THEN ".self::cat(self::CAT_CASH).' ELSE '.self::cat(self::CAT_NON_CASH).' END AS VARCHAR(20)) as cat');
     }
 
     /* ═══════════ العرض ═══════════ */
@@ -507,6 +582,7 @@ final class BoutiqueMovements
             return [
                 'key' => $r->kind.':'.$r->ref_id,
                 'kind' => $r->kind,
+                'category' => $r->cat,
                 'state' => $note?->status ?? $due?->kept_state,
                 'at' => Carbon::parse($r->at)->format('Y-m-d H:i'),
                 'name' => $r->name,

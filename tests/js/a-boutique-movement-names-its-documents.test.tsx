@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import MovementsPanel, { KIND, type Movement, type MovementsPage } from '@/Pages/Admin/Boutiques/MovementsPanel';
+import MovementsPanel, { CATEGORY, KIND, type Movement, type MovementsPage } from '@/Pages/Admin/Boutiques/MovementsPanel';
 
 /* قائمةُ Radix لا تُختار في jsdom — فتُرسم قائمةً أصليّة بالعقد نفسِه */
 vi.mock('@/Components/Field', async () => {
@@ -30,14 +30,18 @@ vi.mock('@/Components/Field', async () => {
 const currency = { id: 1, code: 'OMR', name: 'ريال عماني', symbol: 'ر.ع', rate: 1, is_base: true, active: true, decimals: 3 } as never;
 
 const row = (over: Partial<Movement> = {}): Movement => ({
-    key: 'recorded:1', kind: 'recorded', state: null, at: '2027-02-10 10:00', name: 'خاتم', quantity: 1, amount: 9.6, effect: 9.6, balance: 9.6,
+    key: 'recorded:1', kind: 'recorded', category: 'dues', state: null, at: '2027-02-10 10:00', name: 'خاتم', quantity: 1, amount: 9.6, effect: 9.6, balance: 9.6,
     order: 'INV-000011', sheet: null, expense: null, entry: null, transaction: null, why: null, who: null,
     order_url: '/admin/orders/INV-000011', entry_url: null, transaction_url: null, ...over,
 });
 
 const page = (rows: Movement[], over: Partial<MovementsPage> = {}): MovementsPage => ({
     rows, page: 1, last_page: 1, total: rows.length, per_page: 25, opening: 3, closing: 12.6,
-    balance: { unsettled: 12.6, pieces_unsettled: 0, sheets_unpaid: 0, pieces_unpaid: 0, credit: 0, claims: 0, net: 12.6 }, groups: {}, ...over,
+    balance: { unsettled: 12.6, pieces_unsettled: 0, sheets_unpaid: 0, pieces_unpaid: 0, credit: 0, claims: 0, net: 12.6 }, groups: {},
+    categories: {
+        cash: { count: 0, effect: 0, in: 0, out: 0 }, dues: { count: 1, effect: 9.6, in: 9.6, out: 0 },
+        expense: { count: 0, effect: 0, in: 0, out: 0 }, non_cash: { count: 0, effect: 0, in: 0, out: 0 },
+    }, ...over,
 });
 
 let calls: string[] = [];
@@ -76,7 +80,7 @@ describe('حركات البوتيك', () => {
     });
 
     it('السدادُ بقيده وحركته الماليّة وأثره سالب', async () => {
-        await open(page([row({ key: 'pieces_paid:3', kind: 'pieces_paid', name: 'BQ-2027-02-1', quantity: null, amount: -14.67, effect: -14.67, balance: 0, order: null,
+        await open(page([row({ key: 'pieces_paid:3', kind: 'pieces_paid', category: 'cash', name: 'BQ-2027-02-1', quantity: null, amount: -14.67, effect: -14.67, balance: 0, order: null,
             order_url: null, sheet: 'BQ-2027-02-1', entry: 'JV-9', entry_url: '/admin/finance/journal?q=JV-9', transaction: 'TRX-000004', transaction_url: '/admin/finance/transactions?q=TRX-000004' })]));
         const line = (await screen.findByText(KIND.pieces_paid)).closest('tr')!;
         expect(line.textContent).toContain('−');
@@ -86,7 +90,7 @@ describe('حركات البوتيك', () => {
     });
 
     it('من لا يملك الماليّة يقرأ الرقمَ بلا باب', async () => {
-        await open(page([row({ kind: 'sheet', key: 'sheet:2', order: null, order_url: null, sheet: 'BQ-1', entry: 'JV-3', effect: 0, amount: 9.6 })]));
+        await open(page([row({ kind: 'sheet', key: 'sheet:2', category: 'expense', order: null, order_url: null, sheet: 'BQ-1', entry: 'JV-3', effect: 0, amount: 9.6 })]));
         const line = (await screen.findByText(KIND.sheet)).closest('tr')!;
         expect(within(line).getByText(/JV-3/).closest('a')).toBeNull();
         // صدورُ الورقة لا يغيّر ما للبوتيك
@@ -94,7 +98,7 @@ describe('حركات البوتيك', () => {
     });
 
     it('حالُ المرتجع تُقال: من يتحمّله', async () => {
-        await open(page([row({ kind: 'decided', key: 'decided:2', state: 'shop', effect: 0, why: 'تلف عند المتجر' })]));
+        await open(page([row({ kind: 'decided', key: 'decided:2', category: 'expense', state: 'shop', effect: 0, why: 'تلف عند المتجر' })]));
         expect(await screen.findByText('على المتجر')).toBeInTheDocument();
         expect(screen.getByText('تلف عند المتجر')).toBeInTheDocument();
     });
@@ -124,5 +128,34 @@ describe('حركات البوتيك', () => {
         respond = () => null;
         render(<MovementsPanel boutiqueId={5} period="2027-02" currency={currency} />);
         expect(await screen.findByText(/تعذّر تحميل الحركات/)).toBeInTheDocument();
+    });
+
+    it('كلُّ سطرٍ يقول صنفَه: مالٌ تحرّك، أو مستحقٌّ بلا مال، أو مصروف، أو مقاصّة', async () => {
+        await open(page([
+            row(),
+            row({ key: 'paid:4', kind: 'paid', category: 'cash', amount: -9.6, effect: -9.6, order: null, order_url: null, sheet: 'BQ-1' }),
+            row({ key: 'offset:5', kind: 'offset', category: 'non_cash', amount: 2, effect: 0, order: null, order_url: null, sheet: 'BQ-1' }),
+            row({ key: 'sheet:6', kind: 'sheet', category: 'expense', amount: 9.6, effect: 0, order: null, order_url: null, sheet: 'BQ-1' }),
+        ]));
+        for (const [kind, cat] of [['recorded', 'dues'], ['paid', 'cash'], ['offset', 'non_cash'], ['sheet', 'expense']] as const) {
+            const line = (await screen.findByText(KIND[kind])).closest('tr')!;
+            expect(within(line).getByText(CATEGORY[cat])).toHaveAttribute('data-category', cat);
+        }
+    });
+
+    it('مجموعُ كلّ صنفٍ وحده، والمالُ داخلٌ وخارج — من الخادم', async () => {
+        await open(page([row()], {
+            categories: {
+                cash: { count: 3, effect: -4.1, in: 5.5, out: 9.6 }, dues: { count: 2, effect: 21.6, in: 21.6, out: 0 },
+                expense: { count: 1, effect: 0, in: 0, out: 0 }, non_cash: { count: 2, effect: -2, in: 0, out: 2 },
+            },
+        }));
+        const strip = await screen.findByTestId('movement-categories');
+        const cash = strip.querySelector('[data-category="cash"]')!;
+        expect(cash.textContent).toContain('5.500');
+        expect(cash.textContent).toContain('9.600');
+        expect(strip.querySelector('[data-category="dues"]')!.textContent).toContain('+');
+        expect(strip.querySelector('[data-category="dues"]')!.textContent).toContain('21.600');
+        expect(strip.querySelector('[data-category="non_cash"]')!.textContent).toContain('−');
     });
 });

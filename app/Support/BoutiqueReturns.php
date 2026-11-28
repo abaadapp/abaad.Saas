@@ -414,6 +414,35 @@ final class BoutiqueReturns
             }
 
             $at = BooksPeriod::openOr((int) $business->id, now());
+
+            /*
+             * والمفتاحُ مطفأ (`BoutiqueMovements::writesCash`): كما في main حرفًا — لكلّ مطالبةٍ
+             * استردادُها وقيدُها، ولا صفَّ في «الحركات». فلا يتغيّر «الداخل/الخارج» قبل المحاسب.
+             */
+            if (! BoutiqueMovements::writesCash()) {
+                foreach ($taken as [$claim, $take]) {
+                    $recovery = BoutiqueReturnRecovery::create([
+                        'business_id' => $business->id, 'boutique_id' => $boutique->id, 'boutique_return_id' => $claim->id,
+                        'kind' => BoutiqueReturnRecovery::RECEIPT, 'amount' => $take, 'method' => $method,
+                        'reference' => $reference, 'user_id' => auth()->id(),
+                    ]);
+
+                    Ledger::post(
+                        (int) $business->id,
+                        BooksPeriod::fit(__('استرداد مرتجع من البوتيك: ').$boutique->name, $reference),
+                        [
+                            ['account' => Books::payingAccount($method), 'debit' => $take],
+                            ['account' => 'boutique_receivable', 'credit' => $take, 'memo' => $claim->name],
+                        ],
+                        $at, self::SOURCE, null, auth()->id(), $recovery,
+                    );
+
+                    self::closeIfRecovered($claim);
+                }
+
+                return $amount;
+            }
+
             $row = BoutiqueMovements::cash((int) $business->id, Transaction::BOUTIQUE_CLAIM, $amount, $method,
                 __('تحصيل مطالبة من بوتيك :name — :reference', ['name' => $boutique->name, 'reference' => $reference]), $at);
 

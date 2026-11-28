@@ -124,7 +124,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->assertCount(1, $sends);
         $this->assertSame('96899887766', $sends[0]['to']);
         $this->assertSame('template', $sends[0]['type']);
-        $this->assertSame('abaad_subscription_ends_soon', $sends[0]['template']['name']);
+        $this->assertSame('abaad_account_ends_soon', $sends[0]['template']['name']);
         $this->assertSame('ar', $sends[0]['template']['language']['code']);
         $this->assertSame(['متجر الورود', $shop->ends_at->format('Y-m-d')], $this->params($sends[0]));
 
@@ -145,7 +145,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
 
         $sends = $this->sends();
         $this->assertCount(1, $sends);
-        $this->assertSame('abaad_subscription_ends_soon', $sends[0]['template']['name']);
+        $this->assertSame('abaad_account_ends_soon', $sends[0]['template']['name']);
         $this->assertSame(now()->addDays(14)->format('Y-m-d'), $this->params($sends[0])[1]);
     }
 
@@ -156,7 +156,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
 
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
-        $this->assertSame('abaad_subscription_ends_today', $this->sends()[0]['template']['name']);
+        $this->assertSame('abaad_account_ends_today', $this->sends()[0]['template']['name']);
     }
 
     public function test_the_grace_message_names_the_last_working_day(): void
@@ -168,7 +168,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
         $send = $this->sends()[0];
-        $this->assertSame('abaad_subscription_grace', $send['template']['name']);
+        $this->assertSame('abaad_account_grace_period', $send['template']['name']);
         $this->assertSame(
             ['متجر الورود', $shop->ends_at->format('Y-m-d'), now()->addDay()->format('Y-m-d')],
             $this->params($send),
@@ -183,7 +183,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
 
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
-        $this->assertSame('abaad_subscription_locked', $this->sends()[0]['template']['name']);
+        $this->assertSame('abaad_account_stopped', $this->sends()[0]['template']['name']);
     }
 
     public function test_a_shop_with_no_email_still_hears_on_whatsapp(): void
@@ -216,7 +216,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->line();
         $this->shop(7);
         $this->approveAll('PENDING');
-        $this->templates['abaad_subscription_locked|ar'] = 'APPROVED';
+        $this->templates['abaad_account_stopped|ar'] = 'APPROVED';
 
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
@@ -342,7 +342,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->templates = [];
 
         $this->artisan('subscriptions:whatsapp-templates')
-            ->expectsOutputToContain('abaad_subscription_ends_soon (en): غير موجود')
+            ->expectsOutputToContain('abaad_account_ends_soon (en): غير موجود')
             ->assertSuccessful();
 
         Http::assertNotSent(fn (HttpRequest $r) => $r->method() === 'POST');
@@ -351,7 +351,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
     public function test_create_submits_only_the_missing_templates_as_arabic_utility(): void
     {
         $this->line();
-        $this->templates = ['abaad_subscription_ends_soon|ar' => 'APPROVED', 'abaad_subscription_grace|en' => 'PENDING'];
+        $this->templates = ['abaad_account_ends_soon|ar' => 'APPROVED', 'abaad_account_grace_period|en' => 'PENDING'];
 
         $this->artisan('subscriptions:whatsapp-templates', ['--create' => true])->assertSuccessful();
 
@@ -359,10 +359,10 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
             ->map(fn ($pair) => $pair[0]->data())->values();
 
         $this->assertSame([
-            'abaad_subscription_ends_soon|en',
-            'abaad_subscription_ends_today|ar', 'abaad_subscription_ends_today|en',
-            'abaad_subscription_grace|ar',
-            'abaad_subscription_locked|ar', 'abaad_subscription_locked|en',
+            'abaad_account_ends_soon|en',
+            'abaad_account_ends_today|ar', 'abaad_account_ends_today|en',
+            'abaad_account_grace_period|ar',
+            'abaad_account_stopped|ar', 'abaad_account_stopped|en',
         ], $created->map(fn ($t) => $t['name'].'|'.$t['language'])->all());
 
         $bodies = collect(SubscriptionWhatsApp::TEMPLATES)->mapWithKeys(fn ($t) => [$t['name'] => $t['bodies']]);
@@ -390,6 +390,20 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
             preg_match_all('/\{\{\d+\}\}/', $t['bodies']['ar'], $ar);
             preg_match_all('/\{\{\d+\}\}/', $t['bodies']['en'], $en);
             $this->assertSame($ar[0], $en[0], $t['name']);
+        }
+    }
+
+    public function test_the_notices_are_account_facts_with_no_call_to_renew(): void
+    {
+        /*
+         * ‏‏«وللتجديد راسلنا» جعلت Meta تصنّف الجيلَ الأوّل تسويقيًّا (2026-11-28)،
+         * والتسويقيُّ قد لا يُسلَّم. فالنصُّ لا يدعو إلى تجديدٍ ولا شراءٍ ولا عرض.
+         */
+        foreach (SubscriptionWhatsApp::TEMPLATES as $t) {
+            $this->assertStringStartsNotWith('abaad_subscription_', $t['name']);
+            $this->assertStringStartsWith('تنبيه حساب:', $t['bodies']['ar'], $t['name']);
+            $this->assertStringStartsWith('Account notice:', $t['bodies']['en'], $t['name']);
+            $this->assertDoesNotMatchRegularExpression('/تجدي|جدّد|جدد|اشترِ|اشتر |عرض|خصم|renew|buy|offer|discount|subscribe now/iu', $t['bodies']['ar'].' '.$t['bodies']['en'], $t['name']);
         }
     }
 
@@ -465,7 +479,7 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->line();
         $shop = $this->shop(7);
         $this->owner($shop, 'en');
-        $this->templates['abaad_subscription_ends_soon|en'] = 'PENDING';
+        $this->templates['abaad_account_ends_soon|en'] = 'PENDING';
 
         $this->artisan('subscriptions:notify')->assertSuccessful();
 
@@ -477,8 +491,8 @@ class ASubscriptionNoticeReachesTheOwnerOnWhatsAppTest extends TestCase
         $this->line();
         $shop = $this->shop(7);
         $this->owner($shop, 'en');
-        $this->templates['abaad_subscription_ends_soon|en'] = 'PENDING';
-        $this->templates['abaad_subscription_ends_soon|ar'] = 'REJECTED';
+        $this->templates['abaad_account_ends_soon|en'] = 'PENDING';
+        $this->templates['abaad_account_ends_soon|ar'] = 'REJECTED';
 
         $this->artisan('subscriptions:notify')->assertSuccessful();
 

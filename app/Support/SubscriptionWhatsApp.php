@@ -56,35 +56,44 @@ final class SubscriptionWhatsApp
      * والنصُّ لا يبدأ بمتغيّرٍ ولا ينتهي به — Meta تردّ القالبَ الذي يفعل.
      * ومتغيّراتُ اللغتين واحدةٌ بترتيبها.
      *
+     * ═══ إشعارُ حسابٍ لا دعوةُ تجديد ═══
+     *
+     * الجيلُ الأوّل (`abaad_subscription_*`) ختم كلَّ نصٍّ بـ«وللتجديد راسلنا»،
+     * فصنّفته Meta كلَّه تسويقيًّا (2026-11-28). والتسويقيُّ يُحدّ عددُه لكلّ
+     * مستلم وقد لا يُسلَّم، ويُوقفه المستلمُ بنقرة، فلا يُضمن أن يصل إنذارُ
+     * «توقّف النظام» صاحبَه. فالنصُّ هنا حقائقُ الحساب وحدها، ودعوتُه
+     * الوحيدة ردٌّ للاستفسار. والأسماءُ جديدة: Meta لا تُعيد فئةَ قالبٍ
+     * بتعديله، والقديمُ يُترك فلا يُنادى.
+     *
      * @var array<string, array{name: string, bodies: array<string, string>}>
      */
     public const TEMPLATES = [
         'before' => [
-            'name' => 'abaad_subscription_ends_soon',
+            'name' => 'abaad_account_ends_soon',
             'bodies' => [
-                'ar' => 'مرحبًا، ينتهي اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}. بياناتك محفوظة، وللتجديد راسلنا على هذا الرقم.',
-                'en' => 'Hello, the Abaad subscription for your store {{1}} ends on {{2}}. Your data is safe, and to renew just message us on this number.',
+                'ar' => 'تنبيه حساب: اشتراك متجرك {{1}} في أبعاد ينتهي بتاريخ {{2}}. لأي استفسار عن حسابك ردّ على هذه الرسالة.',
+                'en' => 'Account notice: the Abaad subscription for your store {{1}} ends on {{2}}. Reply to this message if you have any questions about your account.',
             ],
         ],
         'today' => [
-            'name' => 'abaad_subscription_ends_today',
+            'name' => 'abaad_account_ends_today',
             'bodies' => [
-                'ar' => 'مرحبًا، ينتهي اشتراك متجرك {{1}} في أبعاد اليوم {{2}}، ويبقى النظام يعمل اليوم كاملًا. للتجديد راسلنا على هذا الرقم.',
-                'en' => 'Hello, the Abaad subscription for your store {{1}} ends today, {{2}}, and the system keeps working for the whole day. To renew, message us on this number.',
+                'ar' => 'تنبيه حساب: اشتراك متجرك {{1}} في أبعاد ينتهي اليوم {{2}}، والنظام يعمل اليوم كاملًا. لأي استفسار ردّ على هذه الرسالة.',
+                'en' => 'Account notice: the Abaad subscription for your store {{1}} ends today, {{2}}, and the system works for the whole day. Reply to this message if you have any questions.',
             ],
         ],
         'grace' => [
-            'name' => 'abaad_subscription_grace',
+            'name' => 'abaad_account_grace_period',
             'bodies' => [
-                'ar' => 'مرحبًا، انتهى اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}، ويعمل النظام حتى نهاية يوم {{3}} ثم يتوقف. بياناتك محفوظة، وللتجديد راسلنا على هذا الرقم.',
-                'en' => 'Hello, the Abaad subscription for your store {{1}} ended on {{2}}. The system keeps working until the end of {{3}} and then stops. Your data is safe, and to renew just message us on this number.',
+                'ar' => 'تنبيه حساب: انتهى اشتراك متجرك {{1}} في أبعاد بتاريخ {{2}}، ويعمل النظام حتى نهاية يوم {{3}} ثم يتوقف. بياناتك محفوظة. لأي استفسار ردّ على هذه الرسالة.',
+                'en' => 'Account notice: the Abaad subscription for your store {{1}} ended on {{2}}. The system works until the end of {{3}} and then stops. Your data is safe. Reply to this message if you have any questions.',
             ],
         ],
         'locked' => [
-            'name' => 'abaad_subscription_locked',
+            'name' => 'abaad_account_stopped',
             'bodies' => [
-                'ar' => 'مرحبًا، توقف نظام متجرك {{1}} في أبعاد لانتهاء الاشتراك بتاريخ {{2}}. بياناتك محفوظة كما هي ولا يُحذف شيء، وللتجديد راسلنا على هذا الرقم.',
-                'en' => 'Hello, the Abaad system for your store {{1}} has stopped because the subscription ended on {{2}}. Your data is kept as it is and nothing is deleted. To renew, message us on this number.',
+                'ar' => 'تنبيه حساب: توقف نظام متجرك {{1}} في أبعاد لانتهاء الاشتراك بتاريخ {{2}}. بياناتك محفوظة ولا يُحذف شيء. لأي استفسار ردّ على هذه الرسالة.',
+                'en' => 'Account notice: the Abaad system for your store {{1}} stopped because the subscription ended on {{2}}. Your data is safe and nothing is deleted. Reply to this message if you have any questions.',
             ],
         ],
     ];

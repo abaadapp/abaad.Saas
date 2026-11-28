@@ -367,6 +367,63 @@ class AnOrderShowsWhatItsCollectionsSayTest extends TestCase
         $this->assertSame(0.0, $pay['cheque_pending']);
     }
 
+    public function test_a_cheque_is_never_said_to_be_more_than_what_the_order_kept(): void
+    {
+        $bank = BankAccount::create(['business_id' => $this->shop->id, 'bank_name' => 'بنك مسقط', 'label' => 'الرئيسي', 'active' => true, 'is_primary' => true]);
+        $order = $this->cod();
+        $invoice = $this->invoice($order);
+        $this->collect($invoice, 25, ['method' => 'شيك', 'bank_account_id' => $bank->id, 'occurred_at' => now()->toDateString()]);
+        // سُدّت بشيك ثمّ نقص الطلبُ 10 بإشعار: ما يخصّه 15، والورقةُ لا تُقال أكثرَ منه
+        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'أعاد الخاتم', $this->owner->id, basis: CustomerCreditNote::RETURN);
+
+        $pay = $this->assertSays($order, OrderPaymentState::PAID, 15, 0, OrderPaymentState::CHEQUE_SETTLED);
+        $this->assertSame(15.0, $pay['cheque_pending']);
+        $this->assertSame(0.0, $pay['received'], 'المقبوضُ فعلًا لا يكون سالبًا');
+    }
+
+    public function test_the_register_file_and_a_standalone_invoice_name_a_pending_cheque_and_a_cancelled_cheque_counts_nothing(): void
+    {
+        $bank = BankAccount::create(['business_id' => $this->shop->id, 'bank_name' => 'بنك مسقط', 'label' => 'الرئيسي', 'active' => true, 'is_primary' => true]);
+        $cheque = ['method' => 'شيك', 'bank_account_id' => $bank->id, 'occurred_at' => now()->toDateString()];
+        $order = $this->cod();
+        $this->collect($this->invoice($order), 25, $cheque);
+
+        // فاتورةٌ مستقلّة (بلا طلب) سُدّ بعضُها بشيك، وأخرى سُدّت كلُّها بشيك
+        $customer = Customer::findOrFail($order->fresh()->customer_id);
+        $part = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $customer, ['issued_at' => now()->toDateString()], [
+            ['description' => 'باقة', 'quantity' => 1, 'unit_price' => 20, 'tax_rate' => 0],
+        ], $this->owner->id))->fresh();
+        $this->collect($part, 5, $cheque);
+        $whole = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $customer, ['issued_at' => now()->toDateString()], [
+            ['description' => 'باقة', 'quantity' => 1, 'unit_price' => 30, 'tax_rate' => 0],
+        ], $this->owner->id))->fresh();
+        $this->collect($whole, 30, $cheque);
+
+        $rows = collect(SalesRegister::rows(Request::create('/admin/sales', 'GET')))->keyBy('number');
+        $this->assertSame(OrderPaymentState::PAID, $rows[$whole->number]['pay_state'], 'مرشِّحُ السجلّ على قاعدة الدفتر');
+        $this->assertSame(OrderPaymentState::CHEQUE_SETTLED, $rows[$whole->number]['pay']['label']);
+        $this->assertSame(0.0, $rows[$whole->number]['pay']['received']);
+        $this->assertSame(OrderPaymentState::PARTIAL, $rows[$part->number]['pay']['label']);
+        $this->assertSame(OrderPaymentState::CHEQUE_PENDING, $rows[$part->number]['pay']['cheque_marker']);
+        $this->assertSame(15.0, $rows[$part->number]['pay']['due']);
+
+        // والملفُّ المصدَّر يكتب ما تكتبه الشاشة — لا «مدفوع» عن ورقةٍ لم تُصرف
+        $cells = [];
+        foreach ((SalesRegister::export(Request::create('/admin/sales', 'GET'))->rows)() as $line) {
+            $cells[$line['cells'][0]] = $line['cells'][8];
+        }
+        $this->assertSame(OrderPaymentState::CHEQUE_SETTLED, $cells[$order->fresh()->number]);
+        $this->assertSame(OrderPaymentState::CHEQUE_SETTLED, $cells[$whole->number]);
+        $this->assertSame(OrderPaymentState::PARTIAL.' · '.OrderPaymentState::CHEQUE_PENDING, $cells[$part->number]);
+
+        // وشيكٌ أُلغي تحصيلُه لا يُعدّ شيئًا — لا ورقةً ولا مالًا
+        $payment = CustomerPayment::where('business_id', $this->shop->id)->whereHas('allocations', fn ($q) => $q->where('customer_invoice_id', $whole->id))->firstOrFail();
+        CustomerPayments::cancel($payment, 'خطأ في الإدخال', $this->owner->id);
+        $row = collect(SalesRegister::rows(Request::create('/admin/sales', 'GET')))->firstWhere('number', $whole->number);
+        $this->assertSame(OrderPaymentState::UNPAID, $row['pay']['label']);
+        $this->assertSame(0.0, $row['pay']['cheque_pending']);
+    }
+
     /* ═══════════ ٩) فاتورةٌ لطلبين — نصيبُ كلِّ طلبٍ تقديرٌ لا يُقال عنه ═══════════ */
 
     public function test_an_invoice_for_two_orders_says_its_own_numbers_and_never_calls_one_order_paid_by_estimate(): void

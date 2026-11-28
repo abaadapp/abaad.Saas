@@ -914,6 +914,14 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
         $this->assertTies('بياناتٌ قديمة');
     }
 
+    public function test_boutique_cash_rows_are_off_unless_the_server_says_otherwise(): void
+    {
+        // بلا BOUTIQUE_CASH_ROWS في البيئة: مطفأ — وتشغيلُه قرارُ المالك بعد المحاسب، لا افتراضُ الكود
+        $this->assertFalse(getenv('BOUTIQUE_CASH_ROWS'));
+        $this->assertFalse((require config_path('boutique_movements.php'))['cash_rows']);
+        $this->assertStringNotContainsString('BOUTIQUE_CASH_ROWS=true', (string) file_get_contents(base_path('.env.example')));
+    }
+
     public function test_statuses_used_in_the_screen_are_the_ones_the_system_writes(): void
     {
         $screen = file_get_contents(resource_path('js/Pages/Admin/Boutiques/MovementsPanel.tsx'));

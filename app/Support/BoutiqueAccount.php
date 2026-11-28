@@ -39,6 +39,15 @@ final class BoutiqueAccount
         'admin.language.update', 'admin.currency.switch',
     ];
 
+    /**
+     * أبوابُ «البيت» — يُحوَّل منها إلى رفِّه ولا يبلغ متحكّمَها.
+     *
+     * التطبيقُ المثبَّت يفتح على `/app` (بدايةُ ملفّ التثبيت)، ومتحكّمُها يبني أرقامَ
+     * لوحة المتجر. فالحسابُ المربوط لا يُردّ منها بـ403 في تطبيقٍ لا رجوعَ فيه، ولا
+     * يُسأل المتحكّمُ عنه: يُحوَّل قبله إلى قائمة أصنافه.
+     */
+    public const HOME_ROUTES = ['admin.dashboard.app'];
+
     /** أبوابُ رفِّه بلا صنفٍ بعينه: قائمةُ أصنافه وإنشاؤها — وبوتيكُه قائمٌ في متجره */
     public const ROUTES = [
         'admin.products.index', 'admin.products.create', 'admin.products.store',

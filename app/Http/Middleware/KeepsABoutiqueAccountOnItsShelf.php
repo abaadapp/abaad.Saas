@@ -43,6 +43,11 @@ class KeepsABoutiqueAccountOnItsShelf
 
         $name = $route->getName();
 
+        // وبيتُ التطبيق المثبَّت يُحوَّل إلى رفِّه قبل أن يُبنى منه شيء — انظر `BoutiqueAccount::HOME_ROUTES`
+        if (in_array($name, BoutiqueAccount::HOME_ROUTES, true)) {
+            return redirect()->route('admin.products.index');
+        }
+
         if (BoutiqueAccount::opens($user, $name, $route->parameter('id'))) {
             return $next($request);
         }

@@ -148,6 +148,22 @@ class EveryDoorOutsideABoutiqueShelfIsShutTest extends TestCase
         foreach ($named as $name) {
             $this->assertTrue(Router::has($name), "بابٌ في قائمة الرفّ لا مسارَ له: {$name}");
         }
+
+        // وبابُ «البيت» واحد: بدايةُ التطبيق المثبَّت — يُحوَّل منه ولا يُفتح
+        $this->assertSame(['admin.dashboard.app'], BoutiqueAccount::HOME_ROUTES);
+        $this->assertTrue(Router::has('admin.dashboard.app'));
+    }
+
+    /**
+     * التطبيقُ المثبَّت يفتح على `/app` — فالحسابُ المربوط يُحوَّل إلى رفِّه، لا 403 ولا لوحةُ المتجر.
+     * وما بعد التحويل رفُّه وحده، بلا رقمٍ من أرقام اللوحة.
+     */
+    public function test_the_installed_app_opens_its_shelf_not_the_shops_dashboard(): void
+    {
+        $this->actingAs($this->rich)->get(route('admin.dashboard.app'))->assertRedirect(route('admin.products.index'));
+        $this->actingAs($this->rich)->getJson(route('admin.dashboard.app'))->assertRedirect(route('admin.products.index'));
+        // وصاحبُ النشاط يفتح بيتَ التطبيق كما كان
+        $this->assertNotSame(403, $this->actingAs($this->owner)->get(route('admin.dashboard.app'))->status());
     }
 
     public function test_no_door_asks_for_login_outside_the_web_group(): void
@@ -168,7 +184,7 @@ class EveryDoorOutsideABoutiqueShelfIsShutTest extends TestCase
         $unmatched = [];
 
         foreach (Router::getRoutes() as $route) {
-            if (! $this->asksForLogin($route->gatherMiddleware()) || in_array($route->getName(), self::OPEN, true)) {
+            if (! $this->asksForLogin($route->gatherMiddleware()) || in_array($route->getName(), [...self::OPEN, ...BoutiqueAccount::HOME_ROUTES], true)) {
                 continue;
             }
 

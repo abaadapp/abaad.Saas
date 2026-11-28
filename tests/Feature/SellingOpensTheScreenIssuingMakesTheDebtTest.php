@@ -171,7 +171,7 @@ class SellingOpensTheScreenIssuingMakesTheDebtTest extends TestCase
     {
         $invoice = CustomerInvoices::issue($this->draft(), $this->owner->id);
 
-        $this->actingAs($this->seller)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($this->seller)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->ministry->id,
             'amount' => 100,
             'method' => 'نقدي',
@@ -256,7 +256,7 @@ class SellingOpensTheScreenIssuingMakesTheDebtTest extends TestCase
 
         $this->assertSame(CustomerInvoice::ISSUED, $draft->fresh()->status);
 
-        $this->actingAs($clerk)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($clerk)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->ministry->id,
             'amount' => 400,
             'method' => 'نقدي',

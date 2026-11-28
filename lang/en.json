@@ -11766,5 +11766,21 @@
     "رقم في كل سطر، حتى :max. رسائل التجربة لا تخرج إلا إلى هذه الأرقام — لا لعملاء المتجر.": "One number per line, up to :max. Trial messages go only to these numbers — never to the shop's customers.",
     "لا تخرج رسائلها إلا إلى": "Its messages go only to",
     "— لا رقم، فلا تخرج رسالة.": "— no number, so nothing is sent.",
-    "على المتجر «:name» سجلات واتساب (جهة الرسوم أو تجربتها أو رسائل خرجت إلى Meta) — لا يُعاد بناؤه ولا يُحذف، فهي دليل ما دُفع.": "The shop “:name” has WhatsApp records (its payer review, its trial, or messages sent to Meta) — it can't be rebuilt or deleted, because they are the evidence of what was paid."
+    "على المتجر «:name» سجلات واتساب (جهة الرسوم أو تجربتها أو رسائل خرجت إلى Meta) — لا يُعاد بناؤه ولا يُحذف، فهي دليل ما دُفع.": "The shop “:name” has WhatsApp records (its payer review, its trial, or messages sent to Meta) — it can't be rebuilt or deleted, because they are the evidence of what was paid.",
+    "مبلغ التحصيل لا يطابق ما خُصّص للفواتير.": "The collected amount does not match what was allocated to the invoices.",
+    "الفاتورة :n ليست صادرة — لا يُحصَّل عليها.": "Invoice :n is not issued — nothing can be collected on it.",
+    "الفاتورة :n مدفوعة بالكامل — لا يُحصَّل عليها شيء.": "Invoice :n is fully paid — nothing more can be collected on it.",
+    "المتبقي على الفاتورة :n هو :left — لا يُحصَّل عليها أكثر منه.": "The remaining balance on invoice :n is :left — no more than that can be collected on it.",
+    "حدّث الصفحة ثم أعد تسجيل التحصيل.": "Refresh the page, then record the collection again.",
+    "هذا التحصيل سُجّل من قبل (:n) — ولم يُكتب ثانيةً.": "This collection was already recorded (:n) — it was not written again.",
+    "تعذّر تسجيل التحصيل الآن — أعد المحاولة.": "The collection could not be recorded right now — try again.",
+    "ترك الزائد رصيدًا يكون لتحصيلٍ على فاتورةٍ واحدة بعينها.": "Leaving the excess as credit applies only to a collection on one named invoice.",
+    "مفتاح هذا التحصيل يخصّ محاولةً سجّلها غيرك — افتح نافذة التحصيل من جديد.": "This collection key belongs to an attempt recorded by someone else — open the collection window again.",
+    "مفتاح هذا التحصيل استُعمل لتحصيلٍ بتفاصيل أخرى — لم يُكتب شيء. افتح نافذة التحصيل من جديد.": "This collection key was used for a collection with other details — nothing was written. Open the collection window again.",
+    "الفاتورة :n مدفوعة بالكامل — لا يُترك عليها زائدٌ رصيدًا. لدفعةٍ مقدّمة سجّل «تحصيلًا على حساب العميل».": "Invoice :n is fully paid — no excess can be left on it as credit. For an advance, record a “collection on the customer's account”.",
+    "هذه الفاتورة على فرعٍ لست مُسنَدًا إليه — لا تُحصَّل منك.": "This invoice belongs to a branch you are not assigned to — you cannot collect it.",
+    "المستحق على الفاتورة": "Due on the invoice",
+    "الزائد": "Excess",
+    "اترك المبلغ الزائد رصيدًا للعميل": "Leave the excess as customer credit",
+    "بدون هذا الخيار يُردّ مبلغٌ أكبر من المتبقي على الفاتورة.": "Without this option, an amount above what is left on the invoice is refused."
 }

@@ -420,7 +420,7 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
     {
         $invoice = $this->issued();
 
-        $this->actingAs($this->owner)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($this->owner)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id,
             'customer_invoice_id' => $invoice->id,
             'amount' => 50,

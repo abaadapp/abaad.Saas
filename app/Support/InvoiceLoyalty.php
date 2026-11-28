@@ -225,6 +225,102 @@ class InvoiceLoyalty
         return max(0.0, min(1.0, ($total - min($earned, $total)) / $total));
     }
 
+    /** مصدرُ حركات «المكتسَب يتبع الصافي» على فاتورةٍ — وكلُّ إشعارٍ بلاحقته */
+    public static function netKey(CustomerInvoice $invoice): string
+    {
+        return 'cinv:'.$invoice->id.':net';
+    }
+
+    /**
+     * ═══ المكتسَبُ يتبع صافيَ المشتريات بعد التصحيح ═══
+     *
+     * نقاطُ الفاتورة تُكسب حين يُسدَّد منها برابط (`decide`): على ما خُصِّص لها. فإن نقص
+     * إجماليُّها بعد ذلك بإشعارٍ دائن صار المدفوعُ أكثرَ ممّا اشتراه العميلُ فعلًا، والفرقُ
+     * رصيدٌ له لا مشتريات. فيبقى له من نقاط الرابط بنسبة الصافي إلى المدفوع:
+     *
+     *     ما يبقى(الصافي) = floor(المكتسَب × min(1, الصافي ÷ المدفوع برابط))
+     *
+     * وكلُّ إشعارٍ يُحسب أثرُه وحده — الفرقُ بين «ما يبقى» قبله وبعده:
+     *
+     *   - **دائن:** يُسحب الفرق، ولا يُسحب أكثرُ ممّا في رصيد العميل الآن — فلا رصيدَ
+     *     سالبًا ولا مطالبةَ بمال. وما لم يُسحب لأنّه صرفه قبلُ يُكتب في سجلّ النشاط بعدده
+     *     ولا يُعاد طلبُه لاحقًا: القرارُ فيه لصاحب النشاط.
+     *   - **مدين:** يعيد الفرقَ إن رفع الصافيَ — ولا يعيد أكثرَ ممّا سُحب فعلًا قبله. ولا
+     *     يمنح نقاطًا جديدة بنفسه: الزيادةُ تُكسب حين تُسدَّد برابط، بالقاعدة نفسِها.
+     *
+     * لا شيءَ هنا إن لم يُكسب على الفاتورة شيءٌ برابط، أو لم يتغيّر «ما يبقى». ولا يُعاد
+     * حسابُ نقاطٍ قديمة: يتحرّك عند إشعارٍ جديد وحده. وكلُّ حركةٍ بمفتاحها الفريد.
+     *
+     * @param  float  $signed  مبلغُ الإشعار بإشارته: سالبٌ للدائن، موجبٌ للمدين
+     */
+    public static function followNet(CustomerInvoice $invoice, float $signed, string $suffix, string $label, ?int $userId = null): void
+    {
+        $bid = (int) $invoice->business_id;
+        $locked = CustomerInvoice::where('business_id', $bid)->lockForUpdate()->find($invoice->id);
+        if (! $locked || ! $locked->customer_id || abs($signed) < 0.0005) {
+            return;
+        }
+
+        $earned = (int) PointTransaction::where('customer_invoice_id', $locked->id)->where('source_key', 'like', 'link:%')->sum('points');
+        $paidB = (int) round(self::earnedAllocations($locked) * 1000);
+        if ($earned <= 0 || $paidB <= 0) {
+            return;
+        }
+
+        $afterB = (int) round($locked->effectiveTotal() * 1000);
+        $beforeB = $afterB - (int) round($signed * 1000);
+        $keep = fn (int $netB) => intdiv($earned * max(0, min($netB, $paidB)), $paidB);
+        $delta = $keep($afterB) - $keep($beforeB);
+
+        $key = self::netKey($locked).':'.$suffix;
+        if ($delta === 0 || PointTransaction::where('source_key', $key)->exists()) {
+            return;
+        }
+
+        $customer = Customer::withTrashed()->where('business_id', $bid)->whereKey($locked->customer_id)->lockForUpdate()->first();
+        if (! $customer) {
+            return;
+        }
+
+        if ($delta < 0) {
+            $take = min(-$delta, max(0, (int) $customer->points));
+            $short = -$delta - $take;
+            if ($take > 0) {
+                $customer->decrement('points', $take);
+                PointTransaction::create([
+                    'business_id' => $bid, 'customer_id' => $customer->id, 'customer_invoice_id' => $locked->id,
+                    'type' => 'redeem', 'points' => -$take, 'balance_after' => (int) $customer->points,
+                    // «عكس نقاط» صدرُها: بوابةُ العميل تقرؤها عكسًا لا استعمالًا (`RibbonPortal\Account::move`)
+                    'note' => Str::limit('عكس نقاط مكتسبة بقدر ما نقص من صافي الفاتورة '.$locked->number.' بعد '.$label
+                        .($short > 0 ? ' — ولم يُسحب '.$short.' لأن الرصيد لا يكفي' : ''), 250, ''),
+                    'source_key' => $key,
+                ]);
+            }
+            if ($short > 0) {
+                Activity::log('updated', 'لم يُسحب '.$short.' نقطة مكتسبة من العميل '.$customer->name.' بعد '.$label.' على '.$locked->number
+                    .': صرفها قبل التصحيح، والرصيد لا ينزل تحت الصفر. بانتظار قرار صاحب النشاط.', [
+                        'subject_id' => $locked->id, 'subject_type' => 'customer_invoice', 'business_id' => $bid,
+                    ]);
+            }
+
+            return;
+        }
+
+        // مدين: لا يعيد أكثرَ ممّا سُحب فعلًا قبله
+        $taken = -(int) PointTransaction::where('customer_invoice_id', $locked->id)->where('source_key', 'like', self::netKey($locked).':%')->sum('points');
+        $give = min($delta, max(0, $taken));
+        if ($give <= 0) {
+            return;
+        }
+        $customer->increment('points', $give);
+        PointTransaction::create([
+            'business_id' => $bid, 'customer_id' => $customer->id, 'customer_invoice_id' => $locked->id,
+            'type' => 'earn', 'points' => $give, 'balance_after' => (int) $customer->points,
+            'note' => Str::limit('إعادة نقاط مكتسبة سُحبت من قبل بعد أن عاد صافي الفاتورة '.$locked->number.' — '.$label, 250, ''),
+            'source_key' => $key,
+        ]);
+    }
+
     /**
      * يعكس نقاطَ تحصيلٍ أُلغي — في معاملة الإلغاء، مرّةً واحدة.
      *

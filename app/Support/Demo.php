@@ -1690,6 +1690,14 @@ class Demo
             'status' => $o->status,
             'payment' => $o->payment_method,
             'payment_status' => $o->payment_status ?? 'مدفوع',
+            /*
+             * وما تعرضه الشاشة: حالُ السداد من تحصيلاته (`OrderPaymentState`).
+             *
+             * `payment_status` فوقه معناه «بيعةٌ آجلة» للدفتر والتصحيح، ويُكتب يومَ
+             * البيع ولا يتغيّر — فطلبٌ قُبضت فاتورتُه كان يُعرض «غير مدفوع». ويبقى
+             * لما يسأله التصحيحُ (أتُردّ فروقُه أم تُفوتَر)، والشارةُ من هنا.
+             */
+            'pay_state' => OrderPaymentState::of($o),
             'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
             'subtotal' => (float) $o->subtotal,
             'discount' => (float) $o->discount,

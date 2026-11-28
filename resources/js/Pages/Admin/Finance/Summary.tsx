@@ -43,6 +43,11 @@ interface Props {
         collections: { amount: number; count: number };
         supplier_payments: { amount: number; count: number };
     };
+    /**
+     * «الدخل» فوق ما سُجّل لا ما وصل — ومعه ما فيه من بيعٍ لم يُقبض عند بيعه،
+     * والمقبوضُ فعلًا من العملاء من الدفتر. للعرض وحده (`RecordedSales`).
+     */
+    money?: { uncollected_sales: number; received: number };
     dues: {
         expenses: number;
         invoices: number;
@@ -110,7 +115,7 @@ function Line({ label, value, tone }: { label: string; value: string; tone?: str
 }
 
 export default function Summary() {
-    const { range, cash, bank, accounts, period, settlements, dues, pending_invoices, receivables, context, auth } =
+    const { range, cash, bank, accounts, period, settlements, money: received, dues, pending_invoices, receivables, context, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -326,9 +331,15 @@ export default function Summary() {
             <Card className="p-5">
                 <h3 className="mb-4 text-[14px] font-bold text-[#111]">{t('حركة المال في المدة')}</h3>
                 <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                        <dt className="text-[12px] text-[#9ca3af]">{t('دخل')}</dt>
+                    <div data-testid="money-recorded-in">
+                        <dt className="text-[12px] text-[#9ca3af]">{t('الدخل المسجّل')}</dt>
                         <dd className="mt-0.5 text-[18px] font-semibold tabular-nums text-[#15803d]">{m(period.in)}</dd>
+                        {/* وما فيه من بيعٍ لم يُقبض عند بيعه — يُقال ولا يُطرح: الرقمُ فوقه كما كان */}
+                        {(received?.uncollected_sales ?? 0) > 0 && (
+                            <dd className="mt-0.5 text-[12px] text-[#b45309]" data-testid="money-uncollected-sales">
+                                {t('منه مبيعات لم تُقبض عند بيعها')}: <span className="tabular-nums">{m(received?.uncollected_sales ?? 0)}</span>
+                            </dd>
+                        )}
                     </div>
                     <div>
                         <dt className="text-[12px] text-[#9ca3af]">{t('خرج')}</dt>
@@ -346,7 +357,21 @@ export default function Summary() {
                  * من الشاشة كان يجعل التاجر يبحث عن مبلغٍ رآه في الحركة ولا
                  * يجده في أيّ مجموع.
                  */}
+                {/*
+                    والمالُ الذي وصل فعلًا — من الدفتر، كما تقرؤه «مقبوضات اليوم» في اللوحة.
+                    «الدخل المسجّل» يكتب البيعةَ يومَ بيعها ولو لم تُقبض، ويُقبض مالُها بعدها
+                    على فاتورة العميل. فيُقالان رقمين، ولا يُخلط أحدهما بالآخر.
+                */}
+                {received && (
+                    <div className="mt-4 flex flex-wrap items-baseline justify-between gap-2 border-t border-gray-100 pt-4" data-testid="money-received">
+                        <span className="text-[12px] text-[#6b7280]">{t('المقبوض فعلًا من العملاء في المدة (من الدفتر)')}</span>
+                        <span className="text-[18px] font-semibold tabular-nums text-[#15803d]">{m(received.received)}</span>
+                    </div>
+                )}
                 <p className="mt-4 text-[12px] text-[#9ca3af]">
+                    {t('الدخل المسجّل يكتب البيعة يوم بيعها ولو لم تُقبض بعد. والمقبوض فعلًا ما وصل الصندوق أو البنك من العملاء.')}
+                </p>
+                <p className="mt-2 text-[12px] text-[#9ca3af]">
                     {t('التحويل بين الصندوق والبنك لا يُقرأ دخلًا ولا مصروفًا — المال انتقل ولم يدخل ولم يخرج.')}
                 </p>
             </Card>

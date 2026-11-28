@@ -15,6 +15,7 @@ use App\Support\BoutiqueReturns;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Receivables;
+use App\Support\RecordedSales;
 use App\Support\Settlements;
 use App\Support\SupplierInvoices;
 use Illuminate\Http\Request;
@@ -116,6 +117,14 @@ class OverviewController extends Controller
              * نفسِها. للعلم وحده: لا يدخل `period` ولا يمسّ ربحًا ولا ذمّة.
              * انظر `Settlements`.
              */
+            /*
+             * و«الدخل» فوق ما سُجّل لا ما وصل — يُقال معه ما فيه من بيعٍ لم يُقبض،
+             * والمقبوضُ فعلًا من الدفتر. للعرض وحده: لا يتغيّر رقمٌ فوقه (`RecordedSales`).
+             */
+            'money' => [
+                'uncollected_sales' => RecordedSales::uncollected($movements),
+                'received' => RecordedSales::received($bid, $start),
+            ],
             'settlements' => [
                 'collections' => Settlements::collections($bid, $start),
                 'supplier_payments' => Settlements::supplierPayments($bid, $start),

@@ -58,7 +58,8 @@ interface Props {
     kinds: { value: string; label: string }[];
     /** أنواع المصروفات كما عرّفها التاجر — اختياريّة في النموذج */
     expenseTypes: string[];
-    summary: { in: number; out: number; transfers: number };
+    /** و`uncollected_sales` ما في «الدخل» من بيعٍ لم يُقبض عند بيعه — يُقال ولا يُطرح */
+    summary: { in: number; out: number; transfers: number; uncollected_sales?: number };
     today: string;
 }
 
@@ -280,7 +281,7 @@ export default function Transactions() {
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard
                     stat={{
-                        label: t('دخل'),
+                        label: t('الدخل المسجّل'),
                         value: m(summary.in),
                         icon: 'trending-up',
                         color: 'success',
@@ -307,6 +308,16 @@ export default function Transactions() {
                     index={2}
                 />
             </div>
+            {/*
+                «الدخل المسجّل» يكتب البيعةَ يومَ بيعها ولو لم تُقبض: طلبُ الدفع عند الاستلام
+                والبيعُ الآجل يُقبضان بعدها على فاتورة العميل. فيُقال ما فيه منهما — ولا يُطرح.
+            */}
+            {(summary.uncollected_sales ?? 0) > 0 && (
+                <p className="-mt-3 mb-6 text-[12px] text-[#b45309]" data-testid="transactions-uncollected-sales">
+                    {t('منه مبيعات لم تُقبض عند بيعها')}: <span className="tabular-nums">{m(summary.uncollected_sales ?? 0)}</span>{' '}
+                    <span className="text-[#9ca3af]">{t('— المقبوض فعلًا في «الملخّص المالي».')}</span>
+                </p>
+            )}
 
             {/*
                 والجدولُ يضيق ولا يُستبدل.

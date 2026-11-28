@@ -5,6 +5,7 @@ import PosLayout from '@/Layouts/PosLayout';
 import ReceiptPreviewButton from './partials/ReceiptPreview';
 import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
+import { PayStateBadges, PayStateFacts, type PayState } from '@/Components/OrderPaymentState';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import {
@@ -52,6 +53,8 @@ interface OrderDetail {
     status: string;
     payment: string;
     payment_status: string;
+    /** حالُ السداد من تحصيلاته — الشارةُ منه لا من `payment_status`، وإن غاب فالحقلُ كما كان */
+    pay_state?: PayState | null;
     date: string;
     subtotal: number;
     discount: number;
@@ -100,7 +103,7 @@ export default function PosOrderDetails() {
                         </h1>
                         <div className="mt-1 flex items-center gap-2">
                             <Badge status={order.status} />
-                            <Badge status={order.payment_status} />
+                            {order.pay_state ? <PayStateBadges pay={order.pay_state} /> : <Badge status={order.payment_status} />}
                         </div>
                     </div>
                     <div className="flex gap-2">
@@ -295,6 +298,7 @@ export default function PosOrderDetails() {
                                     <span>{t('الإجمالي')}</span>
                                     <span className="tabular-nums">{m(order.total)}</span>
                                 </div>
+                                {order.pay_state && <PayStateFacts pay={order.pay_state} m={m} />}
                                 {/* وما بقي على العميل من فاتورةٍ مدفوعة ثمّ زادت — يُحصَّل بقيدٍ بيومه */}
                                 {(order.balance_due ?? 0) > 0 && (
                                     <div className="flex items-center justify-between gap-2 text-[#b45309]" data-testid="balance-due">

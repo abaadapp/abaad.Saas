@@ -1,6 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckSquare, Clock, Gift, ListChecks, Package, Phone, Store, StickyNote, Truck, Wallet } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
+import { PayCollect, PayStateBadges } from '@/Components/OrderPaymentState';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money } from '@/lib/format';
@@ -220,7 +221,15 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                         <Wallet className="size-3.5" />
                         {m(o.total)}
                     </span>
-                    {o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>}
+                    {/* والحالُ من تحصيلاته، وما يُحصَّل هو الباقي — لا يُطلب مالُ طلبٍ دُفع */}
+                    {o.pay_state ? (
+                        <>
+                            <PayStateBadges pay={o.pay_state} />
+                            <PayCollect pay={o.pay_state} m={m} />
+                        </>
+                    ) : (
+                        o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>
+                    )}
                     {o.payment_method && <span className="text-[#6b7280]">{t(o.payment_method)}</span>}
                     {o.payment_source && <span className="text-[#6b7280]">{o.payment_source}</span>}
                 </div>

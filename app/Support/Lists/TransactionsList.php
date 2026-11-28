@@ -7,6 +7,7 @@ use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
 use App\Support\Exports\Workbook;
+use App\Support\RecordedSales;
 use App\Support\ReportingPeriod;
 use App\Support\Search;
 use App\Support\Sort;
@@ -87,6 +88,8 @@ final class TransactionsList
             'in' => round((float) ($totals['دخل'] ?? 0), 3),
             'out' => round((float) ($totals['مصروف'] ?? 0), 3),
             'transfers' => round((float) ($totals['تحويل'] ?? 0), 3),
+            // وما في «الدخل» من بيعٍ لم يُقبض عند بيعه — يُقال ولا يُطرح (`RecordedSales`)
+            'uncollected_sales' => RecordedSales::uncollected((clone $filtered)->notCancelled()),
         ];
     }
 

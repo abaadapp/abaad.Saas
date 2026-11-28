@@ -4,10 +4,10 @@ namespace App\Support\Lists;
 
 use App\Models\CustomerInvoice;
 use App\Models\User;
-use App\Support\CustomerInvoices;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
 use App\Support\Exports\Workbook;
+use App\Support\OrderPaymentState;
 use App\Support\OrderStatus;
 use App\Support\ReportingPeriod;
 use App\Support\SalesChannel;
@@ -250,19 +250,8 @@ final class SalesRegister
      */
     private static function orders(int $bid, ?int $branch, ReportingPeriod $period, ?string $source, ?int $customer = null): Builder
     {
-        $issued = "'".CustomerInvoice::ISSUED."'";
-        $cancelled = "'".OrderStatus::CANCELLED."'";
-        $live = 'customer_invoices.status = '.$issued;
-        $unpaid = "o.payment_status = 'غير مدفوع'";
-        $out = CustomerInvoice::outstandingSql();
-        $paidInv = CustomerInvoice::paidSql();
-
-        $q = DB::table('orders as o')
-            ->leftJoin('customer_invoices', fn ($j) => $j->on('customer_invoices.id', '=', DB::raw(
-                '(SELECT MIN(l.customer_invoice_id) FROM customer_invoice_orders l'
-                .' JOIN customer_invoices x ON x.id = l.customer_invoice_id'
-                ." WHERE l.order_id = o.id AND x.status <> '".CustomerInvoice::CANCELLED."')"
-            )))
+        // وحالُ السداد ومبلغاه من قاعدةٍ واحدة تقرؤها صفحةُ الطلب والصندوقُ ولوحةُ التجهيز (`OrderPaymentState`)
+        $q = OrderPaymentState::joinCover(DB::table('orders as o'))
             ->where('o.business_id', $bid)
             ->where('o.is_held', false)
             ->when($branch, fn ($w) => $w->where('o.branch_id', $branch))
@@ -282,19 +271,12 @@ final class SalesRegister
                 'o.status as status',
                 'customer_invoices.id as cover_id',
                 'customer_invoices.number as cover_number',
-                "CASE WHEN o.status = {$cancelled} THEN '".self::VOID."'"
-                    ." WHEN {$live} THEN (CASE WHEN {$out} <= 0.0005 THEN '".self::PAID."'"
-                    ." WHEN {$paidInv} > 0 THEN '".self::PARTIAL."' ELSE '".self::UNPAID."' END)"
-                    ." WHEN {$unpaid} THEN '".self::UNPAID."'"
-                    ." WHEN COALESCE(o.balance_due, 0) > 0.0005 THEN '".self::PARTIAL."'"
-                    ." ELSE '".self::PAID."' END as pay_state",
+                OrderPaymentState::stateSql().' as pay_state',
                 'CASE WHEN o.scheduled_for IS NULL AND o.fulfillment_type IS NULL THEN NULL ELSE o.status END as prep',
                 'NULL as prep_id',
-                "CASE WHEN o.status = {$cancelled} THEN 0 WHEN {$live} THEN NULL"
-                    ." WHEN {$unpaid} THEN 0 ELSE o.total - COALESCE(o.balance_due, 0) END as paid",
-                "CASE WHEN o.status = {$cancelled} THEN 0 WHEN {$live} THEN NULL"
-                    ." WHEN {$unpaid} THEN o.total ELSE COALESCE(o.balance_due, 0) END as due",
-                "CASE WHEN {$live} AND o.status <> {$cancelled} THEN NULL ELSE 0 END as credited",
+                OrderPaymentState::paidSql().' as paid',
+                OrderPaymentState::dueSql().' as due',
+                OrderPaymentState::creditedSql().' as credited',
             ]));
 
         if ($source !== null) {
@@ -368,8 +350,9 @@ final class SalesRegister
     {
         $page = self::query($request, $fixedSource)->paginate($per)->withQueryString();
         $accounts = self::accounts(collect($page->items()));
+        $pays = self::pays(collect($page->items()));
 
-        return $page->through(fn ($r) => self::row($r, $accounts));
+        return $page->through(fn ($r) => self::row($r, $accounts, $pays));
     }
 
     /** الصفوفُ كلُّها بترتيبها — لورقة PDF والتصدير */
@@ -377,8 +360,43 @@ final class SalesRegister
     {
         $rows = self::query($request, $fixedSource)->get();
         $accounts = self::accounts($rows);
+        $pays = [];
+        foreach ($rows->chunk(self::PAY_CHUNK) as $chunk) {
+            $pays += self::pays($chunk);
+        }
 
-        return $rows->map(fn ($r) => self::row($r, $accounts))->all();
+        return $rows->map(fn ($r) => self::row($r, $accounts, $pays))->all();
+    }
+
+    /** كم صفًّا يُسأل عن حال سداده في سؤالٍ واحد — والتصديرُ يمرّ على السجلّ كلِّه بدفعاتٍ منه */
+    private const PAY_CHUNK = 500;
+
+    /**
+     * حالُ السداد كما تقوله صفحةُ الطلب والصندوقُ ولوحةُ التجهيز والإيصال — لكلّ صفّ.
+     *
+     * عمودُ `pay_state` يبقى حالَ القاعدة كما يرشّح بها السجلّ («مدفوع» يضمّ الشيكَ
+     * تحت التحصيل كما في الدفتر). وما يُكتب على الشارة من `OrderPaymentState`: علامةُ
+     * ما رُدّ، والشيكُ باسمه، والمقبوضُ فعلًا والباقي — أو أرقامُ الفاتورة حين يكون
+     * نصيبُ الطلب منها تقديرًا.
+     *
+     * @param  Collection<int, object>  $rows
+     * @return array<string, array<string, mixed>>  بمفتاح الصفّ (`order:12` · `invoice:7`)
+     */
+    private static function pays(Collection $rows): array
+    {
+        $bid = (int) (auth()->user()->business_id ?? Demo::bid());
+        $orders = $rows->where('kind', self::ORDER)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $invoices = $rows->where('kind', self::INVOICE)->mapWithKeys(fn ($r) => [(int) $r->id => (string) $r->pay_state])->all();
+
+        $out = [];
+        foreach (OrderPaymentState::forOrders($bid, $orders) as $id => $pay) {
+            $out[self::ORDER.':'.$id] = $pay;
+        }
+        foreach (OrderPaymentState::forInvoices($invoices) as $id => $pay) {
+            $out[self::INVOICE.':'.$id] = $pay;
+        }
+
+        return $out;
     }
 
     /**
@@ -410,7 +428,7 @@ final class SalesRegister
     }
 
     /** صفُّ الشاشة — وصفُّ الملفّ منه */
-    public static function row(object $r, array $accounts = []): array
+    public static function row(object $r, array $accounts = [], array $pays = []): array
     {
         $order = $r->kind === self::ORDER;
         $account = $order ? ($accounts[(int) $r->id] ?? null) : null;
@@ -440,6 +458,8 @@ final class SalesRegister
             'amount' => round((float) $r->amount, 3),
             'credited' => $r->credited !== null ? round((float) $r->credited, 3) : null,
             'pay_state' => $r->pay_state,
+            // وما يُكتب على الشارة: الحالُ ذاتُها مع علامة ما رُدّ والشيكِ والمبلغين (`pays`) — وإن غاب فالحال
+            'pay' => $pays[$r->kind.':'.$r->id] ?? null,
             // والمستندُ الذي يُحصَّل عليه — فاتورةٌ تغطّي الطلب
             'cover' => $order && $r->cover_id ? ['id' => (int) $r->cover_id, 'number' => $r->cover_number] : null,
             'prep' => $r->prep,
@@ -545,54 +565,10 @@ final class SalesRegister
         ];
     }
 
-    /**
-     * ما يخصّ كلَّ طلبٍ من فاتورته الصادرة — إشعاراتُها اليدويّة ثمّ تحصيلُها.
-     *
-     * فاتورةٌ تجمع طلبات الشهر يُحصَّل عليها مبلغٌ واحد. فيُوزَّع على طلباتها
-     * الحيّة من الأقدم — قاعدةُ التحصيل نفسها (`CustomerPayments::allocate`
-     * تبدأ بالأقدم استحقاقًا). فما يُعدّ لطلبٍ لا يُعدّ لغيره، ومجموعُها
-     * مالُ الفاتورة بعينه. وإشعارُ إلغاء الطلب لا يُوزَّع: الطلبُ الملغى خرج
-     * من المجموع بحاله (`CustomerInvoices::NOTE_ORDER_CANCELLED`).
-     *
-     * @param  Builder  $orderIds  معرّفاتُ الطلبات المفوترة فيما رُشّح
-     * @return array<int, array{paid: float, credited: float, due: float}>
-     */
+    /** نصيبُ كلِّ طلبٍ من فاتورته — القاعدةُ في `OrderPaymentState::coveredShares` */
     private static function coveredShares(Builder $orderIds): array
     {
-        $invoiceIds = DB::table('customer_invoice_orders as l')
-            ->join('customer_invoices', 'customer_invoices.id', '=', 'l.customer_invoice_id')
-            ->whereIn('l.order_id', $orderIds)
-            ->where('customer_invoices.status', CustomerInvoice::ISSUED)
-            ->select('customer_invoices.id');
-
-        $pools = DB::table('customer_invoices')->whereIn('id', $invoiceIds)
-            ->selectRaw('id, '.CustomerInvoice::paidSql().' as paid, (SELECT COALESCE(SUM(n.amount), 0) FROM customer_credit_notes n'
-                ." WHERE n.customer_invoice_id = customer_invoices.id AND n.source = '".CustomerInvoices::NOTE_MANUAL."') as credited")
-            ->get()->keyBy('id');
-
-        $members = DB::table('customer_invoice_orders as l')
-            ->join('orders as o', 'o.id', '=', 'l.order_id')
-            ->whereIn('l.customer_invoice_id', $pools->keys()->all())
-            ->where('o.status', '!=', OrderStatus::CANCELLED)
-            ->orderBy('o.ordered_at')->orderBy('o.id')
-            ->get(['l.customer_invoice_id', 'o.id', 'o.total']);
-
-        $shares = [];
-        foreach ($members->groupBy('customer_invoice_id') as $invoiceId => $orders) {
-            $credit = (float) ($pools[$invoiceId]->credited ?? 0);
-            $paid = (float) ($pools[$invoiceId]->paid ?? 0);
-
-            foreach ($orders as $o) {
-                $total = (float) $o->total;
-                $c = min($credit, $total);
-                $credit -= $c;
-                $p = min($paid, $total - $c);
-                $paid -= $p;
-                $shares[(int) $o->id] = ['paid' => round($p, 3), 'credited' => round($c, 3), 'due' => round($total - $c - $p, 3)];
-            }
-        }
-
-        return $shares;
+        return OrderPaymentState::coveredShares($orderIds);
     }
 
     /**
@@ -644,22 +620,26 @@ final class SalesRegister
                 __('الفاتورة') => Workbook::TEXT,
             ],
             rows: function () use ($request, $fixedSource) {
-                foreach (self::query($request, $fixedSource)->cursor() as $r) {
-                    $row = self::row($r);
-                    yield [
-                        'cells' => [
-                            $row['number'], __($row['type']), __($row['source_label']), $row['customer'],
-                            match ($row['seller_kind']) {
-                                'website' => __('الموقع الإلكتروني'),
-                                'unknown' => __('غير محدد'),
-                                default => $row['seller'],
-                            },
-                            $row['branch'] ?? '—', $row['date'], $row['amount'], __((string) $row['pay_state']),
-                            $row['prep'] !== null ? __($row['prep']) : '—', __((string) $row['status']),
-                            $row['cover']['number'] ?? '—',
-                        ],
-                        'fill' => $row['cancelled'] ? 'FEF3C7' : null,
-                    ];
+                foreach (self::query($request, $fixedSource)->cursor()->chunk(self::PAY_CHUNK) as $chunk) {
+                    $chunk = $chunk->collect();
+                    $pays = self::pays($chunk);
+                    foreach ($chunk as $r) {
+                        $row = self::row($r, [], $pays);
+                        yield [
+                            'cells' => [
+                                $row['number'], __($row['type']), __($row['source_label']), $row['customer'],
+                                match ($row['seller_kind']) {
+                                    'website' => __('الموقع الإلكتروني'),
+                                    'unknown' => __('غير محدد'),
+                                    default => $row['seller'],
+                                },
+                                $row['branch'] ?? '—', $row['date'], $row['amount'], self::payCell($row),
+                                $row['prep'] !== null ? __($row['prep']) : '—', __((string) $row['status']),
+                                $row['cover']['number'] ?? '—',
+                            ],
+                            'fill' => $row['cancelled'] ? 'FEF3C7' : null,
+                        ];
+                    }
                 }
             },
             totals: [
@@ -670,6 +650,17 @@ final class SalesRegister
                 [__('منها ملغاة'), $totals['cancelled'], Workbook::INT],
             ],
         );
+    }
+
+    /** خليّةُ السداد في الملفّ — ما على الشارة وعلامتاه، كما في الشاشة */
+    private static function payCell(array $row): string
+    {
+        $pay = $row['pay'];
+        if ($pay === null) {
+            return __((string) $row['pay_state']);
+        }
+
+        return implode(' · ', array_map(fn ($s) => __($s), array_filter([$pay['label'], $pay['marker'], $pay['cheque_marker']])));
     }
 
     /** المرشِّحاتُ الفعّالة كما يقرؤها التاجر */

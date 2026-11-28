@@ -1131,4 +1131,47 @@ class TheDeployHoldsTheQueueUntilItsWorkerRunsTheNewCodeTest extends TestCase
         $this->assertFileDoesNotExist($this->holdFile());
         $this->assertCount(1, $this->where($run['calls'], $this->wwwData('queue:resume whatsapp')));
     }
+
+    public function test_a_hold_left_mid_swap_is_inherited_so_a_deploy_failing_before_its_pull_never_frees_it(): void
+    {
+        $this->server(false);
+        // نشرٌ سابقٌ سحب الكودَ ثمّ قُتل قبل ذاكرته: لا هجرةَ معلّقة، والطابورُ غيرُ موقوف — لكنّ
+        // الكودَ على القرص نصفُ مبدَّل (ذاكرتُه قديمة)، والإيقافُ يقول `swapping`
+        $this->git('pull -q --ff-only origin main', $this->root.'/app');
+        file_put_contents($this->holdFile(), "نشر · نشرٌ من abc1234 · pid 1 · أمس\nphase: swapping\n");
+
+        // وهذا النشرُ يسقط قبل أن يسحب شيئًا
+        $run = $this->deploy(['STATE_FAIL_FROM' => '2']);
+
+        $this->assertNotSame(0, $run['rc']);
+        $this->assertStringContainsString('المهامّ المجدولة موقوفةٌ قبل هذا النشر', $run['out']);
+        $this->assertFileExists($this->holdFile(), "أطلق سقوطٌ قبل السحب مهامَّ على كودٍ نصفِ مبدَّل\n".$run['out']);
+        $this->assertStringContainsString('phase: swapping', (string) file_get_contents($this->holdFile()));
+        $this->assertSame([], $this->where($run['calls'], 'queue:resume'));
+    }
+
+    public function test_the_code_rollback_resumes_the_queue_only_after_a_new_worker_held_steady(): void
+    {
+        foreach (['steady' => [], 'stuck' => ['WORKER_STUCK' => '1', 'QUEUE_WORKER_TIMEOUT' => '10']] as $case => $env) {
+            $this->server();
+            $app = $this->root.'/app';
+            file_put_contents($app.'/app.txt', "b\n");
+            $this->git('commit -qam b2', $app);
+
+            $run = $this->script('scripts/rollback-code.sh', [$this->from], $env);
+
+            if ($case === 'steady') {
+                $this->assertSame(0, $run['rc'], $run['out']);
+                $this->assertStringContainsString('خرج العاملُ القديم (100) وثبت عاملٌ جديد (200) على الكود الذي رجع إليه', $run['out']);
+                $this->assertSame(['sleep 2', 'sleep 2', 'sleep 2', 'sleep 2'], $this->sleepsBetween($run['calls'], $this->first($run['calls'], 'queue:restart'), $this->first($run['calls'], 'queue:resume whatsapp')));
+            } else {
+                $this->assertNotSame(0, $run['rc'], 'أُطلق الطابورُ بلا عاملٍ جديد');
+                $this->assertStringContainsString('لم يثبت عاملٌ جديدٌ على abaad-queue.service خلال 10 ثانية', $run['out']);
+                $this->assertSame([], $this->where($run['calls'], 'queue:resume'));
+            }
+
+            exec('rm -rf '.escapeshellarg($this->root));
+            $this->root = '';
+        }
+    }
 }

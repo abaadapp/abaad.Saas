@@ -127,8 +127,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
     printf '  ١. git reset --hard %s   (الكود: %s → %s)\n' "$TO" "$FROM" "$TO"
     printf '  ٢. composer install --no-dev --no-scripts ثمّ package:discover بحساب %s\n' "$APP_USER"
     printf '  ٣. بناء الواجهة في public/build.new ثمّ تبديلها بالحيّة\n'
-    printf '  ٠. قفلُ النشر، وإيقافُ المهامّ المجدولة (.deploy-hold)، وqueue:pause لطابورَي واتساب والافتراضيّ إن أباحته sudoers — لا يُسحب جديد، ويُنتظر حتى تنتهي الجارية\n'
-    printf '  ٤. config:cache · route:cache · view:cache (بحساب %s) · إعادة تحميل php-fpm · queue:restart ثمّ queue:resume\n' "$APP_USER"
+    printf '  ٠. قفلُ النشر، وإيقافُ المهامّ المجدولة (.deploy-hold)، وqueue:pause لطابورَي واتساب والافتراضيّ إن أباحته sudoers — لا يُسحب جديد، ويُنتظر حتى تنتهي الجارية (طابورًا ومجدولة)\n'
+    printf '  ٤. config:cache · route:cache · view:cache (بحساب %s) · إعادة تحميل php-fpm · queue:restart ثمّ انتظارُ عاملٍ جديدٍ يثبت (systemd) ثمّ queue:resume\n' "$APP_USER"
     printf '  ٥. فحص %s\n' "$HEALTH_URL"
     printf 'والقاعدةُ لا تُمسّ: لا استعادةَ نسخة، ولا هجرة، ولا رجوعَ هجرة.\n'
     exit 0

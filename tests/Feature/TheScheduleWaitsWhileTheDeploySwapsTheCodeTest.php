@@ -7,8 +7,8 @@ use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithConsoleEvents;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
 use Tests\TestCase;
@@ -145,7 +145,7 @@ class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
         Log::shouldHaveReceived('error')->withArgs(fn ($message) => str_contains($message, 'swapping'))->atLeast()->once();
         // والسكربتان يكتبان السطرَ نفسَه حرفًا
         foreach (['scripts/deploy.sh', 'scripts/rollback-code.sh'] as $script) {
-            $this->assertStringContainsString("phase: %s", (string) file_get_contents(base_path($script)), $script);
+            $this->assertStringContainsString('phase: %s', (string) file_get_contents(base_path($script)), $script);
             $this->assertStringContainsString("grep -qx 'phase: swapping'", (string) file_get_contents(base_path($script)), $script);
         }
     }

@@ -9,6 +9,7 @@ import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
+import { PayStateBadges, type PayState } from '@/Components/OrderPaymentState';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -33,6 +34,8 @@ export interface SaleRow {
     amount: number;
     credited: number | null;
     pay_state: string;
+    /** ما يُكتب على الشارة كما في صفحة الطلب والصندوق ولوحة التجهيز (`OrderPaymentState`) — وإن غاب فالحال */
+    pay?: PayState | null;
     /** الفاتورةُ التي تغطّي الطلب — يُحصَّل عليها */
     cover: { id: number; number: string | null } | null;
     prep: string | null;
@@ -65,6 +68,33 @@ const payTone = (state: string) =>
     : state === 'ملغى' ? 'bg-[#f4f4f5] text-[#71717a]'
     : state === 'مدفوع جزئيًا' ? 'bg-[#fffbeb] text-[#b45309]'
     : 'bg-[#eff6ff] text-[#1d4ed8]';
+
+/**
+ * المقبوضُ فعلًا والشيكُ والباقي تحت شارة السداد — سطرٌ صغير.
+ *
+ * وطلبٌ نصيبُه من فاتورته تقدير (`estimated`) لا يُنسب له مال: يُقال الباقي على الفاتورة.
+ */
+export function PayAmounts({ pay, m }: { pay: PayState; m: (v: number) => string }) {
+    const t = useTranslate();
+    if (pay.state === 'ملغى') return null;
+    const parts: string[] = [];
+
+    if (pay.estimated) {
+        if ((pay.invoice?.due ?? 0) > 0) parts.push(`${t('المتبقّي على الفاتورة')} ${m(pay.invoice?.due ?? 0)}`);
+    } else {
+        const received = pay.received ?? (pay.paid ?? 0) - (pay.cheque_pending ?? 0);
+        if (received > 0 && (pay.due ?? 0) > 0) parts.push(`${t('المقبوض فعلًا')} ${m(received)}`);
+        if ((pay.cheque_pending ?? 0) > 0) parts.push(`${t('شيك')} ${m(pay.cheque_pending ?? 0)}`);
+        if ((pay.due ?? 0) > 0) parts.push(`${t('المتبقّي')} ${m(pay.due ?? 0)}`);
+    }
+    if (parts.length === 0) return null;
+
+    return (
+        <div className="mt-1 whitespace-nowrap text-[11px] tabular-nums text-[#6b7280]" data-testid="register-pay-amounts">
+            {parts.join(' · ')}
+        </div>
+    );
+}
 
 /** رابطُ المستند الأصليّ — الطلبُ برقمه، والفاتورةُ بمعرّفها */
 function documentLink(r: SaleRow) {
@@ -200,7 +230,12 @@ export default function CustomerInvoicesSales({
             header: 'السداد',
             cell: (r) => (
                 <>
-                    <span className={'whitespace-nowrap rounded-full px-2 py-1 text-[11px] ' + payTone(r.pay_state)}>{t(r.pay_state)}</span>
+                    {r.pay ? (
+                        <PayStateBadges pay={r.pay} />
+                    ) : (
+                        <span className={'whitespace-nowrap rounded-full px-2 py-1 text-[11px] ' + payTone(r.pay_state)}>{t(r.pay_state)}</span>
+                    )}
+                    {r.pay && <PayAmounts pay={r.pay} m={m} />}
                     {r.cover && !r.cancelled && (
                         <div className="mt-1 text-[11px] text-[#9ca3af]">{t('عبر الفاتورة')}</div>
                     )}

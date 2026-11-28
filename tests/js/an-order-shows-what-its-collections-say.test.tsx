@@ -77,6 +77,27 @@ describe('حالُ السداد على الطاولة', () => {
         expect(within(money).getByTestId('prep-collect')).toHaveTextContent('15.000');
     });
 
+    it('فاتورةٌ تجمعه بغيره ونصيبُه تقدير: لا «يُحصَّل» عنه — يُقال الباقي على الفاتورة', () => {
+        const shared = pay({
+            state: 'مدفوع جزئيًا', label: 'مدفوع جزئيًا', estimated: true, paid: null, received: null, due: null, credited: null, returned: null, cheque_pending: null,
+            invoice: { id: 7, number: 'CINV-7', orders: 2, total: 50, paid: 30, received: 30, cheque_pending: 0, credited: 0, due: 20 },
+        });
+        render(<PrepCard order={order({ pay_state: shared })} ageMs={0} onOpen={noop} onMove={noop} />);
+
+        const money = screen.getByTestId('prep-money');
+        expect(within(money).queryByTestId('prep-collect')).toBeNull();
+        expect(within(money).getByTestId('prep-collect-invoice')).toHaveTextContent('CINV-7');
+        expect(within(money).getByTestId('prep-collect-invoice')).toHaveTextContent('20.000');
+    });
+
+    it('وما سُدّ بشيكٍ لم يُصرف لا يُطلب من المندوب', () => {
+        render(<PrepCard order={order({ pay_state: pay({ label: 'مسدَّد بشيك تحت التحصيل', paid: 25, received: 0, cheque_pending: 25 }) })} ageMs={0} onOpen={noop} onMove={noop} />);
+
+        expect(screen.getByTestId('pay-state-label')).toHaveTextContent('مسدَّد بشيك تحت التحصيل');
+        expect(screen.queryByTestId('prep-collect')).toBeNull();
+        expect(screen.queryByTestId('prep-collect-invoice')).toBeNull();
+    });
+
     it('والملغى لا يُطلب منه مال', () => {
         render(<PrepCard order={order({ pay_state: pay({ state: 'ملغى', label: 'ملغى', paid: 0, due: 0, invoice: null }) })} ageMs={0} onOpen={noop} onMove={noop} />);
 
@@ -103,13 +124,60 @@ describe('الشارةُ وما تحتها', () => {
         expect(screen.queryByTestId('pay-state-marker')).toBeNull();
     });
 
-    it('المقبوضُ والباقي والشيكُ تحت التحصيل والفاتورةُ التي يُحصَّل عليها', () => {
-        render(<PayStateFacts pay={pay({ state: 'مدفوع جزئيًا', label: 'مدفوع جزئيًا', paid: 10, due: 15, cheque_pending: 10 })} m={m} />);
+    it('المقبوضُ فعلًا والشيكُ تحت التحصيل سطران — والباقي والفاتورةُ التي يُحصَّل عليها', () => {
+        render(<PayStateFacts pay={pay({ state: 'مدفوع جزئيًا', label: 'مدفوع جزئيًا', paid: 20, received: 10, due: 5, cheque_pending: 10 })} m={m} />);
 
+        // ما وصل وحده «مقبوض فعلًا» — والورقةُ التي لم تُصرف سطرٌ باسمها لا تُجمع معه
         expect(screen.getByTestId('pay-state-paid')).toHaveTextContent('10.000');
-        expect(screen.getByTestId('pay-state-due')).toHaveTextContent('15.000');
+        expect(screen.getByTestId('pay-state-paid')).toHaveTextContent('المقبوض فعلًا');
         expect(screen.getByTestId('pay-state-cheque')).toHaveTextContent('10.000');
+        expect(screen.getByTestId('pay-state-cheque')).toHaveTextContent('لم يُصرف');
+        expect(screen.getByTestId('pay-state-due')).toHaveTextContent('5.000');
         expect(screen.getByTestId('pay-state-invoice')).toHaveTextContent('CINV-7');
+    });
+
+    it('ما سُدّ كلُّه بشيكٍ لم يُصرف: لا «مدفوع» ولا مقبوضٌ فعلًا', () => {
+        const p = pay({ label: 'مسدَّد بشيك تحت التحصيل', paid: 25, received: 0, cheque_pending: 25 });
+        const { container } = render(
+            <>
+                <PayStateBadges pay={p} />
+                <PayStateFacts pay={p} m={m} />
+            </>,
+        );
+
+        expect(screen.getByTestId('pay-state-label')).toHaveTextContent('مسدَّد بشيك تحت التحصيل');
+        expect(screen.queryByTestId('pay-state-paid')).toBeNull();
+        expect(screen.getByTestId('pay-state-cheque')).toHaveTextContent('25.000');
+        expect(container).not.toHaveTextContent(/^مدفوع$/);
+    });
+
+    it('وما سُدّ بعضُه بشيك: علامةُ الشيك بجانب «مدفوع جزئيًا»', () => {
+        render(<PayStateBadges pay={pay({ state: 'مدفوع جزئيًا', label: 'مدفوع جزئيًا', cheque_marker: 'شيك تحت التحصيل', paid: 10, received: 0, due: 15, cheque_pending: 10 })} />);
+
+        expect(screen.getByTestId('pay-state-label')).toHaveTextContent('مدفوع جزئيًا');
+        expect(screen.getByTestId('pay-state-cheque')).toHaveTextContent('شيك تحت التحصيل');
+    });
+
+    it('فاتورةٌ لطلبين ونصيبُ الطلب تقدير: تُقال الفاتورةُ بأرقامها، ولا يُنسب للطلب مال', () => {
+        const shared = pay({
+            state: 'مدفوع جزئيًا', label: 'مدفوع جزئيًا', estimated: true, paid: null, received: null, due: null, credited: null, returned: null, cheque_pending: null,
+            invoice: { id: 7, number: 'CINV-7', orders: 2, total: 50, paid: 30, received: 20, cheque_pending: 10, credited: 0, due: 20 },
+        });
+        render(<PayStateFacts pay={shared} m={m} />);
+
+        expect(screen.queryByTestId('pay-state-paid')).toBeNull();
+        expect(screen.queryByTestId('pay-state-due')).toBeNull();
+        expect(screen.getByTestId('pay-state-shared')).toHaveTextContent('2');
+        expect(screen.getByTestId('pay-state-invoice-received')).toHaveTextContent('20.000');
+        expect(screen.getByTestId('pay-state-invoice-cheque')).toHaveTextContent('10.000');
+        expect(screen.getByTestId('pay-state-invoice-due')).toHaveTextContent('20.000');
+    });
+
+    it('وعلامةُ إرجاعٍ على فاتورةٍ تجمعه بغيره تُقال «على الفاتورة»', () => {
+        render(<PayStateBadges pay={pay({ marker: 'مرتجع جزئيًا', marker_on: 'invoice', estimated: true, paid: null, due: null })} />);
+
+        expect(screen.getByTestId('pay-state-marker')).toHaveTextContent('مرتجع جزئيًا');
+        expect(screen.getByTestId('pay-state-marker')).toHaveTextContent('على الفاتورة');
     });
 
     it('طلبٌ ملغى قُبضت فاتورتُه: المالُ رصيدٌ للعميل يُقال', () => {

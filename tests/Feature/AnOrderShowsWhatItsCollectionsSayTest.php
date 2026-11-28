@@ -139,14 +139,19 @@ class AnOrderShowsWhatItsCollectionsSayTest extends TestCase
             ->firstWhere('number', $order->number)['pay_state'] ?? null;
         $strip = DocumentRenderer::saleStrip($this->shop->id, $order->load('items'),
             array_merge(DocumentTemplates::settings($this->shop->id, 'sale'), ['show_payment_status' => true]), 80);
-        $register = collect(SalesRegister::rows(Request::create('/admin/sales', 'GET')))
-            ->firstWhere('number', $order->number)['pay_state'] ?? null;
+        $row = collect(SalesRegister::rows(Request::create('/admin/sales', 'GET')))->firstWhere('number', $order->number);
+        $register = $row['pay_state'] ?? null;
+        $registerPay = $row['pay'] ?? null;
+        // وشاشةُ السجلّ نفسُها (صفحةٌ لا ملفّ) — ما يراه التاجر في الجدول
+        $screenRow = collect($this->get(route('admin.customerInvoices.sales'))->assertOk()->viewData('page')['props']['rows'])
+            ->firstWhere('number', $order->number);
+        $registerScreen = $screenRow['pay'] ?? null;
 
-        return compact('admin', 'pos', 'board', 'strip', 'register');
+        return compact('admin', 'pos', 'board', 'strip', 'register', 'registerPay', 'registerScreen');
     }
 
     /** كلُّ شاشةٍ تقول الشيءَ نفسَه — والسجلُّ معها */
-    private function assertSays(Order $order, string $state, float $paid, float $due, ?string $label = null, bool $onBoard = true): array
+    private function assertSays(Order $order, string $state, ?float $paid, ?float $due, ?string $label = null, bool $onBoard = true): array
     {
         $before = $this->written();
         $s = $this->screens($order);
@@ -157,10 +162,13 @@ class AnOrderShowsWhatItsCollectionsSayTest extends TestCase
             $this->assertNotNull($pay, "لا حالَ سدادٍ في «{$where}»");
             $this->assertSame($state, $pay['state'], "«{$where}» تقول حالًا أخرى");
             $this->assertSame($label, $pay['label'], "«{$where}» تكتب على الشارة غيرَ ما يُقال");
-            $this->assertSame(round($paid, 3), $pay['paid'], "«{$where}»: المقبوض");
-            $this->assertSame(round($due, 3), $pay['due'], "«{$where}»: المتبقّي");
+            $this->assertSame($paid === null ? null : round($paid, 3), $pay['paid'], "«{$where}»: المقبوض");
+            $this->assertSame($due === null ? null : round($due, 3), $pay['due'], "«{$where}»: المتبقّي");
         }
         $this->assertSame($state, $s['register'], 'سجلُّ كل المبيعات يقول غيرَ ما تقوله الشاشة');
+        // والسجلُّ يكتب على الشارة ما تكتبه الشاشات — الحالَ وعلامتيها ومبلغيها، بقاعدةٍ واحدة
+        $this->assertSame($s['admin'], $s['registerPay'], 'ملفُّ السجلّ يكتب على الشارة غيرَ ما تكتبه صفحةُ الطلب');
+        $this->assertSame($s['admin'], $s['registerScreen'], 'جدولُ السجلّ يكتب على الشارة غيرَ ما تكتبه صفحةُ الطلب');
         $this->assertStringContainsString('<td class="l">'.$label.'</td>', $s['strip'], 'الإيصال يطبع حالًا أخرى');
 
         return $s['admin'];
@@ -303,9 +311,9 @@ class AnOrderShowsWhatItsCollectionsSayTest extends TestCase
         $this->assertSays($order, OrderPaymentState::PAID, 25, 0, onBoard: false);
     }
 
-    /* ═══════════ ٨) الشيك: تحت التحصيل مسدَّدٌ ويُقال، والمرتجعُ ليس سدادًا ═══════════ */
+    /* ═══════════ ٨) الشيك: تحت التحصيل يُقال باسمه لا «مدفوع»، والمرتجعُ ليس شيئًا ═══════════ */
 
-    public function test_a_cheque_under_collection_is_paid_and_said_and_a_bounced_one_is_not(): void
+    public function test_a_cheque_under_collection_is_named_apart_from_money_received_and_a_bounced_one_counts_nothing(): void
     {
         $bank = BankAccount::create(['business_id' => $this->shop->id, 'bank_name' => 'بنك مسقط', 'label' => 'الرئيسي', 'active' => true, 'is_primary' => true]);
         $order = $this->cod();
@@ -313,27 +321,110 @@ class AnOrderShowsWhatItsCollectionsSayTest extends TestCase
         $cheque = $this->collect($invoice, 25, ['method' => 'شيك', 'bank_account_id' => $bank->id, 'occurred_at' => now()->toDateString()]);
         $this->assertSame(Cheques::PENDING, $cheque->cheque_status);
 
-        $pay = $this->assertSays($order, OrderPaymentState::PAID, 25, 0);
+        // قاعدةُ الدفتر لا تتغيّر: الحالُ «مدفوع» والباقي صفر — فلا يُطلب من المندوب شيء.
+        // والشارةُ لا تقول «مدفوع» عن ورقةٍ لم تُصرف: تقولها باسمها، والمقبوضُ فعلًا صفر
+        $pay = $this->assertSays($order, OrderPaymentState::PAID, 25, 0, OrderPaymentState::CHEQUE_SETTLED);
         $this->assertSame(25.0, $pay['cheque_pending']);
+        $this->assertSame(0.0, $pay['received']);
+        $this->assertSame(OrderPaymentState::PAID, $this->screens($order)['register'], 'مرشِّحُ السجلّ يبقى على قاعدة الدفتر');
+        $strip = $this->screens($order)['strip'];
+        $this->assertStringContainsString('data-pay="cheque"', $strip, 'الإيصال لا يقول الشيكَ باسمه');
+        $this->assertStringNotContainsString('data-pay="received"', $strip);
 
         Cheques::bounce($cheque->fresh(), 'رصيد غير كافٍ', $this->owner->id);
         $pay = $this->assertSays($order, OrderPaymentState::UNPAID, 0, 25);
         $this->assertSame(0.0, $pay['cheque_pending']);
+        $this->assertSame(0.0, $pay['received']);
+        $this->assertStringNotContainsString('data-pay="cheque"', $this->screens($order)['strip']);
     }
 
-    /* ═══════════ ٩) فاتورةٌ لطلبين — مالُها للأقدم أوّلًا ═══════════ */
+    public function test_a_partly_paid_invoice_with_a_pending_cheque_marks_it_and_a_cleared_cheque_becomes_money(): void
+    {
+        $bank = BankAccount::create(['business_id' => $this->shop->id, 'bank_name' => 'بنك مسقط', 'label' => 'الرئيسي', 'active' => true, 'is_primary' => true]);
+        $order = $this->cod();
+        $invoice = $this->invoice($order);
+        $cheque = $this->collect($invoice, 10, ['method' => 'شيك', 'bank_account_id' => $bank->id, 'occurred_at' => now()->toDateString()]);
 
-    public function test_an_invoice_for_two_orders_shares_its_money_oldest_first(): void
+        // سُدّ بعضُها بورقة: «مدفوع جزئيًا» وعلامةُ الشيك، والمقبوضُ فعلًا صفر، ويُحصَّل الباقي 15
+        $pay = $this->assertSays($order, OrderPaymentState::PARTIAL, 10, 15);
+        $this->assertSame(OrderPaymentState::CHEQUE_PENDING, $pay['cheque_marker']);
+        $this->assertSame(0.0, $pay['received']);
+        $this->assertSame(10.0, $pay['cheque_pending']);
+        $strip = $this->screens($order)['strip'];
+        $this->assertStringContainsString('data-pay="cheque"', $strip);
+        $this->assertStringContainsString('data-pay="due"', $strip);
+
+        $this->collect($invoice->fresh(), 15);
+        $pay = $this->assertSays($order, OrderPaymentState::PAID, 25, 0, OrderPaymentState::CHEQUE_SETTLED);
+        $this->assertNull($pay['cheque_marker']);
+        $this->assertSame(15.0, $pay['received']);
+        $this->assertSame(10.0, $pay['cheque_pending']);
+
+        // صُرفت الورقة: صار مالًا — «مدفوع»، والمقبوضُ فعلًا كلُّه
+        Cheques::clear($cheque->fresh(), now()->toDateString(), $bank->id, $this->owner->id);
+        $pay = $this->assertSays($order, OrderPaymentState::PAID, 25, 0);
+        $this->assertSame(25.0, $pay['received']);
+        $this->assertSame(0.0, $pay['cheque_pending']);
+    }
+
+    /* ═══════════ ٩) فاتورةٌ لطلبين — نصيبُ كلِّ طلبٍ تقديرٌ لا يُقال عنه ═══════════ */
+
+    public function test_an_invoice_for_two_orders_says_its_own_numbers_and_never_calls_one_order_paid_by_estimate(): void
     {
         $first = $this->cod();
         Carbon::setTestNow(Carbon::parse('2027-02-10 11:00:00', 'Asia/Muscat'));
         $second = $this->cod();
         $invoice = $this->invoice($first, $second);
+
+        // لم يُقبض منها شيء ولا إشعار: ما تقوله الفاتورة عن كلّ طلبٍ يُقال — إجماليُّه باقٍ
+        $pay = $this->assertSays($first, OrderPaymentState::UNPAID, 0, 25);
+        $this->assertFalse($pay['estimated']);
+        $this->assertSame(2, $pay['invoice']['orders']);
+
         $this->collect($invoice, 30);
 
-        // حالُ الفاتورة قاعدةُ السجلّ — ومبلغا كلِّ طلبٍ نصيبُه منها
-        $this->assertSays($first, OrderPaymentState::PARTIAL, 25, 0);
-        $this->assertSays($second, OrderPaymentState::PARTIAL, 5, 20);
+        // قُبض 30 من 50: توزيعُ «للأقدم أوّلًا» كان يقول الأوّلَ «مقبوضًا كلُّه» — وهو تقدير.
+        // فلا مبلغَ لطلبٍ بعينه، والحالُ حالُ الفاتورة، وأرقامُها تُقال
+        foreach ([$first, $second] as $order) {
+            $pay = $this->assertSays($order, OrderPaymentState::PARTIAL, null, null);
+            $this->assertTrue($pay['estimated']);
+            $this->assertNull($pay['received']);
+            $this->assertSame(['orders' => 2, 'total' => 50.0, 'paid' => 30.0, 'received' => 30.0, 'cheque_pending' => 0.0, 'credited' => 0.0, 'due' => 20.0],
+                array_intersect_key($pay['invoice'], array_flip(['orders', 'total', 'paid', 'received', 'cheque_pending', 'credited', 'due'])));
+            $strip = $this->screens($order)['strip'];
+            $this->assertStringContainsString('data-pay="invoice-due"', $strip, 'الإيصال لا يقول الباقي على الفاتورة');
+            $this->assertStringNotContainsString('data-pay="due"', $strip, 'الإيصال ينسب للطلب باقيًا مقدَّرًا');
+        }
+
+        // وما يجمعه السجلّ لم يتغيّر: المحصّلُ 30 والمتبقّي 20 — كلُّ مالٍ يُعدّ مرّة
+        $totals = SalesRegister::totals(Request::create('/admin/sales', 'GET'));
+        $this->assertSame(30.0, $totals['collected']);
+        $this->assertSame(20.0, $totals['outstanding']);
+
+        // سُدّت كلُّها بلا إشعار: ما تقوله الفاتورة عن كلّ طلب — مقبوضٌ كلُّه
+        $this->collect($invoice->fresh(), 20);
+        foreach ([$first, $second] as $order) {
+            $pay = $this->assertSays($order, OrderPaymentState::PAID, 25, 0);
+            $this->assertFalse($pay['estimated']);
+        }
+    }
+
+    public function test_a_return_on_a_shared_invoice_is_marked_on_the_invoice_not_on_one_order(): void
+    {
+        $first = $this->cod();
+        Carbon::setTestNow(Carbon::parse('2027-02-10 11:00:00', 'Asia/Muscat'));
+        $second = $this->cod();
+        $invoice = $this->invoice($first, $second);
+        $this->collect($invoice, 50);
+
+        // إرجاعُ 10 على الفاتورة: لا يُعرف من أيّ الطلبين — فالعلامةُ على الفاتورة، ولا يُسمّى أحدُهما «مرتجعًا»
+        CustomerInvoices::creditNote($invoice->fresh(), 10, 0, 'أعاد خاتمًا', $this->owner->id, basis: CustomerCreditNote::RETURN);
+        foreach ([$first, $second] as $order) {
+            $pay = $this->assertSays($order, OrderPaymentState::PAID, null, null);
+            $this->assertSame(OrderPaymentState::PARTLY_RETURNED, $pay['marker']);
+            $this->assertSame('invoice', $pay['marker_on']);
+            $this->assertNull($pay['returned']);
+        }
     }
 
     /* ═══════════ ١٠) فاتورةٌ أُلغيت: يعود الطلبُ إلى حاله ═══════════ */

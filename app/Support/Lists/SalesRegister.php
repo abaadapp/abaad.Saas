@@ -350,8 +350,9 @@ final class SalesRegister
     {
         $page = self::query($request, $fixedSource)->paginate($per)->withQueryString();
         $accounts = self::accounts(collect($page->items()));
+        $pays = self::pays(collect($page->items()));
 
-        return $page->through(fn ($r) => self::row($r, $accounts));
+        return $page->through(fn ($r) => self::row($r, $accounts, $pays));
     }
 
     /** الصفوفُ كلُّها بترتيبها — لورقة PDF والتصدير */
@@ -359,8 +360,43 @@ final class SalesRegister
     {
         $rows = self::query($request, $fixedSource)->get();
         $accounts = self::accounts($rows);
+        $pays = [];
+        foreach ($rows->chunk(self::PAY_CHUNK) as $chunk) {
+            $pays += self::pays($chunk);
+        }
 
-        return $rows->map(fn ($r) => self::row($r, $accounts))->all();
+        return $rows->map(fn ($r) => self::row($r, $accounts, $pays))->all();
+    }
+
+    /** كم صفًّا يُسأل عن حال سداده في سؤالٍ واحد — والتصديرُ يمرّ على السجلّ كلِّه بدفعاتٍ منه */
+    private const PAY_CHUNK = 500;
+
+    /**
+     * حالُ السداد كما تقوله صفحةُ الطلب والصندوقُ ولوحةُ التجهيز والإيصال — لكلّ صفّ.
+     *
+     * عمودُ `pay_state` يبقى حالَ القاعدة كما يرشّح بها السجلّ («مدفوع» يضمّ الشيكَ
+     * تحت التحصيل كما في الدفتر). وما يُكتب على الشارة من `OrderPaymentState`: علامةُ
+     * ما رُدّ، والشيكُ باسمه، والمقبوضُ فعلًا والباقي — أو أرقامُ الفاتورة حين يكون
+     * نصيبُ الطلب منها تقديرًا.
+     *
+     * @param  Collection<int, object>  $rows
+     * @return array<string, array<string, mixed>>  بمفتاح الصفّ (`order:12` · `invoice:7`)
+     */
+    private static function pays(Collection $rows): array
+    {
+        $bid = (int) (auth()->user()->business_id ?? Demo::bid());
+        $orders = $rows->where('kind', self::ORDER)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $invoices = $rows->where('kind', self::INVOICE)->mapWithKeys(fn ($r) => [(int) $r->id => (string) $r->pay_state])->all();
+
+        $out = [];
+        foreach (OrderPaymentState::forOrders($bid, $orders) as $id => $pay) {
+            $out[self::ORDER.':'.$id] = $pay;
+        }
+        foreach (OrderPaymentState::forInvoices($invoices) as $id => $pay) {
+            $out[self::INVOICE.':'.$id] = $pay;
+        }
+
+        return $out;
     }
 
     /**
@@ -392,7 +428,7 @@ final class SalesRegister
     }
 
     /** صفُّ الشاشة — وصفُّ الملفّ منه */
-    public static function row(object $r, array $accounts = []): array
+    public static function row(object $r, array $accounts = [], array $pays = []): array
     {
         $order = $r->kind === self::ORDER;
         $account = $order ? ($accounts[(int) $r->id] ?? null) : null;
@@ -422,6 +458,8 @@ final class SalesRegister
             'amount' => round((float) $r->amount, 3),
             'credited' => $r->credited !== null ? round((float) $r->credited, 3) : null,
             'pay_state' => $r->pay_state,
+            // وما يُكتب على الشارة: الحالُ ذاتُها مع علامة ما رُدّ والشيكِ والمبلغين (`pays`) — وإن غاب فالحال
+            'pay' => $pays[$r->kind.':'.$r->id] ?? null,
             // والمستندُ الذي يُحصَّل عليه — فاتورةٌ تغطّي الطلب
             'cover' => $order && $r->cover_id ? ['id' => (int) $r->cover_id, 'number' => $r->cover_number] : null,
             'prep' => $r->prep,
@@ -582,22 +620,26 @@ final class SalesRegister
                 __('الفاتورة') => Workbook::TEXT,
             ],
             rows: function () use ($request, $fixedSource) {
-                foreach (self::query($request, $fixedSource)->cursor() as $r) {
-                    $row = self::row($r);
-                    yield [
-                        'cells' => [
-                            $row['number'], __($row['type']), __($row['source_label']), $row['customer'],
-                            match ($row['seller_kind']) {
-                                'website' => __('الموقع الإلكتروني'),
-                                'unknown' => __('غير محدد'),
-                                default => $row['seller'],
-                            },
-                            $row['branch'] ?? '—', $row['date'], $row['amount'], __((string) $row['pay_state']),
-                            $row['prep'] !== null ? __($row['prep']) : '—', __((string) $row['status']),
-                            $row['cover']['number'] ?? '—',
-                        ],
-                        'fill' => $row['cancelled'] ? 'FEF3C7' : null,
-                    ];
+                foreach (self::query($request, $fixedSource)->cursor()->chunk(self::PAY_CHUNK) as $chunk) {
+                    $chunk = $chunk->collect();
+                    $pays = self::pays($chunk);
+                    foreach ($chunk as $r) {
+                        $row = self::row($r, [], $pays);
+                        yield [
+                            'cells' => [
+                                $row['number'], __($row['type']), __($row['source_label']), $row['customer'],
+                                match ($row['seller_kind']) {
+                                    'website' => __('الموقع الإلكتروني'),
+                                    'unknown' => __('غير محدد'),
+                                    default => $row['seller'],
+                                },
+                                $row['branch'] ?? '—', $row['date'], $row['amount'], self::payCell($row),
+                                $row['prep'] !== null ? __($row['prep']) : '—', __((string) $row['status']),
+                                $row['cover']['number'] ?? '—',
+                            ],
+                            'fill' => $row['cancelled'] ? 'FEF3C7' : null,
+                        ];
+                    }
                 }
             },
             totals: [
@@ -608,6 +650,17 @@ final class SalesRegister
                 [__('منها ملغاة'), $totals['cancelled'], Workbook::INT],
             ],
         );
+    }
+
+    /** خليّةُ السداد في الملفّ — ما على الشارة وعلامتاه، كما في الشاشة */
+    private static function payCell(array $row): string
+    {
+        $pay = $row['pay'];
+        if ($pay === null) {
+            return __((string) $row['pay_state']);
+        }
+
+        return implode(' · ', array_map(fn ($s) => __($s), array_filter([$pay['label'], $pay['marker'], $pay['cheque_marker']])));
     }
 
     /** المرشِّحاتُ الفعّالة كما يقرؤها التاجر */

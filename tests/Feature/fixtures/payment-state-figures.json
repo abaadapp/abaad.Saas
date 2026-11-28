@@ -1,0 +1,120 @@
+{
+    "register": {
+        "count": 6,
+        "sales": 105,
+        "collected": 60,
+        "outstanding": 45,
+        "cancelled": 1
+    },
+    "summary_period": {
+        "sales": 105,
+        "cogs": 25,
+        "gross_profit": 80,
+        "expenses": 0,
+        "profit": 80,
+        "tax": 0,
+        "in": 115,
+        "out": 0,
+        "transfers": 0
+    },
+    "transactions": {
+        "in": 115,
+        "out": 0,
+        "transfers": 0
+    },
+    "net_revenue": 105,
+    "trial_balance": [
+        [
+            "1100",
+            75,
+            0
+        ],
+        [
+            "1300",
+            150,
+            130
+        ],
+        [
+            "1350",
+            35,
+            25
+        ],
+        [
+            "1400",
+            5,
+            30
+        ],
+        [
+            "4100",
+            0,
+            40
+        ],
+        [
+            "4150",
+            25,
+            100
+        ],
+        [
+            "4900",
+            10,
+            0
+        ],
+        [
+            "5100",
+            30,
+            5
+        ]
+    ],
+    "balanced": 0,
+    "invoices": [
+        [
+            "صادرة",
+            25,
+            15,
+            10
+        ],
+        [
+            "صادرة",
+            50,
+            30,
+            10
+        ],
+        [
+            "صادرة",
+            25,
+            0,
+            25
+        ],
+        [
+            "صادرة",
+            25,
+            25,
+            0
+        ]
+    ],
+    "receivables": 45,
+    "customer_credit": 25,
+    "cheques": {
+        "pending_count": 1,
+        "pending_total": 10,
+        "overdue_count": 0,
+        "overdue_total": 0,
+        "soon_count": 0,
+        "bounced_count": 1
+    },
+    "payment_status": [
+        "غير مدفوع",
+        "غير مدفوع",
+        "غير مدفوع",
+        "مدفوع",
+        "غير مدفوع",
+        "غير مدفوع"
+    ],
+    "rows": {
+        "payments": 5,
+        "allocations": 5,
+        "transactions": 6,
+        "entries": 21,
+        "notes": 2
+    }
+}

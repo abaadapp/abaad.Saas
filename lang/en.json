@@ -11781,5 +11781,14 @@
     "منه مبيعات لم تُقبض عند بيعها": "Of which sales not collected at the time of sale",
     "المقبوض فعلًا من العملاء في المدة (من الدفتر)": "Actually received from customers in the period (from the ledger)",
     "الدخل المسجّل يكتب البيعة يوم بيعها ولو لم تُقبض بعد. والمقبوض فعلًا ما وصل الصندوق أو البنك من العملاء.": "Recorded income writes a sale on the day it is sold, even before it is collected. Actually received is what reached the cash box or bank from customers.",
-    "— المقبوض فعلًا في «الملخّص المالي».": "— actually received is in the “Financial summary”."
+    "— المقبوض فعلًا في «الملخّص المالي».": "— actually received is in the “Financial summary”.",
+    "مسدَّد بشيك تحت التحصيل": "Settled by a cheque awaiting clearance",
+    "شيك تحت التحصيل": "Cheque awaiting clearance",
+    "على الفاتورة": "on the invoice",
+    "الفاتورة تجمع طلبات": "Orders on this invoice",
+    "المقبوض فعلًا على الفاتورة": "Actually received on the invoice",
+    "شيك تحت التحصيل على الفاتورة — لم يُصرف": "Cheque awaiting clearance on the invoice — not cleared yet",
+    "المتبقّي على الفاتورة": "Remaining on the invoice",
+    "شيك تحت التحصيل — لم يُصرف": "Cheque awaiting clearance — not cleared yet",
+    "متبقٍّ على الفاتورة": "Remaining on invoice"
 }

@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckSquare, Clock, Gift, ListChecks, Package, Phone, Store, StickyNote, Truck, Wallet } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
-import { PayStateBadges } from '@/Components/OrderPaymentState';
+import { PayCollect, PayStateBadges } from '@/Components/OrderPaymentState';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { money } from '@/lib/format';
@@ -225,11 +225,7 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                     {o.pay_state ? (
                         <>
                             <PayStateBadges pay={o.pay_state} />
-                            {o.pay_state.state !== 'ملغى' && o.pay_state.due > 0 && (
-                                <span className="font-semibold tabular-nums text-[#b45309]" data-testid="prep-collect">
-                                    {t('يُحصَّل')}: {m(o.pay_state.due)}
-                                </span>
-                            )}
+                            <PayCollect pay={o.pay_state} m={m} />
                         </>
                     ) : (
                         o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>

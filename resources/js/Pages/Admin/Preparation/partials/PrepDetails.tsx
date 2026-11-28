@@ -3,7 +3,7 @@ import { router, usePage } from '@inertiajs/react';
 import { Check, Clock, Gift, History, MapPin, Pencil, Phone, Printer, RotateCcw, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
 import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
-import { PayStateBadges } from '@/Components/OrderPaymentState';
+import { PayCollect, PayStateBadges } from '@/Components/OrderPaymentState';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { money, number as fmt } from '@/lib/format';
@@ -391,11 +391,7 @@ export default function PrepDetails({
                             {o.pay_state ? (
                                 <>
                                     <PayStateBadges pay={o.pay_state} />
-                                    {o.pay_state.state !== 'ملغى' && o.pay_state.due > 0 && (
-                                        <span className="font-semibold tabular-nums text-[#b45309]" data-testid="prep-collect">
-                                            {t('يُحصَّل')}: {m(o.pay_state.due)}
-                                        </span>
-                                    )}
+                                    <PayCollect pay={o.pay_state} m={m} />
                                 </>
                             ) : (
                                 o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>

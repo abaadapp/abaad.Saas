@@ -275,8 +275,31 @@
         والحالُ من تحصيلاته (`OrderPaymentState`) — لا الحقلُ الذي كُتب يومَ البيع: إيصالُ
         طلبٍ قُبضت فاتورتُه يُطبع «مدفوع» لا «غير مدفوع». وطلبُ المعاينة لم يُحفظ، فحقلُه.
     --}}
+    {{--
+        وتحتها ما قُبض فعلًا وما بقي — فلا يُحصّل أحدٌ مالًا قُبض. والشيكُ الذي لم يُصرف
+        سطرٌ باسمه لا «مقبوض». وطلبٌ تجمعه فاتورةٌ بغيره لا يُنسب له مال: يُطبع الباقي
+        على الفاتورة. وطلبٌ قُبض كلُّه لا يُزاد سطر: الحالُ تكفي.
+    --}}
     @if ($show('tpl_show_payment_status', false) && filled($order->payment_status))
-        <tr><td class="k">{{ __('حالة الدفع') }}</td><td class="l">{{ __($order->exists ? \App\Support\OrderPaymentState::of($order)['label'] : $order->payment_status) }}</td></tr>
+        @php($pay = $order->exists ? \App\Support\OrderPaymentState::of($order) : null)
+        <tr><td class="k">{{ __('حالة الدفع') }}</td><td class="l">{{ __($pay ? $pay['label'] : $order->payment_status) }}</td></tr>
+        @if ($pay && $pay['state'] !== \App\Support\OrderPaymentState::VOID)
+            @if ($pay['estimated'])
+                @if (($pay['invoice']['due'] ?? 0) > 0)
+                    <tr data-pay="invoice-due"><td class="k">{{ __('المتبقّي على الفاتورة') }} <span dir="ltr">{{ $pay['invoice']['number'] }}</span></td><td class="l"><span dir="ltr">{{ $money($pay['invoice']['due']) }}</span></td></tr>
+                @endif
+            @else
+                @if ($pay['due'] > 0 && $pay['received'] > 0)
+                    <tr data-pay="received"><td class="k">{{ __('المقبوض فعلًا') }}</td><td class="l"><span dir="ltr">{{ $money($pay['received']) }}</span></td></tr>
+                @endif
+                @if ($pay['cheque_pending'] > 0)
+                    <tr data-pay="cheque"><td class="k">{{ __('شيك تحت التحصيل — لم يُصرف') }}</td><td class="l"><span dir="ltr">{{ $money($pay['cheque_pending']) }}</span></td></tr>
+                @endif
+                @if ($pay['due'] > 0)
+                    <tr data-pay="due"><td class="k">{{ __('المتبقّي على العميل') }}</td><td class="l"><span dir="ltr">{{ $money($pay['due']) }}</span></td></tr>
+                @endif
+            @endif
+        @endif
     @endif
     @if (($order->points_earned ?? 0) > 0)
         <tr><td class="k">{{ __('نقاط ولاء مكتسبة') }}</td><td class="l" dir="ltr">{{ $order->points_earned }}</td></tr>

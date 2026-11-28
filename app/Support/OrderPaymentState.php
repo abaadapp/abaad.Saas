@@ -65,6 +65,19 @@ final class OrderPaymentState
 
     public const PARTLY_REFUNDED = 'مسترد جزئيًا';
 
+    /**
+     * فاتورةٌ سُدّت وبعضُ سدادها شيكٌ لم يُصرف — لا «مدفوع».
+     *
+     * الدفترُ يعدّ الشيكَ «تحت التحصيل» مسدِّدًا (`CustomerInvoice::paidSql`): الذمّةُ
+     * خرجت من العميل إلى الورقة. وتلك قاعدةٌ محاسبيّة لا تُمسّ قبل اعتماد المحاسب. لكنّ
+     * المال لم يصل، فلا تُكتب الشارةُ «مدفوع» عنه: تُقال الورقةُ باسمها، ولا يُطلب من
+     * المندوب أن يحصّل شيئًا (الباقي صفر — الورقةُ في يد التاجر).
+     */
+    public const CHEQUE_SETTLED = 'مسدَّد بشيك تحت التحصيل';
+
+    /** وفاتورةٌ سُدّ بعضُها، وفي ما سُدّ شيكٌ لم يُصرف — علامةٌ بجانب «مدفوع جزئيًا» */
+    public const CHEQUE_PENDING = 'شيك تحت التحصيل';
+
     /** الفاتورةُ التي تغطّي الطلب — أقدمُ فاتورةٍ غيرِ ملغاة تضمّه */
     public static function joinCover(Builder $q, string $o = 'o'): Builder
     {
@@ -188,10 +201,30 @@ final class OrderPaymentState
     }
 
     /**
-     * حالُ طلباتٍ كثيرة بأسئلةٍ معدودة — للوحة التجهيز وما يعرض قائمة.
+     * حالُ طلباتٍ كثيرة بأسئلةٍ معدودة — للوحة التجهيز والسجلّ وما يعرض قائمة.
+     *
+     * ═══ وما لا يُعرف لطلبٍ بعينه لا يُقال عنه ═══
+     *
+     * فاتورةٌ تجمع طلبين يُحصَّل عليها مالٌ واحد، والتخصيصُ للفاتورة لا للطلب. فتوزيعُ
+     * «للأقدم أوّلًا» (`coveredShares`) تقديرٌ يُجمَع به السجلّ — لا دليلٌ أنّ هذا الطلب
+     * بعينه قُبض. فإن كان التقديرُ يقول شيئًا لا تقوله الفاتورة (`estimated`):
+     *
+     *   - لا يُقال للطلب مقبوضٌ ولا متبقٍّ (`paid` و`due` وأخواتُهما `null`)؛
+     *   - وتُقال الفاتورةُ بأرقامها: المقبوضُ والمتبقّي عليها، وكم طلبًا تجمع (`invoice`)؛
+     *   - والحالُ حالُ الفاتورة كما كانت (قاعدةُ السجلّ): «مدفوع جزئيًا» عن الطلبين معًا.
+     *
+     * وما تقوله الفاتورةُ عن كلّ طلبٍ فيها يُقال: فاتورةٌ لم يُقبض منها شيءٌ ولا إشعارَ
+     * عليها — كلُّ طلبٍ إجماليُّه باقٍ. وفاتورةٌ سُدّت بلا إشعار — كلُّ طلبٍ مقبوضٌ كلُّه.
+     *
+     * ═══ والشيكُ تحت التحصيل ═══
+     *
+     * مسدِّدٌ كما في الدفتر (لا تتغيّر القاعدة)، لكنّه يُفصل عن المال المقبوض فعلًا:
+     * `received` ما وصل، و`cheque_pending` الورقةُ التي لم تُصرف. والفاتورةُ التي سُدّت
+     * وفيها ورقةٌ كهذه تُكتب «مسدَّد بشيك تحت التحصيل» لا «مدفوع» (`CHEQUE_SETTLED`)،
+     * والتي سُدّ بعضُها تحمل علامة «شيك تحت التحصيل». والمرتجعُ من البنك لا يُعدّ شيئًا.
      *
      * @param  array<int, int>  $orderIds
-     * @return array<int, array{state: string, label: string, marker: ?string, paid: float, due: float, credited: float, returned: float, refunded: float, cheque_pending: float, customer_credit: float, invoice: ?array{id: int, number: string}}>
+     * @return array<int, array<string, mixed>>
      */
     public static function forOrders(int $businessId, array $orderIds): array
     {
@@ -221,50 +254,67 @@ final class OrderPaymentState
             ->groupBy('order_id')->selectRaw('order_id, COALESCE(SUM(amount), 0) as s')->pluck('s', 'order_id');
 
         $invoiceIds = $rows->pluck('cover_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
-
-        // ما قُبض بشيكٍ لم يُصرف بعد — مسدَّدٌ في الدفتر، ويُقال للتاجر
-        $cheques = $invoiceIds === [] ? collect() : DB::table('customer_payment_allocations as a')
-            ->join('customer_payments as p', 'p.id', '=', 'a.customer_payment_id')
-            ->whereIn('a.customer_invoice_id', $invoiceIds)
-            ->whereNull('p.cancelled_at')->where('p.cheque_status', Cheques::PENDING)
-            ->groupBy('a.customer_invoice_id')->selectRaw('a.customer_invoice_id as id, COALESCE(SUM(a.amount), 0) as s')->pluck('s', 'id');
-
-        // وطلبٌ ملغى قُبضت فاتورتُه وحدَه: مالُه بقي رصيدًا للعميل حتى يُردّ بيد التاجر
-        $alone = $invoiceIds === [] ? collect() : DB::table('customer_invoice_orders')
-            ->whereIn('customer_invoice_id', $invoiceIds)->groupBy('customer_invoice_id')
-            ->selectRaw('customer_invoice_id as id, COUNT(*) as n')->pluck('n', 'id');
-        $invoicePaid = $invoiceIds === [] ? collect() : DB::table('customer_invoices')->whereIn('id', $invoiceIds)
-            ->selectRaw('id, '.CustomerInvoice::paidSql().' as paid')->pluck('paid', 'id');
+        $invoices = self::invoiceFacts($invoiceIds);
 
         $out = [];
         foreach ($rows as $r) {
             $id = (int) $r->id;
-            $share = $shares[$id] ?? null;
             $total = round((float) $r->total, 3);
-            $paid = $r->paid === null ? (float) ($share['paid'] ?? 0) : (float) $r->paid;
-            $due = $r->due === null ? (float) ($share['due'] ?? 0) : (float) $r->due;
-            $credited = (float) ($share['credited'] ?? 0);
-            $returned = (float) ($share['returned'] ?? 0);
-            $refunded = round((float) ($refunds[$id] ?? 0), 3);
-            $cover = $r->cover_id ? (int) $r->cover_id : null;
             $state = (string) $r->pay_state;
+            $cover = $r->cover_id ? (int) $r->cover_id : null;
+            $inv = $cover ? ($invoices[$cover] ?? null) : null;
+            $share = $shares[$id] ?? null;
+            $refunded = round((float) ($refunds[$id] ?? 0), 3);
+
+            // فاتورةٌ تجمع أكثرَ من طلبٍ حيّ: ما يخصّ كلَّ طلبٍ منها تقديرٌ — إلّا ما تقوله الفاتورة
+            $shared = $inv !== null && $state !== self::VOID && $inv['orders'] > 1;
+            $estimated = $shared && ! ($inv['manual_credited'] <= 0.0005 && ($inv['paid'] <= 0.0005 || $inv['due'] <= 0.0005));
+
+            if ($estimated) {
+                $paid = $due = $credited = $returned = $cheque = null;
+            } else {
+                $paid = round($r->paid === null ? (float) ($share['paid'] ?? 0) : (float) $r->paid, 3);
+                $due = round(max(0.0, $r->due === null ? (float) ($share['due'] ?? 0) : (float) $r->due), 3);
+                $credited = round((float) ($share['credited'] ?? 0), 3);
+                $returned = round((float) ($share['returned'] ?? 0), 3);
+                // ورقةُ الفاتورة لطلبها وحده — وفي فاتورةٍ لطلبين لا تُنسب لأحدهما
+                $cheque = $inv !== null && ! $shared ? $inv['cheque_pending'] : 0.0;
+                // ولا يزيد على ما قُبض للطلب: الفاتورةُ قد تحمل مالًا فوق باقيها
+                $cheque = round(min($cheque, $paid), 3);
+            }
 
             $marker = null;
+            $markerOn = null;
             $label = $state;
             if ($state !== self::VOID) {
-                if ($returned > 0.0005) {
-                    // ولا يبقى من قيمته شيءٌ مبيع: إشعاراتُه — وفيها إرجاع — بلغت إجماليَّه
-                    $whole = $credited >= $total - 0.0005;
+                $returnedOn = $shared ? $inv['manual_returned'] : (float) $returned;
+                if ($returnedOn > 0.0005) {
+                    // ولا يبقى من قيمته شيءٌ مبيع: إشعاراتُه — وفيها إرجاع — بلغت إجماليَّه.
+                    // وفي فاتورةٍ لطلبين لا يُسمّى طلبٌ «مرتجعًا» كلُّه إلّا إن رُدّت الفاتورةُ كلُّها
+                    $whole = $shared ? $inv['manual_credited'] >= $inv['live_total'] - 0.0005 : $credited >= $total - 0.0005;
                     $marker = $whole ? self::RETURNED : self::PARTLY_RETURNED;
+                    $markerOn = $shared && ! $whole ? 'invoice' : 'order';
                 } elseif ($refunded > 0.0005) {
                     // الطلبُ نقص بالتصحيح: إجماليُّه اليومَ ما بقي، والمردودُ فوقه
                     $whole = $total <= 0.0005;
                     $marker = $whole ? self::REFUNDED : self::PARTLY_REFUNDED;
+                    $markerOn = 'order';
                 }
                 // وما رُدّ كلُّه يُسمّى باسمه — لا «مدفوع» عن مالٍ لم يبقَ منه شيء
                 if ($marker === self::RETURNED || $marker === self::REFUNDED) {
                     $label = $marker;
-                    $marker = null;
+                    $marker = $markerOn = null;
+                }
+            }
+
+            // الشيكُ تحت التحصيل: يُقال باسمه — على الشارة إن سُدّ به ما بقي، وعلامةً إن سُدّ بعضُه
+            $chequeOn = $inv === null || $state === self::VOID ? 0.0 : ($shared ? $inv['cheque_pending'] : (float) $cheque);
+            $chequeMark = null;
+            if ($chequeOn > 0.0005) {
+                if ($label === self::PAID) {
+                    $label = self::CHEQUE_SETTLED;
+                } elseif ($state === self::PARTIAL) {
+                    $chequeMark = self::CHEQUE_PENDING;
                 }
             }
 
@@ -272,24 +322,128 @@ final class OrderPaymentState
                 'state' => $state,
                 'label' => $label,
                 'marker' => $marker,
-                'paid' => round($paid, 3),
-                'due' => round(max(0.0, $due), 3),
-                'credited' => round($credited, 3),
-                'returned' => round($returned, 3),
+                // على من تقع العلامة: الطلبُ نفسُه، أم فاتورتُه التي تجمعه بغيره
+                'marker_on' => $markerOn,
+                'cheque_marker' => $chequeMark,
+                'estimated' => $estimated,
+                'paid' => $paid,
+                // ما وصل فعلًا — ما قُبض ناقصًا الورقةَ التي لم تُصرف
+                'received' => $paid === null ? null : round($paid - (float) $cheque, 3),
+                'due' => $due,
+                'credited' => $credited,
+                'returned' => $returned,
                 'refunded' => $refunded,
-                'cheque_pending' => $cover ? round((float) ($cheques[$cover] ?? 0), 3) : 0.0,
-                'customer_credit' => $state === self::VOID && $cover && (int) ($alone[$cover] ?? 0) === 1
-                    ? round((float) ($invoicePaid[$cover] ?? 0), 3) : 0.0,
-                'invoice' => $cover ? ['id' => $cover, 'number' => (string) $r->cover_number] : null,
+                'cheque_pending' => $cheque,
+                'customer_credit' => $state === self::VOID && $inv !== null && $inv['members'] === 1 ? $inv['paid'] : 0.0,
+                'invoice' => $inv === null ? null : [
+                    'id' => $cover,
+                    'number' => (string) $r->cover_number,
+                    // كم طلبًا حيًّا تجمع — وأرقامُها هي إن جمعت أكثرَ من طلب
+                    'orders' => $inv['orders'],
+                    'total' => $inv['total'],
+                    'paid' => $inv['paid'],
+                    'received' => round($inv['paid'] - $inv['cheque_pending'], 3),
+                    'cheque_pending' => $inv['cheque_pending'],
+                    'credited' => $inv['credited'],
+                    'due' => $inv['due'],
+                ],
             ];
         }
 
         return $out;
     }
 
+    /**
+     * حالُ فواتيرَ مستقلّة كما يعرضها السجلّ — الشارةُ والمقبوضُ فعلًا والورقةُ والباقي.
+     *
+     * الحالُ نفسُها من السجلّ (`$state`)، وما يُضاف هنا ما يُفصل به الشيكُ عن المال.
+     *
+     * @param  array<int, string>  $states  الحالُ لكلّ فاتورة كما حسبها السجلّ
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forInvoices(array $states): array
+    {
+        $facts = self::invoiceFacts(array_keys($states));
+        $out = [];
+        foreach ($states as $id => $state) {
+            $inv = $facts[(int) $id] ?? null;
+            $live = $inv !== null && $state !== self::VOID;
+            $cheque = $live ? $inv['cheque_pending'] : 0.0;
+            $label = $state;
+            $mark = null;
+            if ($cheque > 0.0005) {
+                if ($state === self::PAID) {
+                    $label = self::CHEQUE_SETTLED;
+                } elseif ($state === self::PARTIAL) {
+                    $mark = self::CHEQUE_PENDING;
+                }
+            }
+            $out[(int) $id] = [
+                'state' => $state,
+                'label' => $label,
+                'marker' => null,
+                'marker_on' => null,
+                'cheque_marker' => $mark,
+                'estimated' => false,
+                'paid' => $live ? $inv['paid'] : 0.0,
+                'received' => $live ? round($inv['paid'] - $cheque, 3) : 0.0,
+                'due' => $live ? $inv['due'] : 0.0,
+                'cheque_pending' => $cheque,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * أرقامُ الفاتورة كما يقرؤها الدفتر — سؤالٌ واحدٌ لكلّ الفواتير.
+     *
+     * @param  array<int, int>  $invoiceIds
+     * @return array<int, array{total: float, paid: float, credited: float, manual_credited: float, manual_returned: float, due: float, cheque_pending: float, orders: int, members: int, live_total: float}>
+     */
+    private static function invoiceFacts(array $invoiceIds): array
+    {
+        if ($invoiceIds === []) {
+            return [];
+        }
+
+        $cancelled = "'".OrderStatus::CANCELLED."'";
+        $manual = "n.customer_invoice_id = customer_invoices.id AND n.source = '".CustomerInvoices::NOTE_MANUAL."'";
+        $members = 'FROM customer_invoice_orders l JOIN orders mo ON mo.id = l.order_id WHERE l.customer_invoice_id = customer_invoices.id';
+
+        return DB::table('customer_invoices')->whereIn('id', $invoiceIds)
+            ->selectRaw(implode(', ', [
+                'id', 'total',
+                CustomerInvoice::paidSql().' as paid',
+                CustomerInvoice::creditedSql().' as credited',
+                CustomerInvoice::outstandingSql().' as outstanding',
+                "(SELECT COALESCE(SUM(n.amount), 0) FROM customer_credit_notes n WHERE {$manual}) as manual_credited",
+                "(SELECT COALESCE(SUM(n.amount), 0) FROM customer_credit_notes n WHERE {$manual} AND n.basis = '".CustomerCreditNote::RETURN."') as manual_returned",
+                // ما قُبض بشيكٍ لم يُصرف بعد — مسدَّدٌ في الدفتر، ويُقال للتاجر باسمه
+                '(SELECT COALESCE(SUM(a.amount), 0) FROM customer_payment_allocations a JOIN customer_payments p ON p.id = a.customer_payment_id'
+                    ." WHERE a.customer_invoice_id = customer_invoices.id AND p.cancelled_at IS NULL AND p.cheque_status = '".Cheques::PENDING."') as cheque_pending",
+                "(SELECT COUNT(*) {$members} AND mo.status <> {$cancelled}) as live_orders",
+                "(SELECT COUNT(*) {$members}) as member_orders",
+                "(SELECT COALESCE(SUM(mo.total), 0) {$members} AND mo.status <> {$cancelled}) as live_total",
+            ]))->get()
+            ->mapWithKeys(fn ($i) => [(int) $i->id => [
+                'total' => round((float) $i->total, 3),
+                'paid' => round((float) $i->paid, 3),
+                'credited' => round((float) $i->credited, 3),
+                'manual_credited' => round((float) $i->manual_credited, 3),
+                'manual_returned' => round((float) $i->manual_returned, 3),
+                'due' => round(max(0.0, (float) $i->outstanding), 3),
+                'cheque_pending' => round((float) $i->cheque_pending, 3),
+                'orders' => (int) $i->live_orders,
+                'members' => (int) $i->member_orders,
+                'live_total' => round((float) $i->live_total, 3),
+            ]])->all();
+    }
+
     private static function blank(): array
     {
-        return ['state' => self::PAID, 'label' => self::PAID, 'marker' => null, 'paid' => 0.0, 'due' => 0.0, 'credited' => 0.0,
-            'returned' => 0.0, 'refunded' => 0.0, 'cheque_pending' => 0.0, 'customer_credit' => 0.0, 'invoice' => null];
+        return ['state' => self::PAID, 'label' => self::PAID, 'marker' => null, 'marker_on' => null, 'cheque_marker' => null, 'estimated' => false,
+            'paid' => 0.0, 'received' => 0.0, 'due' => 0.0, 'credited' => 0.0, 'returned' => 0.0, 'refunded' => 0.0, 'cheque_pending' => 0.0,
+            'customer_credit' => 0.0, 'invoice' => null];
     }
 }

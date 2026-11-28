@@ -294,6 +294,8 @@ class ExpenseController extends Controller
                 'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
                 'method' => $expense->method,
                 'type' => 'مصروف',
+                // وورقةُ البوتيك تُسمّى بنوعها — وسائرُ المصروفات كما كانت
+                'kind' => $sheet ? Transaction::BOUTIQUE_SHEET : null,
                 'amount' => $amount,
                 'employee_name' => $expense->employee_name,
                 'occurred_at' => $accrued ? now() : $expense->spent_at,
@@ -310,6 +312,13 @@ class ExpenseController extends Controller
          * يقابله من مصروفات المحلّ، فيُقرأ ربحٌ لم يتحقّق.
          */
         Books::recordExpense($expense->fresh());
+
+        // وحركةُ سداد ورقة البوتيك تحمل قيدَها — فلا تُقرأ «غير مُرحَّلة» وقيدُها في الدفتر
+        if ($sheet && $expense->transaction_id) {
+            Transaction::whereKey($expense->transaction_id)->update([
+                'journal_entry_id' => Books::liveEntriesFor($expense)->last()?->id,
+            ]);
+        }
     }
 
     /**

@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
 use App\Models\Product;
+use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -634,7 +635,7 @@ class BoutiqueDues
             $at ??= now();
             $net = round((float) $s->components_net, 3);
 
-            Ledger::post(
+            $entry = Ledger::post(
                 (int) $s->business_id,
                 __('سداد مستحقّات مكوّنات — ورقة ').$s->number,
                 array_values(array_filter([
@@ -645,7 +646,12 @@ class BoutiqueDues
                 $at, self::SOURCE, null, PosCashier::id() ?? auth()->id(), $s,
             );
 
-            $s->update(['components_paid_at' => $at, 'components_method' => $method]);
+            // ومالٌ خرج صفُّه في «الحركات»، مرتبطًا بقيده — وما قاصّه رصيدٌ كلَّه لم يخرج به مال
+            // (ولا يُكتب والمفتاحُ مطفأ — `BoutiqueMovements::writesCash`: يبقى القيدُ كما كان وحده)
+            $row = $net > 0 && BoutiqueMovements::writesCash() ? BoutiqueMovements::cash((int) $s->business_id, Transaction::BOUTIQUE_PIECES, $net, $method,
+                __('سداد قطع بوتيك :name — ورقة :number', ['name' => (string) $s->boutique?->name, 'number' => $s->number]), $at, $entry) : null;
+
+            $s->update(['components_paid_at' => $at, 'components_method' => $method, 'transaction_id' => $row?->id]);
         });
     }
 
@@ -701,7 +707,7 @@ class BoutiqueDues
 
             self::offset((int) $doc->id, $plan);
 
-            Ledger::post(
+            $entry = Ledger::post(
                 (int) $business->id,
                 __('استرداد من :name — سند ', ['name' => $boutique->name]).$doc->number,
                 [
@@ -710,6 +716,12 @@ class BoutiqueDues
                 ],
                 $at, self::SOURCE, null, PosCashier::id() ?? auth()->id(), $doc,
             );
+
+            // ومالٌ دخل صفُّه في «الحركات» — إن كان المفتاحُ مشغَّلًا (`BoutiqueMovements::writesCash`)
+            if (BoutiqueMovements::writesCash()) {
+                $doc->update(['transaction_id' => BoutiqueMovements::cash((int) $business->id, Transaction::BOUTIQUE_REFUND, $amount, $method,
+                    __('استرداد رصيد من بوتيك :name — سند :number', ['name' => $boutique->name, 'number' => $doc->number]), $at, $entry)->id]);
+            }
 
             Activity::log('created', 'استرداد من بوتيك '.$boutique->name.' بمبلغ '.$amount.($employee ? ' — '.$employee : ''), [
                 'business_id' => $business->id, 'subject_id' => $doc->id, 'subject_type' => 'boutique_settlement',

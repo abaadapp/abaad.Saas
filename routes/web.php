@@ -869,6 +869,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/products/boutiques/sales', [BoutiqueController::class, 'sales'])->name('boutiques.sales');
     Route::get('/products/boutiques/sales/summary', [BoutiqueController::class, 'salesSummary'])->name('boutiques.sales.summary');
     Route::get('/products/boutiques/sales/orders/{order}', [BoutiqueController::class, 'salesOrder'])->whereNumber('order')->name('boutiques.sales.order');
+    Route::get('/products/boutiques/{id}/movements', [BoutiqueController::class, 'movements'])->whereNumber('id')->name('boutiques.movements');
     Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
     Route::put('/products/boutiques/{id}', [BoutiqueController::class, 'update'])->name('boutiques.update');
     Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');

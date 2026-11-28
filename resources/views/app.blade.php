@@ -17,6 +17,16 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/brand/abaad/favicon-192x192.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/brand/abaad/apple-touch-icon.png">
 
+    {{-- أبعاد تطبيقًا: «إضافة إلى الشاشة الرئيسية» على iPhone، و«تثبيت» على Android وChrome/Edge وSafari للحاسوب — فيفتح بلا شريط المتصفّح، والنطاقُ هو هو. وعلى نطاق النظام (APP_URL) وحده: التطبيقُ يفتح جذرَ النطاق الذي ثُبِّت منه، فلو أُعلن على نطاق متجرٍ لفتح المتجرَ باسم أبعاد --}}
+    @if (request()->getHost() === parse_url((string) config('app.url'), PHP_URL_HOST))
+        <link rel="manifest" href="/brand/abaad/manifest.webmanifest">
+        <meta name="theme-color" content="#ffffff">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="Abaad">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    @endif
+
     {{-- جدولُ مسارات هذه الواجهة وحدها — لا المساراتُ كلُّها في كلّ صفحة (`config/ziggy.php`، `RouteGroups`). والمتصفّحُ يضمّ مجموعةَ صفحةٍ أخرى قبل أن يرسمها (`lib/route-groups.ts`) --}}
     @php($routeGroup = \App\Support\RouteGroups::forRequest($page['component'] ?? null))
     <meta name="route-group" content="{{ $routeGroup }}">

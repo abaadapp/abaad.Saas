@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, History } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import { Card } from '@/Components/ui/card';
+import { useFromTo } from '@/lib/fromTo';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +47,7 @@ export interface InvoiceRevision {
  */
 export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceRevision[]; m: (v: number) => string }) {
     const t = useTranslate();
+    const fromTo = useFromTo();
     const [open, setOpen] = useState<number | null>(null);
 
     if (revisions.length === 0) {
@@ -77,7 +79,7 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                                 <bdi>{r.by ?? '—'}</bdi>
                                 <span dir="ltr">{r.at}</span>
                                 <span dir="ltr" className="tabular-nums">
-                                    {m(r.total_before)} ← {m(r.total_after)}
+                                    {fromTo(m(r.total_before), m(r.total_after))}
                                 </span>
                                 <ChevronDown className={cn('size-4 transition-transform', open === r.revision && 'rotate-180')} />
                             </span>
@@ -107,7 +109,7 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                             <div className="space-y-2 border-t border-[var(--ui-border,#e8e8e8)] p-3 text-[12px] text-[#4b4b4b]">
                                 {r.fields.map((f) => (
                                     <p key={f.field}>
-                                        <span className="font-medium">{f.label}:</span> <bdi>{f.before ?? '—'}</bdi> ← <bdi>{f.after ?? '—'}</bdi>
+                                        <span className="font-medium">{f.label}:</span> {fromTo(f.before ?? '—', f.after ?? '—')}
                                     </p>
                                 ))}
                                 {r.lines.map((l, i) => (
@@ -116,7 +118,7 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                                         <bdi>{(l.after ?? l.before)?.description}</bdi>
                                         {l.before && l.after && (
                                             <span dir="ltr" className="ms-1 tabular-nums">
-                                                ({l.before.quantity} × {l.before.unit_price} ← {l.after.quantity} × {l.after.unit_price})
+                                                ({fromTo(`${l.before.quantity} × ${l.before.unit_price}`, `${l.after.quantity} × ${l.after.unit_price}`)})
                                             </span>
                                         )}
                                     </p>
@@ -124,7 +126,7 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                                 <p>
                                     <span className="font-medium">{t('الضريبة')}:</span>{' '}
                                     <span dir="ltr" className="tabular-nums">
-                                        {m(r.tax_before)} ← {m(r.tax_after)}
+                                        {fromTo(m(r.tax_before), m(r.tax_after))}
                                     </span>
                                 </p>
                                 {r.paid_at_edit > 0 && (

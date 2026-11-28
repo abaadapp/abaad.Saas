@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { router } from '@inertiajs/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CorrectionRequests, { type CorrectionRequest } from '@/Pages/Admin/CustomerInvoices/partials/CorrectionRequests';
+import { pageProps } from './setup';
 
 /**
  * الاعتمادُ الثنائيّ من جهة الشاشة — ما يُرى من الطلب ومن يضغط ماذا.
@@ -102,6 +103,22 @@ describe('طلبُ التصحيح الماليّ', () => {
         expect(docs).toHaveTextContent('إشعار مدين');
         expect(docs).toHaveTextContent('21.000');
         expect(docs).not.toHaveTextContent('إشعار دائن');
+    });
+
+    it('السهمُ يتبع اتجاه الصفحة: ← بالعربيّة و→ بالإنجليزيّة، وكلُّ مبلغٍ معزول', () => {
+        const { unmount } = render(<CorrectionRequests requests={[request()]} m={m} />);
+        expect(screen.getByTestId('correction-requests').textContent).toContain('\u2068105.000\u2069 ← \u2068126.000\u2069');
+        unmount();
+
+        Object.assign(pageProps, { dir: 'ltr' });
+        try {
+            render(<CorrectionRequests requests={[request()]} m={m} />);
+            const text = screen.getByTestId('correction-requests').textContent ?? '';
+            expect(text).toContain('\u2068105.000\u2069 → \u2068126.000\u2069');
+            expect(text).not.toContain('←');
+        } finally {
+            delete (pageProps as Record<string, unknown>).dir;
+        }
     });
 
     it('والاستبدالُ يقول من أيّ عميلٍ إلى أيّ عميل — وبديلتَه بعد الاعتماد', () => {

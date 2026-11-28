@@ -11,6 +11,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { csrfHeaders } from '@/lib/csrf';
 import { money } from '@/lib/format';
 import { invoiceTotals } from '@/lib/invoice-totals';
+import { useFromTo } from '@/lib/fromTo';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -287,6 +288,7 @@ export default function CustomerInvoiceEdit() {
         }>
     >().props;
     const t = useTranslate();
+    const fromTo = useFromTo();
     const m = (v: number) => money(v, context!.currency);
     const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
     const correcting = invoice.kind !== 'draft';
@@ -445,7 +447,7 @@ export default function CustomerInvoiceEdit() {
                       ]
                           .filter(Boolean)
                           .join(' · ')
-                    : `${t('الإجمالي')} ${m(current.money.total_before)} ← ${m(current.money.total_after)}`;
+                    : `${t('الإجمالي')} ${fromTo(m(current.money.total_before), m(current.money.total_after))}`;
 
     const kindLabel: Record<string, string> = {
         draft: t('مسودة — لا قيد ولا ذمة ولا رقم ضريبي بعد'),
@@ -911,6 +913,7 @@ export function PlanPanel({
     m: (v: number) => string;
 }) {
     const t = useTranslate();
+    const fromTo = useFromTo();
 
     if (error) {
         return (
@@ -972,11 +975,11 @@ export function PlanPanel({
             )}
 
             <dl className="space-y-1.5">
-                <Row label={correcting ? t('المطلوب') : t('الإجمالي')} value={`${m(plan.money.total_before)} ← ${m(plan.money.total_after)}`} />
+                <Row label={correcting ? t('المطلوب') : t('الإجمالي')} value={fromTo(m(plan.money.total_before), m(plan.money.total_after))} />
                 <Row label={t('الفرق')} value={diff(plan.money.difference)} strong />
-                <Row label={t('الضريبة')} value={`${m(plan.money.tax_before)} ← ${m(plan.money.tax_after)}`} />
+                <Row label={t('الضريبة')} value={fromTo(m(plan.money.tax_before), m(plan.money.tax_after))} />
                 {plan.money.paid > 0 && <Row label={t('المقبوض — لا يتغير')} value={m(plan.money.paid)} />}
-                {correcting && <Row label={t('الباقي على العميل')} value={`${m(plan.money.outstanding_before)} ← ${m(plan.money.outstanding_after)}`} />}
+                {correcting && <Row label={t('الباقي على العميل')} value={fromTo(m(plan.money.outstanding_before), m(plan.money.outstanding_after))} />}
                 {plan.money.customer_credit > 0 && <Row label={t('يصير رصيدًا دائنًا للعميل')} value={m(plan.money.customer_credit)} strong />}
             </dl>
 
@@ -992,7 +995,7 @@ export function PlanPanel({
                     <ul className="space-y-1 text-[12px]" data-testid="plan-changes">
                         {plan.changes.map((c) => (
                             <li key={c.field}>
-                                <span className="font-medium">{c.label}:</span> <bdi>{c.before ?? '—'}</bdi> ← <bdi>{c.after ?? '—'}</bdi>
+                                <span className="font-medium">{c.label}:</span> {fromTo(c.before ?? '—', c.after ?? '—')}
                             </li>
                         ))}
                         {plan.lines.map((l, i) => (
@@ -1004,7 +1007,7 @@ export function PlanPanel({
                                 {l.before && l.after && (
                                     <span className="text-[#6b7280]">
                                         {' '}
-                                        ({l.before.quantity} × {l.before.unit_price} ← {l.after.quantity} × {l.after.unit_price})
+                                        ({fromTo(`${l.before.quantity} × ${l.before.unit_price}`, `${l.after.quantity} × ${l.after.unit_price}`)})
                                     </span>
                                 )}
                             </li>

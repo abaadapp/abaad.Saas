@@ -11978,7 +11978,7 @@
     "طلبات التصحيح": "Correction requests",
     "طلبات التصحيح المالي": "Financial correction requests",
     "تصحيحات الفواتير الصادرة والمدفوعة التي تنتظر اعتماد شخص ثانٍ، وما قُرّر فيها.": "Corrections to issued and paid invoices waiting for a second person's approval, and what was decided on them.",
-    "الاعتماد الثنائي مطفأ — التصحيحات تُحفظ مباشرة. يُشعله صاحب النشاط من الإعدادات ← صلاحيات الموظفين.": "Dual approval is off — corrections are saved directly. The business owner turns it on from Settings ← Staff permissions.",
+    "الاعتماد الثنائي مطفأ — التصحيحات تُحفظ مباشرة. يُشعله صاحب النشاط من الإعدادات ← صلاحيات الموظفين.": "Dual approval is off — corrections are saved directly. The business owner turns it on from Settings → Staff permissions.",
     "لا طلبات تصحيح.": "No correction requests.",
     "إرسال للاعتماد": "Send for approval",
     "يحتاج هذا التصحيح اعتماد شخص ثانٍ: يُرسل للاعتماد، ولا يتغيّر شيء في الفاتورة أو الدفتر أو المدفوعات حتى يعتمده موظف آخر يملك «اعتماد تصحيح مالي».": "This correction needs a second person's approval: it is sent for approval, and nothing changes in the invoice, the books or the payments until another employee holding «Approve a financial correction» approves it.",

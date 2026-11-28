@@ -4,6 +4,7 @@ import { Check, ShieldCheck, Undo2, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { useFromTo } from '@/lib/fromTo';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -64,6 +65,7 @@ export default function CorrectionRequests({
     showInvoice?: boolean;
 }) {
     const t = useTranslate();
+    const fromTo = useFromTo();
     const [rejecting, setRejecting] = useState<number | null>(null);
     const [why, setWhy] = useState('');
     const [busy, setBusy] = useState(false);
@@ -126,7 +128,7 @@ export default function CorrectionRequests({
                         {r.kind === 'customer_invoice_replace' ? (
                             <p data-testid="correction-replace">
                                 <span className="font-medium">{t('إلغاء وإصدار بديلة لعميل آخر')}:</span>{' '}
-                                <bdi>{r.summary.customer_before ?? '—'}</bdi> ← <bdi>{r.summary.customer_after ?? '—'}</bdi>
+                                {fromTo(r.summary.customer_before ?? '—', r.summary.customer_after ?? '—')}
                                 {r.summary.total !== undefined && (
                                     <>
                                         {' — '}
@@ -138,7 +140,7 @@ export default function CorrectionRequests({
                             <p className="tabular-nums" dir="auto">
                                 <span className="font-medium">{t('الإجمالي')}:</span>{' '}
                                 <span dir="ltr">
-                                    {m(r.summary.money.total_before)} ← {m(r.summary.money.total_after)} ({diff(r.summary.money.difference)})
+                                    {fromTo(m(r.summary.money.total_before), m(r.summary.money.total_after))} (<bdi>{diff(r.summary.money.difference)}</bdi>)
                                 </span>
                             </p>
                         )}
@@ -170,7 +172,7 @@ export default function CorrectionRequests({
                             <ul className="space-y-0.5 text-[12px] text-[#4b4b4b]">
                                 {(r.summary.changes ?? []).map((c) => (
                                     <li key={c.field}>
-                                        <span className="font-medium">{c.label}:</span> <bdi>{c.before ?? '—'}</bdi> ← <bdi>{c.after ?? '—'}</bdi>
+                                        <span className="font-medium">{c.label}:</span> {fromTo(c.before ?? '—', c.after ?? '—')}
                                     </li>
                                 ))}
                             </ul>

@@ -1821,6 +1821,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
     Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
     Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
+    // ويُسمّى طلبُ إشعارٍ صدر بلا طلب — بعد التحقّق، ولماذا (`CreditNoteOrders::link`)
+    Route::post('/customer-invoices/credit-notes/{note}/order', [CustomerInvoiceController::class, 'creditNoteOrder'])
+        ->whereNumber('note')->name('customerInvoices.creditNotes.order');
     Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
     /*
      * مرفقاتُ الفاتورة — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.

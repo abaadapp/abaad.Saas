@@ -1023,8 +1023,17 @@ final class CustomerInvoices
                 'created_by' => $userId,
             ]);
 
-            // وما صُرف عليها من نقاطٍ يعود بنسبة ما رُدّ — في المعاملة نفسِها
+            // وما صُرف عليها من نقاطٍ يعود بحصّة ما رُدّ من بنوده — في المعاملة نفسِها
             self::returnPointsForCredit($invoice, $note);
+
+            /*
+             * وما كسبه العميلُ عليها بسداد رابطٍ يتبع صافيَ مشترياته بعد الإشعار
+             * (`InvoiceLoyalty::followNet`). وإشعارُ إلغاء طلبٍ لا: نقاطُ الطلب يعكسها
+             * تصحيحُ الطلب نفسُه (`OrderCorrection`).
+             */
+            if ($source !== self::NOTE_ORDER_CANCELLED) {
+                InvoiceLoyalty::followNet($invoice, -$amount, 'cn:'.$note->id, 'إشعار دائن '.$note->number, $userId);
+            }
 
             /*
              * والقيدُ يتبع المصدر.
@@ -1146,6 +1155,13 @@ final class CustomerInvoices
             Activity::log('created', 'أصدر إشعار مدين '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number, [
                 'subject_id' => $note->id, 'subject_type' => 'customer_debit_note',
             ]);
+
+            /*
+             * ولا يمنح الإشعارُ المدين نقاطًا مستبدلة ولا مكتسبة بنفسه: الزيادةُ تُكسب
+             * نقاطُها حين تُسدَّد برابط، بالقاعدة نفسِها (`InvoiceLoyalty::decide`). وما
+             * سُحب من المكتسَب بإشعارٍ دائنٍ قبله يعود إن عاد الصافي فوق المدفوع.
+             */
+            InvoiceLoyalty::followNet($invoice, $amount, 'dn:'.$note->id, 'إشعار مدين '.$note->number, $userId);
 
             return $note;
         });
@@ -1782,11 +1798,49 @@ final class CustomerInvoices
             return;
         }
 
-        $credited = round((float) CustomerCreditNote::where('customer_invoice_id', $locked->id)->sum('amount'), 3);
-        $give = self::pointsDueBack($spent, $credited, (float) $locked->total) - self::pointsReturned($locked);
+        $give = self::pointsDueBackFor($locked, $spent) - self::pointsReturned($locked);
 
         self::givePoints($locked, $give, self::redeemKey($locked).':cn:'.$note->id,
-            'إعادة نقاط مستبدلة بنسبة إشعار الدائن '.$note->number.' — فاتورة '.$locked->number);
+            'إعادة نقاط مستبدلة بحصة ما رُدّ في إشعار الدائن '.$note->number.' — فاتورة '.$locked->number);
+    }
+
+    /**
+     * كم يحقّ للعميل أن يعود إليه من نقاطٍ صرفها على الورقة — حتى الآن، تراكميًّا.
+     *
+     * ═══ بحصّة البنود لا بنسبة المبلغ ═══
+     *
+     * خصمُ النقاط موزَّعٌ على البنود (`loyalty_discount`)، والتصحيحُ يُنقص حصّةَ كلّ بندٍ
+     * بنسبة ما بقي منه (`CustomerInvoiceEdits::pointsShareFollows`) — والبندُ الذي أضافه
+     * إشعارٌ مدين لا حصّةَ له. فيعود من المصروف بقدر ما نقص من الحصص:
+     *
+     *     المصروف × (الحصصُ كما صدرت − الحصصُ الآن) ÷ الحصصُ كما صدرت
+     *
+     * فبندٌ أُضيف بإشعارٍ مدين ثمّ رُدّ بدائنٍ لا يعيد نقطة: لم يُصرف عليه شيء. وكانت
+     * النسبةُ من المبلغ (ما رُدّ ÷ إجماليّ الورقة) تعيد نصفَ النقاط على ردّ بندٍ كهذا.
+     *
+     * والإشعارُ الدائن اليدويّ بمبلغٍ بلا بنود لا يُعرف بندُه: يبقى بنسبة مبلغه من
+     * إجماليّ الورقة كما كان. والمجموعُ لا يتجاوز المصروف، والقسمةُ بالبيسات الصحيحة.
+     */
+    public static function pointsDueBackFor(CustomerInvoice $invoice, int $spent): int
+    {
+        if ($spent <= 0) {
+            return 0;
+        }
+
+        $issued = (int) round(((float) $invoice->items()->sum('loyalty_discount')) * 1000);
+        $byShare = 0;
+        // والحالُ الآن من آخر تصحيح — وبلا تصحيحٍ هي البنودُ كما صدرت، فلا يعود منها شيء.
+        // (ولا يُسأل عدّادُ الورقة: التصحيحُ يكتب مراجعتَه ويصدر إشعاره قبل أن يتقدّم العدّاد)
+        if ($issued > 0) {
+            $now = (int) round(array_sum(array_map(fn ($l) => (float) ($l['loyalty_discount'] ?? 0), CustomerInvoiceEdits::state($invoice)['lines'])) * 1000);
+            $byShare = BigInteger::of($spent)->multipliedBy(max(0, $issued - $now))->quotient($issued)->toInt();
+        }
+
+        // وما رُدّ بإشعارٍ يدويٍّ بلا تصحيح — بنسبة مبلغه كما كان
+        $manual = round((float) CustomerCreditNote::where('customer_invoice_id', $invoice->id)->whereNull('revision_id')
+            ->where('source', '<>', self::NOTE_ORDER_CANCELLED)->sum('amount'), 3);
+
+        return min($spent, $byShare + self::pointsDueBack($spent, $manual, (float) $invoice->total));
     }
 
     /**

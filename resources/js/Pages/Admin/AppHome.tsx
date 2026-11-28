@@ -4,6 +4,7 @@ import { ClipboardList, LayoutDashboard, Link2, ReceiptText, RefreshCw, Users, t
 import Logo from '@/Components/Logo';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { useTranslate } from '@/lib/i18n';
+import { isPhone } from '@/lib/installed-app';
 import type { PageProps } from '@/types';
 
 /**
@@ -54,18 +55,7 @@ export function AppLinks({ links }: { links: AppLink[] }) {
     );
 }
 
-/**
- * هاتفٌ أم آيباد وحاسوب — بأقصر ضلعَي الشاشة نفسِها.
- *
- * أكبرُ هاتفٍ أقصرُ ضلعيه نحو ٤٤٠ نقطة، وأصغرُ آيباد (mini) ٧٤٤، فالحدُّ
- * ٦٠٠ بينهما بسعة. ولا يُقاس عرضُ النافذة: هاتفٌ مُدارٌ عرضُه ٩٣٢،
- * وحاسوبٌ نافذتُه مصغّرة يبقى حاسوبًا. ولا User-Agent: iPadOS يقول إنّه Mac.
- */
-export const PHONE_SHORT_SIDE_BELOW = 600;
-
-export function isPhone(screen: { width: number; height: number } = window.screen): boolean {
-    return Math.min(screen.width, screen.height) < PHONE_SHORT_SIDE_BELOW;
-}
+export { isPhone } from '@/lib/installed-app';
 
 export default function AppHome({ cards, links, fullUrl }: { cards: Stat[]; links: AppLink[]; fullUrl: string }) {
     const t = useTranslate();
@@ -84,7 +74,8 @@ export default function AppHome({ cards, links, fullUrl }: { cards: Stat[]; link
 
     /*
      * التطبيقُ المثبَّت على iPhone لا يُسحب للتحديث: الأرقامُ تُجدَّد حين
-     * يعود إلى الشاشة، وبالزرّ. والبطاقاتُ وحدها — الأزرارُ لا تتغيّر.
+     * يعود إلى الشاشة، وبالزرّ. ومعها الأزرار: صلاحيّةٌ سُحبت والتطبيقُ
+     * مفتوح لا يبقى زرُّها يردّ بـ403.
      */
     useEffect(() => {
         if (!phone) {
@@ -92,7 +83,7 @@ export default function AppHome({ cards, links, fullUrl }: { cards: Stat[]; link
         }
         const refresh = () => {
             if (document.visibilityState === 'visible') {
-                router.reload({ only: ['cards'] });
+                router.reload({ only: ['cards', 'links'] });
             }
         };
         document.addEventListener('visibilitychange', refresh);
@@ -114,7 +105,7 @@ export default function AppHome({ cards, links, fullUrl }: { cards: Stat[]; link
                     <div className="flex shrink-0 items-center gap-3">
                         <button
                             type="button"
-                            onClick={() => router.reload({ only: ['cards'] })}
+                            onClick={() => router.reload({ only: ['cards', 'links'] })}
                             aria-label={t('تحديث')}
                             className="grid size-10 place-items-center rounded-full border border-gray-200 bg-white text-gray-500"
                         >

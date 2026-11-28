@@ -207,4 +207,31 @@ class TheSystemInstallsAsAnAppTest extends TestCase
         $this->assertGreaterThan(0, $inked, 'لا علامةَ فيها');
         $this->assertSame(0, $outside, 'حبرٌ خارج الدائرة الآمنة: يُقصّ على Android');
     }
+
+    /* ═════════════════════ بلا تخزين: كلُّ نشرٍ يصل ═════════════════════ */
+
+    /**
+     * لا عاملَ خدمة (service worker) ولا تخزينَ صفحاتٍ في المتصفّح.
+     *
+     * التطبيقُ المثبَّت يطلب كلَّ صفحةٍ من الخادم كما يطلبها المتصفّح، فكلُّ
+     * نشرٍ يصله بلا إعادة تثبيت، ولا تُحفظ أرقامُ مالٍ ولا بيعٌ في ذاكرةٍ
+     * تسبق الخادم. وطابورُ الصندوق دون اتّصال (IndexedDB) شأنٌ آخر لم يُمسّ.
+     */
+    public function test_nothing_caches_pages_between_a_deploy_and_the_installed_app(): void
+    {
+        $guilty = [];
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(resource_path('js'), \FilesystemIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            $source = File::get($file->getPathname());
+            if (preg_match('/serviceWorker|\bcaches\.(open|match|add)/', $source)) {
+                $guilty[] = $file->getFilename();
+            }
+        }
+        $this->assertSame([], $guilty, 'تخزينٌ يقف بين النشر والتطبيق');
+
+        foreach (['sw.js', 'service-worker.js', 'serviceworker.js', 'brand/abaad/sw.js'] as $worker) {
+            $this->assertFileDoesNotExist(public_path($worker));
+        }
+        $this->assertArrayNotHasKey('serviceworker', $this->manifest());
+    }
 }

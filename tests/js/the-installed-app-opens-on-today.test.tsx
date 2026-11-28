@@ -52,11 +52,11 @@ describe('the installed app opens on today', () => {
         expect(screen.queryByRole('link')).toBeNull();
     });
 
-    it('refreshes only the cards — by the button and when the app comes back to the screen', () => {
+    it('refreshes the cards and the buttons — by the button and when the app comes back to the screen', () => {
         render(<AppHome cards={cards} links={links} fullUrl="/admin/dashboard" />);
 
         act(() => screen.getByRole('button', { name: 'تحديث' }).click());
-        expect(router.reload).toHaveBeenLastCalledWith({ only: ['cards'] });
+        expect(router.reload).toHaveBeenLastCalledWith({ only: ['cards', 'links'] });
 
         vi.mocked(router.reload).mockClear();
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
@@ -65,7 +65,7 @@ describe('the installed app opens on today', () => {
 
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
         act(() => document.dispatchEvent(new Event('visibilitychange')));
-        expect(router.reload).toHaveBeenCalledWith({ only: ['cards'] });
+        expect(router.reload).toHaveBeenCalledWith({ only: ['cards', 'links'] });
     });
 
     it('tells a phone from an iPad or a laptop by the shorter side of the screen, either way round', () => {

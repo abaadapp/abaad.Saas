@@ -171,4 +171,78 @@ class TheInstalledAppOpensOnTodayTest extends TestCase
         $this->assertSame(route('login'), Permissions::homeFor($nobody->refresh()));
         $this->actingAs($nobody)->get('/app')->assertForbidden();
     }
+
+    /* ═════════════════════ الدخول والخروج وتبدّل الصلاحيّات ═════════════════════ */
+
+    /** من يدخل من التطبيق المثبَّت يعود إلى `/app` — ومنها إلى مكانه هو */
+    public function test_signing_in_from_the_installed_app_returns_to_its_door(): void
+    {
+        $owner = $this->user('admin');
+        $this->post(route('login.attempt'), ['email' => $owner->email, 'password' => 'password', 'installed' => true])
+            ->assertRedirect(route('admin.dashboard.app'));
+        $this->post(route('logout'));
+
+        // ومن المتصفّح العاديّ: بابُه كما كان
+        $this->post(route('login.attempt'), ['email' => $owner->email, 'password' => 'password'])
+            ->assertRedirect(Permissions::homeFor($owner));
+        $this->post(route('logout'));
+
+        // والكاشيرُ: إلى `/app` ثمّ نقطةِ البيع — لا يُعطيه الرجوعُ أكثرَ من بابه
+        $cashier = $this->user('cashier');
+        $this->post(route('login.attempt'), ['email' => $cashier->email, 'password' => 'password', 'installed' => true])
+            ->assertRedirect(route('admin.dashboard.app'));
+        $this->get('/app')->assertRedirect(route('pos.index'));
+    }
+
+    /** ومديرُ المنصّة لا متجرَ له في `/app` — إلى منصّته */
+    public function test_the_platform_admin_signing_in_from_the_app_goes_to_the_platform(): void
+    {
+        $admin = User::create([
+            'business_id' => null, 'name' => 'مدير المنصة', 'email' => 'root@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
+        ]);
+
+        $this->post(route('login.attempt'), ['email' => $admin->email, 'password' => 'password', 'installed' => true])
+            ->assertRedirect(route('super-admin.dashboard'));
+    }
+
+    /** خرج صاحبُ النشاط ودخل موظّفٌ على الجهاز نفسِه: صلاحيّاتُ الموظّف من أوّل طلب */
+    public function test_another_account_on_the_same_device_sees_only_its_own_at_once(): void
+    {
+        $owner = $this->user('admin');
+        $clerk = $this->user('sales');
+
+        $this->post(route('login.attempt'), ['email' => $owner->email, 'password' => 'password', 'installed' => true]);
+        $this->assertSame(['orders', 'customers', 'paymentLink', 'sales'], array_column($this->get('/app')->viewData('page')['props']['links'], 'key'));
+
+        $this->post(route('logout'));
+        $this->assertGuest();
+
+        $this->post(route('login.attempt'), ['email' => $clerk->email, 'password' => 'password', 'installed' => true]);
+        $links = $this->get('/app')->assertOk()->viewData('page')['props']['links'];
+        $this->assertSame(['orders', 'customers', 'sales'], array_column($links, 'key'));
+        $this->get(route('admin.finance.paymentLinks'))->assertForbidden();
+    }
+
+    /**
+     * وصلاحيّةٌ تتبدّل والتطبيقُ مفتوح تسري من الطلب التالي.
+     *
+     * الصلاحيّاتُ تُقرأ مع كلّ طلب، لا تُحفظ في الجهاز: سُحب قسمٌ فاختفى زرُّه
+     * وردّت صفحتُه بـ403، وسُحبت «لوحة التحكم» فصار `/app` يحوّله إلى صفحته.
+     */
+    public function test_a_permission_changed_while_the_app_is_open_applies_on_the_next_request(): void
+    {
+        $clerk = $this->user('sales');
+        $clerk->forceFill(['permissions' => ['dashboard', 'orders', 'customers']])->save();
+        $this->actingAs($clerk);
+
+        $this->assertSame(['orders', 'customers', 'sales'], array_column($this->get('/app')->viewData('page')['props']['links'], 'key'));
+
+        $clerk->forceFill(['permissions' => ['dashboard', 'orders']])->save();
+        $this->assertSame(['orders', 'sales'], array_column($this->get('/app')->viewData('page')['props']['links'], 'key'));
+        $this->get(route('admin.customers.index'))->assertForbidden();
+
+        $clerk->forceFill(['permissions' => ['orders']])->save();
+        $this->get('/app')->assertRedirect(Permissions::homeFor($clerk->refresh()));
+    }
 }

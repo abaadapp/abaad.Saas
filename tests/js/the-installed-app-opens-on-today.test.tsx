@@ -1,7 +1,7 @@
 import { router } from '@inertiajs/react';
 import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import AppHome, { AppLinks } from '@/Pages/Admin/AppHome';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import AppHome, { AppLinks, isPhone } from '@/Pages/Admin/AppHome';
 
 /**
  * `/app` — شاشةُ التطبيق المثبَّت: أرقامُ اليوم، وأزرارُ ما أرسله الخادم، و«النظام كاملًا».
@@ -20,8 +20,20 @@ const links = [
     { key: 'paymentLink', label: 'رابط دفع', url: '/admin/finance/payment-links' },
 ];
 
+/** شاشةُ الجهاز نفسِه — jsdom يقول ٠×٠، أي هاتفًا */
+function onScreen(width: number, height: number) {
+    Object.defineProperty(window, 'screen', { configurable: true, value: { width, height } });
+}
+
 describe('the installed app opens on today', () => {
-    beforeEach(() => vi.mocked(router.reload).mockClear());
+    beforeEach(() => {
+        vi.mocked(router.reload).mockClear();
+        vi.mocked(router.visit).mockClear();
+        onScreen(390, 844);
+    });
+    afterEach(() => {
+        delete (window as { screen?: unknown }).screen;
+    });
 
     it('shows today\'s numbers, the buttons it was sent, and the way to the full system', () => {
         render(<AppHome cards={cards} links={links} fullUrl="/admin/dashboard" />);
@@ -54,5 +66,33 @@ describe('the installed app opens on today', () => {
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
         act(() => document.dispatchEvent(new Event('visibilitychange')));
         expect(router.reload).toHaveBeenCalledWith({ only: ['cards'] });
+    });
+
+    it('tells a phone from an iPad or a laptop by the shorter side of the screen, either way round', () => {
+        expect(isPhone({ width: 390, height: 844 })).toBe(true);
+        expect(isPhone({ width: 932, height: 430 })).toBe(true);
+        expect(isPhone({ width: 744, height: 1133 })).toBe(false);
+        expect(isPhone({ width: 1366, height: 1024 })).toBe(false);
+        expect(isPhone({ width: 1440, height: 900 })).toBe(false);
+    });
+
+    it('stays on the simple screen on a phone', () => {
+        render(<AppHome cards={cards} links={links} fullUrl="/admin/dashboard" />);
+
+        expect(router.visit).not.toHaveBeenCalled();
+        expect(screen.getByText('12.500 ر.ع')).toBeInTheDocument();
+    });
+
+    it('opens the full system in place of the simple screen on an iPad or a laptop', () => {
+        for (const [width, height] of [[820, 1180], [1440, 900]]) {
+            vi.mocked(router.visit).mockClear();
+            onScreen(width, height);
+            const { unmount } = render(<AppHome cards={cards} links={links} fullUrl="/admin/dashboard" />);
+
+            expect(router.visit).toHaveBeenCalledWith('/admin/dashboard', { replace: true });
+            expect(screen.queryByText('12.500 ر.ع')).toBeNull();
+            expect(screen.queryByRole('link')).toBeNull();
+            unmount();
+        }
     });
 });

@@ -54,15 +54,42 @@ export function AppLinks({ links }: { links: AppLink[] }) {
     );
 }
 
+/**
+ * هاتفٌ أم آيباد وحاسوب — بأقصر ضلعَي الشاشة نفسِها.
+ *
+ * أكبرُ هاتفٍ أقصرُ ضلعيه نحو ٤٤٠ نقطة، وأصغرُ آيباد (mini) ٧٤٤، فالحدُّ
+ * ٦٠٠ بينهما بسعة. ولا يُقاس عرضُ النافذة: هاتفٌ مُدارٌ عرضُه ٩٣٢،
+ * وحاسوبٌ نافذتُه مصغّرة يبقى حاسوبًا. ولا User-Agent: iPadOS يقول إنّه Mac.
+ */
+export const PHONE_SHORT_SIDE_BELOW = 600;
+
+export function isPhone(screen: { width: number; height: number } = window.screen): boolean {
+    return Math.min(screen.width, screen.height) < PHONE_SHORT_SIDE_BELOW;
+}
+
 export default function AppHome({ cards, links, fullUrl }: { cards: Stat[]; links: AppLink[]; fullUrl: string }) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
+    const phone = isPhone();
+
+    /*
+     * الآيبادُ والحاسوبُ يتّسعان للنظام كلِّه: تُستبدل هذه الصفحةُ باللوحة
+     * (`replace` — فلا يرجع «للخلف» إلى بابٍ يعيده إليها).
+     */
+    useEffect(() => {
+        if (!phone) {
+            router.visit(fullUrl, { replace: true });
+        }
+    }, [phone, fullUrl]);
 
     /*
      * التطبيقُ المثبَّت على iPhone لا يُسحب للتحديث: الأرقامُ تُجدَّد حين
      * يعود إلى الشاشة، وبالزرّ. والبطاقاتُ وحدها — الأزرارُ لا تتغيّر.
      */
     useEffect(() => {
+        if (!phone) {
+            return;
+        }
         const refresh = () => {
             if (document.visibilityState === 'visible') {
                 router.reload({ only: ['cards'] });
@@ -71,7 +98,11 @@ export default function AppHome({ cards, links, fullUrl }: { cards: Stat[]; link
         document.addEventListener('visibilitychange', refresh);
 
         return () => document.removeEventListener('visibilitychange', refresh);
-    }, []);
+    }, [phone]);
+
+    if (!phone) {
+        return <div className="min-h-dvh bg-[#f7f8f9]" aria-busy />;
+    }
 
     return (
         <div className="admin-ui min-h-dvh bg-[#f7f8f9]">

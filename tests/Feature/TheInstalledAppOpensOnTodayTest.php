@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -21,7 +22,8 @@ use Tests\TestCase;
  *     تقوله اللوحة (`Demo::todayCards` من دوالّ `adminStats`).
  *   - الزرُّ لا يُرسل لمن لا يفتح صفحتَه، وكلُّ زرٍّ يُرسل يفتح فعلًا عبر
  *     النواة بوسطائها — لا بابَ يردّ بـ403 في تطبيقٍ لا شريطَ رجوعٍ فيه.
- *   - و`/app` تحرسها صلاحيّةُ «لوحة التحكم» نفسُها.
+ *   - ومن لا يملك «لوحة التحكم» يُحوَّل إلى صفحته (الكاشيرُ إلى نقطة البيع).
+ *     والآيبادُ والحاسوبُ يُحوَّلان إلى اللوحة في الواجهة (`AppHome.tsx`).
  */
 class TheInstalledAppOpensOnTodayTest extends TestCase
 {
@@ -137,12 +139,36 @@ class TheInstalledAppOpensOnTodayTest extends TestCase
         }
     }
 
-    public function test_the_app_is_guarded_by_the_dashboard_permission(): void
+    /**
+     * من لا يرى اللوحة يُحوَّل إلى صفحته — لا ٤٠٣ ولا شاشةُ الأرقام.
+     *
+     * الكاشيرُ يثبّت التطبيقَ على آيباد الصندوق فيفتح على نقطة البيع، ومن
+     * مُنح الطلبات والعملاء وحدهما يفتح على أوّل قسمٍ له. والوجهةُ تفتح
+     * فعلًا، ولا تعود إلى `/app`.
+     */
+    public function test_whoever_may_not_see_the_dashboard_is_sent_to_their_own_page(): void
     {
-        $user = $this->user('sales');
-        $user->forceFill(['permissions' => ['orders', 'customers']])->save();
+        $cashier = $this->user('cashier');
+        $this->actingAs($cashier)->get('/app')->assertRedirect(route('pos.index'));
 
-        $this->assertFalse($user->refresh()->allows('dashboard'));
-        $this->actingAs($user)->get('/app')->assertForbidden();
+        $clerk = $this->user('sales');
+        $clerk->forceFill(['permissions' => ['orders', 'customers']])->save();
+        $this->assertFalse($clerk->refresh()->allows('dashboard'));
+
+        $home = Permissions::homeFor($clerk);
+        $this->assertStringNotContainsString('/app', $home);
+        $this->assertNotSame(route('admin.dashboard'), $home);
+        $this->actingAs($clerk)->get('/app')->assertRedirect($home);
+        $this->actingAs($clerk)->get($home)->assertOk();
+    }
+
+    /** وحسابٌ بلا وجهةٍ يُرفض — لا يدور بين `/app` والدخول */
+    public function test_an_account_with_nowhere_to_go_is_refused_not_looped(): void
+    {
+        $nobody = $this->user('sales');
+        $nobody->forceFill(['permissions' => []])->save();
+
+        $this->assertSame(route('login'), Permissions::homeFor($nobody->refresh()));
+        $this->actingAs($nobody)->get('/app')->assertForbidden();
     }
 }

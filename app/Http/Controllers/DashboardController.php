@@ -46,6 +46,22 @@ class DashboardController extends Controller
     public function app(Request $request)
     {
         $user = $request->user();
+
+        /*
+         * من لا يرى اللوحة يُحوَّل إلى صفحته — لا ٤٠٣.
+         *
+         * وهو سؤالُ الوسيطين `panel` و`ability` على هذا الاسم بالحرف: يدخل
+         * اللوحةَ بأقسامه، ويملك قسمَ «لوحة التحكم». و`homeFor` لا يردّه إلى
+         * هنا أبدًا: لا يعطي اللوحةَ إلّا لمن اجتاز هذا الشرط. وحسابٌ بلا
+         * وجهةٍ (`homeFor` = الدخول) يُرفض بدل أن يدور بين بابين.
+         */
+        if (! Permissions::entersBySections($user) || ! $user->allows('dashboard')) {
+            $home = Permissions::homeFor($user);
+            abort_if($home === route('login'), 403, __('ليس لديك صلاحية الوصول إلى هذه الصفحة.'));
+
+            return redirect()->to($home);
+        }
+
         $opens = fn (string $route) => ($action = Permissions::routeAction($route)) !== null
             ? $user->may($action)
             : $user->allows(Permissions::sectionFromRoute($route));

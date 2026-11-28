@@ -156,6 +156,11 @@ final class CustomerInvoiceEdits
      */
     public static function standing(CustomerInvoice $invoice): array
     {
+        // ومفتاحُ الإيقاف قبل كلّ شيء — مسودّةً كانت أو صادرة (`InvoiceCorrectionsSwitch`)
+        if (! InvoiceCorrectionsSwitch::on()) {
+            return ['paused' => InvoiceCorrectionsSwitch::pausedReason()];
+        }
+
         if (self::kind($invoice) === CustomerInvoiceRevision::DRAFT) {
             return [];
         }
@@ -388,9 +393,19 @@ final class CustomerInvoiceEdits
 
         $invoice->loadMissing('items', 'orders', 'preparation');
 
-        return $invoice->status === CustomerInvoice::DRAFT
+        $plan = $invoice->status === CustomerInvoice::DRAFT
             ? self::planDraft($invoice, $input, $user)
             : self::planCorrection($invoice, $input, $user);
+
+        /*
+         * ومفتاحُ الإيقاف مانعٌ أوّل — والحفظُ (`apply`) يردّ أوّلَ مانع، فلا يُكتب شيء.
+         * والمعاينةُ تعرضه فلا يُفاجأ أحدٌ بعد أن يكتب تصحيحه.
+         */
+        if (! InvoiceCorrectionsSwitch::on() && ! in_array(InvoiceCorrectionsSwitch::pausedReason(), $plan['blockers'], true)) {
+            $plan['blockers'] = [InvoiceCorrectionsSwitch::pausedReason(), ...$plan['blockers']];
+        }
+
+        return $plan;
     }
 
     /**
@@ -483,6 +498,10 @@ final class CustomerInvoiceEdits
      */
     public static function replace(CustomerInvoice $invoice, Customer $customer, string $reason, User $user): CustomerInvoice
     {
+        if (! InvoiceCorrectionsSwitch::on()) {
+            throw new RuntimeException(InvoiceCorrectionsSwitch::pausedReason());
+        }
+
         $bid = (int) $invoice->business_id;
 
         $actions = [Permissions::CUSTOMER_INVOICE_CANCEL, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED];

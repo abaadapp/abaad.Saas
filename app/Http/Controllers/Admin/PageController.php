@@ -22,6 +22,7 @@ use App\Support\BranchGoogle;
 use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
+use App\Support\FinancialCorrections;
 use App\Support\Emojis;
 use App\Support\InvoiceBranding;
 use App\Support\Lists\InMemory;
@@ -1141,6 +1142,15 @@ class PageController extends Controller
                 ->map(fn ($m, $k) => ['key' => $k, 'label' => __($m['label']), 'unit' => $m['unit'], 'section' => $m['section']])
                 ->values()->all(),
             'alertSections' => Permissions::sectionLabels(),
+            /*
+             * والاعتمادُ الثنائيّ: يُشعله صاحبُ النشاط وحده، ويُقال له كم موظّفًا
+             * غيرَه يعتمد — مفتاحٌ يُشعل ولا أحدَ غيرُه يعتمد يُوقف تصحيحاته هو،
+             * فيردّه الخادم (`SettingController::dualApprovalRefusal`) وتقوله الشاشة قبله.
+             */
+            'dualApproval' => [
+                'owner' => Permissions::isOwner(auth()->user()),
+                'others' => FinancialCorrections::approvers(Demo::bid(), auth()->id()),
+            ],
             // قسم «صلاحيات الموظفين»: الموظفون الفعليون وحالة صلاحية كلٍّ منهم
             'staffPermissions' => User::where('business_id', Demo::bid())
                 ->where('role', '!=', 'super_admin')->orderBy('name')->get()

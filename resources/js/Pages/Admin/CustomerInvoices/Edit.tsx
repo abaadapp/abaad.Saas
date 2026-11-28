@@ -176,6 +176,8 @@ interface Plan {
     needs_basis: boolean;
     missing: string[];
     blockers: string[];
+    /** الاعتمادُ الثنائيّ مُشعل والتصحيحُ يمسّ المال — يُرسل طلبًا ولا يُنفَّذ (`FinancialCorrections::gate`) */
+    approval?: { required: boolean };
 }
 
 interface LineShown {
@@ -475,7 +477,7 @@ export default function CustomerInvoiceEdit() {
                         </Button>
                         <Button type="button" className="hidden xl:inline-flex" disabled={!ready || saving} onClick={save} data-testid="edit-save">
                             <Save />
-                            {correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
+                            {current?.approval?.required ? t('إرسال للاعتماد') : correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
                         </Button>
                     </>
                 }
@@ -821,7 +823,7 @@ export default function CustomerInvoiceEdit() {
                     </Button>
                     <Button type="button" disabled={!ready || saving} onClick={save} data-testid="edit-save-bar">
                         <Save />
-                        {correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
+                        {current?.approval?.required ? t('إرسال للاعتماد') : correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
                     </Button>
                 </div>
             </div>
@@ -954,6 +956,11 @@ export function PlanPanel({
                 </div>
             )}
             {!plan.changed && <p className="text-[#6b7280]">{t('لم يتغيّر شيء في الفاتورة.')}</p>}
+            {plan.approval?.required && (
+                <p className="rounded-lg border border-[#bfdbfe] bg-[#eff6ff] p-3 text-[#1e40af]" data-testid="plan-approval">
+                    {t('يحتاج هذا التصحيح اعتماد شخص ثانٍ: يُرسل للاعتماد، ولا يتغيّر شيء في الفاتورة أو الدفتر أو المدفوعات حتى يعتمده موظف آخر يملك «اعتماد تصحيح مالي».')}
+                </p>
+            )}
 
             {correcting && (plan.documents.credit || plan.documents.debit) && (
                 <div className="space-y-2" data-testid="plan-documents">

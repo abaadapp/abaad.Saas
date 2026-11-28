@@ -8,6 +8,7 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceItem;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPaymentLink;
+use App\Models\FinancialCorrection;
 use App\Models\PointTransaction;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -380,7 +381,7 @@ final class CustomerInvoiceEdits
      * @param  array<string, mixed>  $input  ما مرّ من `rules()`
      * @return array<string, mixed>
      */
-    public static function plan(CustomerInvoice $invoice, array $input, ?User $user): array
+    public static function plan(CustomerInvoice $invoice, array $input, ?User $user, ?FinancialCorrection $approving = null): array
     {
         if ($invoice->status === CustomerInvoice::CANCELLED) {
             throw new RuntimeException(__('الفاتورة ملغاة — لا تُعدَّل.'));
@@ -388,9 +389,12 @@ final class CustomerInvoiceEdits
 
         $invoice->loadMissing('items', 'orders', 'preparation');
 
-        return $invoice->status === CustomerInvoice::DRAFT
+        $plan = $invoice->status === CustomerInvoice::DRAFT
             ? self::planDraft($invoice, $input, $user)
             : self::planCorrection($invoice, $input, $user);
+
+        // والاعتمادُ الثنائيّ حين يُشعله صاحبُ النشاط ويمسّ التصحيحُ المال (`FinancialCorrections`)
+        return FinancialCorrections::gate($invoice, $plan, $user, $approving);
     }
 
     /**
@@ -402,12 +406,12 @@ final class CustomerInvoiceEdits
      * @throws ValidationException سببٌ أو أساسٌ ناقص
      * @throws RuntimeException ما يمنع التعديل، بسببه
      */
-    public static function apply(CustomerInvoice $invoice, array $input, User $user): CustomerInvoiceRevision
+    public static function apply(CustomerInvoice $invoice, array $input, User $user, ?FinancialCorrection $approving = null): CustomerInvoiceRevision
     {
         $bid = (int) $invoice->business_id;
         $token = (string) $input['edit_token'];
 
-        return DB::transaction(function () use ($invoice, $input, $user, $bid, $token) {
+        return DB::transaction(function () use ($invoice, $input, $user, $bid, $token, $approving) {
             /*
              * والقفلُ قبل كلّ قراءة: موظّفان يحفظان الورقةَ نفسَها في اللحظة
              * نفسِها — الثاني ينتظر، ثمّ يجد العدّادَ قد تقدّم فيُردّ ولا يُصدر
@@ -425,11 +429,16 @@ final class CustomerInvoiceEdits
                 return $twin;
             }
 
+            // والنموذجُ نفسُه أُرسل للاعتماد من قبل: الطلبُ الأوّل هو الجواب (`FinancialCorrections::request`)
+            if ($approving === null && FinancialCorrection::where('business_id', $bid)->where('edit_token', $token)->exists()) {
+                throw new NeedsApproval(__('هذا التصحيح يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم يُنفَّذ بعد.'));
+            }
+
             if ((int) $locked->revision !== (int) $input['expected_revision']) {
                 throw new RuntimeException(__('عُدّلت هذه الفاتورة بعد أن فتحتها (التعديل :n) — افتحها من جديد لترى ما تغيّر، ثمّ أعد تعديلك.', ['n' => (int) $locked->revision]));
             }
 
-            $plan = self::plan($locked, $input, $user);
+            $plan = self::plan($locked, $input, $user, $approving);
 
             if ($plan['missing_actions'] !== []) {
                 throw new AuthorizationException(__('لا تملك صلاحية هذا التعديل: :a', [
@@ -443,6 +452,17 @@ final class CustomerInvoiceEdits
 
             if (! $plan['changed']) {
                 throw new RuntimeException(__('لم يتغيّر شيء في الفاتورة.'));
+            }
+
+            /*
+             * والاعتمادُ الثنائيّ مُشعل والتصحيحُ يمسّ المال: لا يُكتب شيءٌ هنا.
+             *
+             * يُردّ قبل أوّل كتابة — والمتحكّمُ يحوّله طلبًا ينتظر غيرَ صاحبه
+             * (`FinancialCorrections::request`). ولا يُنفَّذ إلّا من `approve`،
+             * وهي تمرّر طلبَها المقفل هنا. فطلبٌ مباشرٌ إلى هذا الباب لا يتجاوزه.
+             */
+            if ($plan['approval']['required'] && ($approving === null || (int) $approving->customer_invoice_id !== (int) $locked->id)) {
+                throw new NeedsApproval(__('هذا التصحيح يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم يُنفَّذ بعد.'));
             }
 
             $reason = trim((string) ($input['reason'] ?? ''));
@@ -481,51 +501,35 @@ final class CustomerInvoiceEdits
      * @throws AuthorizationException ما لا يملكه
      * @throws RuntimeException ما يمنعه، بسببه
      */
-    public static function replace(CustomerInvoice $invoice, Customer $customer, string $reason, User $user): CustomerInvoice
+    public static function replace(CustomerInvoice $invoice, Customer $customer, string $reason, User $user, ?FinancialCorrection $approving = null): CustomerInvoice
     {
         $bid = (int) $invoice->business_id;
 
-        $actions = [Permissions::CUSTOMER_INVOICE_CANCEL, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED];
-        if ($invoice->status === CustomerInvoice::ISSUED && self::prior($invoice)) {
-            $actions[] = Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD;
-        }
-
-        foreach ($actions as $action) {
-            if (! $user->may($action)) {
-                throw new AuthorizationException(__('لا تملك صلاحية هذا التعديل: :a', ['a' => Permissions::actionLabels()[$action] ?? $action]));
-            }
-        }
+        self::assertMayReplace($invoice, $user);
 
         $reason = trim($reason);
         if ($reason === '') {
             throw ValidationException::withMessages(['reason' => __('اكتب سبب استبدال الفاتورة — يُكتب على إلغائها.')]);
         }
 
-        return DB::transaction(function () use ($invoice, $customer, $reason, $user, $bid) {
+        return DB::transaction(function () use ($invoice, $customer, $reason, $user, $bid, $approving) {
             $locked = CustomerInvoice::where('business_id', $bid)->lockForUpdate()->findOrFail($invoice->id);
             $locked->loadMissing('items', 'orders', 'preparation');
 
-            if ($locked->status !== CustomerInvoice::ISSUED) {
-                throw new RuntimeException(__('الاستبدال لفاتورةٍ صادرة — والمسودّةُ يُغيَّر عميلُها من «تعديل الفاتورة».'));
-            }
-            if ((int) $customer->business_id !== $bid) {
-                throw ValidationException::withMessages(['customer_id' => __('هذا العميل ليس من عملاء متجرك.')]);
-            }
-            if ((int) $customer->id === (int) $locked->customer_id) {
-                throw ValidationException::withMessages(['customer_id' => __('هذا عميل الفاتورة نفسه — اختر العميل الصحيح.')]);
+            /*
+             * والاستبدالُ يلغي الفاتورةَ ويعكس قيدَها — مع الاعتماد الثنائيّ ينتظر
+             * غيرَ صاحبه. ويُسأل أوّلًا: الطلبُ (`FinancialCorrections::requestReplace`)
+             * يجد نموذجَه المرسَلَ مرّتين ويسأل ما يمنع بنفسه.
+             */
+            if (FinancialCorrections::required($bid) && ($approving === null || (int) $approving->customer_invoice_id !== (int) $locked->id)) {
+                throw new NeedsApproval(__('هذا الاستبدال يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم يُنفَّذ بعد.'));
             }
 
-            $why = self::periodRefusal($locked) ?? match (true) {
-                $locked->orders->isNotEmpty() => __('هذه الفاتورة مولودة من طلب — يُصحَّح الطلب نفسه.'),
-                $locked->paidTotal() > 0 || $locked->allocations()->exists() => __('قُبض من هذه الفاتورة مال باسم عميلها — لا تُستبدل. أصدر إشعارًا دائنًا لعميلها، ثم فاتورة جديدة للعميل الصحيح.'),
-                $locked->creditNotes()->exists() || $locked->debitNotes()->exists() => __('على الفاتورة إشعارات تصحيح — لا تُستبدل. أصدر إشعارًا دائنًا بالباقي، ثم فاتورة جديدة للعميل الصحيح.'),
-                CustomerPaymentLink::where('business_id', $bid)->where('customer_invoice_id', $locked->id)->exists() => __('للفاتورة روابط دفع باسم عميلها — ألغها أوّلًا، أو أصدر إشعارًا دائنًا ثم فاتورة جديدة.'),
-                PointTransaction::where('customer_invoice_id', $locked->id)->exists() => __('للفاتورة نقاط ولاء باسم عميلها — لا تُستبدل.'),
-                $locked->preparation !== null => __('على الفاتورة طلب تجهيز — ألغه أوّلًا من صفحتها، فلا يُجهَّز لعميلٍ غير عميلها.'),
-                default => null,
-            };
+            if (FinancialCorrections::pendingFor($locked, $approving)) {
+                throw new RuntimeException(__('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.'));
+            }
 
-            if ($why !== null) {
+            if (($why = self::replaceRefusal($locked, $customer)) !== null) {
                 throw new RuntimeException($why);
             }
 
@@ -568,6 +572,58 @@ final class CustomerInvoiceEdits
 
             return $draft;
         });
+    }
+
+    /**
+     * من يستبدل الفاتورة: يملك إلغاءَها وتصحيحَ الصادرة — وتصحيحَ الفترة لفاتورةٍ من فترةٍ سابقة.
+     *
+     * @throws AuthorizationException
+     */
+    public static function assertMayReplace(CustomerInvoice $invoice, User $user): void
+    {
+        $actions = [Permissions::CUSTOMER_INVOICE_CANCEL, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED];
+        if ($invoice->status === CustomerInvoice::ISSUED && self::prior($invoice)) {
+            $actions[] = Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD;
+        }
+
+        foreach ($actions as $action) {
+            if (! $user->may($action)) {
+                throw new AuthorizationException(__('لا تملك صلاحية هذا التعديل: :a', ['a' => Permissions::actionLabels()[$action] ?? $action]));
+            }
+        }
+    }
+
+    /**
+     * ما يمنع استبدالَ هذه الفاتورة بهذا العميل — يُسأل تحت قفلها، عند الطلب وعند التنفيذ.
+     *
+     * @throws ValidationException عميلٌ ليس من المتجر، أو هو عميلُها نفسُه
+     */
+    public static function replaceRefusal(CustomerInvoice $locked, Customer $customer): ?string
+    {
+        $bid = (int) $locked->business_id;
+        $locked->loadMissing('items', 'orders', 'preparation');
+
+        if ($locked->status !== CustomerInvoice::ISSUED) {
+            return __('الاستبدال لفاتورةٍ صادرة — والمسودّةُ يُغيَّر عميلُها من «تعديل الفاتورة».');
+        }
+        if ((int) $customer->business_id !== $bid) {
+            throw ValidationException::withMessages(['customer_id' => __('هذا العميل ليس من عملاء متجرك.')]);
+        }
+        if ((int) $customer->id === (int) $locked->customer_id) {
+            throw ValidationException::withMessages(['customer_id' => __('هذا عميل الفاتورة نفسه — اختر العميل الصحيح.')]);
+        }
+
+        $why = self::periodRefusal($locked) ?? match (true) {
+            $locked->orders->isNotEmpty() => __('هذه الفاتورة مولودة من طلب — يُصحَّح الطلب نفسه.'),
+            $locked->paidTotal() > 0 || $locked->allocations()->exists() => __('قُبض من هذه الفاتورة مال باسم عميلها — لا تُستبدل. أصدر إشعارًا دائنًا لعميلها، ثم فاتورة جديدة للعميل الصحيح.'),
+            $locked->creditNotes()->exists() || $locked->debitNotes()->exists() => __('على الفاتورة إشعارات تصحيح — لا تُستبدل. أصدر إشعارًا دائنًا بالباقي، ثم فاتورة جديدة للعميل الصحيح.'),
+            CustomerPaymentLink::where('business_id', $bid)->where('customer_invoice_id', $locked->id)->exists() => __('للفاتورة روابط دفع باسم عميلها — ألغها أوّلًا، أو أصدر إشعارًا دائنًا ثم فاتورة جديدة.'),
+            PointTransaction::where('customer_invoice_id', $locked->id)->exists() => __('للفاتورة نقاط ولاء باسم عميلها — لا تُستبدل.'),
+            $locked->preparation !== null => __('على الفاتورة طلب تجهيز — ألغه أوّلًا من صفحتها، فلا يُجهَّز لعميلٍ غير عميلها.'),
+            default => null,
+        };
+
+        return $why;
     }
 
     /** فاتورةُ فترةٍ سابقة: قبل هذا الشهر، أو في دفاترَ أُقفلت — يُصحَّح مالُها ويُستبدل بصلاحيته */

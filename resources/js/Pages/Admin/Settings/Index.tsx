@@ -197,6 +197,8 @@ interface Props {
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
+    /** الاعتمادُ الثنائيّ: هل الناظرُ صاحبُ النشاط، وكم موظّفًا غيرَه يعتمد */
+    dualApproval?: { owner: boolean; others: number };
     alertMetrics: AlertMetric[];
     alertSections: Record<string, string>;
     /** قوالبُ الطلب المخصَّص بحقولها — تُرسل كاملةً كما تُرسل التنبيهات فوقها */
@@ -334,7 +336,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, storeBranches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, dualApproval, locale, branches, storeBranches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive, backups, portalUrl } =
         usePage<PageProps<Props>>().props;
@@ -497,6 +499,7 @@ export default function SettingsIndex() {
         inv_start: get('inv_start', '1'),
 
         staff_sees_performance: on('staff_sees_performance'),
+        dual_approval_corrections: on('dual_approval_corrections'),
 
         notify_new_order: on('notify_new_order'),
         notify_smart_alerts: on('notify_smart_alerts'),
@@ -2235,6 +2238,28 @@ export default function SettingsIndex() {
                                     label="أظهِر للموظّف أداءه في «حسابي»"
                                     hint="مبيعاتُه اليوم والشهر وإجمالي طلباته. وراتبه يراه دائمًا."
                                 />
+
+                                {/*
+                                    الاعتمادُ الثنائيّ — مطفأٌ لكلّ نشاط، ويُشعله صاحبه وحده.
+                                    والخادمُ يردّ غيرَه ويردّ إشعالًا لا معتمدَ فيه غيرُه
+                                    (`SettingController::dualApprovalRefusal`)؛ والشاشةُ تقوله قبله.
+                                */}
+                                <div data-testid="dual-approval">
+                                    <Toggle
+                                        on={form.data.dual_approval_corrections}
+                                        onChange={(v) => dualApproval?.owner && form.setData('dual_approval_corrections', v)}
+                                        label="الاعتماد الثنائي لتصحيح الفواتير الصادرة والمدفوعة"
+                                        hint="تصحيح فاتورة صادرة أو مدفوعة يصدر به إشعار دائن أو مدين، أو استبدالها لعميل آخر، يُرسل للاعتماد، ولا يتغيّر شيء حتى يعتمده موظف آخر يملك «اعتماد تصحيح مالي». ولا يعتمد أحدٌ طلبه."
+                                    />
+                                    {! dualApproval?.owner && (
+                                        <p className="mt-1 text-[12px] text-[#6b7280]" data-testid="dual-approval-owner-only">{t('يغيّره صاحب النشاط وحده.')}</p>
+                                    )}
+                                    {dualApproval?.owner && (dualApproval?.others ?? 0) === 0 && (
+                                        <p className="mt-1 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]" data-testid="dual-approval-alone">
+                                            {t('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه قبل إشعال الاعتماد الثنائي. وإن كان مفعّلًا، فتصحيحاتك المالية لا تُرسل حتى يوجد من يعتمدها أو تطفئه.')}
+                                        </p>
+                                    )}
+                                </div>
 
                                 {/*
                                     كان هنا جدول مربّعات لكل دور يحفظ مفاتيح perm_*

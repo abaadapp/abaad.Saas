@@ -134,6 +134,15 @@ final class DeployHold
         $pending = DeployState::pendingMigrations();
         $context = ['hold' => self::describe(), 'age_seconds' => $age, 'pending_migrations' => $pending, 'deploy_running' => $running];
 
+        // كتبه نشرٌ وهو يبدّل الكود ثمّ لم يكتمل: الكودُ على القرص نصفُ إصدار — لا ذاكرتُه
+        // بُنيت ولا عاملُه أُعيد — ولو جرت هجراتُه كلُّها. فلا يُطلقه وقتٌ ولا سؤال: يُطلقه
+        // نشرٌ يكتمل أو رجوعٌ يكتمل (السكربتان يحذفانه)
+        if (self::swapping()) {
+            Log::error('Scheduled tasks stay held: a deploy or a code rollback stopped while swapping the code — finish it (re-run Deploy Main) or roll the code back (scripts/rollback-code.sh). '.self::FILE.' is not released by time alone', $context);
+
+            return true;
+        }
+
         if ($running === true) {
             Log::warning('Scheduled tasks stay held: a deploy or a code rollback is still running', $context);
 
@@ -149,6 +158,14 @@ final class DeployHold
         Log::error('Scheduled tasks ran despite a stale deploy hold — a deploy left '.self::FILE.' behind and the code on disk runs on its database; delete it once no deploy is running', $context);
 
         return false;
+    }
+
+    /** السطرُ الذي يكتبه السكربتان قبل أن يلمسا الكود (`phase: swapping`) — من هنا لا يُطلق إلّا الاكتمال */
+    public const SWAPPING = 'phase: swapping';
+
+    private static function swapping(): bool
+    {
+        return preg_match('/^'.preg_quote(self::SWAPPING, '/').'\s*$/mu', self::describe()) === 1;
     }
 
     /** عمرُ الملفّ بالثواني، أو null إن لم يكن */

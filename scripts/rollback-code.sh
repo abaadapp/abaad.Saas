@@ -135,71 +135,148 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# الطابورُ يقف قبل أن يتبدّل الكود ويُطلق بعد أن يُعاد عاملُه عليه — كـdeploy.sh
-# حرفًا: `queue:pause` لا يقطع مهمّةً جارية، و`queue:restart` يُفحص بين المهامّ.
-# وإن سقط الرجوعُ في منتصفه أُطلق الطابورُ كما كان، ولا يُعاد العامل.
+# الطابورُ يقف قبل أن يتبدّل الكود ويُطلق بعد أن يعمل عاملٌ جديدٌ عليه — كـdeploy.sh
+# حرفًا: `queue:pause` لا يقطع مهمّةً جارية، ويُنتظر ما يجري (طابورٌ ومجدولة) حتى
+# QUEUE_IDLE_TIMEOUT، و`queue:restart` يُفحص بين المهامّ، ثمّ يُسأل systemd حتى يثبت عاملٌ جديد.
+# وإن سقط الرجوعُ بعد أن تبدّل الكودُ بقي الطابورُ والمهامُّ موقوفةً عمدًا حتى يكتمل رجوعٌ أو نشر.
+# وقبل تركيب الصلاحيات لا يُوقف شيء، وبعد أن رُئيت كاملةً (RULES_VERIFIED) لا يمضي رجوعٌ بدونها.
 # ---------------------------------------------------------------------------
-QUEUE_RESTART_WAIT="${QUEUE_RESTART_WAIT:-10}"
-QUEUE_DRAIN_WAIT="${QUEUE_DRAIN_WAIT:-15}"
-# ويُنتظر العاملُ حتى لا تبقى مهمّةٌ تجري — كـdeploy.sh (`abaad:deploy-state`)، حتى QUEUE_IDLE_TIMEOUT
 QUEUE_IDLE_TIMEOUT="${QUEUE_IDLE_TIMEOUT:-600}"
 QUEUE_IDLE_POLL="${QUEUE_IDLE_POLL:-2}"
+QUEUE_UNIT="${QUEUE_UNIT:-abaad-queue.service}"
+QUEUE_WORKER_TIMEOUT="${QUEUE_WORKER_TIMEOUT:-120}"
+QUEUE_WORKER_SETTLE="${QUEUE_WORKER_SETTLE:-6}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 STATE_OUT="$STATE_DIR/state-rollback-$STAMP.txt"
 ( umask 077; : > "$STATE_OUT" )
 QUEUE_LOG="$STATE_DIR/queue-rollback-$STAMP.log"
 ( umask 077; : > "$QUEUE_LOG" )
+RULES_FILE="$STATE_DIR/RULES_VERIFIED"
+RUN_FILE="$STATE_DIR/DEPLOY-RUNNING"
+STARTED_AT="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 PAUSED_WHATSAPP=0
 PAUSED_DEFAULT=0
 RELEASED=0
-CURRENT_STEP="إيقاف الطابور"
+WAS_PAUSED=0
+INHERITED=0
+TREE_TOUCHED=0
+FULL_RULES=0
+CURRENT_STEP="فحص الصلاحيات"
+
+if [[ -s "$RUN_FILE" ]]; then
+    printf '  \033[33m!\033[0m نشرٌ أو رجوعٌ سابقٌ انقطع دون أن يُكمل — %s\n    يُكمله هذا الرجوع: ما أُوقف منذه يُطلق في آخره، لا قبل.\n' "$(head -1 "$RUN_FILE")"
+    cp "$RUN_FILE" "$STATE_DIR/DEPLOY-INTERRUPTED.$STAMP.txt" 2> /dev/null || true
+fi
+printf 'رجوعٌ إلى %s · pid %s · منذ %s · الخطوة: البدء\n' "$TO" "$$" "$STARTED_AT" > "$RUN_FILE"
+step() {
+    CURRENT_STEP="$*"
+    printf '\n\033[1m▸ %s\033[0m\n' "$*"
+    printf 'رجوعٌ إلى %s · pid %s · منذ %s · الخطوة: %s\n' "$TO" "$$" "$STARTED_AT" "$*" > "$RUN_FILE" 2> /dev/null || true
+}
 
 # أتبيح قاعدةُ sudo هذا الأمرَ؟ — كـdeploy.sh: يُسأل ولا يُجرى، فلا يُوقف طابورٌ لا يُطلق
 may() { sudo -n -u "$APP_USER" -l "$PHP_BIN" "$APP_DIR/artisan" "$@" > /dev/null 2>&1; }
-
-# وسؤالُ التطبيق عن المهامّ الجارية — قراءةٌ لا كتابة، كـdeploy.sh
 STATE_OK=0
 may abaad:deploy-state && STATE_OK=1
 
-# ينتظر حتى لا تبقى مهمّةٌ تجري على الطابورين — أو يقف قبل أن يلمس الكود. كـdeploy.sh حرفًا
+ask_state() {
+    local rc=0
+    art abaad:deploy-state > "$STATE_OUT" 2>&1 || rc=$?
+    return "$rc"
+}
+
+db_pending() {
+    (( STATE_OK == 1 )) || return 0
+    art abaad:deploy-state > "$STATE_OUT" 2>&1 || true
+    sed -n 's/^pending-migrations: \([0-9][0-9]*\)$/\1/p' "$STATE_OUT" | head -1
+}
+
+# أالكودُ على القرص كما كان قبل هذا الرجوع؟ — الرجوعُ لا يُجري هجرة
+code_untouched() {
+    (( TREE_TOUCHED == 1 )) || return 0
+    [[ "$(git rev-parse --short HEAD 2>/dev/null)" == "$FROM" ]] || return 1
+    [[ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]
+}
+
+# وحده هذا يُطلق ما أُوقف عند السقوط — كـdeploy.sh
+compatible_now() {
+    code_untouched || return 1
+    (( INHERITED == 0 )) || return 1
+    local n
+    n="$(db_pending)"
+    [[ -z "$n" || "$n" == 0 ]]
+}
+
+worker_unit() {
+    local out
+    out="$("$SYSTEMCTL" show "$QUEUE_UNIT" -p MainPID -p SubState -p LoadState 2> /dev/null)" || { echo "0 ? ?"; return 0; }
+    printf '%s %s %s\n' "$(sed -n 's/^MainPID=//p' <<<"$out" | head -1)" "$(sed -n 's/^SubState=//p' <<<"$out" | head -1)" "$(sed -n 's/^LoadState=//p' <<<"$out" | head -1)" \
+        | awk '{print ($1==""?0:$1), ($2==""?"?":$2), ($3==""?"?":$3)}'
+}
+
+NEW_WORKER=""
+wait_for_new_worker() {
+    local old="$1" waited=0 pid sub load seen="" since=0
+    while :; do
+        read -r pid sub load < <(worker_unit)
+        [[ "$load" == loaded ]] || return 2
+        if [[ "$pid" != 0 && "$pid" != "$old" && "$sub" == running ]]; then
+            if [[ "$pid" == "$seen" ]]; then
+                if (( waited - since >= QUEUE_WORKER_SETTLE )); then
+                    NEW_WORKER="$pid"
+                    return 0
+                fi
+            else
+                seen="$pid"
+                since=$waited
+            fi
+        else
+            seen=""
+        fi
+        (( waited < QUEUE_WORKER_TIMEOUT )) || return 1
+        sleep "$QUEUE_IDLE_POLL"
+        waited=$(( waited + QUEUE_IDLE_POLL ))
+    done
+}
+
+# ينتظر حتى لا يجري شيء — كـdeploy.sh حرفًا
 wait_for_idle() {
     local waited=0 rc
-    CURRENT_STEP="انتظار المهمّة الجارية قبل تبديل الكود"
+    CURRENT_STEP="انتظار المهامّ الجارية قبل تبديل الكود"
     while :; do
         rc=0
-        art abaad:deploy-state > "$STATE_OUT" 2>&1 || rc=$?
+        ask_state || rc=$?
         case "$rc" in
             0)
-                ok "لا مهمّةَ تجري على الطابور (انتُظرت ${waited} ثانية) — يتبدّل الكودُ والعاملُ لا يحمل شيئًا"
+                ok "لا مهمّةَ تجري على الطابور ولا مهمّةَ مجدولة (انتُظرت ${waited} ثانية) — يتبدّل الكودُ ولا شيءَ يحمله"
                 return 0
                 ;;
             3)
                 if (( waited >= QUEUE_IDLE_TIMEOUT )); then
-                    die "ما زالت مهمّةٌ تجري على الطابور بعد ${waited} ثانية — وقف الرجوعُ قبل أن يلمس الكود، ويُطلق الطابورُ كما كان:
-$(grep '^job: ' "$STATE_OUT" | sed 's/^job: /  /' || true)
+                    die "ما زال شيءٌ يجري بعد ${waited} ثانية — وقف الرجوعُ قبل أن يلمس الكود، ولم تُقطع المهمّة:
+$(grep -E '^(job|task): ' "$STATE_OUT" | sed -E 's/^(job|task): /  /' || true)
 أعِد الرجوعَ بعد أن تنتهي، أو ارفع QUEUE_IDLE_TIMEOUT."
                 fi
                 if (( waited == 0 )); then
-                    printf '  مهمّةٌ تجري — ينتظرها الرجوعُ قبل أن يتبدّل الكود (حتى %s ثانية):\n' "$QUEUE_IDLE_TIMEOUT"
+                    printf '  شيءٌ يجري — ينتظره الرجوعُ قبل أن يتبدّل الكود (حتى %s ثانية):\n' "$QUEUE_IDLE_TIMEOUT"
                     grep '^job: ' "$STATE_OUT" | sed 's/^job: /    /' || true
+                    grep '^task: ' "$STATE_OUT" | sed 's/^task: /    مجدولة: /' || true
                 fi
                 sleep "$QUEUE_IDLE_POLL"
                 waited=$(( waited + QUEUE_IDLE_POLL ))
                 ;;
             *)
-                printf '  \033[33m!\033[0m تعذّر سؤالُ التطبيق عن المهامّ الجارية (انظر %s) — أُمهلت المهمّةُ الجارية %s ثانيةً كما كان\n' "$STATE_OUT" "$QUEUE_DRAIN_WAIT"
-                sleep "$QUEUE_DRAIN_WAIT"
-                return 0
+                die "تعذّر سؤالُ التطبيق عن المهامّ الجارية (الخروج $rc، والخرجُ في $STATE_OUT) — وقف الرجوعُ قبل أن يلمس الكود."
                 ;;
         esac
     done
 }
 
-# والمهامُّ المجدولة تقف ما دام الكودُ يتبدّل — كـdeploy.sh (`App\Support\DeployHold`).
-# والرجوعُ لا يغيّر القاعدة (يرفض ما بينه وبين الهدف من هجرات)، فتُطلق المهامّ في آخره
-# نجح أو سقط: الكودُ على القرص — هذا أو ذاك — يجري على القاعدة كما هي
 HOLD_FILE="$APP_DIR/.deploy-hold"
 HELD=0
+hold_schedule() {
+    printf '%s · pid %s · %s\nphase: %s\n' "$1" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${2:-before-pull}" > "$HOLD_FILE" 2> /dev/null
+}
 
 release_queue() {
     (( RELEASED == 0 )) || return 0
@@ -215,63 +292,95 @@ release_queue() {
 }
 
 on_exit() {
-    local rc=$?
+    local rc=$? ok_now=0
+    trap - HUP INT TERM
     if (( rc != 0 )); then
         printf '\n\033[31m✗ سقط الرجوعُ عند «%s»\033[0m — الكودُ على القرص %s (كان %s).\n' \
             "$CURRENT_STEP" "$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')" "$FROM" >&2
     fi
+    compatible_now && ok_now=1
     if (( RELEASED == 0 && PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
-        if release_queue; then
-            printf '  أُطلق الطابور كما كان — العاملُ على كوده ولم يُعَد\n' >&2
+        if (( ok_now == 1 )); then
+            if release_queue; then
+                printf '  أُطلق الطابور كما كان — الكودُ على القرص لم يتغيّر، والعاملُ عليه\n' >&2
+            else
+                printf '\033[31m  ✗ تعذّر إطلاقُ الطابور — هو موقوف، والخرجُ في %s\033[0m\n' "$QUEUE_LOG" >&2
+            fi
         else
-            printf '\033[31m  ✗ تعذّر إطلاقُ الطابور — هو موقوف. أطلقه بحساب %s: %s %s/artisan queue:resume whatsapp (ثمّ default)، والخرجُ في %s\033[0m\n' \
-                "$APP_USER" "$PHP_BIN" "$APP_DIR" "$QUEUE_LOG" >&2
+            printf '::warning::يبقى الطابورُ موقوفًا عمدًا — الكودُ على القرص تغيّر أو تركه نشرٌ لم يكتمل\n'
+            printf '\033[33m  ! يبقى الطابورُ موقوفًا عمدًا: العاملُ الحيّ على كودٍ غيرِ الذي على القرص. أعِد الرجوعَ أو Deploy Main — كلاهما يُطلقه بعد أن يتحقّق من عاملٍ جديد. ولا تُطلقه بيدك قبل ذلك.\033[0m\n' >&2
         fi
     fi
     if (( HELD == 1 )); then
-        if rm -f "$HOLD_FILE"; then
-            printf '  أُطلقت المهامّ المجدولة\n' >&2
+        if (( ok_now == 1 )); then
+            if rm -f "$HOLD_FILE"; then
+                printf '  أُطلقت المهامّ المجدولة — الكودُ على القرص لم يتغيّر\n' >&2
+            else
+                printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف\033[0m\n' "$HOLD_FILE" >&2
+            fi
         else
-            printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف (أو حتى يجد التطبيقُ بعد نصف ساعة الكودَ على قاعدته)\033[0m\n' "$HOLD_FILE" >&2
+            hold_schedule "أُبقي بعد سقوط الرجوع إلى $TO عند «$CURRENT_STEP»" swapping || true
+            printf '\033[33m  ! تبقى المهامّ المجدولة موقوفة — الكودُ على القرص في منتصف تبديله. يُطلقها رجوعٌ يكتمل أو نشرٌ يكتمل، لا الوقت.\033[0m\n' >&2
         fi
     fi
+    rm -f "$RUN_FILE"
+    (( rc == 0 )) || printf '::error title=سقط الرجوع::عند «%s» — الكود على القرص %s\n' "$CURRENT_STEP" "$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
     # والنسخةُ التي يجري منها السكربت تحذف نفسَها — كما كان فخُّها يفعل
     [[ "$(basename "$ME")" != abaad-rollback.* ]] || rm -f "$ME"
 }
 trap on_exit EXIT
+trap 'CURRENT_STEP="$CURRENT_STEP (قُطع الرجوعُ بإشارة)"; exit 130' HUP INT TERM
+
+step "فحص صلاحيات النشر"
+if may queue:pause whatsapp && may queue:pause default && may queue:resume whatsapp && may queue:resume default \
+    && (( STATE_OK == 1 )); then
+    FULL_RULES=1
+fi
+if (( FULL_RULES == 1 )); then
+    read -r _ _ UNIT_LOAD < <(worker_unit)
+    [[ "$UNIT_LOAD" == loaded ]] || die "وحدةُ عامل الطابور $QUEUE_UNIT غيرُ موجودة في systemd ($UNIT_LOAD) — لم يُلمس شيء"
+    ask_state || { rc=$?; [[ "$rc" == 3 ]] || die "تعذّر سؤالُ التطبيق عن حاله (الخروج $rc، والخرجُ في $STATE_OUT) — لم يُلمس شيء."; }
+    PAUSED_NOW="$(sed -n 's/^paused: //p' "$STATE_OUT" | head -1)"
+    [[ -n "$PAUSED_NOW" && "$PAUSED_NOW" != "?" ]] || die "تعذّر أن يُعرف أموقوفٌ الطابورُ الآن — لم يُلمس شيء"
+    if [[ "$PAUSED_NOW" != "-" ]]; then
+        WAS_PAUSED=1
+        INHERITED=1
+        printf '  \033[33m!\033[0m الطابورُ موقوفٌ قبل هذا الرجوع (%s) — يُطلقه الرجوعُ إن اكتمل، ويبقى موقوفًا إن سقط\n' "$PAUSED_NOW"
+    fi
+    [[ -e "$RULES_FILE" ]] || printf 'رأى الرجوعُ صلاحياتِ النشر كاملةً أوّلَ مرّة: %s · %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$FROM" > "$RULES_FILE"
+    ok "صلاحياتُ النشر مثبّتة، ووحدةُ العامل $QUEUE_UNIT"
+elif [[ -e "$RULES_FILE" ]]; then
+    die "صلاحياتُ النشر كانت مثبّتةً ($(cat "$RULES_FILE")) وهي الآن ناقصة — لا يمضي رجوعٌ بدونها، ولم يُلمس شيء."
+else
+    printf '  \033[33m!\033[0m صلاحياتُ النشر الجديدة غيرُ مثبّتة في sudoers (deploy/abaad-deploy.sudoers) — لا يُوقف الطابور، ويمضي الرجوعُ كما كان\n'
+fi
 
 step "إيقاف المهامّ المجدولة والطابور قبل تبديل الكود"
-if printf 'رجوعٌ إلى %s · pid %s · %s\n' "$TO" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$HOLD_FILE" 2> /dev/null; then
+HOLD_PHASE=before-pull
+if grep -qx 'phase: swapping' "$HOLD_FILE" 2> /dev/null; then
+    INHERITED=1
+    HOLD_PHASE=swapping
+    printf '  \033[33m!\033[0m المهامّ المجدولة موقوفةٌ قبل هذا الرجوع — تركها نشرٌ أو رجوعٌ لم يكتمل: %s\n' "$(head -1 "$HOLD_FILE")"
+fi
+if hold_schedule "رجوعٌ إلى $TO" "$HOLD_PHASE"; then
     HELD=1
     ok "المهامّ المجدولة: يتخطّاها التطبيقُ حتى يُبنى الكودُ وذاكرتُه"
 else
     printf '  \033[33m!\033[0m تعذّرت كتابةُ %s — تجري المهامّ المجدولة أثناء الرجوع\n' "$HOLD_FILE"
 fi
-if may queue:pause whatsapp && may queue:pause default && may queue:resume whatsapp && may queue:resume default; then
+if (( FULL_RULES == 1 )); then
     art queue:pause whatsapp >> "$QUEUE_LOG" 2>&1 && PAUSED_WHATSAPP=1 || true
     art queue:pause default >> "$QUEUE_LOG" 2>&1 && PAUSED_DEFAULT=1 || true
-    if (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )); then
-        ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يُعاد العامل"
-        if (( STATE_OK == 1 )); then
-            wait_for_idle
-        else
-            printf '  \033[33m!\033[0m قاعدةُ abaad:deploy-state غيرُ مثبّتة في sudoers — لا يُعرف أانتهت المهمّةُ الجارية: أُمهلت %s ثانيةً كما كان\n' "$QUEUE_DRAIN_WAIT"
-            sleep "$QUEUE_DRAIN_WAIT"
-            ok "أُمهلت المهمّةُ الجارية ${QUEUE_DRAIN_WAIT} ثانيةً تُكمل فيها"
-        fi
-    else
-        release_queue || true
-        PAUSED_WHATSAPP=0
-        PAUSED_DEFAULT=0
-        printf '  \033[33m!\033[0m لم يُوقف الطابور (انظر %s) — يمضي الرجوعُ كما كان\n' "$QUEUE_LOG"
-    fi
-else
-    printf '  \033[33m!\033[0m قاعدةُ إيقاف الطابور غيرُ مثبّتة في sudoers (deploy/abaad-deploy.sudoers) — لم يُوقف الطابور، ويمضي الرجوعُ كما كان\n'
+    (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )) || die "تعذّر إيقافُ الطابور (انظر $QUEUE_LOG) — وقف الرجوعُ قبل أن يلمس الكود"
+    ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يعمل عاملٌ جديد"
+    wait_for_idle
 fi
 
 # ---------------------------------------------------------------------------
 step "الكود: $FROM → $TO"
-printf '%s  رجوعُ الكود: %s → %s\n' "$(date -Is)" "$FROM" "$TO" >> "$STATE_DIR/ROLLBACK.log"
+printf '%s  رجوعُ الكود: %s → %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$FROM" "$TO" >> "$STATE_DIR/ROLLBACK.log"
+(( HELD == 0 )) || hold_schedule "رجوعٌ إلى $TO" swapping || true
+TREE_TOUCHED=1
 git reset --hard --quiet "$TO"
 ok "$(git log --oneline -1)"
 
@@ -307,20 +416,26 @@ if (( HELD == 1 )); then
     ok "أُطلقت المهامّ المجدولة"
 fi
 
-# العاملُ يُعاد كلَّ ساعة لا عند الرجوع — فيُطلب منه أن يُعيد نفسَه بعد مهمّته الجارية،
-# ثمّ يُنتظر خروجُ القديم قبل أن يُطلق الطابور. وتعذّرُها يُقال لا يُخفى
+# العاملُ يُعاد على الكود الذي رجع إليه، ثمّ يُسأل systemd حتى يثبت عاملٌ جديد — ثمّ يُطلق الطابور
 step "عامل الطابور"
+read -r OLD_WORKER _ _ < <(worker_unit)
 RESTART_RC=0
 art queue:restart --quiet || RESTART_RC=$?
-if (( RESTART_RC == 0 )); then
-    ok "طُلب من العامل أن يُعاد بعد مهمّته الجارية"
-else
-    printf '  \033[33m!\033[0m تعذّر queue:restart — يبقى العاملُ بالكود الذي كان عليه حتى يُعاد بنفسه (--max-time)\n'
-fi
-if (( RELEASED == 0 && PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
-    (( RESTART_RC != 0 )) || sleep "$QUEUE_RESTART_WAIT"
+if (( PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
+    (( RESTART_RC == 0 )) || die "تعذّر queue:restart — العاملُ على كودٍ غيرِ الذي على القرص، فيبقى الطابورُ موقوفًا"
+    WORKER_RC=0
+    wait_for_new_worker "$OLD_WORKER" || WORKER_RC=$?
+    case "$WORKER_RC" in
+        0) ok "خرج العاملُ القديم (${OLD_WORKER}) وثبت عاملٌ جديد (${NEW_WORKER}) على الكود الذي رجع إليه" ;;
+        2) die "وحدةُ العامل $QUEUE_UNIT اختفت من systemd — يبقى الطابورُ موقوفًا" ;;
+        *) die "لم يثبت عاملٌ جديدٌ على $QUEUE_UNIT خلال ${QUEUE_WORKER_TIMEOUT} ثانية (كان ${OLD_WORKER}) — يبقى الطابورُ موقوفًا. انظر: journalctl -u $QUEUE_UNIT" ;;
+    esac
     release_queue || die "تعذّر إطلاقُ الطابور — هو موقوف. أطلقه بحساب $APP_USER: $PHP_BIN $APP_DIR/artisan queue:resume whatsapp ثمّ default"
-    ok "أُطلق الطابور"
+    ok "أُطلق الطابور — يسحب منه العاملُ الجديد"
+elif (( RESTART_RC == 0 )) && wait_for_new_worker "$OLD_WORKER"; then
+    ok "أُعيد العامل (${OLD_WORKER} → ${NEW_WORKER}) — والطابورُ لم يُوقف (الصلاحياتُ غيرُ مثبّتة)"
+else
+    printf '  \033[33m!\033[0m لم يُتحقَّق من عودة العامل على الكود الذي رجع إليه — يبقى بكوده حتى يُعاد بنفسه (--max-time)\n'
 fi
 
 step "الموقع"

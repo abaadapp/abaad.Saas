@@ -55,7 +55,12 @@ FPM_SERVICE="${FPM_SERVICE:-php8.4-fpm}"
 export npm_config_cache="${NPM_CACHE:-$HOME/.npm-cache}"
 
 # والخطوةُ الجاريةُ تُحفظ: إن سقط النشرُ قيل أين (`on_exit`)
-step()  { CURRENT_STEP="$*"; printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
+step()  {
+    CURRENT_STEP="$*"
+    printf '\n\033[1m▸ %s\033[0m\n' "$*"
+    # وتُكتب في DEPLOY-RUNNING: إن قُتل النشرُ قتلًا لا يُمرّ بـon_exit قال التالي أين وقف
+    [[ -z "${RUN_FILE:-}" ]] || printf 'نشرٌ من %s · pid %s · منذ %s · الخطوة: %s\n' "${FROM_COMMIT:-?}" "$$" "${STARTED_AT:-?}" "$*" > "$RUN_FILE" 2> /dev/null || true
+}
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 die()   { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -105,6 +110,20 @@ FROM_COMMIT="$(git rev-parse --short HEAD)"
 printf 'نشرٌ من %s · pid %s · منذ %s\n' "$FROM_COMMIT" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$STATE_DIR/deploy.lock.who"
 
 # ---------------------------------------------------------------------------
+# نشرٌ أو رجوعٌ قُتل قتلًا لا تُمرّ به on_exit (KILL، انقطاعُ الكهرباء) يترك DEPLOY-RUNNING —
+# فيُقال هنا بصوتٍ عالٍ أين وقف: قد يكون الطابورُ موقوفًا والمهامُّ موقوفةً منذه. وهذا النشرُ
+# يُكملها: يرى الطابورَ موقوفًا (`paused:`) فلا يُطلقه إلّا إن اكتمل، ويرى الإيقافَ `swapping`.
+# ---------------------------------------------------------------------------
+RUN_FILE="$STATE_DIR/DEPLOY-RUNNING"
+STARTED_AT="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+if [[ -s "$RUN_FILE" ]]; then
+    printf '::warning::نشرٌ أو رجوعٌ سابقٌ انقطع دون أن يُكمل: %s\n' "$(head -1 "$RUN_FILE")"
+    printf '  \033[33m!\033[0m نشرٌ أو رجوعٌ سابقٌ انقطع دون أن يُكمل — %s\n    يُكمله هذا النشر: إن كان الطابورُ أو المهامُّ موقوفةً منذه أُطلقت في آخره، لا قبل.\n' "$(head -1 "$RUN_FILE")"
+    cp "$RUN_FILE" "$STATE_DIR/DEPLOY-INTERRUPTED.$(date +%Y%m%d-%H%M%S).txt" 2> /dev/null || true
+fi
+printf 'نشرٌ من %s · pid %s · منذ %s · الخطوة: البدء\n' "$FROM_COMMIT" "$$" "$STARTED_AT" > "$RUN_FILE"
+
+# ---------------------------------------------------------------------------
 # لا نسخةَ للقاعدة قبل النشر — قرارُ المالك (2026-10-31).
 #
 # والنسخُ المستقلُّ لكلّ متجر (`backup:run`) باقٍ كما هو. فالرجوعُ بعد نشرٍ
@@ -116,7 +135,7 @@ printf 'commit قبل النشر: %s\nللرجوع (الكود وحده): bash %
     "$FROM_COMMIT" "$APP_DIR" "$FROM_COMMIT" > "$STATE_DIR/ROLLBACK.txt"
 
 # ---------------------------------------------------------------------------
-# الطابورُ يقف قبل أن يتبدّل الكود، ويُطلَق بعد أن يُعاد عاملُه على الكود الجديد.
+# الطابورُ يقف قبل أن يتبدّل الكود، ويُطلَق بعد أن يعمل عاملٌ جديدٌ على الكود الجديد.
 #
 # العاملُ عمليّةٌ طويلةُ العمر: كان يبقى بالكود القديم حتى يُعاد كلَّ ساعة
 # (`--max-time=3600`)، ويسحب المهامَّ طوالَ النشر — وكودُ القرص جديدٌ والقاعدةُ
@@ -124,31 +143,42 @@ printf 'commit قبل النشر: %s\nللرجوع (الكود وحده): bash %
 #
 #   - `queue:pause` لا يقطع شيئًا: المهمّةُ الجارية تُكمل، والعاملُ لا يسحب
 #     جديدًا. فلا تُعاد مهمّةٌ قُطعت، ولا تخرج رسالةٌ مرّتين.
+#   - ثمّ يُنتظر حتى لا تجري مهمّةُ طابورٍ ولا مهمّةٌ مجدولة (حتى QUEUE_IDLE_TIMEOUT،
+#     عشرُ دقائق). فإن بقيت وقف النشرُ قبل أن يلمس الكود — لا تُقطع ولا يتبدّل تحتها.
 #   - `queue:restart` بعد الهجرات والذاكرة وإعادة تحميل PHP: يُفحص بين المهامّ
-#     لا في أثنائها — مخرجُ `--max-time` نفسُه — ويعيده systemd بالكود الجديد.
-#   - ثمّ انتظارُ دورةِ نومٍ أو اثنتين يخرج فيها القديم، ثمّ `queue:resume`.
+#     لا في أثنائها، ويعيده systemd. ثمّ يُسأل systemd (قراءةً بلا sudo) حتى يخرج
+#     العاملُ القديم ويثبت عاملٌ جديدٌ بدأ بعد أن اكتمل الكود — لا انتظارٌ ثابت.
+#   - ثمّ `queue:resume`.
 #
-# وإن سقط النشرُ في أيّ خطوةٍ أُطلق الطابورُ كما كان، بلا إعادة: يبقى العاملُ
-# على كوده القديم كما يبقى الويب (opcache) حتى يكتمل نشرٌ — لا موقوفًا بلا أحد.
-# وإن لم تُثبَّت قاعدةُ sudo للإيقاف بعد على الخادم قيل ذلك، ومضى النشرُ كما كان.
+# ═══ وعند السقوط ═══
+# يُطلق الطابورُ كما كان إن لم يتغيّر الكودُ على القرص (لم يُسحب شيء، ولم تجرِ هجرة).
+# وإلّا بقي موقوفًا عمدًا: العاملُ على كودٍ قديمٍ والقرصُ والقاعدةُ تغيّرا، وإطلاقُه يُجري
+# مهامَّ واتساب والمدفوعات على خليطٍ لم يُختبر. يُطلقه نشرٌ يكتمل أو رجوعٌ يكتمل، ويُقال ذلك.
+#
+# ═══ والصلاحيات ═══
+# قبل تركيب deploy/abaad-deploy.sudoers الجديد لا يُوقف الطابور (لا قاعدةَ تُطلقه)، ولا تُنشر
+# هجرة، ويُقال ذلك. وبعد أن يُرى التركيبُ كاملًا مرّةً (RULES_VERIFIED) لا يمضي نشرٌ بدونه:
+# قاعدةٌ نقصت، أو تطبيقٌ لا يجيب عن المهامّ الجارية، يوقف النشرَ قبل أن يلمس شيئًا — لا
+# انتظارٌ ثابتٌ ثمّ مُضيّ.
 # ---------------------------------------------------------------------------
-QUEUE_RESTART_WAIT="${QUEUE_RESTART_WAIT:-10}"
-# وبعد الإيقاف يُنتظر العاملُ حتى لا تبقى مهمّةٌ تجري — لا ثوانيَ معدودة — ثمّ يتبدّل
-# الكود: المهمّةُ الجارية تُكمل على الكود الذي بدأت عليه، لا تحمّل ملفًّا جديدًا في
-# منتصفها. يُسأل التطبيقُ (`abaad:deploy-state`، قراءةً بحساب www-data) كلَّ ثانيتين،
-# حتى QUEUE_IDLE_TIMEOUT. فإن بقيت تجري وقف النشرُ قبل أن يلمس الكود، وأُطلق الطابور،
-# وسُمّيت المهمّة. وإن لم تُثبَّت قاعدةُ السؤال بعد أُمهلت QUEUE_DRAIN_WAIT كما كان، وقيل ذلك.
-QUEUE_DRAIN_WAIT="${QUEUE_DRAIN_WAIT:-15}"
 QUEUE_IDLE_TIMEOUT="${QUEUE_IDLE_TIMEOUT:-600}"
 QUEUE_IDLE_POLL="${QUEUE_IDLE_POLL:-2}"
+# وحدةُ العامل في systemd، ومهلةُ أن يعود عليها عاملٌ جديد، وكم يثبت قبل أن يُصدَّق
+QUEUE_UNIT="${QUEUE_UNIT:-abaad-queue.service}"
+QUEUE_WORKER_TIMEOUT="${QUEUE_WORKER_TIMEOUT:-120}"
+QUEUE_WORKER_SETTLE="${QUEUE_WORKER_SETTLE:-6}"
 STATE_OUT="$STATE_DIR/state-$STAMP.txt"
 ( umask 077; : > "$STATE_OUT" )
 QUEUE_LOG="$STATE_DIR/queue-$STAMP.log"
 ( umask 077; : > "$QUEUE_LOG" )
+RULES_FILE="$STATE_DIR/RULES_VERIFIED"
 PAUSED_WHATSAPP=0
 PAUSED_DEFAULT=0
 RELEASED=0
-CURRENT_STEP="إيقاف الطابور"
+WAS_PAUSED=0
+TREE_TOUCHED=0
+FULL_RULES=0
+CURRENT_STEP="فحص الصلاحيات"
 
 # أتبيح قاعدةُ sudo هذا الأمرَ؟ — يُسأل sudo (`-l`) ولا يُجرى شيء. فلا يُوقف طابورٌ
 # لا يُطلق: ركّب نصفَ القاعدة (الإيقافَ بلا الإطلاق) فيبقى موقوفًا بلا رسائل
@@ -165,36 +195,100 @@ db_pending() {
     sed -n 's/^pending-migrations: \([0-9][0-9]*\)$/\1/p' "$STATE_OUT" | head -1
 }
 
-# ينتظر حتى لا تبقى مهمّةٌ تجري على الطابورين — أو يقف قبل أن يلمس الكود
+# ما جرى من هجراتٍ في هذا النشر، باسمها
+migrations_done() { grep -E ' DONE[[:space:]]*$' "${MIGRATE_LOG:-/dev/null}" 2>/dev/null | awk '{print $1}' || true; }
+
+# أالكودُ على القرص كما كان قبل هذا النشر؟ — لم يُسحب شيء (أو سُحب فلم يتحرّك HEAD ولا
+# ملفّ)، ولم تجرِ هجرة. وحده هذا يُطلق ما أُوقف عند السقوط
+code_untouched() {
+    (( TREE_TOUCHED == 1 )) || return 0
+    [[ "$(git rev-parse --short HEAD 2>/dev/null)" == "$FROM_COMMIT" ]] || return 1
+    [[ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]] || return 1
+    [[ -z "$(migrations_done)" ]]
+}
+
+# أيجري الكودُ على القرص على قاعدته الآن، كما كان قبل هذا النشر؟ — وحده هذا يُطلق ما أُوقف
+# عند السقوط: لم يتغيّر الكود، ولم يرث هذا النشرُ إيقافًا تركه نشرٌ لم يكتمل (طابورًا موقوفًا،
+# أو مهامَّ موقوفةً على `swapping`)، ولا تقول القاعدةُ إنّ هجرةً على القرص لم تجرِ
+INHERITED=0
+compatible_now() {
+    code_untouched || return 1
+    (( INHERITED == 0 )) || return 1
+    local n
+    n="$(db_pending)"
+    [[ -z "$n" || "$n" == 0 ]]
+}
+
+# حالُ وحدة العامل من systemd — قراءةٌ بلا sudo: «MainPID SubState LoadState»
+worker_unit() {
+    local out
+    out="$("$SYSTEMCTL" show "$QUEUE_UNIT" -p MainPID -p SubState -p LoadState 2> /dev/null)" || { echo "0 ? ?"; return 0; }
+    printf '%s %s %s\n' "$(sed -n 's/^MainPID=//p' <<<"$out" | head -1)" "$(sed -n 's/^SubState=//p' <<<"$out" | head -1)" "$(sed -n 's/^LoadState=//p' <<<"$out" | head -1)" \
+        | awk '{print ($1==""?0:$1), ($2==""?"?":$2), ($3==""?"?":$3)}'
+}
+
+# ينتظر حتى يخرج العاملُ القديم (رقمُه $1) ويثبت عاملٌ جديد QUEUE_WORKER_SETTLE ثانية —
+# عاملٌ يسقط في إقلاعه يعيده systemd برقمٍ آخر كلَّ مرّة فلا يثبت. 0 ثبت، 1 المهلة، 2 لا وحدة
+NEW_WORKER=""
+wait_for_new_worker() {
+    local old="$1" waited=0 pid sub load seen="" since=0
+    while :; do
+        read -r pid sub load < <(worker_unit)
+        [[ "$load" == loaded ]] || return 2
+        if [[ "$pid" != 0 && "$pid" != "$old" && "$sub" == running ]]; then
+            if [[ "$pid" == "$seen" ]]; then
+                if (( waited - since >= QUEUE_WORKER_SETTLE )); then
+                    NEW_WORKER="$pid"
+                    return 0
+                fi
+            else
+                seen="$pid"
+                since=$waited
+            fi
+        else
+            seen=""
+        fi
+        (( waited < QUEUE_WORKER_TIMEOUT )) || return 1
+        sleep "$QUEUE_IDLE_POLL"
+        waited=$(( waited + QUEUE_IDLE_POLL ))
+    done
+}
+
+# يسأل التطبيقَ عن حاله: 0 لا شيءَ يجري، 3 شيءٌ يجري — وغيرُهما لا يُعرف فيقف النشر
+ask_state() {
+    local rc=0
+    art abaad:deploy-state > "$STATE_OUT" 2>&1 || rc=$?
+    return "$rc"
+}
+
+# ينتظر حتى لا تجري مهمّةُ طابورٍ ولا مهمّةٌ مجدولة — أو يقف قبل أن يلمس الكود
 wait_for_idle() {
     local waited=0 rc
-    CURRENT_STEP="انتظار المهمّة الجارية قبل تبديل الكود"
+    CURRENT_STEP="انتظار المهامّ الجارية قبل تبديل الكود"
     while :; do
         rc=0
-        art abaad:deploy-state > "$STATE_OUT" 2>&1 || rc=$?
+        ask_state || rc=$?
         case "$rc" in
             0)
-                ok "لا مهمّةَ تجري على الطابور (انتُظرت ${waited} ثانية) — يتبدّل الكودُ والعاملُ لا يحمل شيئًا"
+                ok "لا مهمّةَ تجري على الطابور ولا مهمّةَ مجدولة (انتُظرت ${waited} ثانية) — يتبدّل الكودُ ولا شيءَ يحمله"
                 return 0
                 ;;
             3)
                 if (( waited >= QUEUE_IDLE_TIMEOUT )); then
-                    die "ما زالت مهمّةٌ تجري على الطابور بعد ${waited} ثانية — وقف النشرُ قبل أن يلمس الكود، ويُطلق الطابورُ كما كان:
-$(grep '^job: ' "$STATE_OUT" | sed 's/^job: /  /' || true)
-أعِد النشرَ بعد أن تنتهي، أو ارفع QUEUE_IDLE_TIMEOUT إن كانت المهمّةُ طويلةً بطبعها."
+                    die "ما زال شيءٌ يجري بعد ${waited} ثانية — وقف النشرُ قبل أن يلمس الكود، ولم تُقطع المهمّة:
+$(grep -E '^(job|task): ' "$STATE_OUT" | sed -E 's/^(job|task): /  /' || true)
+أعِد النشرَ بعد أن تنتهي، أو ارفع QUEUE_IDLE_TIMEOUT إن كانت طويلةً بطبعها."
                 fi
                 if (( waited == 0 )); then
-                    printf '  مهمّةٌ تجري — ينتظرها النشرُ قبل أن يتبدّل الكود (حتى %s ثانية):\n' "$QUEUE_IDLE_TIMEOUT"
+                    printf '  شيءٌ يجري — ينتظره النشرُ قبل أن يتبدّل الكود (حتى %s ثانية):\n' "$QUEUE_IDLE_TIMEOUT"
                     grep '^job: ' "$STATE_OUT" | sed 's/^job: /    /' || true
+                    grep '^task: ' "$STATE_OUT" | sed 's/^task: /    مجدولة: /' || true
                 fi
                 sleep "$QUEUE_IDLE_POLL"
                 waited=$(( waited + QUEUE_IDLE_POLL ))
                 ;;
             *)
-                printf '::warning::تعذّر سؤالُ التطبيق عن المهامّ الجارية — أُمهلت %s ثانيةً كما كان\n' "$QUEUE_DRAIN_WAIT"
-                printf '  \033[33m!\033[0m تعذّر سؤالُ التطبيق عن المهامّ الجارية (انظر %s) — أُمهلت المهمّةُ الجارية %s ثانيةً كما كان\n' "$STATE_OUT" "$QUEUE_DRAIN_WAIT"
-                sleep "$QUEUE_DRAIN_WAIT"
-                return 0
+                die "تعذّر سؤالُ التطبيق عن المهامّ الجارية (الخروج $rc، والخرجُ في $STATE_OUT) — وقف النشرُ قبل أن يلمس الكود. لا يُفترض أنّ شيئًا لا يجري."
                 ;;
         esac
     done
@@ -209,37 +303,17 @@ $(grep '^job: ' "$STATE_OUT" | sed 's/^job: /  /' || true)
 # www-data)، فيتخطّى التطبيقُ كلَّ مهمّةٍ حان وقتها ويسجّل اسمها. بلا sudo، وبلا
 # تعديلٍ لـcron. ويُحذف بعد الذاكرة وإعادة تحميل PHP.
 #
-# وعند السقوط يُحذف إن كان الكودُ على القرص يجري على قاعدته (السحبُ لم يتمّ، أو
-# لا هجرةَ جديدة، أو تمّت الهجرات). وإلّا بقي — كودٌ جديدٌ ينتظر هجراتٍ لم تجرِ —
-# حتى يكتمل نشرٌ أو يُرجَع بالكود، ويُعلَن ذلك. ولا يبقى أبدًا: ملفٌّ أقدمُ من نصف
-# ساعةٍ يتجاهله التطبيقُ ويسجّله خطأً.
+# وقبل السحب يُكتب فيه `phase: swapping`: من هنا لا يُطلقه وقتٌ ولا سؤال — كودٌ نصفُ
+# مبدَّل، ذاكرتُه قديمة، ولو جرت هجراتُه. وعند السقوط يُحذف إن لم يتغيّر الكودُ على القرص،
+# وإلّا بقي حتى يكتمل نشرٌ أو رجوع، ويُعلَن ذلك.
 # ---------------------------------------------------------------------------
 HOLD_FILE="$APP_DIR/.deploy-hold"
-# هجراتٌ تركها نشرٌ سقط قبلها — تُذكر حتى تجري، فلا تُطلق إعادةٌ ساقطةٌ المهامَّ عليها
-PENDING_FILE="$STATE_DIR/MIGRATIONS_PENDING"
 HELD=0
-MIGRATED_OK=0
 MIGRATE_RC=0
 
+# $1 السبب، و$2 المرحلة: before-pull (لم يُلمس الكود) أو swapping (يتبدّل)
 hold_schedule() {
-    printf '%s · نشرٌ من %s · pid %s · %s\n' "$1" "$FROM_COMMIT" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" > "$HOLD_FILE" 2> /dev/null
-}
-
-# أكودُ القرص الآن ينتظر هجراتٍ لم تجرِ؟
-migrations_pending() {
-    (( MIGRATED_OK == 0 )) || return 1
-    # القاعدةُ تقول: أيُّ هجرةٍ على القرص لم تجرِ — وإن لم تُسأل قُدِّر من git
-    local n
-    n="$(db_pending)"
-    if [[ -n "$n" ]]; then
-        (( n > 0 ))
-        return
-    fi
-    [[ ! -e "$PENDING_FILE" ]] || return 0
-    (( MIGRATE_RC == 0 )) || return 0
-    local added
-    added="$(git diff --name-only --diff-filter=A "$FROM_COMMIT" HEAD -- database/migrations)" || return 0
-    [[ -n "$added" ]]
+    printf '%s · نشرٌ من %s · pid %s · %s\nphase: %s\n' "$1" "$FROM_COMMIT" "$$" "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${2:-before-pull}" > "$HOLD_FILE" 2> /dev/null
 }
 
 release_queue() {
@@ -263,11 +337,11 @@ release_queue() {
 # ---------------------------------------------------------------------------
 FAILED_FILE="$STATE_DIR/DEPLOY-FAILED.txt"
 FPM_RELOADED=0
-QUEUE_STATE="لم يُوقف (قاعدةُ الإيقاف غيرُ مثبّتة أو لم يُبلَغ الإيقاف)"
+QUEUE_STATE="لم يُوقف (صلاحياتُ الإيقاف غيرُ مثبّتة، أو سقط النشرُ قبل الإيقاف)"
 recovery_block() {
     local head pending done_list n
     head="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
-    done_list="$(grep -E ' DONE[[:space:]]*$' "${MIGRATE_LOG:-/dev/null}" 2>/dev/null | awk '{print $1}' || true)"
+    done_list="$(migrations_done)"
     n="$(db_pending)"
     if [[ -n "$n" ]]; then
         pending="$n (من القاعدة)$(awk '/^migration: /{printf "\n      %s", $2}' "$STATE_OUT" 2>/dev/null || true)"
@@ -277,7 +351,7 @@ recovery_block() {
     fi
     printf '=== حال الخادم بعد سقوط النشر ===\n'
     printf 'سقط عند: %s\n' "$CURRENT_STEP"
-    printf 'الكود على القرص: %s (كان %s)\n' "$head" "$FROM_COMMIT"
+    printf 'الكود على القرص: %s (كان %s)%s\n' "$head" "$FROM_COMMIT" "$(code_untouched && printf ' — لم يتغيّر' || printf ' — تغيّر')"
     if (( FPM_RELOADED == 1 )); then
         printf 'الويب: على الكود الجديد (أُعيد تحميل php-fpm)\n'
     else
@@ -287,51 +361,63 @@ recovery_block() {
     printf 'هجراتٌ لم تجرِ: %s\n' "$pending"
     printf 'الطابور: %s\n' "$QUEUE_STATE"
     if (( HELD == 1 )); then
-        printf 'المهامّ المجدولة: موقوفة (%s) — لا يُطلقها الوقتُ ما دامت هجراتٌ لم تجرِ\n' "$HOLD_FILE"
+        printf 'المهامّ المجدولة: موقوفة (%s) — لا يُطلقها الوقت: يُطلقها نشرٌ يكتمل أو رجوعٌ يكتمل\n' "$HOLD_FILE"
     else
         printf 'المهامّ المجدولة: تجري\n'
     fi
     printf 'الخطوات الآمنة (بالترتيب):\n'
     printf '  1. اقرأ السببَ أعلاه في سجلّ Deploy Main، وخرجَ الهجرات على الخادم: %s\n' "${MIGRATE_LOG:-—}"
-    printf '  2. إن كان السببُ عابرًا (قفل، شبكة): أعِد تشغيلَ Deploy Main — يُكمل الهجراتِ من حيث وقفت، ويُطلق المهامّ في آخره.\n'
-    printf '  3. وإلّا أرجِع الكودَ وحده: bash %s/scripts/rollback-code.sh %s — يرفض إن جرت في هذا النشر هجرة؛ والقاعدةُ لا تُستعاد.\n' "$APP_DIR" "$FROM_COMMIT"
+    printf '  2. إن كان السببُ عابرًا (قفل، شبكة، مهمّةٌ طويلة): أعِد تشغيلَ Deploy Main — يُكمل الهجراتِ من حيث وقفت، ويعيد العامل ويتحقّق منه، ثمّ يُطلق الطابورَ والمهامّ.\n'
+    printf '  3. وإلّا أرجِع الكودَ وحده: bash %s/scripts/rollback-code.sh %s — يرفض إن جرت في هذا النشر هجرة؛ والقاعدةُ لا تُستعاد. ويُطلق الطابورَ بعد أن يتحقّق من العامل.\n' "$APP_DIR" "$FROM_COMMIT"
     printf '  4. ثمّ أرجِع main نفسَه (Revert PR)، وإلّا أعاد النشرُ التالي الكودَ نفسه.\n'
     if [[ "$QUEUE_STATE" == موقوف* ]]; then
-        printf '  5. الطابورُ موقوف — أطلقه بحساب %s: %s %s/artisan queue:resume whatsapp ثمّ default (القاعدتان في sudoers)\n' "$APP_USER" "$PHP_BIN" "$APP_DIR"
+        printf '  5. لا تُطلق الطابورَ بيدك قبل 2 أو 3: العاملُ الحيّ على كودٍ غيرِ الذي على القرص. وإن تعذّرا معًا: بحساب root أعِد العاملَ (systemctl restart %s) على كودٍ يجري على قاعدته، ثمّ أطلقه بحساب %s: %s %s/artisan queue:resume whatsapp ثمّ default\n' "$QUEUE_UNIT" "$APP_USER" "$PHP_BIN" "$APP_DIR"
     fi
     printf '=== نهاية حال الخادم ===\n'
 }
 
-# أيُّ سقوطٍ — `die` أو أمرٌ يُسقطه `set -e` — يمرّ من هنا: يُقال أين، ويُطلق الطابور
+# أيُّ سقوطٍ — `die`، أو أمرٌ يُسقطه `set -e`، أو إشارةٌ قطعت النشر — يمرّ من هنا
 on_exit() {
-    local rc=$?
+    local rc=$? untouched=0
+    trap - HUP INT TERM
     if (( rc != 0 )); then
         printf '\n\033[31m✗ سقط النشرُ عند «%s»\033[0m — الكودُ على القرص %s (كان %s). الويبُ على ما حُمّل قبل إعادة تحميل PHP، وما جرى من هجراتٍ قبل السقوط باقٍ.\n  للمتابعة: أعِد النشر (يُكمل الهجرات من حيث وقفت). وللرجوع بالكود: %s/ROLLBACK.txt\n' \
             "$CURRENT_STEP" "$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')" "$FROM_COMMIT" "$STATE_DIR" >&2
     fi
+    compatible_now && untouched=1
     if (( RELEASED == 0 && PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
-        if release_queue; then
-            QUEUE_STATE="أُطلق كما كان — العاملُ على كوده القديم ولم يُعَد"
-            printf '  أُطلق الطابور كما كان — العاملُ على كوده القديم ولم يُعَد\n' >&2
+        if (( untouched == 1 )); then
+            if release_queue; then
+                QUEUE_STATE="أُطلق كما كان — الكودُ على القرص لم يتغيّر، والعاملُ عليه"
+                printf '  أُطلق الطابور كما كان — الكودُ على القرص لم يتغيّر، والعاملُ عليه\n' >&2
+            else
+                QUEUE_STATE="موقوف — تعذّر إطلاقُه (الخرجُ في $QUEUE_LOG)"
+                printf '\033[31m  ✗ تعذّر إطلاقُ الطابور — هو موقوف، والخرجُ في %s\033[0m\n' "$QUEUE_LOG" >&2
+            fi
+        elif (( WAS_PAUSED == 1 )) && code_untouched; then
+            QUEUE_STATE="موقوف كما كان قبل هذا النشر — تركه نشرٌ سابقٌ لم يكتمل، ويُطلقه نشرٌ يكتمل أو رجوعٌ يكتمل"
+            printf '::warning::يبقى الطابورُ موقوفًا كما كان قبل هذا النشر — تركه نشرٌ سابقٌ لم يكتمل\n'
         else
-            QUEUE_STATE="موقوف — تعذّر إطلاقُه (الخرجُ في $QUEUE_LOG)"
-            printf '\033[31m  ✗ تعذّر إطلاقُ الطابور — هو موقوف. أطلقه بحساب %s: %s %s/artisan queue:resume whatsapp (ثمّ default)، والخرجُ في %s\033[0m\n' \
-                "$APP_USER" "$PHP_BIN" "$APP_DIR" "$QUEUE_LOG" >&2
+            QUEUE_STATE="موقوف عمدًا — العاملُ على كودٍ غيرِ الذي على القرص، أو القاعدةُ تنتظر هجرات؛ يُطلقه نشرٌ يكتمل أو رجوعٌ يكتمل بعد أن يتحقّق من عاملٍ جديد"
+            printf '::warning::يبقى الطابورُ موقوفًا عمدًا — الكودُ على القرص تغيّر والعاملُ على القديم، فلا تخرج رسائلُ واتساب حتى يكتمل نشرٌ أو رجوع\n'
+            printf '\033[33m  ! يبقى الطابورُ موقوفًا عمدًا: العاملُ الحيّ على كودٍ قديم، والقرصُ تغيّر. إطلاقُه الآن يُجري المهامَّ على خليطٍ لم يُختبر. أعِد Deploy Main أو أرجِع الكود — كلاهما يُطلقه بعد أن يتحقّق من عاملٍ جديد.\033[0m\n' >&2
         fi
     fi
     if (( HELD == 1 )); then
-        if migrations_pending; then
-            git rev-parse --short HEAD > "$PENDING_FILE" 2> /dev/null || true
-            hold_schedule "أُبقي بعد سقوط النشر عند «$CURRENT_STEP»" || true
-            printf '::warning::تبقى المهامّ المجدولة موقوفة: الكودُ الجديد على القرص وهجراتُه لم تجرِ\n'
-            printf '\033[33m  ! تبقى المهامّ المجدولة موقوفة — الكودُ الجديد على القرص ينتظر هجراتٍ لم تجرِ، وتشغيلُها الآن يجري الجديدَ على القاعدة القديمة.\n    تُطلق حين يكتمل نشر، أو بالرجوع بالكود (ROLLBACK.txt). ولا يُطلقها الوقتُ وحده: التطبيقُ يُبقيها ما دامت هجراتٌ لم تجرِ. الملفّ: %s\033[0m\n' "$HOLD_FILE" >&2
-        elif rm -f "$HOLD_FILE"; then
-            HELD=0
-            printf '  أُطلقت المهامّ المجدولة — الكودُ على القرص يجري على قاعدته\n' >&2
+        if (( untouched == 1 )); then
+            if rm -f "$HOLD_FILE"; then
+                HELD=0
+                printf '  أُطلقت المهامّ المجدولة — الكودُ على القرص لم يتغيّر\n' >&2
+            else
+                printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف\033[0m\n' "$HOLD_FILE" >&2
+            fi
         else
-            printf '\033[31m  ✗ تعذّر حذفُ %s — المهامّ المجدولة موقوفة حتى يُحذف (أو حتى يجد التطبيقُ بعد نصف ساعة الكودَ على قاعدته)\033[0m\n' "$HOLD_FILE" >&2
+            hold_schedule "أُبقي بعد سقوط النشر عند «$CURRENT_STEP»" swapping || true
+            printf '::warning::تبقى المهامّ المجدولة موقوفة: الكودُ على القرص تغيّر ولم يكتمل النشر\n'
+            printf '\033[33m  ! تبقى المهامّ المجدولة موقوفة — الكودُ على القرص تغيّر ولم تُبنَ ذاكرتُه أو لم تكتمل هجراتُه. لا يُطلقها الوقت: يُطلقها نشرٌ يكتمل أو رجوعٌ يكتمل. الملفّ: %s\033[0m\n' "$HOLD_FILE" >&2
         fi
     fi
+    rm -f "$RUN_FILE"
     if (( rc != 0 )); then
         printf '::error title=سقط النشر::عند «%s» — حالُ الخادم والخطواتُ الآمنة في ملخّص التشغيل وفي %s على الخادم\n' "$CURRENT_STEP" "$FAILED_FILE"
         ( umask 077; recovery_block > "$FAILED_FILE" 2> /dev/null ) || true
@@ -341,41 +427,63 @@ on_exit() {
     [[ "$(basename "${BASH_SOURCE[0]}")" != abaad-deploy.*.sh ]] || rm -f "${BASH_SOURCE[0]}"
 }
 trap on_exit EXIT
+# وإشارةٌ تقطع النشر — إلغاءُ Deploy Main أو انقطاعُ SSH (HUP) أو قتلٌ لطيف — تمرّ بـon_exit
+# كأيّ سقوط: يُقال أين، ويُطلق ما أُوقف أو يُبقى عمدًا بالقاعدة نفسها. وقتلٌ عنيف (KILL)
+# لا يُمرّ به شيء: يبقى الطابورُ موقوفًا والمهامُّ موقوفة، ويقوله النشرُ التالي (DEPLOY-RUNNING)
+trap 'CURRENT_STEP="$CURRENT_STEP (قُطع النشرُ بإشارة)"; exit 130' HUP INT TERM
+
+# ---------------------------------------------------------------------------
+step "فحص صلاحيات النشر"
+if may queue:pause whatsapp && may queue:pause default && may queue:resume whatsapp && may queue:resume default \
+    && (( STATE_OK == 1 )); then
+    FULL_RULES=1
+fi
+if (( FULL_RULES == 1 )); then
+    read -r _ _ UNIT_LOAD < <(worker_unit)
+    [[ "$UNIT_LOAD" == loaded ]] || die "وحدةُ عامل الطابور $QUEUE_UNIT غيرُ موجودة في systemd ($UNIT_LOAD) — لا يُتحقَّق من العامل الجديد، فلم يُلمس شيء"
+    ask_state || { rc=$?; [[ "$rc" == 3 ]] || die "تعذّر سؤالُ التطبيق عن حاله (الخروج $rc، والخرجُ في $STATE_OUT) — لم يُلمس شيء. لا يمضي نشرٌ لا يعرف ما يجري."; }
+    PAUSED_NOW="$(sed -n 's/^paused: //p' "$STATE_OUT" | head -1)"
+    [[ -n "$PAUSED_NOW" && "$PAUSED_NOW" != "?" ]] || die "تعذّر أن يُعرف أموقوفٌ الطابورُ الآن — لم يُلمس شيء"
+    if [[ "$PAUSED_NOW" != "-" ]]; then
+        WAS_PAUSED=1
+        printf '  \033[33m!\033[0m الطابورُ موقوفٌ قبل هذا النشر (%s) — تركه نشرٌ أو رجوعٌ لم يكتمل. يُطلقه هذا النشرُ إن اكتمل، ويبقى موقوفًا إن سقط\n' "$PAUSED_NOW"
+    fi
+    if [[ ! -e "$RULES_FILE" ]]; then
+        printf 'رأى النشرُ صلاحياتِه كاملةً أوّلَ مرّة: %s · %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$FROM_COMMIT" > "$RULES_FILE"
+    fi
+    ok "صلاحياتُ النشر مثبّتة: الإيقافُ والإطلاقُ وسؤالُ التطبيق، ووحدةُ العامل $QUEUE_UNIT"
+elif [[ -e "$RULES_FILE" ]]; then
+    die "صلاحياتُ النشر كانت مثبّتةً ($(cat "$RULES_FILE")) وهي الآن ناقصة — لا يمضي نشرٌ بدونها، ولم يُلمس شيء. أعِد تركيب deploy/abaad-deploy.sudoers (DEPLOYMENT.md)."
+else
+    printf '::warning::صلاحياتُ النشر الجديدة غيرُ مثبّتة على الخادم — لا يُوقف الطابور، ولا تُنشر هجرة\n'
+    printf '  \033[33m!\033[0m صلاحياتُ النشر الجديدة غيرُ مثبّتة في sudoers (deploy/abaad-deploy.sudoers) — لا يُوقف الطابور أثناء هذا النشر (يعمل العاملُ أثناءه ويُعاد في آخره)، ويُرفض أيُّ نشرٍ فيه هجرة حتى تُركَّب\n'
+fi
 
 step "إيقاف المهامّ المجدولة والطابور قبل تبديل الكود"
-if hold_schedule "نشر"; then
+# إيقافٌ تركه نشرٌ أو رجوعٌ لم يكتمل وهو يبدّل الكود: يُورث كما هو — من أوّل هذا النشر
+# لا يُطلقه إلّا اكتمالُه، فسقوطُه قبل السحب لا يُطلق مهامَّ على كودٍ نصفِ مبدَّل
+HOLD_PHASE=before-pull
+if grep -qx 'phase: swapping' "$HOLD_FILE" 2> /dev/null; then
+    INHERITED=1
+    HOLD_PHASE=swapping
+    printf '  \033[33m!\033[0m المهامّ المجدولة موقوفةٌ قبل هذا النشر — تركها نشرٌ أو رجوعٌ لم يكتمل وهو يبدّل الكود: %s\n' "$(head -1 "$HOLD_FILE")"
+fi
+(( WAS_PAUSED == 0 )) || INHERITED=1
+if hold_schedule "نشر" "$HOLD_PHASE"; then
     HELD=1
     ok "المهامّ المجدولة: يتخطّاها التطبيقُ حتى تنتهي الهجراتُ والذاكرة ($HOLD_FILE)"
 else
     printf '::warning::لم يُكتب ملفُّ إيقاف المهامّ المجدولة — تجري أثناء النشر كما كانت\n'
     printf '  \033[33m!\033[0m تعذّرت كتابةُ %s — تجري المهامّ المجدولة أثناء النشر كما كانت\n' "$HOLD_FILE"
 fi
-if may queue:pause whatsapp && may queue:pause default && may queue:resume whatsapp && may queue:resume default; then
+if (( FULL_RULES == 1 )); then
     art queue:pause whatsapp >> "$QUEUE_LOG" 2>&1 && PAUSED_WHATSAPP=1 || true
     art queue:pause default >> "$QUEUE_LOG" 2>&1 && PAUSED_DEFAULT=1 || true
-    if (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )); then
-        QUEUE_STATE="موقوف — يُطلق في آخر النشر"
-        ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يُعاد العامل"
-        if (( STATE_OK == 1 )); then
-            wait_for_idle
-        else
-            printf '::warning::قاعدةُ سؤال التطبيق عن المهامّ الجارية غيرُ مثبّتة — أُمهلت المهمّةُ الجارية %s ثانيةً فقط\n' "$QUEUE_DRAIN_WAIT"
-            printf '  \033[33m!\033[0m قاعدةُ abaad:deploy-state غيرُ مثبّتة في sudoers — لا يُعرف أانتهت المهمّةُ الجارية: أُمهلت %s ثانيةً كما كان\n' "$QUEUE_DRAIN_WAIT"
-            sleep "$QUEUE_DRAIN_WAIT"
-            ok "أُمهلت المهمّةُ الجارية ${QUEUE_DRAIN_WAIT} ثانيةً تُكمل فيها على الكود الذي بدأت عليه"
-        fi
-    else
-        # نصفُ إيقافٍ لا يُترك: يُطلق ما أُوقف، ويمضي النشرُ كما كان
-        release_queue || true
-        PAUSED_WHATSAPP=0
-        PAUSED_DEFAULT=0
-        printf '  \033[33m!\033[0m لم يُوقف الطابور (انظر %s) — يمضي النشرُ كما كان: يعمل العاملُ أثناءه\n' "$QUEUE_LOG"
-    fi
-else
-    # قاعدةُ main القديمة (قبل تركيب deploy/abaad-deploy.sudoers الجديد) لا تبيح الإيقافَ
-    # ولا الإطلاق: لا يُجرَّب ما سيُردّ، ولا يسقط النشر — يمضي كما كان، والإعادةُ وحدها تجري
-    printf '::warning::قاعدةُ إيقاف الطابور غيرُ مثبّتة على الخادم — لم يُوقف الطابور أثناء النشر\n'
-    printf '  \033[33m!\033[0m قاعدةُ إيقاف الطابور غيرُ مثبّتة في sudoers (deploy/abaad-deploy.sudoers) — لم يُوقف الطابور، ويمضي النشرُ كما كان: يعمل العاملُ أثناءه، ويُعاد في آخره\n'
+    (( PAUSED_WHATSAPP == 1 && PAUSED_DEFAULT == 1 )) \
+        || die "تعذّر إيقافُ الطابور (انظر $QUEUE_LOG) — وقف النشرُ قبل أن يلمس الكود"
+    QUEUE_STATE="موقوف — يُطلق في آخر النشر"
+    ok "واتساب والافتراضيّ: لا يُسحب منهما جديدٌ حتى يعمل عاملٌ جديد"
+    wait_for_idle
 fi
 
 # ---------------------------------------------------------------------------
@@ -385,6 +493,19 @@ step "سحب $BRANCH"
 # «would clobber existing tag». وبـset -e يموت النشر عند أوّل سطرٍ بعد
 # الترويسة بلا رسالة — نشرٌ يتوقّف بصمت، وكلّ نشرةٍ بعده كذلك.
 git fetch --tags --force --quiet origin
+
+# ولا هجرةَ قبل تركيب صلاحيات النشر: بلا إيقاف الطابور وسؤال التطبيق يجري العاملُ القديم
+# على القاعدة المهاجَرة، ولا يُعرف عند السقوط ما جرى — قرارُ المالك (الجولة 16)
+INCOMING_MIGRATIONS="$(git diff --name-only --diff-filter=A HEAD "origin/$BRANCH" -- database/migrations)"
+if (( FULL_RULES == 0 )) && [[ -n "$INCOMING_MIGRATIONS" ]]; then
+    die "في هذا النشر هجرة، وصلاحياتُ النشر الجديدة غيرُ مثبّتة — لم يُلمس الكود:
+$(sed 's/^/    /' <<<"$INCOMING_MIGRATIONS")
+ركّب deploy/abaad-deploy.sudoers وتحقّق منه (DEPLOYMENT.md)، ثمّ أعِد النشر."
+fi
+
+# من هنا يتبدّل الكود: لا يُطلق الإيقافَ وقتٌ ولا سؤال، ولا يُطلق السقوطُ الطابور
+(( HELD == 0 )) || hold_schedule "نشر" swapping || true
+TREE_TOUCHED=1
 git pull --ff-only --quiet origin "$BRANCH"
 TO_COMMIT="$(git rev-parse --short HEAD)"
 
@@ -461,8 +582,6 @@ MIGRATED="$(grep -E '^[[:space:]]*[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[^ ]+ .*(D
 (( MIGRATE_RC == 0 )) || die "سقطت الهجرات — توقّف النشر قبل الذاكرة وإعادة تحميل PHP، فالموقعُ على كوده القديم.
 ما جرى قبل السقوط يبقى في القاعدة، ولا نسخةَ تُرجعه. الخطأُ كاملًا على الخادم وحده: $MIGRATE_LOG$( (( MIGRATE_LOCKED == 1 )) && printf '\nلم يُتَح قفلُ جدولٍ بعد %s محاولات — شيءٌ طويلٌ يمسكه. أعِد النشرَ في وقتٍ أهدأ.' "$MIGRATE_TRIES")"
 
-MIGRATED_OK=1
-rm -f "$PENDING_FILE"
 if [[ -n "$MIGRATED" ]]; then
     printf '  \033[33m!\033[0m جرت بلا نسخةٍ قبلها: ما حذفته هجرةٌ أو أعادت تسميتَه أو حوّلته لا يُرجعه الرجوعُ بالكود، ونجاحُ CI لا يضمن سلامتها على بيانات الإنتاج\n'
 elif grep -q 'Nothing to migrate' "$MIGRATE_LOG"; then
@@ -480,7 +599,8 @@ reload_fpm
 FPM_RELOADED=1
 ok "config · route · view · php-fpm"
 
-# والمهامُّ المجدولة تُطلق: الكودُ الجديد على القاعدة المهاجَرة بذاكرته الجديدة
+# والمهامُّ المجدولة تُطلق: الكودُ الجديد على القاعدة المهاجَرة بذاكرته الجديدة —
+# وكلُّ تشغيلٍ لـschedule:run عمليّةٌ جديدة تقرأ هذا كلَّه
 if (( HELD == 1 )); then
     rm -f "$HOLD_FILE"
     HELD=0
@@ -489,23 +609,35 @@ fi
 
 # ---------------------------------------------------------------------------
 # العاملُ يُعاد على ما يبدأ عليه الويبُ الآن: الكودُ الجديد والقاعدةُ المهاجَرة
-# والذاكرةُ الجديدة. `queue:restart` لا يقطع مهمّة — يُفحص بين المهامّ — ثمّ
-# يُنتظر خروجُ القديم (لا يسحب شيئًا: الطابورُ موقوف) قبل أن يُطلق الطابور.
+# والذاكرةُ الجديدة. `queue:restart` لا يقطع مهمّة — يُفحص بين المهامّ — ثمّ يُسأل
+# systemd حتى يخرج القديمُ ويثبت جديدٌ بدأ بعد هذا كلِّه. ولا يُطلق الطابورُ قبله.
 # ---------------------------------------------------------------------------
 step "عامل الطابور"
+read -r OLD_WORKER _ _ < <(worker_unit)
 RESTART_RC=0
 art queue:restart --quiet || RESTART_RC=$?
-if (( RESTART_RC == 0 )); then
-    ok "طُلب من العامل أن يُعاد بعد مهمّته الجارية — فيبدأ بالكود الجديد"
-else
-    printf '  \033[33m!\033[0m تعذّر queue:restart — يبقى العاملُ بالكود القديم حتى يُعاد بنفسه (--max-time)\n'
-fi
-if (( RELEASED == 0 && PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
-    (( RESTART_RC != 0 )) || sleep "$QUEUE_RESTART_WAIT"
+if (( PAUSED_WHATSAPP + PAUSED_DEFAULT > 0 )); then
+    (( RESTART_RC == 0 )) || die "تعذّر queue:restart — العاملُ على الكود القديم، فيبقى الطابورُ موقوفًا (لا يسحب العاملُ القديم مهمّةً على الكود الجديد)"
+    QUEUE_STATE="موقوف — ينتظر عاملًا جديدًا"
+    WORKER_RC=0
+    wait_for_new_worker "$OLD_WORKER" || WORKER_RC=$?
+    case "$WORKER_RC" in
+        0) ok "خرج العاملُ القديم (${OLD_WORKER}) وثبت عاملٌ جديد (${NEW_WORKER}) بدأ على الكود الجديد" ;;
+        2) die "وحدةُ العامل $QUEUE_UNIT اختفت من systemd — يبقى الطابورُ موقوفًا" ;;
+        *) die "لم يثبت عاملٌ جديدٌ على $QUEUE_UNIT خلال ${QUEUE_WORKER_TIMEOUT} ثانية (كان ${OLD_WORKER}) — يبقى الطابورُ موقوفًا. انظر: journalctl -u $QUEUE_UNIT" ;;
+    esac
     release_queue || { QUEUE_STATE="موقوف — تعذّر إطلاقُه بعد النشر (الخرجُ في $QUEUE_LOG)"; die "تعذّر إطلاقُ الطابور بعد النشر — هو موقوف، ولا تخرج رسائلُ واتساب حتى يُطلق:
     أطلقه بحساب $APP_USER: $PHP_BIN $APP_DIR/artisan queue:resume whatsapp ثمّ default — والخرجُ في $QUEUE_LOG"; }
     QUEUE_STATE="أُطلق على العامل الجديد"
     ok "أُطلق الطابور — يسحب منه العاملُ الجديد"
+else
+    # قبل تركيب الصلاحيات: لا إيقاف — يُطلب من العامل أن يُعاد، ويُقال أعاد أم لا
+    if (( RESTART_RC == 0 )) && wait_for_new_worker "$OLD_WORKER"; then
+        ok "أُعيد العامل (${OLD_WORKER} → ${NEW_WORKER}) — والطابورُ لم يُوقف (الصلاحياتُ غيرُ مثبّتة)"
+    else
+        printf '::warning::لم يُتحقَّق من عودة العامل على الكود الجديد\n'
+        printf '  \033[33m!\033[0m لم يُتحقَّق من عودة العامل على الكود الجديد — يبقى بكوده حتى يُعاد بنفسه (--max-time)\n'
+    fi
 fi
 
 # ---------------------------------------------------------------------------

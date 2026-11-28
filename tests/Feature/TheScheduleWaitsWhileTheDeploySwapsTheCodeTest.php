@@ -131,6 +131,25 @@ class TheScheduleWaitsWhileTheDeploySwapsTheCodeTest extends TestCase
         Log::shouldHaveReceived('error')->withArgs(fn ($message) => str_contains($message, 'stale'))->atLeast()->once();
     }
 
+    public function test_a_hold_written_while_the_code_was_swapping_is_never_freed_by_time_even_with_nothing_pending(): void
+    {
+        Log::spy();
+        $ran = $this->oneTask();
+        // نشرٌ سقط بعد السحب وقبل الذاكرة (أو قُتل): لا هجرةَ معلّقة، لكنّ الكودَ نصفُ مبدَّل
+        file_put_contents($this->hold, "أُبقي بعد سقوط النشر عند «بناء الواجهة» · نشرٌ من abc1234 · pid 1\n".DeployHold::SWAPPING."\n");
+        touch($this->hold, time() - DeployHold::STALE_AFTER * 4);
+
+        $this->artisan('schedule:run')->assertSuccessful();
+
+        $this->assertCount(0, $ran, 'أطلق الوقتُ مهامَّ على كودٍ نصفِ مبدَّل');
+        Log::shouldHaveReceived('error')->withArgs(fn ($message) => str_contains($message, 'swapping'))->atLeast()->once();
+        // والسكربتان يكتبان السطرَ نفسَه حرفًا
+        foreach (['scripts/deploy.sh', 'scripts/rollback-code.sh'] as $script) {
+            $this->assertStringContainsString("phase: %s", (string) file_get_contents(base_path($script)), $script);
+            $this->assertStringContainsString("grep -qx 'phase: swapping'", (string) file_get_contents(base_path($script)), $script);
+        }
+    }
+
     public function test_time_alone_never_frees_the_schedule_while_the_code_on_disk_waits_for_unrun_migrations(): void
     {
         Log::spy();

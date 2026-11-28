@@ -575,7 +575,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
     );
 }
 
-function PayForm({
+export function PayForm({
     invoice,
     accounts,
     methods,
@@ -596,10 +596,14 @@ function PayForm({
      * التحصيلَ الأوّل ولا يكتب غيرَه. ونافذةٌ تُفتح من جديد تحاول من جديد.
      */
     const [requestKey] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+    const { context } = usePage<PageProps>().props;
+    const m = (v: number) => money(v, context!.currency);
     const form = useForm({
         customer_id: String(invoice.customer_id),
         customer_invoice_id: String(invoice.id),
         request_key: requestKey,
+        // وتركُ الزائد رصيدًا لا يُختار وحدَه — يختاره من رأى المستحقَّ والزائد
+        leave_excess: false,
         amount: String(invoice.outstanding),
         // وأوّلُ ما يقبله الخادم — لا اسمًا مكتوبًا هنا قد يسقط من قائمته
         method: methods[0] ?? '',
@@ -627,6 +631,17 @@ function PayForm({
      * فيختفي الحقل بلا خبر.
      */
     const isCheque = form.data.method === CHEQUE;
+
+    /*
+     * ومبلغٌ أكبرُ من الباقي: يُقال المستحقُّ والزائدُ قبل الحفظ.
+     *
+     * والخيارُ «اترك المبلغ الزائد رصيدًا للعميل» لا يُختار وحدَه: بدونه يُردّ المبلغُ
+     * كما كان، ومعه يُخصَّص الباقي ويبقى الزائدُ رصيدًا. ولا يظهر لفاتورةٍ لم يبقَ
+     * عليها شيء — الدفعةُ المقدّمة بابُها «تحصيل على حساب العميل».
+     */
+    const asked = Number(form.data.amount);
+    const excess = Number.isFinite(asked) && invoice.outstanding > 0 ? round3(asked - invoice.outstanding) : 0;
+    const overpaid = excess > 0.0005;
 
     return (
         <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
@@ -700,6 +715,26 @@ function PayForm({
                     </span>
                 </label>
             )}
+            {overpaid && (
+                <div data-testid="leave-excess" className="basis-full rounded-[8px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[13px]">
+                    <p>
+                        {t('المستحق على الفاتورة')}: <strong data-testid="excess-due">{m(invoice.outstanding)}</strong>
+                        {' — '}
+                        {t('الزائد')}: <strong data-testid="excess-amount">{m(excess)}</strong>
+                    </p>
+                    <label className="mt-2 flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(form.data.leave_excess)}
+                            onChange={(e) => form.setData('leave_excess', e.target.checked)}
+                        />
+                        {t('اترك المبلغ الزائد رصيدًا للعميل')}
+                    </label>
+                    {!form.data.leave_excess && (
+                        <p className="mt-1 text-[12px] text-[#92400e]">{t('بدون هذا الخيار يُردّ مبلغٌ أكبر من المتبقي على الفاتورة.')}</p>
+                    )}
+                </div>
+            )}
             <Button
                 disabled={form.processing}
                 onClick={() => {
@@ -709,6 +744,8 @@ function PayForm({
                         bank_account_id: needsAccount ? d.bank_account_id : '',
                         // واستحقاقٌ كُتب ثمّ رُدَّت الوسيلةُ إلى غير الشيك لا يُرسَل
                         cheque_due_at: isCheque ? d.cheque_due_at : '',
+                        // وخيارٌ اختير ثمّ نزل المبلغُ إلى الباقي لا يُرسَل
+                        leave_excess: overpaid ? Boolean(d.leave_excess) : false,
                     }));
                     form.post('/admin/customer-payments', { preserveScroll: true, onSuccess: onDone });
                 }}

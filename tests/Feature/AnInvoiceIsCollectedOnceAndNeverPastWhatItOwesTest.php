@@ -27,6 +27,7 @@ use App\Support\CustomerPayments;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\PaymentLinks;
+use App\Support\Permissions;
 use App\Support\Paymob\Amount;
 use App\Support\Receivables;
 use App\Support\Store\Paymob;
@@ -570,5 +571,277 @@ class AnInvoiceIsCollectedOnceAndNeverPastWhatItOwesTest extends TestCase
         }
 
         $this->assertSame($before, $this->books($invoice));
+    }
+
+    /* ═══════════════════════ الجولة 16 · المفتاحُ لعمليّةٍ واحدة ═══════════════════════ */
+
+    /** إرسالُ النافذة بتفاصيلها — المفتاحُ وما يُكتب معه */
+    private function collectWith(CustomerInvoice $invoice, string $key, array $extra = [], ?float $amount = null): TestResponse
+    {
+        return $this->post(route('admin.customerPayments.store'), $extra + [
+            'request_key' => $key,
+            'customer_id' => $invoice->customer_id, 'customer_invoice_id' => $invoice->id,
+            'amount' => $amount ?? 10, 'method' => 'نقدي',
+        ]);
+    }
+
+    private function user(string $role, ?array $permissions = null, ?Business $shop = null): User
+    {
+        static $n = 0;
+        $n++;
+
+        return User::create([
+            'business_id' => ($shop ?? $this->shop)->id, 'name' => 'موظّف '.$n, 'email' => 'r16-'.$n.'@collect.test',
+            'password' => bcrypt('x'), 'role' => $role, 'status' => 'نشط', 'permissions' => $permissions,
+        ]);
+    }
+
+    /**
+     * والمفتاحُ نفسُه لعمليّةٍ أخرى يُردّ ولا يُكتب شيء — ولا يُقال فيه رقمُ التحصيل الأوّل.
+     *
+     * مفتاحٌ يُعاد بمبلغٍ آخر، أو فاتورةٍ أخرى، أو وسيلةٍ أو حسابٍ أو شيكٍ أو مرجعٍ أو
+     * ملاحظةٍ أو تاريخٍ آخر: كان يردّ التحصيلَ الأوّل كأنّه هو (الجولة 15)، فيقرأ من يحمله
+     * رقمَه، ولا يُكتب ما قصده. صار بصمةً مع المفتاح، فيُردّ بسببه.
+     */
+    public function test_the_same_key_for_another_operation_is_refused_and_writes_nothing(): void
+    {
+        $invoice = $this->invoice();
+        $other = $this->invoice();
+        $key = (string) Str::uuid();
+        $this->collectWith($invoice, $key)->assertSessionHasNoErrors();
+        $first = CustomerPayment::where('request_key', $key)->sole();
+        $this->assertNotNull($first->request_fingerprint);
+        $once = $this->books($invoice);
+
+        foreach ([
+            'مبلغٌ آخر' => [[], 11.0],
+            'فاتورةٌ أخرى' => [['customer_invoice_id' => $other->id], null],
+            'وسيلةٌ أخرى' => [['method' => 'تحويل', 'bank_account_id' => $this->bank->id], null],
+            'مرجعٌ آخر' => [['external_reference' => 'TRX-77'], null],
+            'ملاحظةٌ أخرى' => [['notes' => 'دفعة ثانية'], null],
+            'تاريخٌ آخر' => [['occurred_at' => '2027-02-09'], null],
+        ] as $why => [$extra, $amount]) {
+            $response = $this->collectWith($invoice, $key, $extra, $amount);
+            $this->refusedWith($response, 'بتفاصيل أخرى');
+            $this->assertStringNotContainsString($first->number, (string) session('errors')->first('amount'), "$why: قيل رقمُ التحصيل الأوّل");
+            $this->assertSame($once, $this->books($invoice), "$why: كتب المفتاحُ نفسُه عمليّةً أخرى");
+        }
+
+        // والعمليّةُ نفسُها بالمفتاح نفسِه تردّ الأولى — ولو بعد منتصف الليل والتاريخُ لم يُكتب
+        Carbon::setTestNow(Carbon::parse('2027-02-11 00:05:00', 'Asia/Muscat'));
+        $this->collectWith($invoice, $key)->assertSessionHasNoErrors()
+            ->assertSessionHas('toast', fn ($t) => str_contains($t['msg'], 'سُجّل من قبل'));
+        $this->assertSame($once, $this->books($invoice));
+    }
+
+    public function test_the_fingerprint_is_the_operation_in_baisa_and_not_its_spelling(): void
+    {
+        $base = CustomerPayments::fingerprint(1, 2, 10.0, 'نقدي', ['notes' => ' x '], [5 => 10.0], false, 3);
+
+        $this->assertSame($base, CustomerPayments::fingerprint(1, 2, 10.0004, 'نقدي', ['notes' => 'x'], [5 => 10], false, 3), 'البيسةُ نفسُها والملاحظةُ بلا فراغٍ زائدٍ عمليّةٌ واحدة');
+        foreach ([
+            'متجر' => [9, 2, 10.0, 'نقدي', ['notes' => 'x'], [5 => 10.0], false, 3],
+            'عميل' => [1, 9, 10.0, 'نقدي', ['notes' => 'x'], [5 => 10.0], false, 3],
+            'بيسة' => [1, 2, 10.001, 'نقدي', ['notes' => 'x'], [5 => 10.001], false, 3],
+            'وسيلة' => [1, 2, 10.0, 'بطاقة', ['notes' => 'x'], [5 => 10.0], false, 3],
+            'حساب' => [1, 2, 10.0, 'نقدي', ['notes' => 'x', 'bank_account_id' => 4], [5 => 10.0], false, 3],
+            'شيك' => [1, 2, 10.0, 'نقدي', ['notes' => 'x', 'cheque_due_at' => '2027-03-01'], [5 => 10.0], false, 3],
+            'فاتورة' => [1, 2, 10.0, 'نقدي', ['notes' => 'x'], [6 => 10.0], false, 3],
+            'الزائد' => [1, 2, 10.0, 'نقدي', ['notes' => 'x'], [5 => 10.0], true, 3],
+            'مستخدم' => [1, 2, 10.0, 'نقدي', ['notes' => 'x'], [5 => 10.0], false, 4],
+        ] as $what => $args) {
+            $this->assertNotSame($base, CustomerPayments::fingerprint(...$args), "تغيّر {$what} ولم تتغيّر البصمة");
+        }
+    }
+
+    /** ومفتاحٌ سجّله غيرُك لا يردّ لك تحصيلَه — ولا يكتب لك تحصيلًا */
+    public function test_another_collector_holding_the_same_key_reads_nothing_and_writes_nothing(): void
+    {
+        $invoice = $this->invoice();
+        $key = (string) Str::uuid();
+        $this->collectWith($invoice, $key)->assertSessionHasNoErrors();
+        $first = CustomerPayment::where('request_key', $key)->sole();
+        $once = $this->books($invoice);
+
+        $clerk = $this->user('accountant');
+        $this->assertTrue($clerk->may(Permissions::CUSTOMER_PAYMENT_CREATE));
+        $this->actingAs($clerk);
+        $response = $this->collectWith($invoice, $key);
+
+        $this->refusedWith($response, 'سجّلها غيرك');
+        $this->assertStringNotContainsString($first->number, (string) session('errors')->first('amount'));
+        $this->assertSame($once, $this->books($invoice));
+    }
+
+    /** ومتجرٌ آخر بالمفتاح نفسِه يكتب تحصيلَه هو — لا يقرأ تحصيلَ هذا المتجر */
+    public function test_another_shop_with_the_same_key_gets_its_own_collection_and_never_ours(): void
+    {
+        $invoice = $this->invoice();
+        $key = (string) Str::uuid();
+        $this->collectWith($invoice, $key)->assertSessionHasNoErrors();
+        $ours = CustomerPayment::where('request_key', $key)->sole();
+        $once = $this->books($invoice);
+
+        $shop2 = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط', 'site_slug' => 'r16neighbour', 'tier' => 'gold']);
+        Currency::create(['business_id' => $shop2->id, 'code' => 'OMR', 'name' => 'ريال', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
+        Ledger::seedChart($shop2->id);
+        Branch::create(['business_id' => $shop2->id, 'name' => 'الرئيسي']);
+        Setting::create(['business_id' => $shop2->id, 'key' => 'vat_enabled', 'value' => '0']);
+        $owner2 = $this->user('admin', null, $shop2);
+        $customer2 = Customer::create(['business_id' => $shop2->id, 'name' => 'زبون الجار', 'phone' => '93333333', 'allow_credit_sales' => true, 'language' => 'ar']);
+        $item = Product::create(['business_id' => $shop2->id, 'name' => 'كرسي', 'price' => 10, 'cost' => 4, 'quantity' => 10, 'alert_qty' => 0, 'active' => true, 'published' => true]);
+        $draft = CustomerInvoices::create($shop2->id, $customer2, ['issued_at' => '2027-02-10'], [
+            ['product_id' => $item->id, 'description' => 'كرسي', 'quantity' => 1, 'unit_price' => 10],
+        ], $owner2->id);
+        $theirs = CustomerInvoices::issue($draft, $owner2->id);
+
+        $this->actingAs($owner2);
+        $response = $this->collectWith($theirs, $key);
+
+        $response->assertSessionHasNoErrors();
+        // وترقيمُ كلّ متجرٍ من أوّله، فرقمُ الجار قد يشبه رقمَنا: المقارنةُ بالصفّ لا بالنصّ
+        $mine = CustomerPayment::where('business_id', $shop2->id)->where('request_key', $key)->sole();
+        $this->assertNotSame($ours->id, $mine->id, 'رُدّ للجار تحصيلُنا');
+        $this->assertSame(10.0, round((float) $mine->amount, 3));
+        $this->assertStringNotContainsString('سُجّل من قبل', (string) (session('toast')['msg'] ?? ''));
+        $this->assertSame(0.0, $theirs->fresh()->outstanding());
+        $this->assertSame($once, $this->books($invoice), 'مسّ تحصيلُ الجار دفاترَنا');
+    }
+
+    /** ومن لا يملك التحصيلَ لا يُعاد له تحصيلٌ سابق — يُردّ قبل أن يُقرأ المفتاح */
+    public function test_a_user_who_may_not_collect_is_refused_before_any_replay(): void
+    {
+        $invoice = $this->invoice();
+        $key = (string) Str::uuid();
+        $this->collectWith($invoice, $key)->assertSessionHasNoErrors();
+        $once = $this->books($invoice);
+
+        $viewer = $this->user('accountant', ['dashboard', 'finance']);
+        $this->assertFalse($viewer->may(Permissions::CUSTOMER_PAYMENT_CREATE));
+        $this->actingAs($viewer);
+
+        $this->collectWith($invoice, $key)->assertForbidden();
+        $this->collectWith($invoice, (string) Str::uuid())->assertForbidden();
+        $this->assertSame($once, $this->books($invoice));
+    }
+
+    /** وفاتورةٌ على فرعٍ يحصّلها من يعمل فيه — لا تحصيلًا جديدًا ولا إعادةَ تحصيلٍ سابق */
+    public function test_a_collector_bound_to_another_branch_neither_collects_nor_replays_this_branchs_invoice(): void
+    {
+        $here = Branch::where('business_id', $this->shop->id)->firstOrFail();
+        $there = Branch::create(['business_id' => $this->shop->id, 'name' => 'السيب']);
+        $invoice = $this->invoice();
+        $invoice->forceFill(['branch_id' => $here->id])->save();
+
+        $key = (string) Str::uuid();
+        $this->collectWith($invoice, $key)->assertSessionHasNoErrors();
+        $once = $this->books($invoice);
+
+        $away = $this->user('accountant');
+        $away->branches()->attach($there->id);
+        $this->actingAs($away);
+
+        $this->refusedWith($this->collectWith($invoice, $key), 'فرعٍ لست مُسنَدًا إليه');
+        $this->refusedWith($this->collectWith($invoice, (string) Str::uuid(), [], 5), 'فرعٍ لست مُسنَدًا إليه');
+        $this->assertSame($once, $this->books($invoice));
+
+        // ومن يعمل فيه يحصّلها
+        $local = $this->user('accountant');
+        $local->branches()->attach($here->id);
+        $this->actingAs($local);
+        $this->collectWith($invoice, (string) Str::uuid(), [], 5)->assertSessionHasNoErrors();
+        $this->assertSame(10.0, $invoice->fresh()->outstanding());
+
+        // ومن لم يُقيَّد بفرعٍ (المالك) يحصّلها ولو حُذف فرعُها
+        $here->delete();
+        $this->actingAs($this->owner);
+        $this->collectWith($invoice, (string) Str::uuid(), [], 5)->assertSessionHasNoErrors();
+        $this->assertSame(5.0, $invoice->fresh()->outstanding());
+    }
+
+    /* ═══════════════════════ الجولة 16 · اترك المبلغ الزائد رصيدًا للعميل ═══════════════════════ */
+
+    /**
+     * والزائدُ يبقى رصيدًا بطلبٍ صريح — بالمعالجة القائمة، بلا إيرادٍ ولا مستحقٍّ ولا نقاط.
+     *
+     * فاتورةٌ بخمسةٍ وعشرين حُصّل منها عشرة، والعميلُ يدفع عشرين: بلا الخيار يُردّ (الباقي
+     * خمسةَ عشر)، ومعه تُسدَّد الفاتورة ويبقى خمسةٌ رصيدًا له — كما لو سُجّل تحصيلُ الباقي
+     * ودفعةٌ مقدّمةٌ بخمسة.
+     */
+    public function test_leaving_the_excess_as_credit_is_asked_for_and_adds_no_revenue_due_or_points(): void
+    {
+        $invoice = $this->invoice();
+        $this->collect($invoice, 10)->assertSessionHasNoErrors();
+        $before = $this->books($invoice);
+
+        $this->refusedWith($this->collectWith($invoice, (string) Str::uuid(), [], 20), '15.000');
+        $this->assertSame($before, $this->books($invoice), 'بلا الخيار كتب شيئًا');
+
+        $this->collectWith($invoice, (string) Str::uuid(), ['leave_excess' => '1'], 20)->assertSessionHasNoErrors()
+            ->assertSessionHas('toast', fn ($t) => str_contains($t['msg'], 'رصيدًا للعميل'));
+
+        $after = $this->books($invoice);
+        $payment = CustomerPayment::where('business_id', $this->shop->id)->latest('id')->firstOrFail();
+        $this->assertSame(20.0, round((float) $payment->amount, 3));
+        $this->assertSame(15.0, round((float) $payment->allocations()->sum('amount'), 3), 'لم يُخصَّص الباقي وحده');
+        $this->assertSame(5.0, $payment->unallocated());
+        $this->assertSame(30.0, $after['cash']);
+        $this->assertSame(25.0, $after['paid']);
+        $this->assertSame(0.0, $after['left']);
+        $this->assertSame(5.0, $after['credit'], 'الزائدُ ليس رصيدًا للعميل');
+        $this->assertSame(-5.0, $after['receivable'], 'الزائدُ لم يمرّ بالذمم كالدفعة المقدّمة');
+        $this->assertSame(0.0, $after['balanced']);
+        // ولا يكتب الزائدُ إيرادًا ولا مستحقَّ بوتيكٍ ولا نقاطًا ولا حركةً ولا مخزونًا
+        foreach (['revenue', 'boutique_payable', 'boutique_dues', 'points', 'transactions', 'stock'] as $k) {
+            $this->assertSame($before[$k], $after[$k], "الزائدُ حرّك {$k}");
+        }
+        $this->assertSame(1, JournalEntry::where('business_id', $this->shop->id)->where('sourceable_type', CustomerPayment::class)->where('sourceable_id', $payment->id)->count());
+    }
+
+    public function test_leaving_the_excess_is_refused_on_a_paid_invoice_and_names_the_advance_door(): void
+    {
+        $invoice = $this->invoice();
+        $this->collect($invoice, 25)->assertSessionHasNoErrors();
+        $paid = $this->books($invoice);
+
+        $this->refusedWith($this->collectWith($invoice, (string) Str::uuid(), ['leave_excess' => '1'], 5), 'تحصيلًا على حساب العميل');
+
+        $this->assertSame($paid, $this->books($invoice), 'صار الخيارُ تحصيلًا ثانيًا على فاتورةٍ مسدَّدة');
+    }
+
+    /** والخيارُ لا يفتح طريقًا حول المفتاح: الإعادةُ تردّ الأوّل، وتبديلُ الخيار بالمفتاح نفسِه يُردّ */
+    public function test_leaving_the_excess_keeps_the_key_rules(): void
+    {
+        $invoice = $this->invoice();
+        $key = (string) Str::uuid();
+        $this->collectWith($invoice, $key, ['leave_excess' => '1'], 30)->assertSessionHasNoErrors();
+        $once = $this->books($invoice);
+        $this->assertSame(5.0, $once['credit']);
+
+        $this->collectWith($invoice, $key, ['leave_excess' => '1'], 30)->assertSessionHasNoErrors()
+            ->assertSessionHas('toast', fn ($t) => str_contains($t['msg'], 'سُجّل من قبل'));
+        $this->refusedWith($this->collectWith($invoice, $key, [], 30), 'بتفاصيل أخرى');
+        $this->assertSame($once, $this->books($invoice));
+    }
+
+    public function test_leaving_the_excess_is_only_for_one_named_invoice_and_changes_nothing_when_nothing_exceeds(): void
+    {
+        $invoice = $this->invoice();
+        $before = $this->books($invoice);
+
+        foreach ([[[], false], [[$invoice->id => 10], false]] as [$allocations, $exact]) {
+            try {
+                CustomerPayments::record($this->shop->id, $this->company, 10, ['method' => 'نقدي'], $allocations, $this->owner->id, exact: $exact, leaveExcess: true);
+                $this->fail('قُبل تركُ الزائد بلا فاتورةٍ بعينها');
+            } catch (CollectionRefused $e) {
+                $this->assertStringContainsString('فاتورةٍ واحدة بعينها', $e->getMessage());
+            }
+        }
+        $this->assertSame($before, $this->books($invoice));
+
+        // ومبلغٌ لا يزيد على الباقي: الخيارُ لا أثرَ له، والتحصيلُ كما هو
+        $this->collectWith($invoice, (string) Str::uuid(), ['leave_excess' => '1'], 25)->assertSessionHasNoErrors();
+        $this->assertSame(0.0, $this->books($invoice)['credit']);
+        $this->assertSame(0.0, $invoice->fresh()->outstanding());
     }
 }

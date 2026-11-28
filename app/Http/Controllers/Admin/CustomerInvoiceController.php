@@ -1833,6 +1833,13 @@ class CustomerInvoiceController extends Controller
              * التحصيلُ الأوّل ولا يُكتب غيرُه (`CustomerPayments::record`).
              */
             'request_key' => ['required', 'string', 'max:64'],
+            /*
+             * وتركُ الزائد رصيدًا للعميل — خيارٌ صريحٌ لا يُختار وحدَه (الجولة 16).
+             *
+             * بدونه يُردّ المبلغُ الأكبرُ من باقي الفاتورة كما كان. ومعه يُخصَّص الباقي،
+             * ويبقى الزائدُ رصيدًا بالمعالجة القائمة (`CustomerPayments::record`).
+             */
+            'leave_excess' => ['nullable', 'boolean'],
         ], [
             'request_key.required' => __('حدّث الصفحة ثم أعد تسجيل التحصيل.'),
         ], [
@@ -1852,6 +1859,23 @@ class CustomerInvoiceController extends Controller
         $allocations = [];
         if (! empty($data['customer_invoice_id'])) {
             $allocations = [(int) $data['customer_invoice_id'] => (float) $data['amount']];
+
+            /*
+             * والفاتورةُ على فرعٍ: يحصّلها من يعمل فيه — ومنه إعادةُ محاولةٍ سابقة.
+             *
+             * ردُّ تحصيلٍ كُتب من قبل يمرّ من هنا كما يمرّ التحصيلُ نفسُه: صلاحيةُ
+             * التحصيل (أعلاه)، والمتجرُ (المفتاحُ فريدٌ فيه)، ومَن سجّل (البصمة)، والفرع.
+             * ومن لم يُقيَّد بفرعٍ يعمل في كلّ فروع متجره (`User::worksAt`).
+             */
+            $branchId = CustomerInvoice::where('business_id', $this->bid())
+                ->whereKey((int) $data['customer_invoice_id'])->value('branch_id');
+            // والقيدُ لمن قُيِّد بفروعٍ وحده — فلا يُردّ المالكُ عن فاتورة فرعٍ حُذف
+            $user = auth()->user();
+            if ($branchId !== null && $user->branches()->withTrashed()->exists() && ! $user->worksAt((int) $branchId)) {
+                throw ValidationException::withMessages([
+                    'amount' => __('هذه الفاتورة على فرعٍ لست مُسنَدًا إليه — لا تُحصَّل منك.'),
+                ]);
+            }
         }
 
         /*
@@ -1866,6 +1890,7 @@ class CustomerInvoiceController extends Controller
                 $this->bid(), $customer, (float) $data['amount'], $data, $allocations, auth()->id(),
                 requestKey: $data['request_key'],
                 exact: $allocations !== [],
+                leaveExcess: $allocations !== [] && (bool) ($data['leave_excess'] ?? false),
             );
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['amount' => $e->getMessage()]);

@@ -86,6 +86,24 @@ TO="$(git rev-parse --short "$TARGET^{commit}")"
     || die "في الشجرة تعديلٌ غير مودَع — \`reset --hard\` يمحوه. انظر: git status"
 
 MIGRATIONS="$(git diff --name-only "$TO" "$FROM" -- database/migrations)"
+
+# وحمايةٌ لا يُرجَع عنها بالكود وحده — قائمتُها في deploy/rollback-barriers.txt (من الكود الحاليّ).
+# هجرتُها إضافيّةٌ يتجاهلها الكودُ القديم، فلا تمنعه ALLOW_MIGRATIONS وحدَها: الرجوعُ يُعيد الثغرة
+# التي سدّتها (التحصيلُ المكرّر). فتُردّ ما لم تُسمَّ في ALLOW_SECURITY_ROLLBACK أيضًا، باسمها
+BARRIERS_FILE="$APP_DIR/deploy/rollback-barriers.txt"
+CROSSED=""
+if [[ -n "$MIGRATIONS" && -f "$BARRIERS_FILE" ]]; then
+    while IFS= read -r m; do
+        [[ -n "$m" ]] || continue
+        name="$(basename "$m" .php)"
+        reason="$(awk -v n="$name" '$1 == n { $1 = ""; sub(/^ +/, ""); print; exit }' "$BARRIERS_FILE")"
+        [[ -n "$reason" ]] || continue
+        [[ " ${ALLOW_SECURITY_ROLLBACK:-} " == *" $name "* ]] || CROSSED+="    $name — $reason"$'\n'
+    done <<<"$MIGRATIONS"
+fi
+[[ -z "$CROSSED" ]] || die "الرجوعُ إلى $TO يعبر حمايةً لا يُرجَع عنها بالكود وحده — الكودُ القديم يتجاهلها فتعود الثغرة:
+${CROSSED}أصلِح إلى الأمام (Revert للتغيير الذي أفسد، لا لهذه الحماية). وإن كان لا بدّ، فسمِّ كلَّ واحدةٍ في ALLOW_SECURITY_ROLLBACK
+(ومعها ALLOW_MIGRATIONS) — بقرار المالك، وبعلمٍ أنّ ما تحرسه يعود."
 # وما سمّاه ALLOW_MIGRATIONS بعد دراسته يُعبَر — وكلُّ ما لم يُسمَّ يردّ الرجوعَ كلَّه
 UNLISTED=""
 while IFS= read -r m; do

@@ -135,6 +135,20 @@ final class CustomerPayments
      * باقيها، أو فاتورةٌ لم تعد صادرة: يُردّ التحصيلُ بسببه (`CollectionRefused`)
      * ولا يُكتب صفٌّ ولا قيد. والحكمُ تحت قفل صفّ الفاتورة (`allocate`).
      *
+     * ═══ والمفتاحُ لعمليّةٍ واحدة (الجولة 16) ═══
+     *
+     * يُكتب مع المفتاح بصمةُ ما طُلب به (`fingerprint`). إعادةٌ بالمفتاح نفسِه والبصمةِ
+     * نفسِها تردّ التحصيلَ الأوّل — لمن سجّله وحده. وبغيرها — مبلغٌ آخر، فاتورةٌ أخرى،
+     * وسيلةٌ أو حسابٌ أو شيكٌ أو مرجعٌ آخر، أو مستخدمٌ آخر — يُردّ ولا يُكتب شيء، ولا
+     * يُقال رقمُ التحصيل الأوّل: المفتاحُ لا يصير بابًا لقراءة تحصيلِ غيرك ولا لكتابة آخر.
+     *
+     * ═══ وتركُ الزائد رصيدًا — بطلبٍ صريح ═══
+     *
+     * `$leaveExcess` مع فاتورةٍ واحدةٍ بعينها: يُخصَّص منها باقيها وحده، ويبقى ما زاد
+     * غيرَ مخصَّص — رصيدًا للعميل بالمعالجة القائمة نفسِها (ذممٌ دائنة، لا إيراد، ولا
+     * مستحقَّ بوتيك، ولا نقاط). ولا يُقبل على فاتورةٍ لم يبقَ عليها شيء: الدفعةُ المقدّمة
+     * بابُها «تحصيل على حساب العميل»، فلا يصير الخيارُ طريقًا لتحصيلٍ ثانٍ على فاتورةٍ مسدَّدة.
+     *
      * @param  array<int, float>  $allocations
      */
     public static function record(
@@ -146,6 +160,7 @@ final class CustomerPayments
         ?int $userId = null,
         ?string $requestKey = null,
         bool $exact = false,
+        bool $leaveExcess = false,
     ): CustomerPayment {
         $amount = round($amount, 3);
         $requestKey = filled($requestKey) ? mb_substr(trim((string) $requestKey), 0, 64) : null;
@@ -171,8 +186,16 @@ final class CustomerPayments
             throw new CollectionRefused(__('مبلغ التحصيل لا يطابق ما خُصّص للفواتير.'));
         }
 
+        // وتركُ الزائد رصيدًا لفاتورةٍ واحدةٍ بعينها — لا لتوزيعٍ ولا لتحصيلٍ على الحساب
+        if ($leaveExcess && (! $exact || count($allocations) !== 1)) {
+            throw new CollectionRefused(__('ترك الزائد رصيدًا يكون لتحصيلٍ على فاتورةٍ واحدة بعينها.'));
+        }
+
+        $fingerprint = $requestKey === null ? null
+            : self::fingerprint($businessId, (int) $customer->id, $amount, $method, $data, $allocations, $leaveExcess, $userId);
+
         // والمحاولةُ نفسُها كُتبت من قبل — يُردّ ما كُتب ولا يُكتب غيرُه
-        if ($requestKey !== null && ($written = self::written($businessId, $requestKey))) {
+        if ($requestKey !== null && ($written = self::written($businessId, $requestKey, $fingerprint, $userId))) {
             return $written;
         }
 
@@ -180,29 +203,89 @@ final class CustomerPayments
          * والكتابةُ في نقطة حفظها (`Contention`): اصطدامٌ بالفهرس الفريد يُميت
          * الكتابةَ وحدَها، ولا يُجهض معاملةً تحيط بها على PostgreSQL.
          */
-        $payment = Contention::attempt(fn () => self::write($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact));
+        $payment = Contention::attempt(fn () => self::write($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact, $fingerprint, $leaveExcess));
 
         if ($payment !== null) {
             return $payment;
         }
 
-        // سبقه إرسالٌ بالمفتاح نفسِه إلى الفهرس الفريد — فهو هو، لا تحصيلٌ ثانٍ
-        if ($requestKey !== null && ($written = self::written($businessId, $requestKey))) {
+        // سبقه إرسالٌ بالمفتاح نفسِه إلى الفهرس الفريد — فهو هو إن طابقت بصمتُه، لا تحصيلٌ ثانٍ
+        if ($requestKey !== null && ($written = self::written($businessId, $requestKey, $fingerprint, $userId))) {
             return $written;
         }
 
         throw new RuntimeException(__('تعذّر تسجيل التحصيل الآن — أعد المحاولة.'));
     }
 
-    /** تحصيلٌ كُتب بهذا المفتاح في هذا المتجر — موسومًا بأنّه أُعيد */
-    private static function written(int $businessId, string $requestKey): ?CustomerPayment
+    /**
+     * بصمةُ محاولة التحصيل — ما يجعلها هي هي.
+     *
+     * المتجرُ والعميلُ والفواتيرُ بمبالغها والمبلغُ — بالبيسة لا بالكسر العشريّ —
+     * والوسيلةُ والحسابُ المسمّى والتاريخُ واستحقاقُ الشيك والمرجعُ والملاحظةُ وتركُ
+     * الزائد ومَن سجّل. والقيمُ كما أُرسلت لا كما فُسّرت: تاريخٌ فارغٌ يبقى فارغًا،
+     * فإعادةٌ بعد منتصف الليل لِردٍّ ضاع قبله هي المحاولةُ نفسُها لا أخرى.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, float>  $allocations
+     */
+    public static function fingerprint(
+        int $businessId,
+        int $customerId,
+        float $amount,
+        string $method,
+        array $data,
+        array $allocations,
+        bool $leaveExcess,
+        ?int $userId,
+    ): string {
+        $spread = [];
+        foreach ($allocations as $invoiceId => $share) {
+            $spread[(int) $invoiceId] = Baisa::of((float) $share);
+        }
+        ksort($spread);
+        $text = fn (string $k) => trim((string) ($data[$k] ?? ''));
+
+        return hash('sha256', json_encode([
+            'business' => $businessId,
+            'customer' => $customerId,
+            'amount' => Baisa::of($amount),
+            'method' => $method,
+            'bank_account' => filled($data['bank_account_id'] ?? null) ? (int) $data['bank_account_id'] : null,
+            'occurred_at' => $text('occurred_at'),
+            'cheque_due_at' => $text('cheque_due_at'),
+            'external_reference' => $text('external_reference'),
+            'notes' => $text('notes'),
+            'invoices' => $spread,
+            'auto' => (bool) ($data['auto_allocate'] ?? true),
+            'leave_excess' => $leaveExcess,
+            'user' => $userId,
+        ], JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * تحصيلٌ كُتب بهذا المفتاح في هذا المتجر — موسومًا بأنّه أُعيد.
+     *
+     * ولا يُردّ إلّا لِمَن سجّله وبالبصمة نفسِها: مفتاحٌ يحمله غيرُه، أو مفتاحٌ أُعيد
+     * بعمليّةٍ أخرى، يُردّ بسببه — ولا يُقال فيه رقمُ التحصيل الأوّل ولا مبلغُه.
+     */
+    private static function written(int $businessId, string $requestKey, ?string $fingerprint, ?int $userId): ?CustomerPayment
     {
         $payment = CustomerPayment::where('business_id', $businessId)
             ->where('request_key', $requestKey)->with('allocations')->first();
 
-        if ($payment !== null) {
-            $payment->replayed = true;
+        if ($payment === null) {
+            return null;
         }
+
+        if ($payment->created_by !== null && (int) $payment->created_by !== (int) $userId) {
+            throw new CollectionRefused(__('مفتاح هذا التحصيل يخصّ محاولةً سجّلها غيرك — افتح نافذة التحصيل من جديد.'));
+        }
+
+        if ($fingerprint !== null && $payment->request_fingerprint !== null && ! hash_equals((string) $payment->request_fingerprint, $fingerprint)) {
+            throw new CollectionRefused(__('مفتاح هذا التحصيل استُعمل لتحصيلٍ بتفاصيل أخرى — لم يُكتب شيء. افتح نافذة التحصيل من جديد.'));
+        }
+
+        $payment->replayed = true;
 
         return $payment;
     }
@@ -222,12 +305,15 @@ final class CustomerPayments
         ?int $userId,
         ?string $requestKey,
         bool $exact,
+        ?string $fingerprint = null,
+        bool $leaveExcess = false,
     ): CustomerPayment {
-        return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact) {
+        return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId, $requestKey, $exact, $fingerprint, $leaveExcess) {
             $payment = CustomerPayment::create([
                 'business_id' => $businessId,
                 'customer_id' => $customer->id,
                 'request_key' => $requestKey,
+                'request_fingerprint' => $fingerprint,
                 'number' => self::nextNumber($businessId),
                 'amount' => $amount,
                 'method' => $method,
@@ -251,7 +337,7 @@ final class CustomerPayments
                     : null,
             ]);
 
-            self::allocate($payment, $allocations, (bool) ($data['auto_allocate'] ?? true), $exact);
+            self::allocate($payment, $allocations, (bool) ($data['auto_allocate'] ?? true), $exact, $leaveExcess);
             self::post($payment, $userId);
 
             Activity::log('created', 'سجّل تحصيلًا '.$payment->number.' من '.$customer->name.' بمبلغ '.$amount, [
@@ -288,9 +374,10 @@ final class CustomerPayments
      *
      * @param  array<int, float>  $explicit
      */
-    private static function allocate(CustomerPayment $payment, array $explicit, bool $auto = true, bool $exact = false): void
+    private static function allocate(CustomerPayment $payment, array $explicit, bool $auto = true, bool $exact = false, bool $leaveExcess = false): void
     {
         $exact = $exact && $explicit !== [];
+        $leaveExcess = $leaveExcess && $exact;
 
         $left = round((float) $payment->amount, 3);
 
@@ -339,7 +426,16 @@ final class CustomerPayments
             $outstanding = $invoice->outstanding();
             $wanted = $explicit !== [] ? round((float) $explicit[$invoiceId], 3) : $outstanding;
 
-            if ($exact && $wanted > $outstanding + 0.0005) {
+            /*
+             * وتركُ الزائد رصيدًا يُخصّص باقيها وحده ويُبقي ما فوقه غيرَ مخصَّص — على
+             * فاتورةٍ عليها باقٍ. فإن لم يبقَ عليها شيء رُدّ: لا يصير الخيارُ تحصيلًا
+             * ثانيًا على فاتورةٍ مسدَّدة، والدفعةُ المقدّمة لها بابُها.
+             */
+            if ($leaveExcess && $outstanding <= 0.0005) {
+                throw new CollectionRefused(__('الفاتورة :n مدفوعة بالكامل — لا يُترك عليها زائدٌ رصيدًا. لدفعةٍ مقدّمة سجّل «تحصيلًا على حساب العميل».', ['n' => $invoice->number]));
+            }
+
+            if ($exact && ! $leaveExcess && $wanted > $outstanding + 0.0005) {
                 throw new CollectionRefused($outstanding <= 0.0005
                     ? __('الفاتورة :n مدفوعة بالكامل — لا يُحصَّل عليها شيء.', ['n' => $invoice->number])
                     : __('المتبقي على الفاتورة :n هو :left — لا يُحصَّل عليها أكثر منه.', ['n' => $invoice->number, 'left' => number_format($outstanding, 3)]));

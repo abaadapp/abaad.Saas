@@ -16,6 +16,13 @@ use Illuminate\Support\Facades\Schema;
  * عمودٌ يقبل الفراغ، ولا يُملأ لماضٍ: التحصيلاتُ القائمة تبقى كما هي، والفراغُ
  * لا يصطدم بالفراغ في الفهرس الفريد. وما يُكتب من غير النافذة (الصندوق وروابط
  * Paymob) له حارسُه القائم ويبقى بلا مفتاح.
+ *
+ * ═══ والمفتاحُ لعمليّةٍ واحدة (الجولة 16) ═══
+ *
+ * `request_fingerprint` بصمةُ ما طُلب بالمفتاح: المتجرُ والعميلُ والفاتورةُ والمبلغُ
+ * بالبيسة والوسيلةُ والحسابُ والتاريخُ والشيكُ والمرجعُ والملاحظةُ وتركُ الزائد ومَن
+ * سجّل (`CustomerPayments::fingerprint`). المفتاحُ نفسُه بالبصمة نفسِها يردّ الأوّل،
+ * وبغيرها يُردّ ولا يُكتب شيء — فلا يصير مفتاحٌ مسروقٌ أو نافذةٌ عُدّلت بابًا لتحصيلٍ آخر.
  */
 return new class extends Migration
 {
@@ -23,6 +30,7 @@ return new class extends Migration
     {
         Schema::table('customer_payments', function (Blueprint $table) {
             $table->string('request_key', 64)->nullable();
+            $table->char('request_fingerprint', 64)->nullable();
             $table->unique(['business_id', 'request_key']);
         });
     }
@@ -38,7 +46,7 @@ return new class extends Migration
 
         Schema::table('customer_payments', function (Blueprint $table) {
             $table->dropUnique(['business_id', 'request_key']);
-            $table->dropColumn('request_key');
+            $table->dropColumn(['request_key', 'request_fingerprint']);
         });
     }
 };

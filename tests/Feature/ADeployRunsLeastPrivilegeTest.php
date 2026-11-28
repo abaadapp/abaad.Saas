@@ -138,10 +138,16 @@ class ADeployRunsLeastPrivilegeTest extends TestCase
         }
         // قاعدةُ www-data: أوامرُ artisan السبعةُ بأعيانها، لا نجمةٌ عامّة
         $this->assertMatchesRegularExpression('/\(www-data\)\s+NOPASSWD:\s*ABAAD_ARTISAN/', $body);
-        foreach (['migrate --force', 'config\:cache --quiet', 'route\:cache --quiet', 'view\:cache --quiet',
-            'package\:discover --quiet', 'queue\:restart --quiet', 'abaad\:preflight'] as $cmd) {
-            $this->assertStringContainsString('/usr/bin/php /var/www/abaad/artisan '.$cmd, $body, "أمرُ artisan غيرُ مثبّت: $cmd");
+        $pinned = ['migrate --force', 'config\:cache --quiet', 'route\:cache --quiet', 'view\:cache --quiet',
+            'package\:discover --quiet', 'queue\:restart --quiet', 'abaad\:preflight',
+            'queue\:pause whatsapp', 'queue\:pause default', 'queue\:resume whatsapp', 'queue\:resume default',
+            'abaad\:deploy-state'];
+        foreach ($pinned as $cmd) {
+            $this->assertMatchesRegularExpression('/^\s*\/usr\/bin\/php \/var\/www\/abaad\/artisan '.preg_quote($cmd, '/').'(?:, \\\\)?$/m', $body, "أمرُ artisan غيرُ مثبّتٍ بوسائطه كما هي: $cmd");
         }
+        // ولا أمرَ ثالثَ عشر: كلُّ سطرٍ لـartisan واحدٌ من هذه بعينه
+        preg_match_all('/^\s*\/usr\/bin\/php \/var\/www\/abaad\/artisan .*$/m', $body, $lines);
+        $this->assertCount(count($pinned), $lines[0], 'في sudoers أمرُ artisan غيرُ المثبّتة: '.implode(' | ', $lines[0]));
         // الأسطرُ المنفَّذة وحدها (لا التعليقُ الذي يذكر الممنوعَ كمثال)
         $active = implode("\n", array_filter(
             file(base_path(self::SUDOERS), FILE_IGNORE_NEW_LINES),

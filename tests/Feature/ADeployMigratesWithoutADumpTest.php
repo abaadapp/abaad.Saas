@@ -94,7 +94,8 @@ class ADeployMigratesWithoutADumpTest extends TestCase
 
         $log = 'echo "$(basename "$0") $*" >> "$CALLS"';
         // بديلُ sudo يسجّل الحسابَ المقصود ثمّ ينفّذ — فيُعرف أنّ artisan جرى بحساب www-data وsystemctl بصلاحية root
-        $sudo = 'u=root; while [ $# -gt 0 ]; do case "$1" in -n) shift;; -u) u="$2"; shift 2;; *) break;; esac; done; '
+        // و-l يسأل ولا يُجري (كما sudo): يُجاب بالإباحة — sudoers هذا الفرع مثبّتة
+        $sudo = 'u=root; while [ $# -gt 0 ]; do case "$1" in -n) shift;; -l) exit 0;; -u) u="$2"; shift 2;; *) break;; esac; done; '
             .'echo "sudo[$u] $*" >> "$CALLS"; exec "$@"';
         // خرجُ `php artisan migrate` كما يطبعه Laravel
         $migrate = 'if [ "${FAIL_MIGRATE:-}" = 1 ]; then printf "\n INFO Running migrations.\n\n '.self::B.' .. 0.08ms FAIL\n\n   Illuminate\\\\Database\\\\QueryException\n\n  SQLSTATE[23505]: Key (email)=('.self::SECRET.')\n"; exit 1; fi; '
@@ -105,10 +106,20 @@ class ADeployMigratesWithoutADumpTest extends TestCase
             'pg_dump' => $log.'; echo dumped',
             'composer' => $log.'; [ "${FAIL_COMPOSER:-}" = 1 ] && exit 1; true',
             'npm' => $log.'; echo "npmcache ${npm_config_cache:-?}" >> "$CALLS"; case "$*" in *"run build"*) for a in "$@"; do [ "$p" = "--outDir" ] && { mkdir -p "$a"; touch "$a/manifest.json"; }; p="$a"; done;; esac',
-            'php' => $log.'; case "$*" in *"migrate --force"*) '.$migrate.';; esac',
-            'systemctl' => $log,
+            // والتطبيقُ يجيب عن حاله: لا شيءَ يجري، والطابورُ غيرُ موقوفٍ قبل النشر (#282)
+            'php' => $log.'; case "$*" in *"migrate --force"*) '.$migrate.';; '
+                .'*"abaad:deploy-state"*) printf "running: 0\\nabandoned: 0\\ntasks: 0\\npaused: -\\npending-migrations: 0\\n";; '
+                .'*"queue:restart"*) g=$(cat "$ROOT/gen" 2>/dev/null || echo 0); echo $((g+1)) > "$ROOT/gen"; rm -f "$ROOT/unit.count";; esac',
+            // وsystemd: العاملُ 100، وبعد كلّ queue:restart لحظةٌ بلا عامل ثمّ جديدٌ يثبت
+            'systemctl' => 'if [ "$1" = show ]; then g=$(cat "$ROOT/gen" 2>/dev/null || echo 0); k=$(cat "$ROOT/unit.count" 2>/dev/null || echo 0); k=$((k+1)); echo $k > "$ROOT/unit.count"; '
+                .'if [ "$g" != 0 ] && [ $k = 1 ]; then printf "MainPID=0\\nSubState=auto-restart\\nLoadState=loaded\\n"; else printf "MainPID=$((100+g*100))\\nSubState=running\\nLoadState=loaded\\n"; fi; exit 0; fi; '.$log,
             'curl' => $log.'; printf "%s" "${HEALTH_CODE:-200}"',
         ];
+        // flock من util-linux على الخادم وفي CI. وماك بلا util-linux: بديلٌ يقفل الوصفَ الموروث
+        // نفسَه بـflock(2) كما يفعل الأصل (السكربتُ يرفض النشرَ بلا قفل)
+        if (trim((string) shell_exec('command -v flock')) === '') {
+            $stubs['flock'] = 'w=0; case "$1" in -n) shift;; -w) w="$2"; shift 2;; esac; exec perl -MFcntl=:flock -MTime::HiRes=sleep,time -e \'open(my $l, ">&=", $ARGV[0]) or exit 2; my $until = time + $ARGV[1]; until (flock($l, LOCK_EX | LOCK_NB)) { exit 1 if time >= $until; sleep 0.1 } exit 0\' "$1" "$w"';
+        }
         foreach ($stubs as $name => $body) {
             file_put_contents($this->root.'/bin/'.$name, "#!/usr/bin/env bash\n".$body."\n");
             chmod($this->root.'/bin/'.$name, 0700);
@@ -132,6 +143,10 @@ class ADeployMigratesWithoutADumpTest extends TestCase
             'PHP_BIN' => 'php',
             'SYSTEMCTL' => 'systemctl',
             'GIT_CONFIG_NOSYSTEM' => '1',
+            // النومُ حقيقيٌّ هنا (لا بديلَ لـsleep): استطلاعُ العامل الجديد ثانيةً وثباتُه ثانية
+            'ROOT' => $this->root,
+            'QUEUE_IDLE_POLL' => '1',
+            'QUEUE_WORKER_SETTLE' => '1',
             // السكربتُ ينسخ نفسَه قبل السحب — ونسخةُ المختبر خارجَ المستودع أصلًا، فلا يمسّها السحب
             'DEPLOY_DETACHED' => '1',
         ]);

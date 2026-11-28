@@ -202,6 +202,8 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
         $this->assertSame($before, Transaction::where('business_id', $this->shop->id)->count());
         $this->assertNull($sheet->fresh()->transaction_id);
         $this->assertContains('offset', array_column($this->rows($this->reem, '2027-03'), 'kind'));
+        // قطعٌ قاصّها رصيدٌ كلَّها: سدادٌ بلا مال
+        $this->assertSame(BoutiqueMovements::CAT_NON_CASH, collect($this->rows($this->reem, '2027-03'))->firstWhere('key', 'pieces_paid:'.$sheet->id)['category']);
         $this->assertTies('مقاصّة كاملة');
     }
 
@@ -218,7 +220,7 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
         $this->assertSame((int) $row->id, (int) $doc->fresh()->transaction_id);
         $this->assertSame((int) $doc->id, (int) $row->journalEntry->sourceable_id);
         $seen = collect($this->rows($this->reem))->firstWhere('kind', 'refund');
-        $this->assertSame([5.0, $doc->number, $row->reference], [(float) $seen['effect'], $seen['sheet'], $seen['transaction']]);
+        $this->assertSame([5.0, $doc->number, $row->reference, BoutiqueMovements::CAT_CASH], [(float) $seen['effect'], $seen['sheet'], $seen['transaction'], $seen['category']]);
         $this->assertTies('استرداد');
     }
 
@@ -383,6 +385,8 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
 
         $row = collect($this->rows($this->reem))->firstWhere('kind', 'decided');
         $this->assertSame(['shop', 0.0, 'تلف عندنا'], [$row['state'], (float) $row['effect'], $row['why']]);
+        // ومرتجعٌ يتحمّله المتجر خسارتُه — مصروفٌ عليه، لا مقاصّة
+        $this->assertSame(BoutiqueMovements::CAT_EXPENSE, $row['category']);
         $this->assertTies('على المتجر');
     }
 
@@ -619,6 +623,19 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
         return (int) round(1000 * $this->ledger($key));
     }
 
+    /** صنفُ السطر كما يجب أن يكون — من نوعه، ومن حاله، ومن ماله */
+    private function expectedCategory(array $r): string
+    {
+        return match ($r['kind']) {
+            'recorded', 'changed', 'cancelled', 'piece', 'piece_back' => BoutiqueMovements::CAT_DUES,
+            'kept', 'sheet' => BoutiqueMovements::CAT_EXPENSE,
+            'note', 'offset', 'credit', 'claim_offset', 'hold', 'unhold' => BoutiqueMovements::CAT_NON_CASH,
+            'receipt', 'refund' => BoutiqueMovements::CAT_CASH,
+            'paid', 'pieces_paid' => $r['effect'] != 0 ? BoutiqueMovements::CAT_CASH : BoutiqueMovements::CAT_NON_CASH,
+            'decided' => $r['state'] === BoutiqueReturn::SHOP ? BoutiqueMovements::CAT_EXPENSE : BoutiqueMovements::CAT_NON_CASH,
+        };
+    }
+
     public function test_the_register_agrees_with_the_statement_the_sheets_the_ledger_and_the_expenses(): void
     {
         $credits = [];
@@ -669,6 +686,11 @@ class ABoutiqueMovementNamesItsDocumentsTest extends TestCase
                                 $this->assertSame($paid['effect'] < 0 ? BoutiqueMovements::CAT_CASH : BoutiqueMovements::CAT_NON_CASH, $paid['category']);
                             }
                         }
+                    }
+
+                    // ٣ب · الصنف: كلُّ سطرٍ بصنفه — من نوعه، ومن ماله حين يُسدَّد بلا مال
+                    foreach ($rows_ as $r) {
+                        $this->assertSame($this->expectedCategory($r), $r['category'], "$on: {$r['key']} صنفٌ خاطئ");
                     }
 
                     // ٤ · المال: كلُّ سطرٍ ماليٍّ له قيدٌ قائم — وصفٌّ في «الحركات» إن كان المفتاحُ مشغَّلًا وحده

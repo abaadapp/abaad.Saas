@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
+use App\Http\Controllers\Admin\FinancialCorrectionController;
 use App\Http\Controllers\Admin\BoutiqueController;
 use App\Http\Controllers\Admin\CustomOrderTemplateController;
 use App\Http\Controllers\Admin\DocumentPrintController;
@@ -1812,6 +1813,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * فعلًا `Route::pattern('id', '[0-9]+')` في أعلى الملفّ، والترتيبُ
      * احتياطٌ ثانٍ — كما في «create».
      */
+    /*
+     * طلباتُ التصحيح الماليّ بانتظار شخصٍ ثانٍ — حين يُشعل صاحبُ النشاط
+     * الاعتمادَ الثنائيّ (`FinancialCorrections`). قبل `{id}` فلا تُقرأ «corrections» رقمَ فاتورة.
+     */
+    Route::get('/customer-invoices/corrections', [FinancialCorrectionController::class, 'index'])
+        ->name('customerInvoices.corrections.index');
+    Route::post('/customer-invoices/corrections/{correction}/approve', [FinancialCorrectionController::class, 'approve'])
+        ->whereNumber('correction')->middleware('throttle:30,1,financial-correction')->name('customerInvoices.corrections.approve');
+    Route::post('/customer-invoices/corrections/{correction}/reject', [FinancialCorrectionController::class, 'reject'])
+        ->whereNumber('correction')->middleware('throttle:30,1,financial-correction')->name('customerInvoices.corrections.reject');
+    Route::post('/customer-invoices/corrections/{correction}/withdraw', [FinancialCorrectionController::class, 'withdraw'])
+        ->whereNumber('correction')->middleware('throttle:30,1,financial-correction')->name('customerInvoices.corrections.withdraw');
     Route::get('/customer-invoices/credit-notes/{note}', [CustomerInvoiceController::class, 'creditNoteShow'])
         ->whereNumber('note')->name('customerInvoices.creditNotes.show');
     Route::get('/customer-invoices/credit-notes/{note}/pdf', [DocumentPrintController::class, 'creditNote'])

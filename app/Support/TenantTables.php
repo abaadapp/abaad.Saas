@@ -154,6 +154,8 @@ class TenantTables
         'customer_invoice_revisions',
         'customer_credit_notes',
         'customer_debit_notes',
+        // وطلباتُ التصحيح الماليّ بعد الفواتير وتصحيحاتها التي تشير إليها (`FinancialCorrections`)
+        'financial_corrections',
         /*
          * وحركاتُ النقاط بعد التحصيلات: نقاطُ سداد الفاتورة برابطٍ تشير إلى
          * فاتورتها وتحصيلها (`InvoiceLoyalty`).

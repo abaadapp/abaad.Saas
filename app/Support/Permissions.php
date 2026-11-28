@@ -178,6 +178,15 @@ class Permissions
 
     /** قراءةُ سجلّ تعديلات الفواتير — ما كانت عليه الورقةُ ومن صحّحها ولماذا وبأيّ مستند */
     public const CUSTOMER_INVOICE_HISTORY = 'customerInvoice.history';
+
+    /**
+     * اعتمادُ تصحيحٍ ماليّ طلبه غيرُه — حين يُشعل صاحبُ النشاط الاعتمادَ الثنائيّ.
+     *
+     * فعلٌ جديد لا ينفصل عن قسم: لم يكن أحدٌ يعتمد شيئًا قبله. فلا يرثه إلّا
+     * صاحبُ النشاط بدوره، ولا تمنحه هجرة، ولا يعتمد به أحدٌ طلبَه هو
+     * (`FinancialCorrections::approve`).
+     */
+    public const FINANCIAL_CORRECTION_APPROVE = 'financialCorrection.approve';
     /**
      * تصحيحُ رصيد نقاط العميل بيدٍ إداريّة — زيادةً أو نقصًا، بسببٍ مكتوب.
      *
@@ -437,6 +446,7 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => 'تصحيح فاتورة عميل مدفوعة جزئيًا أو كليًا',
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة عميل من فترة سابقة أو مقفلة',
         self::CUSTOMER_INVOICE_HISTORY => 'عرض سجل تعديلات وتصحيحات فواتير العملاء',
+        self::FINANCIAL_CORRECTION_APPROVE => 'اعتماد تصحيح مالي طلبه موظف آخر',
         self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
         self::CUSTOMER_POINTS_ADJUST => 'تصحيح رصيد نقاط العميل',
         self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
@@ -567,6 +577,8 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => ['admin'],
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => ['admin'],
         self::CUSTOMER_INVOICE_HISTORY => ['admin', 'manager', 'accountant'],
+        // والاعتمادُ لصاحب النشاط وحده بدوره — وغيرُه يُمنحه باسمه، ولا يعتمد أحدٌ طلبَه
+        self::FINANCIAL_CORRECTION_APPROVE => ['admin'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
         self::PAYROLL_PAY => ['admin', 'manager'],
@@ -869,6 +881,7 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => 'تصحيح فاتورة دُفع منها جزء أو كلها بإشعار دائن أو مدين: المقبوض لا يُمس، والفرق يصير باقيًا على العميل أو رصيدًا دائنًا له. لا يُرد مال تلقائيًا.',
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة من شهر مضى أو فترة مقفلة: يصدر مستند التصحيح بتاريخ اليوم وأثره في الفترة الحالية، ولا تُمس الفترة المقفلة.',
         self::CUSTOMER_INVOICE_HISTORY => 'قراءة ما كانت عليه الفاتورة قبل كل تعديل وتصحيح، ومن صحّحها ومتى ولماذا، ومستندات التصحيح.',
+        self::FINANCIAL_CORRECTION_APPROVE => 'حين يفعّل صاحب النشاط «الاعتماد الثنائي»: مراجعة تصحيح فاتورة صادرة أو مدفوعة، أو استبدالها لعميل آخر، طلبه موظف آخر، واعتماده أو رفضه بسبب. لا يعتمد أحد طلبه.',
         'order.edit' => 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني. وحيث فُتحت الميزة للنشاط: إضافة صنف أو استبداله في يوم البيع، وتعديل ملاحظة المنتج، وتحصيل المتبقّي.',
         self::TRANSFER_VIEW => 'سندات النقل وطلبات التزويد التي تخصّ الفروع المسندة إليه.',
         self::TRANSFER_VIEW_ALL => 'سندات النقل وطلبات التزويد في كل فروع النشاط، ولو لم يُسنَد إليها.',

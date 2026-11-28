@@ -174,6 +174,29 @@ describe('تصحيحُ الفاتورة الصادرة', () => {
         expect(payload).toMatchObject({ reason: 'خطأ في السعر', basis: 'error', expected_revision: 2, edit_token: 'tok-edit-1' });
     });
 
+    it('مع الاعتماد الثنائيّ: الزرُّ «إرسال للاعتماد» والمعاينةُ تقول إنّه لا يتغيّر شيء قبله', async () => {
+        answer(plan({ approval: { required: true } }));
+        const user = userEvent.setup();
+        render(<CustomerInvoiceEdit />);
+
+        await user.click(screen.getByTestId('edit-preview'));
+        await waitFor(() => expect(screen.getByTestId('plan-approval')).toBeInTheDocument());
+        expect(screen.getByTestId('plan-approval')).toHaveTextContent('لا يتغيّر شيء في الفاتورة أو الدفتر أو المدفوعات');
+        expect(screen.getByTestId('edit-save')).toHaveTextContent('إرسال للاعتماد');
+        expect(screen.getByTestId('edit-save-bar')).toHaveTextContent('إرسال للاعتماد');
+    });
+
+    it('وبلاه: «اعتماد التصحيح» ولا سطرَ اعتماد', async () => {
+        answer(plan({ approval: { required: false } }));
+        const user = userEvent.setup();
+        render(<CustomerInvoiceEdit />);
+
+        await user.click(screen.getByTestId('edit-preview'));
+        await waitFor(() => expect(screen.getByTestId('plan')).toBeInTheDocument());
+        expect(screen.queryByTestId('plan-approval')).toBeNull();
+        expect(screen.getByTestId('edit-save')).toHaveTextContent('اعتماد التصحيح');
+    });
+
     it('زيادةٌ ونقصٌ معًا: المستندان كلٌّ بمبلغه', async () => {
         answer(plan({ documents: { credit, debit: { amount: 31.5, tax: 1.5, net: 30, lines: [{ description: 'تغليف', change: 'added', total: 31.5, tax: 1.5 }] } } }));
         const user = userEvent.setup();

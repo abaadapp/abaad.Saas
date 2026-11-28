@@ -62,7 +62,9 @@ export default function CustomerInvoicesIndex({
     customers,
     totals,
 }: Props) {
-    const { context } = usePage<PageProps>().props;
+    const { context, auth } = usePage<PageProps>().props;
+    // طلباتُ التصحيح الماليّ — لمن يعتمدها ولمن يقرأ سجلّ التعديلات (`FinancialCorrectionController::index`)
+    const readsCorrections = ['financialCorrection.approve', 'customerInvoice.history'].some((a) => auth?.mayActions?.includes(a) ?? false);
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -187,15 +189,28 @@ export default function CustomerInvoicesIndex({
                 title={t('فواتير العملاء')}
                 subtitle={t('الفواتير الصادرة على الشركات والجهات، وما بقي منها.')}
                 actions={
-                    <Button asChild>
-                        <SmartLink
-                            routeName="admin.customerInvoices.create"
-                            href={route('admin.customerInvoices.create')}
-                        >
-                            <Plus />
-                            {t('إنشاء فاتورة')}
-                        </SmartLink>
-                    </Button>
+                    <>
+                        {readsCorrections && (
+                            <Button variant="outline" asChild>
+                                <SmartLink
+                                    routeName="admin.customerInvoices.corrections.index"
+                                    href={route('admin.customerInvoices.corrections.index')}
+                                    data-testid="corrections-link"
+                                >
+                                    {t('طلبات التصحيح')}
+                                </SmartLink>
+                            </Button>
+                        )}
+                        <Button asChild>
+                            <SmartLink
+                                routeName="admin.customerInvoices.create"
+                                href={route('admin.customerInvoices.create')}
+                            >
+                                <Plus />
+                                {t('إنشاء فاتورة')}
+                            </SmartLink>
+                        </Button>
+                    </>
                 }
             />
 

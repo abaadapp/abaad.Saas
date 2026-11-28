@@ -70,7 +70,9 @@ class ARollbackReturnsTheCodeAndNeverTheDatabaseTest extends TestCase
     {
         $deploy = $this->code('scripts/deploy.sh');
 
-        $this->assertSame(2, substr_count($deploy, 'scripts/rollback-code.sh'), 'رسالةُ الفشل وROLLBACK.txt كلتاهما');
+        // رسالةُ فشل الموقع، وROLLBACK.txt، وحالُ الخادم بعد أيّ سقوط (`recovery_block`) — ثلاثتُها
+        $this->assertSame(3, substr_count($deploy, 'scripts/rollback-code.sh'), 'رسالةُ فشل الموقع وROLLBACK.txt وحالُ الخادم بعد السقوط');
+        $this->assertStringContainsString('3. وإلّا أرجِع الكودَ وحده: bash %s/scripts/rollback-code.sh', $deploy, 'حالُ الخادم بعد السقوط لا تدلّ على الرجوع بالكود');
         $this->assertStringContainsString('Revert', $deploy);
     }
 

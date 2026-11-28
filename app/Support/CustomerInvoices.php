@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerCreditNoteOrder;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
@@ -908,6 +909,7 @@ final class CustomerInvoices
         string $source = self::NOTE_MANUAL,
         ?int $orderId = null,
         ?string $basis = null,
+        ?int $forOrderId = null,
     ): CustomerCreditNote {
         $amount = round($amount, 3);
 
@@ -915,7 +917,7 @@ final class CustomerInvoices
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis, $forOrderId) {
             /*
              * والحدُّ يُقرأ تحت قفل المتجر، من الورقة كما هي الآن.
              *
@@ -939,6 +941,19 @@ final class CustomerInvoices
                 throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
             }
 
+            /*
+             * وإشعارُ الإرجاع يسمّي طلبَه إن سُمّي — تحت القفل نفسِه، وبما بقي من
+             * الطلب بعد إشعاراتٍ سُمّيت عنه (`CreditNoteOrders`). فيُعرف أنّه عن
+             * ذلك الطلب وحده، ويبقى إلغاءُ طلبات الفاتورة الأخرى ممكنًا.
+             */
+            $forOrder = null;
+            if ($forOrderId !== null) {
+                if ($source !== self::NOTE_MANUAL || $basis !== CustomerCreditNote::RETURN) {
+                    throw new CreditNoteOrderRefused(__('يُسمّى الطلبُ في إشعار الإرجاع وحده.'));
+                }
+                $forOrder = CreditNoteOrders::assertFits($invoice, $forOrderId, $amount, round($taxAmount, 3));
+            }
+
             $note = CustomerCreditNote::create([
                 'business_id' => $invoice->business_id,
                 'customer_invoice_id' => $invoice->id,
@@ -952,6 +967,10 @@ final class CustomerInvoices
                 'basis' => $basis,
                 'created_by' => $userId,
             ]);
+
+            if ($forOrder) {
+                CreditNoteOrders::record($note, $forOrder, CustomerCreditNoteOrder::AT_ISSUE, $reason, $userId);
+            }
 
             // وما صُرف عليها من نقاطٍ يعود بنسبة ما رُدّ — في المعاملة نفسِها
             self::returnPointsForCredit($invoice, $note);
@@ -994,7 +1013,8 @@ final class CustomerInvoices
             );
 
             Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number
-                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '').' — '.$reason, [
+                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '')
+                .($forOrder ? ' — عن الطلب '.$forOrder->number : '').' — '.$reason, [
                 'subject_id' => $note->id, 'subject_type' => 'customer_credit_note',
             ]);
 

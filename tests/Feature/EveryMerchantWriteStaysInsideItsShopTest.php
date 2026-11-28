@@ -167,6 +167,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.issue', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.cancel', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.creditNote', ['id' => 'invoice']],
+                // وتسميةُ طلبِ إشعارٍ دائن — الإشعارُ يُقرأ بمتجر الجلسة (`CreditNoteOrders`)
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.creditNotes.order', ['note' => 'credit_note']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.remind', ['id' => 'invoice']],
                 // ورابطُ دفع الفاتورة — على فاتورةٍ من المتجر نفسِه وحده
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.paymentLink', ['id' => 'invoice']],

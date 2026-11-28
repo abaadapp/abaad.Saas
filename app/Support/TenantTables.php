@@ -148,6 +148,8 @@ class TenantTables
         'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations',
         'customer_credit_notes',
+        // وتسميةُ طلب الإشعار بعده وبعد الطلبات والفواتير التي تشير إليها (`CreditNoteOrders`)
+        'customer_credit_note_orders',
         /*
          * وحركاتُ النقاط بعد التحصيلات: نقاطُ سداد الفاتورة برابطٍ تشير إلى
          * فاتورتها وتحصيلها (`InvoiceLoyalty`).

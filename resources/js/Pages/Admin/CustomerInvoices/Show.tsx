@@ -69,7 +69,32 @@ interface Invoice {
         line_total: number;
     }[];
     payments: { id: number; number: string; amount: number; method: string; at: string | null }[];
-    credit_notes: { id: number; number: string; amount: number; reason: string | null; at: string | null }[];
+    credit_notes: CreditNoteRow[];
+    /**
+     * الطلباتُ التي يُسمّى بها إشعارٌ وما بقي من كلٍّ منها (`CreditNoteOrders::choices`).
+     * فارغةٌ لورقةٍ لا تجمع طلبات.
+     */
+    link_orders?: LinkOrder[];
+}
+
+interface CreditNoteRow {
+    id: number;
+    number: string;
+    amount: number;
+    reason: string | null;
+    at: string | null;
+    /** يدويٌّ — يُسمّى طلبُه إن لم يُسمَّ. وإشعارُ إلغاء الطلب طلبُه معروف */
+    manual?: boolean;
+    /** الطلبُ الذي سُمّي عنه، ومن سمّاه ومتى — ولماذا إن سُمّي بعد الإصدار */
+    order?: { number: string | null; by: string | null; at: string | null; reason: string | null } | null;
+}
+
+interface LinkOrder {
+    id: number;
+    number: string;
+    /** ما بقي من الطلب لإشعاراتٍ تُسمّى عنه */
+    room: number;
+    room_tax: number;
 }
 
 /**
@@ -89,6 +114,8 @@ interface May {
     issue: boolean;
     cancel: boolean;
     credit_note: boolean;
+    /** تسميةُ طلبِ إشعارٍ سابق — `customerCreditNote.link`، فعلٌ غيرُ الإصدار */
+    credit_note_link?: boolean;
     pay: boolean;
     /** طلبُ الدفع برابط — `paymentLink.create`، لا «المالية» */
     payment_link?: boolean;
@@ -434,18 +461,38 @@ export default function CustomerInvoiceShow() {
                         <Card className="p-4">
                             <h3 className="mb-2 text-[13px] font-bold">{t('إشعارات دائن')}</h3>
                             {invoice.credit_notes.map((n) => (
-                                <SmartLink
-                                    key={n.id}
-                                    routeName="admin.customerInvoices.creditNotes.show"
-                                    href={route('admin.customerInvoices.creditNotes.show', n.id)}
-                                    className="flex justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px] hover:bg-[#fafafa]"
-                                >
-                                    <span className="min-w-0 truncate text-[#6d28d9]">
-                                        {n.number}
-                                        {n.reason ? ` — ${n.reason}` : ''}
-                                    </span>
-                                    <span className="tabular-nums">{m(n.amount)}</span>
-                                </SmartLink>
+                                <div key={n.id} className="border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px]">
+                                    <SmartLink
+                                        routeName="admin.customerInvoices.creditNotes.show"
+                                        href={route('admin.customerInvoices.creditNotes.show', n.id)}
+                                        className="flex justify-between gap-3 hover:bg-[#fafafa]"
+                                    >
+                                        <span className="min-w-0 truncate text-[#6d28d9]">
+                                            {n.number}
+                                            {n.reason ? ` — ${n.reason}` : ''}
+                                        </span>
+                                        <span className="tabular-nums">{m(n.amount)}</span>
+                                    </SmartLink>
+                                    {/*
+                                        والطلبُ الذي كان عنه الإشعار — فلا يمنع إلغاءَ غيره
+                                        (`BilledOrderCancel`). وإشعارٌ يدويٌّ لم يُسمَّ على ورقةٍ
+                                        تجمع طلبات يُسمّى بعد التحقّق، لمن يملك إصدارَه.
+                                    */}
+                                    {n.order ? (
+                                        <p className="mt-1 text-[12px] text-[#6b7280]" data-testid={`credit-note-order-${n.id}`}>
+                                            {t('عن الطلب')} {n.order.number}
+                                            {n.order.by ? ` — ${n.order.by}` : ''}
+                                            {n.order.at ? ` · ${n.order.at}` : ''}
+                                            {n.order.reason ? ` · ${n.order.reason}` : ''}
+                                        </p>
+                                    ) : (
+                                        n.manual &&
+                                        may.credit_note_link &&
+                                        (invoice.link_orders ?? []).length > 0 && (
+                                            <NameCreditNoteOrder note={n} orders={invoice.link_orders ?? []} />
+                                        )
+                                    )}
+                                </div>
                             ))}
                         </Card>
                     )}
@@ -743,7 +790,15 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
         reason: '',
         basis: '',
         token,
+        order_id: '',
     });
+
+    /*
+     * وإشعارُ الإرجاع يسمّي طلبَه إن شاء — على ورقةٍ تجمع طلبات (`CreditNoteOrders`).
+     * فلا يمنع إلغاءَ طلباتها الأخرى. وغيرُ الإرجاع لا يُسمّي طلبًا.
+     */
+    const orders = invoice.link_orders ?? [];
+    const naming = form.data.basis === 'return' && orders.length > 0;
 
     /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
     const [touched, setTouched] = useState(false);
@@ -782,12 +837,28 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
                 <Select
                     id="credit-note-basis"
                     value={form.data.basis}
-                    onChange={(e) => form.setData('basis', e.target.value)}
+                    onChange={(e) => {
+                        const basis = e.target.value;
+                        form.setData((d) => ({ ...d, basis, order_id: basis === 'return' ? d.order_id : '' }));
+                    }}
                     placeholder={t('اختر')}
                     options={CREDIT_NOTE_BASES.map((b) => ({ value: b.value, label: t(b.label) }))}
                 />
                 {form.errors.basis && <p className="text-[12px] text-[#b91c1c]">{form.errors.basis}</p>}
             </div>
+            {naming && (
+                <div className="text-[13px]" data-testid="credit-note-order">
+                    {t('الطلب المُرجَع')}
+                    <Select
+                        id="credit-note-order"
+                        value={form.data.order_id}
+                        onChange={(e) => form.setData('order_id', e.target.value)}
+                        placeholder={t('بلا طلب محدّد')}
+                        options={orders.map((o) => ({ value: String(o.id), label: `${o.number} — ${t('بقي')} ${m(o.room)}` }))}
+                    />
+                    {form.errors.order_id && <p className="text-[12px] text-[#b91c1c]">{form.errors.order_id}</p>}
+                </div>
+            )}
             <label className="flex-1 text-[13px]">
                 {t('السبب')}
                 <Input
@@ -809,6 +880,68 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
                 {t('حفظ الإشعار')}
             </Button>
         </Card>
+    );
+}
+
+/**
+ * تسميةُ طلبِ إشعارٍ صدر بلا طلب — بعد التحقّق، ولماذا (`CreditNoteOrders::link`).
+ *
+ * سطرٌ في سجلّ التدقيق لا يُعدَّل: لا يمسّ مبلغًا ولا قيدًا، ويُبقي إلغاءَ طلبات
+ * الفاتورة الأخرى ممكنًا. والطلبُ المسمّى لا يُلغى بعدها — ما بقي منه يُرَدّ
+ * بإشعار إرجاعٍ آخر.
+ */
+function NameCreditNoteOrder({ note, orders }: { note: CreditNoteRow; orders: LinkOrder[] }) {
+    const t = useTranslate();
+    const { context } = usePage<PageProps>().props;
+    const m = (v: number) => money(v, context!.currency);
+    const [open, setOpen] = useState(false);
+    const form = useForm({ order_id: '', reason: '' });
+
+    if (!open) {
+        return (
+            <button
+                type="button"
+                className="mt-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
+                data-testid={`name-credit-note-order-${note.id}`}
+                onClick={() => setOpen(true)}
+            >
+                {t('تسمية الطلب')}
+            </button>
+        );
+    }
+
+    return (
+        <div className="mt-2 flex flex-wrap items-end gap-2" data-testid={`name-credit-note-order-form-${note.id}`}>
+            <div className="text-[12px]">
+                {t('الطلب')}
+                <Select
+                    id={`credit-note-${note.id}-order`}
+                    value={form.data.order_id}
+                    onChange={(e) => form.setData('order_id', e.target.value)}
+                    placeholder={t('اختر')}
+                    options={orders.map((o) => ({ value: String(o.id), label: `${o.number} — ${t('بقي')} ${m(o.room)}` }))}
+                />
+            </div>
+            <label className="flex-1 text-[12px]">
+                {t('لماذا هذا الطلب')}
+                <Input value={form.data.reason} onChange={(e) => form.setData('reason', e.target.value)} placeholder={t('مثال: رُدّت بضاعة هذا الطلب')} />
+            </label>
+            <Button
+                size="sm"
+                disabled={form.processing || form.data.order_id === '' || form.data.reason.trim() === ''}
+                onClick={() =>
+                    form.post(route('admin.customerInvoices.creditNotes.order', note.id), {
+                        preserveScroll: true,
+                        onSuccess: () => setOpen(false),
+                    })
+                }
+            >
+                {t('حفظ')}
+            </Button>
+            {(form.errors.order_id || form.errors.reason) && (
+                <p className="w-full text-[12px] text-[#b91c1c]">{form.errors.order_id || form.errors.reason}</p>
+            )}
+        </div>
     );
 }
 

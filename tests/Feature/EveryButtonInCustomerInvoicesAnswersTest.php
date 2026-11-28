@@ -171,7 +171,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
     {
         $invoice = $this->invoice();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id,
             'customer_invoice_id' => $invoice->id,
             'amount' => 40,
@@ -191,7 +191,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
             'account_name' => 'الحساب الرئيسي', 'opening_balance' => 0,
         ]);
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id,
             'customer_invoice_id' => $invoice->id,
             'amount' => 105,
@@ -209,7 +209,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
     {
         $invoice = $this->invoice();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id,
             'customer_invoice_id' => $invoice->id,
             'amount' => 40, 'method' => 'نقدي',
@@ -350,7 +350,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
     {
         $invoice = $this->invoice();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id,
             'customer_invoice_id' => $invoice->id,
             'amount' => 105, 'method' => 'نقدي',
@@ -376,7 +376,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
     {
         $invoice = $this->invoice();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id,
             'customer_invoice_id' => $invoice->id,
             'amount' => 40, 'method' => 'نقدي',

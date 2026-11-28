@@ -183,7 +183,7 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
     /** تحصيلٌ من بابه — يسجّله هذا المستخدم */
     private function pay(User $by, CustomerInvoice $invoice, float $amount, string $method = 'نقدي', bool $named = true): void
     {
-        $this->actingAs($by)->post(route('admin.customerPayments.store'), [
+        $this->actingAs($by)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $invoice->customer_id, 'amount' => $amount, 'method' => $method,
         ] + ($named ? ['customer_invoice_id' => $invoice->id] : []))->assertSessionHasNoErrors();
     }
@@ -489,8 +489,19 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
         $this->pay($this->first, $invoice, 20, 'تحويل');
         $this->assertSame([$this->key($invoice)], $this->keys($this->second));
 
-        // وتحصيلٌ بعدها، والمطابقةُ مرّتين، وزرُّ الإرسال — لا مهمّةَ ثانية
-        $this->pay($this->first, $invoice, 10);
+        /*
+         * وتحصيلٌ بعدها، والمطابقةُ مرّتين، وزرُّ الإرسال — لا مهمّةَ ثانية.
+         *
+         * والتحصيلُ على الفاتورة نفسِها وقد سُدّدت يُردّ ولا يُكتب: لا يصير رصيدًا
+         * للعميل في صمت (`CustomerPayments::record` بـ`exact`). فالمالُ الذي يأتي
+         * بعدها يُسجَّل على حساب العميل — وهو ما يُسأل عنه هنا: لا مهمّةَ ثانية.
+         */
+        $payments = CustomerPayment::count();
+        $this->actingAs($this->first)->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(),
+            'customer_id' => $invoice->customer_id, 'customer_invoice_id' => $invoice->id, 'amount' => 10, 'method' => 'نقدي',
+        ])->assertSessionHasErrors('amount');
+        $this->assertSame($payments, CustomerPayment::count(), 'تحصيلٌ على فاتورةٍ مسدَّدة كُتب');
+        $this->pay($this->first, $invoice, 10, 'نقدي', false);
         Artisan::call('customer-invoices:reconcile-preparations');
         Artisan::call('customer-invoices:reconcile-preparations', ['--history' => true]);
         $this->actingAs($this->owner)->post(route('admin.customerInvoices.preparation.activate', $invoice->id))->assertSessionHasNoErrors();
@@ -849,7 +860,7 @@ class ThePreparationBoardIsSharedByWhoeverPreparesTest extends TestCase
 
         $this->get(route('admin.customerInvoices.show', $invoice->id))->assertForbidden();
         $this->get(route('admin.orders.index'))->assertForbidden();
-        $this->post(route('admin.customerPayments.store'), ['customer_id' => $this->customer->id, 'amount' => 1, 'method' => 'نقدي'])->assertForbidden();
+        $this->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 'customer_id' => $this->customer->id, 'amount' => 1, 'method' => 'نقدي'])->assertForbidden();
 
         $json = json_encode($this->board($bench)['orders']);
         foreach (['"cost"', '"profit"', '"margin"', '"subtotal"'] as $secret) {

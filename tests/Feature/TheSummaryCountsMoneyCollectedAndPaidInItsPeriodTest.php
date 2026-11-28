@@ -136,7 +136,7 @@ class TheSummaryCountsMoneyCollectedAndPaidInItsPeriodTest extends TestCase
     /** تحصيلٌ من بابه الحقيقيّ — كما يسجّله التاجر */
     private function collect(float $amount, string $on, ?CustomerInvoice $invoice = null, string $method = 'نقدي', array $extra = []): CustomerPayment
     {
-        $this->post(route('admin.customerPayments.store'), $extra + [
+        $this->post(route('admin.customerPayments.store'), $extra + ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'amount' => $amount, 'method' => $method,
             'occurred_at' => $on, 'customer_invoice_id' => $invoice?->id,
         ])->assertSessionHasNoErrors();
@@ -471,7 +471,7 @@ class TheSummaryCountsMoneyCollectedAndPaidInItsPeriodTest extends TestCase
         ]);
 
         $this->actingAs($otherOwner);
-        $this->post(route('admin.customerPayments.store'), [
+        $this->post(route('admin.customerPayments.store'), ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $theirCustomer->id, 'amount' => 9000, 'method' => 'نقدي', 'occurred_at' => '2026-10-02', 'customer_invoice_id' => $theirInvoice->id,
         ])->assertSessionHasNoErrors();
         $this->post(route('admin.purchases.invoices.approve', $theirBill->id), ['override_reason' => 'سندٌ بلا أمر شراء'])->assertSessionHasNoErrors();

@@ -191,4 +191,64 @@ class ARollbackReturnsTheCodeAndNeverTheDatabaseTest extends TestCase
         $this->assertSame(1, $this->rollback($h['b'])[0], 'الكودُ عليه أصلًا');
         $this->assertSame(1, $this->rollback()[0], 'بلا إيداع');
     }
+
+    /**
+     * وحمايةٌ لا يُرجَع عنها بالكود وحده — ولو سُمّيت هجرتُها في ALLOW_MIGRATIONS.
+     *
+     * هجرةُ مفتاح التحصيل إضافيّة: يتجاهلها الكودُ القديم، فتسميتُها تُرجع الكودَ وتبقى
+     * أعمدتُها — وتعود معه ثغرةُ التحصيل المكرّر. فهي في deploy/rollback-barriers.txt،
+     * ويُردّ الرجوعُ ما لم تُسمَّ في ALLOW_SECURITY_ROLLBACK أيضًا (الجولة 16).
+     */
+    public function test_a_protection_is_not_crossed_by_a_code_rollback_even_with_its_migration_named(): void
+    {
+        $h = $this->history();
+        mkdir($this->repo.'/deploy');
+        file_put_contents($this->repo.'/deploy/rollback-barriers.txt', "# حماياتٌ\n2026_02_01_000000_c يحرس التحصيل مرة واحدة\n");
+        $this->git('add -A && git -c user.name=t -c user.email=t@t commit -qm barrier');
+        $head = $this->git('rev-parse --short HEAD');
+
+        [$rc, $out] = $this->rollbackWith(['ALLOW_MIGRATIONS' => '2026_02_01_000000_c.php'], $h['b']);
+        $this->assertSame(1, $rc, $out);
+        $this->assertStringContainsString('حمايةً لا يُرجَع عنها بالكود وحده', $out);
+        $this->assertStringContainsString('2026_02_01_000000_c — يحرس التحصيل مرة واحدة', $out);
+        $this->assertStringContainsString('ALLOW_SECURITY_ROLLBACK', $out);
+        $this->assertStringNotContainsString('git reset --hard', $out);
+
+        // وتسميةُ حمايةٍ أخرى لا تفتح هذه: كلٌّ باسمها
+        [$rc, $out] = $this->rollbackWith(['ALLOW_MIGRATIONS' => '2026_02_01_000000_c.php', 'ALLOW_SECURITY_ROLLBACK' => '2026_02_01_000000_other'], $h['b']);
+        $this->assertSame(1, $rc, $out);
+        $this->assertStringContainsString('حمايةً لا يُرجَع عنها', $out);
+
+        // والتسميةُ وحدَها لا تكفي: تُسمّى الهجرةُ أيضًا
+        [$rc, $out] = $this->rollbackWith(['ALLOW_SECURITY_ROLLBACK' => '2026_02_01_000000_c'], $h['b']);
+        $this->assertSame(1, $rc, $out);
+        $this->assertStringContainsString('2026_02_01_000000_c.php', $out);
+
+        // وبقرارٍ صريحٍ بالاسمين يمضي (التجربةُ الجافّة) — ولا يمسّ الكود
+        [$rc, $out] = $this->rollbackWith(['ALLOW_MIGRATIONS' => '2026_02_01_000000_c.php', 'ALLOW_SECURITY_ROLLBACK' => '2026_02_01_000000_c'], $h['b']);
+        $this->assertSame(0, $rc, $out);
+        $this->assertStringContainsString('git reset --hard '.$h['b'], $out);
+        $this->assertSame($head, $this->git('rev-parse --short HEAD'));
+
+        // ورجوعٌ لا يعبرها لا يُسأل عنها
+        file_put_contents($this->repo.'/app.txt', "v4\n");
+        $this->git('commit -qam d');
+        [$rc, $out] = $this->rollback($head);
+        $this->assertSame(0, $rc, $out);
+    }
+
+    /** والقائمةُ تحمل هجرةَ مفتاح التحصيل — وهي هجرةٌ قائمة */
+    public function test_the_collection_key_is_listed_as_a_protection_no_code_rollback_crosses(): void
+    {
+        $file = (string) file_get_contents(base_path('deploy/rollback-barriers.txt'));
+        $this->assertMatchesRegularExpression('/^2026_12_07_090000_a_collection_is_written_once \S/m', $file);
+        $this->assertFileExists(base_path('database/migrations/2026_12_07_090000_a_collection_is_written_once.php'));
+        foreach (explode("\n", $file) as $line) {
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+            $this->assertFileExists(base_path('database/migrations/'.strtok($line, ' ').'.php'), "حمايةٌ لهجرةٍ لا وجودَ لها: $line");
+        }
+        $this->assertStringContainsString('deploy/rollback-barriers.txt', $this->code('scripts/rollback-code.sh'));
+    }
 }

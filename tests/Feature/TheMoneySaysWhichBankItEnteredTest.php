@@ -246,7 +246,7 @@ class TheMoneySaysWhichBankItEnteredTest extends TestCase
     {
         $invoice = $this->issued();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'customer_invoice_id' => $invoice->id,
             'amount' => 60, 'method' => 'تحويل',
         ])->assertSessionHasNoErrors();
@@ -259,7 +259,7 @@ class TheMoneySaysWhichBankItEnteredTest extends TestCase
     {
         $invoice = $this->issued();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'customer_invoice_id' => $invoice->id,
             'amount' => 60, 'method' => 'نقدي', 'bank_account_id' => $this->primary->id,
         ])->assertSessionHasNoErrors();
@@ -272,7 +272,7 @@ class TheMoneySaysWhichBankItEnteredTest extends TestCase
     {
         $invoice = $this->issued();
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'customer_invoice_id' => $invoice->id,
             'amount' => 60, 'method' => 'شيك',
         ])->assertSessionHasNoErrors();
@@ -289,7 +289,7 @@ class TheMoneySaysWhichBankItEnteredTest extends TestCase
             'business_id' => $other->id, 'bank_name' => 'بنك غريب', 'active' => true,
         ]);
 
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'customer_invoice_id' => $invoice->id,
             'amount' => 60, 'method' => 'تحويل', 'bank_account_id' => $stranger->id,
         ])->assertSessionHasErrors('bank_account_id');

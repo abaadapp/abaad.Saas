@@ -215,7 +215,7 @@ class CustomerInvoiceDoorsTest extends TestCase
         ]), $this->owner->id);
 
         // توزيعٌ صامت يجعل التاجر يكتشف بعد شهرٍ أنّ دفعتَه سدّت غيرَ ما قصد
-        $this->actingAs($this->owner)->post('/admin/customer-payments', [
+        $this->actingAs($this->owner)->post('/admin/customer-payments', ['request_key' => (string) \Illuminate\Support\Str::uuid(), 
             'customer_id' => $this->customer->id, 'amount' => 40, 'method' => 'نقدي',
         ])->assertSessionHasNoErrors();
 

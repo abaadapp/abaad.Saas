@@ -12059,5 +12059,21 @@
     "الإلغاء بالاعتماد لفاتورةٍ صادرة.": "Cancelling by approval is for an issued invoice.",
     "حسابك معطّل — لا تبتّ في طلبات التصحيح.": "Your account is disabled — you cannot decide correction requests.",
     "أُرسل إلغاء الفاتورة :n للاعتماد — لا تُلغى حتى يعتمده موظف آخر.": "Cancelling invoice :n was sent for approval — it is not cancelled until another employee approves it.",
-    "أُرسل إشعار الدائن على الفاتورة :n للاعتماد — لا يصدر حتى يعتمده موظف آخر.": "The credit note on invoice :n was sent for approval — it is not issued until another employee approves it."
+    "أُرسل إشعار الدائن على الفاتورة :n للاعتماد — لا يصدر حتى يعتمده موظف آخر.": "The credit note on invoice :n was sent for approval — it is not issued until another employee approves it.",
+    "مبلغ التحصيل لا يطابق ما خُصّص للفواتير.": "The collected amount does not match what was allocated to the invoices.",
+    "الفاتورة :n ليست صادرة — لا يُحصَّل عليها.": "Invoice :n is not issued — nothing can be collected on it.",
+    "الفاتورة :n مدفوعة بالكامل — لا يُحصَّل عليها شيء.": "Invoice :n is fully paid — nothing more can be collected on it.",
+    "المتبقي على الفاتورة :n هو :left — لا يُحصَّل عليها أكثر منه.": "The remaining balance on invoice :n is :left — no more than that can be collected on it.",
+    "حدّث الصفحة ثم أعد تسجيل التحصيل.": "Refresh the page, then record the collection again.",
+    "هذا التحصيل سُجّل من قبل (:n) — ولم يُكتب ثانيةً.": "This collection was already recorded (:n) — it was not written again.",
+    "تعذّر تسجيل التحصيل الآن — أعد المحاولة.": "The collection could not be recorded right now — try again.",
+    "ترك الزائد رصيدًا يكون لتحصيلٍ على فاتورةٍ واحدة بعينها.": "Leaving the excess as credit applies only to a collection on one named invoice.",
+    "مفتاح هذا التحصيل يخصّ محاولةً سجّلها غيرك — افتح نافذة التحصيل من جديد.": "This collection key belongs to an attempt recorded by someone else — open the collection window again.",
+    "مفتاح هذا التحصيل استُعمل لتحصيلٍ بتفاصيل أخرى — لم يُكتب شيء. افتح نافذة التحصيل من جديد.": "This collection key was used for a collection with other details — nothing was written. Open the collection window again.",
+    "الفاتورة :n مدفوعة بالكامل — لا يُترك عليها زائدٌ رصيدًا. لدفعةٍ مقدّمة سجّل «تحصيلًا على حساب العميل».": "Invoice :n is fully paid — no excess can be left on it as credit. For an advance, record a “collection on the customer's account”.",
+    "هذه الفاتورة على فرعٍ لست مُسنَدًا إليه — لا تُحصَّل منك.": "This invoice belongs to a branch you are not assigned to — you cannot collect it.",
+    "المستحق على الفاتورة": "Due on the invoice",
+    "الزائد": "Excess",
+    "اترك المبلغ الزائد رصيدًا للعميل": "Leave the excess as customer credit",
+    "بدون هذا الخيار يُردّ مبلغٌ أكبر من المتبقي على الفاتورة.": "Without this option, an amount above what is left on the invoice is refused."
 }

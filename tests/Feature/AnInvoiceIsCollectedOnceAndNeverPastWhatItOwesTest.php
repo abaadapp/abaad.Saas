@@ -652,6 +652,29 @@ class AnInvoiceIsCollectedOnceAndNeverPastWhatItOwesTest extends TestCase
         ] as $what => $args) {
             $this->assertNotSame($base, CustomerPayments::fingerprint(...$args), "تغيّر {$what} ولم تتغيّر البصمة");
         }
+
+        // والتحصيلُ على حساب العميل بلا فاتورة: المبلغُ وحدَه يفرّق بين عمليّتين
+        $this->assertNotSame(
+            CustomerPayments::fingerprint(1, 2, 10.0, 'نقدي', [], [], false, 3),
+            CustomerPayments::fingerprint(1, 2, 11.0, 'نقدي', [], [], false, 3),
+            'دفعتان مقدّمتان بمبلغين بصمةٌ واحدة',
+        );
+    }
+
+    /** ودفعةٌ مقدّمةٌ على حساب العميل: المفتاحُ نفسُه بمبلغٍ آخر يُردّ أيضًا */
+    public function test_an_advance_resent_with_its_key_and_another_amount_is_refused(): void
+    {
+        $key = (string) Str::uuid();
+        $advance = fn (float $amount) => $this->post(route('admin.customerPayments.store'), [
+            'request_key' => $key, 'customer_id' => $this->company->id, 'amount' => $amount, 'method' => 'نقدي',
+        ]);
+        $advance(40)->assertSessionHasNoErrors();
+        $once = $this->books();
+
+        $this->refusedWith($advance(41), 'بتفاصيل أخرى');
+        $advance(40)->assertSessionHasNoErrors()->assertSessionHas('toast', fn ($t) => str_contains($t['msg'], 'سُجّل من قبل'));
+        $this->assertSame($once, $this->books());
+        $this->assertSame(40.0, $once['credit']);
     }
 
     /** ومفتاحٌ سجّله غيرُك لا يردّ لك تحصيلَه — ولا يكتب لك تحصيلًا */
